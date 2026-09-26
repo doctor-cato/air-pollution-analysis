@@ -143,4 +143,5 @@ Tuân thủ hướng dẫn về tính minh bạch học thuật trong môn học
 
 ## 8. Giấy phép & Bản quyền
 
-Dự án được thực hiện phục vụ mục đích học tập và nghiên cứu trong khuôn khổ môn học INFO3020 tại Trường Đại học CMC.
+Mã nguồn dự án được phân phối theo giấy phép mã nguồn mở **[MIT License](LICENSE)**. Toàn văn các điều khoản cấp phép được quy định chi tiết tại tệp `LICENSE`.
+
