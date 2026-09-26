@@ -9,11 +9,11 @@
 
 ### Thành viên Nhóm
 
-| STT | Thành viên | Tài khoản GitHub | Ghi chú |
+| STT | Thành viên | Tài khoản GitHub | Vai trò |
 |:---:|---|---|---|
-| 1 | Khương | [@lekhuong123456798-cpu](https://github.com/lekhuong123456798-cpu) | Thành viên |
-| 2 | Khánh | [@nguyenphanminhkhanh9a-netizen](https://github.com/nguyenphanminhkhanh9a-netizen) | Thành viên |
-| 3 | Huy | [@doctor-cato](https://github.com/doctor-cato) | Thành viên |
+| 1 | Huy | [@doctor-cato](https://github.com/doctor-cato) | Nhóm trưởng (*Leader*) |
+| 2 | Khương | [@lekhuong123456798-cpu](https://github.com/lekhuong123456798-cpu) | Thành viên |
+| 3 | Khánh | [@nguyenphanminhkhanh9a-netizen](https://github.com/nguyenphanminhkhanh9a-netizen) | Thành viên |
 | 4 | Hưng | [@ViolaPeracia](https://github.com/ViolaPeracia) | Thành viên |
 | 5 | Hùng | *(Đang cập nhật tài khoản)* | Thành viên |
 
