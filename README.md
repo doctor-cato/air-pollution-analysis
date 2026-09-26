@@ -4,7 +4,18 @@
 > **Môn học:** INFO3020 – Nhập môn Khoa học Dữ liệu (*Introduction to Data Science*)  
 > **Đơn vị:** Khoa Công nghệ Thông tin & Truyền thông, Trường Đại học CMC  
 > **Giảng viên hướng dẫn:** ThS. Phạm Ngọc Đông  
-> **Phương pháp luận:** Vòng đời CRISP-DM (6 giai đoạn)
+> **Phương pháp luận:** Vòng đời CRISP-DM (6 giai đoạn)  
+> **Nhóm thực hiện:** Nhóm Chủ đề 6 (*Topic 6 Team*)
+
+### Thành viên Nhóm
+
+| STT | Thành viên | Tài khoản GitHub | Ghi chú |
+|:---:|---|---|---|
+| 1 | Khương | [@lekhuong123456798-cpu](https://github.com/lekhuong123456798-cpu) | Thành viên |
+| 2 | Khánh | [@nguyenphanminhkhanh9a-netizen](https://github.com/nguyenphanminhkhanh9a-netizen) | Thành viên |
+| 3 | Huy | [@doctor-cato](https://github.com/doctor-cato) | Thành viên |
+| 4 | Hưng | [@ViolaPeracia](https://github.com/ViolaPeracia) | Thành viên |
+| 5 | Hùng | *(Đang cập nhật tài khoản)* | Thành viên |
 
 ---
 
