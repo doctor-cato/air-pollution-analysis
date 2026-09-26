@@ -1,23 +1,29 @@
 # =============================================================
 # requirements.txt – Air Pollution Analysis (INFO3020)
-# Python 3.10+  |  pip install -r requirements.txt
+# Tương thích Python 3.10+ | pip install -r requirements.txt
 # =============================================================
 
-# ── Data manipulation & storage ──────────────────────────────
-pandas==3.0.6
-numpy==2.5.3
+# ── Thao tác & Lưu trữ dữ liệu ───────────────────────────────
+pandas==2.3.3
 pyarrow==25.0.1
 
-# ── Visualization ────────────────────────────────────────────
-matplotlib==3.11.2
+# numpy và scipy sử dụng environment markers (PEP 508)
+# Python <3.12: phiên bản có sẵn wheel cho Python 3.10–3.11
+# Python >=3.12: phiên bản có sẵn wheel cho Python 3.12–3.14
+numpy==2.2.6; python_version < "3.12"
+numpy==2.5.3; python_version >= "3.12"
+
+# ── Trực quan hóa dữ liệu ────────────────────────────────────
+matplotlib==3.10.9
 seaborn==0.13.2
 
-# ── Statistics & inference ───────────────────────────────────
-scipy==1.18.1
+# ── Thống kê & Suy luận ──────────────────────────────────────
+scipy==1.15.3; python_version < "3.12"
+scipy==1.18.1; python_version >= "3.12"
 statsmodels==0.15.0
 
-# ── Machine learning & pipelines ─────────────────────────────
-scikit-learn==1.9.1
+# ── Học máy & Pipeline ───────────────────────────────────────
+scikit-learn==1.7.2
 
-# ── Notebook environment ─────────────────────────────────────
+# ── Môi trường Notebook ──────────────────────────────────────
 jupyter==1.1.1
