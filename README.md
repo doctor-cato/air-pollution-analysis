@@ -46,6 +46,8 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 ```text
 air-pollution-analysis/
 ├── .gitignore                          # Quy tắc loại trừ dữ liệu thô, cache, môi trường ảo
+├── CONTRIBUTING.md                     # Hướng dẫn đóng góp, quy trình Git và chuẩn mã nguồn
+├── LICENSE                             # Giấy phép mã nguồn mở MIT
 ├── README.md                           # Tài liệu tổng quan, hướng dẫn thiết lập và quản trị
 ├── requirements.txt                    # Danh sách thư viện phụ thuộc tương thích Python 3.10+
 ├── data/
@@ -141,7 +143,13 @@ Tuân thủ hướng dẫn về tính minh bạch học thuật trong môn học
 
 ---
 
-## 8. Giấy phép & Bản quyền
+## 8. Hướng Dẫn Đóng Góp
+
+Xem chi tiết quy trình làm việc, quy ước nhánh, chuẩn commit và nguyên tắc bảo vệ dữ liệu tại **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+
+---
+
+## 9. Giấy phép & Bản quyền
 
 Mã nguồn dự án được phân phối theo giấy phép mã nguồn mở **[MIT License](LICENSE)**. Toàn văn các điều khoản cấp phép được quy định chi tiết tại tệp `LICENSE`.
 
