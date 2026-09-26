@@ -1,0 +1,29 @@
+# =============================================================
+# requirements.txt – Air Pollution Analysis (INFO3020)
+# Tương thích Python 3.10+ | pip install -r requirements.txt
+# =============================================================
+
+# ── Thao tác & Lưu trữ dữ liệu ───────────────────────────────
+pandas==2.3.3
+pyarrow==25.0.1
+
+# numpy và scipy sử dụng environment markers (PEP 508)
+# Python <3.12: phiên bản có sẵn wheel cho Python 3.10–3.11
+# Python >=3.12: phiên bản có sẵn wheel cho Python 3.12–3.14
+numpy==2.2.6; python_version < "3.12"
+numpy==2.5.3; python_version >= "3.12"
+
+# ── Trực quan hóa dữ liệu ────────────────────────────────────
+matplotlib==3.10.9
+seaborn==0.13.2
+
+# ── Thống kê & Suy luận ──────────────────────────────────────
+scipy==1.15.3; python_version < "3.12"
+scipy==1.18.1; python_version >= "3.12"
+statsmodels==0.15.0
+
+# ── Học máy & Pipeline ───────────────────────────────────────
+scikit-learn==1.7.2
+
+# ── Môi trường Notebook ──────────────────────────────────────
+jupyter==1.1.1

@@ -1,0 +1,53 @@
+# ============================================================
+# .gitignore – Air Pollution Analysis (INFO3020)
+# ============================================================
+
+# ── Python bytecode & caches ─────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# ── Virtual environments ─────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Jupyter Notebook checkpoints ─────────────────────────────
+.ipynb_checkpoints/
+
+# ── Environment variables & credentials ──────────────────────
+.env
+.env.*
+*.pem
+*.key
+
+# ── Raw data (immutable, fetched via API – do NOT commit) ────
+data/raw/*.json
+data/raw/*.csv
+data/raw/*.parquet
+!data/raw/.gitkeep
+
+# ── Large / generated data files ─────────────────────────────
+data/interim/*.parquet
+data/interim/*.csv
+!data/interim/.gitkeep
+data/processed/*.parquet
+data/processed/*.csv
+!data/processed/.gitkeep
+
+# ── IDE & OS artifacts ───────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Build / dist ─────────────────────────────────────────────
+*.egg-info/
+dist/
+build/
