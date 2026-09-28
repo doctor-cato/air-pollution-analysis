@@ -1,0 +1,125 @@
+{
+  "schema_version": "1.0.0",
+  "project": "doctor-cato/air-pollution-analysis",
+  "issue": "#19 – Source Profiling & Decision Gate",
+  "profiling_timestamp_utc": "2026-09-28T16:47:26Z",
+  "target_city": "Hanoi, Vietnam",
+  "temporal_coverage": {
+    "start_date": "2023-01-01",
+    "end_date": "2024-12-31",
+    "timezone": "Asia/Ho_Chi_Minh",
+    "utc_offset": "+07:00",
+    "total_hours": 17544
+  },
+  "sources": {
+    "air_quality": {
+      "role": "primary",
+      "provider": "OpenAQ",
+      "station_name": "US Diplomatic Post: Hanoi",
+      "location_id": 2178,
+      "coordinates": {
+        "latitude": 21.0215,
+        "longitude": 105.8184
+      },
+      "instrument": "Met One BAM-1020 (US EPA FEM EQPM-0308-170)",
+      "parameters_available": ["pm25", "pm10", "no2", "co", "so2", "o3", "no", "nox"],
+      "primary_parameter": "pm25",
+      "unit": "µg/m³",
+      "endpoints": {
+        "rest_api": "https://api.openaq.org/v3/sensors/{id}/hours",
+        "s3_public_archive": "https://openaq-data-archive.s3.amazonaws.com/records/csv.gz/locationid=2178/"
+      },
+      "authentication": "X-API-Key required for REST API v3; None required for S3 public archive",
+      "license": "Open Database License (ODC-BY) v1.0",
+      "attribution": "Data provided by OpenAQ and data originators (US Department of State / US EPA)",
+      "profiling_metrics": {
+        "verified_rows_pm25": 14424,
+        "expected_rows": 17544,
+        "completeness_pm25_pct": 82.2,
+        "completeness_2023_pm25_pct": 69.1,
+        "completeness_2024_pm25_pct": 95.3,
+        "min_timestamp": "2023-01-01T00:00:00+07:00",
+        "max_timestamp": "2024-12-31T23:00:00+07:00",
+        "resolution": "1 hour"
+      }
+    },
+    "air_quality_backup": {
+      "role": "backup",
+      "provider": "AirNow (US Department of State)",
+      "station_name": "Site: Hanoi (US Embassy)",
+      "instrument": "Met One BAM-1020",
+      "format": "Historical CSV",
+      "temporal_coverage": "2016-01-01 to 2023-12-31",
+      "disguised_missing_marker": "-999",
+      "license": "U.S. Public Domain",
+      "attribution": "US Department of State / AirNow"
+    },
+    "meteorology": {
+      "role": "primary",
+      "provider": "Open-Meteo",
+      "model": "ECMWF ERA5 Reanalysis",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive",
+      "query_parameters": {
+        "latitude": 21.0285,
+        "longitude": 105.8542,
+        "start_date": "2023-01-01",
+        "end_date": "2024-12-31",
+        "hourly": "temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,precipitation,surface_pressure",
+        "wind_speed_unit": "ms",
+        "timezone": "Asia/Ho_Chi_Minh"
+      },
+      "grid_resolution": "0.25° (~25km)",
+      "matched_grid": {
+        "latitude": 21.05448,
+        "longitude": 105.89848,
+        "elevation_m": 19.0
+      },
+      "authentication": "None required (free for non-commercial/academic use)",
+      "rate_limit": "10,000 requests/day",
+      "license": "Creative Commons Attribution 4.0 International (CC BY 4.0)",
+      "attribution": "Weather data by Open-Meteo.com under CC BY 4.0, containing modified Copernicus Climate Change Service information (ERA5)",
+      "profiling_metrics": {
+        "verified_rows": 17544,
+        "missing_rate_all_variables": "0.00%",
+        "min_timestamp": "2023-01-01T00:00",
+        "max_timestamp": "2024-12-31T23:00",
+        "resolution": "1 hour continuous"
+      }
+    },
+    "meteorology_backup": {
+      "role": "backup",
+      "provider": "NOAA Integrated Surface Database (ISD) / WMO",
+      "station_name": "NOIBAI INTERNATIONAL, VM",
+      "wmo_id": "48820",
+      "wban_id": "99999",
+      "station_id": "48820099999",
+      "coordinates": {
+        "latitude": 21.221192,
+        "longitude": 105.807178,
+        "elevation_m": 11.88
+      },
+      "endpoint_template": "https://www.ncei.noaa.gov/data/global-hourly/access/{YYYY}/48820099999.csv",
+      "authentication": "None required",
+      "format": "METAR FM-15 CSV",
+      "license": "U.S. Public Domain",
+      "attribution": "NOAA National Centers for Environmental Information (NCEI) / WMO",
+      "profiling_metrics": {
+        "verified_rows_2023": 17178,
+        "verified_rows_2024": 16704,
+        "days_covered_2023": "365/365",
+        "days_covered_2024": "359/366",
+        "tmp_missing_rate": "0.00%",
+        "resolution": "~30 minutes (requires resampling to hourly)",
+        "limitations": "Missing precipitation (AA1/AA2) in majority of records; SLP requires height adjustment for surface pressure; Station is ~20km north of urban core."
+      }
+    }
+  },
+  "unused_sources": {
+    "pam_air_portal": {
+      "reason": "Closed proprietary data license, lack of open REST API, and uncalibrated low-cost optical sensor drift under high humidity (RH > 90%)."
+    },
+    "kaggle_community_datasets": {
+      "reason": "Third-party preprocessed/imputed data posing severe data leakage risk; retained for external distribution reference only."
+    }
+  }
+}
