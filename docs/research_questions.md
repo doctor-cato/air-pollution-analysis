@@ -127,11 +127,16 @@ Câu hỏi trung tâm này kết nối xuyên suốt các giai đoạn của quy
 
 * **Khung phân tích & Yêu cầu phương pháp luận:**
   1. **Quy trình xây dựng bài toán phân loại:**
-     - *Xác lập ngưỡng cảnh báo vận hành & Nguyên tắc tổng hợp 24 giờ:*
+     - *Xác lập ngưỡng cảnh báo vận hành, Phân biệt đơn vị đo & Nguyên tắc tổng hợp 24 giờ:*
        - Tham chiếu Quy chuẩn kỹ thuật quốc gia về chất lượng không khí **QCVN 05:2023/BTNMT**, trong đó giới hạn nồng độ $\text{PM}_{2.5}$ trung bình 24 giờ là **$45\,\mu\text{g/Nm}^3$** (áp dụng chính thức từ ngày 01/01/2026; mức áp dụng trong giai đoạn trước năm 2026 là $50\,\mu\text{g/Nm}^3$).
+       - **Phân biệt đơn vị đo Canonical ($\mu\text{g/m}^3$) và đơn vị Quy chuẩn QCVN ($\mu\text{g/Nm}^3$):**
+         - Đơn vị đo canonical của tập dữ liệu quan trắc là **$\mu\text{g/m}^3$** (microgam trên mét khối không khí thực tế đo ở điều kiện nhiệt độ và áp suất môi trường xung quanh - *ambient/volumetric conditions*).
+         - Đơn vị quy định trong QCVN 05:2023/BTNMT là **$\mu\text{g/Nm}^3$** (microgam trên mét khối khí chuẩn ở điều kiện chuẩn: nhiệt độ 25°C và áp suất 760 mmHg theo quy chuẩn Việt Nam, hoặc 0°C/101.325 kPa theo chuẩn quốc tế).
+         - **Tuyệt đối không coi hai giá trị này có thể so sánh trực tiếp như cùng một đơn vị đo**. Nếu bài toán phân loại sau này cần đối chiếu ngưỡng QCVN với dữ liệu canonical, bắt buộc phải có bước xử lý/chuẩn hóa đơn vị đo phù hợp dựa trên các điều kiện khí tượng (nhiệt độ, áp suất) thực tế.
+         - **Không tự ý đưa ra công thức chuyển đổi cố định tại Issue #2** khi chưa có cơ sở kỹ thuật xác thực từ Issue #19 về điều kiện chuẩn của thiết bị đo từ nguồn dữ liệu.
        - **Quy tắc phân biệt tần suất đo (Critical Distinction):** Do dữ liệu quan trắc trong Canonical Schema được ghi nhận ở tần suất **theo giờ (`hourly`)**, **tuyệt đối không được áp dụng trực tiếp ngưỡng giới hạn trung bình 24 giờ lên từng quan sát đơn lẻ theo giờ**.
-       - Nếu bài toán cảnh báo sớm sử dụng quy chuẩn này làm mốc đánh giá, biến mục tiêu cảnh báo bắt buộc phải được xây dựng từ **chuỗi giá trị $\text{PM}_{2.5}$ trung bình 24 giờ được tổng hợp đúng quy chuẩn** (ví dụ: giá trị trung bình trượt 24 giờ $\text{PM}_{2.5, \text{24h-rolling}}$ hoặc giá trị trung bình ngày theo lịch khi đạt đủ tỷ lệ mẫu hợp lệ).
-       - Việc định nghĩa công thức tổng hợp cụ thể và chọn ngưỡng vận hành chính thức sẽ được hoàn thiện trong giai đoạn tiền xử lý và mô hình hóa (Issue #7 và #13); **không tự ý triển khai code mô hình/phân loại tại Issue #2**.
+       - Nếu bài toán cảnh báo sớm sử dụng quy chuẩn này làm mốc đánh giá, biến mục tiêu cảnh báo bắt buộc phải được xây dựng từ **chuỗi giá trị $\text{PM}_{2.5}$ trung bình 24 giờ được tổng hợp đúng quy chuẩn** (ví dụ: giá trị trung bình trượt 24 giờ $\text{PM}_{2.5, \text{24h-rolling}}$ hoặc giá trị trung bình ngày theo lịch khi đạt đủ tỷ lệ mẫu hợp lệ), sau khi đã chuẩn hóa đơn vị đo tương thích.
+       - Việc định nghĩa công thức tổng hợp cụ thể, xử lý đơn vị chuẩn hóa và chọn ngưỡng vận hành chính thức sẽ được hoàn thiện trong giai đoạn tiền xử lý và mô hình hóa (Issue #7 và #13); **không tự ý triển khai code mô hình/phân loại tại Issue #2**.
      - *Tạo nhãn phân loại (Binary Target):* Chuyển đổi chuỗi quan sát 24 giờ tổng hợp thành nhãn nhị phân: Lớp 1 (Nguy cơ vượt ngưỡng / Cảnh báo ô nhiễm) và Lớp 0 (Mức an toàn / Bình thường).
      - *Tách tập dữ liệu chống rò rỉ (Leakage Prevention):* Áp dụng phương pháp phân chia tập huấn luyện (Train) và kiểm tra (Test) nghiêm ngặt theo thứ tự thời gian tuyến tính (*Chronological Split*). Tuyệt đối không dùng chia ngẫu nhiên.
      - *Huấn luyện & Tinh chỉnh:* Huấn luyện mô hình tiền xử lý và thuật toán phân loại hoàn toàn trên tập Train; tinh chỉnh siêu tham số và tối ưu ngưỡng quyết định trên tập Validation (hoặc Time-Series Cross-Validation trên Train).

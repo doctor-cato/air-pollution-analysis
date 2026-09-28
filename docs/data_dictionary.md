@@ -156,8 +156,8 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 |---|---|
 | **Canonical Field Name** | `pm25` |
 | **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ thẩm định tại Issue #19, ví dụ ứng viên: `pm25`, `PM2.5`, `value` khi `parameter='pm25'`) |
-| **Definition** | Nồng độ khối lượng của các hạt bụi mịn có đường kính khí động học nhỏ hơn hoặc bằng 2.5 micromet lơ lửng trong không khí theo chu kỳ 1 giờ (hourly).<br><br>*(Lưu ý về tần suất đo & quy chuẩn: Dữ liệu canonical được ghi nhận theo từng giờ. Để đối chiếu với các quy chuẩn kỹ thuật như QCVN 05:2023/BTNMT với giới hạn trung bình 24 giờ là $45\,\mu\text{g/Nm}^3$ áp dụng từ 01/01/2026, dữ liệu cần được tổng hợp theo chu kỳ 24 giờ tương thích ở các bước phân tích sau; tuyệt đối không áp trực tiếp ngưỡng trung bình 24 giờ lên từng quan sát đơn lẻ theo giờ).* |
-| **Unit** | $\mu\text{g/m}^3$ (Microgam trên mét khối không khí) |
+| **Definition** | Nồng độ khối lượng của các hạt bụi mịn có đường kính khí động học nhỏ hơn hoặc bằng 2.5 micromet lơ lửng trong không khí theo chu kỳ 1 giờ (hourly).<br><br>*(Lưu ý về tần suất đo & quy chuẩn: Dữ liệu canonical được ghi nhận theo từng giờ. Để đối chiếu với các quy chuẩn kỹ thuật như QCVN 05:2023/BTNMT với giới hạn trung bình 24 giờ là $45\,\mu\text{g/Nm}^3$ áp dụng từ 01/01/2026, dữ liệu cần được tổng hợp theo chu kỳ 24 giờ tương thích ở các bước phân tích sau; tuyệt đối không áp trực tiếp ngưỡng trung bình 24 giờ lên từng quan sát đơn lẻ theo giờ).*<br><br>*(Lưu ý về phân biệt đơn vị đo $\mu\text{g/m}^3$ vs. $\mu\text{g/Nm}^3$: Đơn vị canonical của tập dữ liệu là $\mu\text{g/m}^3$ đo ở điều kiện môi trường thực tế. Quy chuẩn QCVN 05:2023/BTNMT sử dụng đơn vị $\mu\text{g/Nm}^3$ ở điều kiện chuẩn nhiệt độ và áp suất. Hai đơn vị này **không thể so sánh trực tiếp như cùng một đơn vị đo** mà cần được xử lý/chuẩn hóa phù hợp dựa trên thông số khí tượng thực tế nếu đối chiếu; không tự ý áp đặt công thức chuyển đổi cố định khi chưa xác thực điều kiện chuẩn của nguồn tại Issue #19).* |
+| **Unit** | $\mu\text{g/m}^3$ (Microgam trên mét khối không khí thực tế đo ở điều kiện môi trường - actual/ambient conditions; phân biệt với đơn vị quy chuẩn $\mu\text{g/Nm}^3$) |
 | **Datatype** | `float64` |
 | **Transformation** | Kiểm tra đơn vị nguồn; nếu nguồn dùng đơn vị khác (như $\text{mg/m}^3$ hay $\text{ppm}$), nhân hệ số chuyển đổi về $\mu\text{g/m}^3$; ép kiểu số thực 64-bit; chuyển các mã lỗi/marker ngụy trang thành `NaN`. |
 | **Source Origin** | Nguồn ứng viên chất lượng không khí (chưa thẩm định; quyết định chọn nguồn chính thức deferred to #19). |
@@ -333,3 +333,10 @@ Khi triển khai các module adapter trong `src/data_loader.py` (tại Issue #3 
    - Hàm chuyển đổi của adapter phải đảm bảo tính xác định (*deterministic*): cùng một payload đầu vào luôn cho ra chính xác cùng một DataFrame đầu ra chuẩn hóa.
 4. **Kiểm tra biên giới hạn vật lý sơ bộ (Sanity Checks):**
    - Khi chuyển đổi, adapter cảnh báo hoặc gán `NaN` đối với các giá trị vi phạm quy luật tự nhiên hiển nhiên (ví dụ: độ ẩm $> 100\%$ hoặc $< 0\%$, tốc độ gió $< 0\,\text{m/s}$, nồng độ bụi âm $< 0\,\mu\text{g/m}^3$).
+5. **Nguyên tắc phân biệt đơn vị quan trắc ($\mu\text{g/m}^3$) và đơn vị quy chuẩn ($\mu\text{g/Nm}^3$):**
+   - Đơn vị canonical của tập dữ liệu là $\mu\text{g/m}^3$ (nồng độ khối lượng thực tế đo trong 1 mét khối không khí tại điều kiện nhiệt độ và áp suất môi trường xung quanh trạm đo - *ambient/volumetric conditions*).
+   - Đơn vị quy chuẩn môi trường QCVN 05:2023/BTNMT là $\mu\text{g/Nm}^3$ (nồng độ khối lượng tính trên 1 mét khối khí chuẩn - *normal cubic meter*, quy đổi về điều kiện chuẩn: nhiệt độ 25°C và áp suất 760 mmHg).
+   - **Tuyệt đối không so sánh trực tiếp hai giá trị này như cùng một đơn vị đo**.
+   - Nếu trong các bài toán phân tích hoặc mô hình hóa cảnh báo ở các giai đoạn sau (Issue #7, #13) cần đối chiếu nồng độ quan sát với các ngưỡng của QCVN, nhóm nghiên cứu bắt buộc phải thực hiện bước xử lý/chuẩn hóa đơn vị đo phù hợp dựa trên thông số nhiệt độ và áp suất thực tế.
+   - **Không tự ý ấn định một công thức chuyển đổi cố định tại thời điểm Issue #2**, vì việc chuyển đổi đòi hỏi phải có căn cứ xác thực từ Issue #19 về điều kiện đo kỹ thuật của cảm biến nguồn (cảm biến báo cáo theo volumetric concentration hay đã chuẩn hóa sẵn).
+
