@@ -42,9 +42,11 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 - [x] Tạo file `requirements.txt` cố định phiên bản tương thích với Python 3.10+ (hỗ trợ pre-built wheels cho Windows/Linux/macOS).
 - [x] Xây dựng notebook `notebooks/00_environment_test.ipynb` kiểm thử tự động toàn bộ thư viện cốt lõi, kiểm tra I/O Parquet, Matplotlib và Scikit-Learn Pipeline.
 - [x] Biên soạn tài liệu `README.md` tiếng Việt với cam kết liêm chính học thuật và hướng dẫn tái lập.
+- [x] Xác lập Câu hỏi nghiên cứu mục tiêu và 4 câu hỏi thành phần SQ1–SQ4 đảm bảo tính trung lập khoa học ([`docs/research_questions.md`](docs/research_questions.md)) [Issue #2].
+- [x] Xây dựng Từ điển dữ liệu chuẩn hóa trung lập nguồn Canonical Data Schema với 11 trường dữ liệu và 8 thuộc tính chuẩn hóa ([`docs/data_dictionary.md`](docs/data_dictionary.md)) [Issue #2].
 
 ### 2.2. Kế hoạch thực hiện tiếp theo (Theo `docs/roadmap.md`)
-- **Tuần 02:** Xây dựng pipeline thu thập dữ liệu tự động từ OpenAQ REST API (trạm Đại sứ quán Hoa Kỳ tại Hà Nội) và Open-Meteo Historical Weather API; biên soạn Từ điển Dữ liệu (`docs/data_dictionary.md`). *(Chưa thu thập dữ liệu)*.
+- **Tuần 02:** Thẩm định hồ sơ đa nguồn và ban hành quyết định nguồn dữ liệu ([Issue #19]); xây dựng pipeline thu thập dữ liệu tự động cho ô nhiễm không khí ([Issue #3]) và khí tượng ([Issue #4]). *(Chưa thu thập dữ liệu)*.
 - **Tuần 03–05:** Kiểm toán 6 chiều chất lượng dữ liệu, làm sạch logic vật lý, nội suy chuỗi thời gian có kiểm soát, tích hợp dữ liệu và đóng gói Pipeline chống rò rỉ dữ liệu sang định dạng Parquet.
 - **Tuần 06–08:** Phân tích khám phá dữ liệu (EDA), tính toán 4 họ chỉ số thống kê, thiết kế 7 biểu đồ ấn phẩm giải thích theo nguyên tắc Tufte/Cleveland, hoàn thành Báo cáo Giữa kỳ.
 - **Tuần 09–11:** Thực hiện kiểm định giả thuyết phi tham số, xây dựng mô hình hồi quy OLS (chẩn đoán LINE), phát triển mô hình phân loại cảnh báo ô nhiễm với điều chỉnh ngưỡng quyết định (*Threshold tuning*).
@@ -70,7 +72,9 @@ air-pollution-analysis/
 │       └── .gitkeep
 ├── docs/
 │   ├── roadmap.md                      # Lộ trình và đặc tả yêu cầu chi tiết 15 tuần
-│   └── ROADMAP_INFO3020_Air_Pollution.md
+│   ├── ROADMAP_INFO3020_Air_Pollution.md
+│   ├── research_questions.md           # Câu hỏi nghiên cứu & khung phân tích SQ1–SQ4 [Issue #2]
+│   └── data_dictionary.md              # Từ điển dữ liệu chuẩn hóa Canonical Schema [Issue #2]
 ├── notebooks/
 │   └── 00_environment_test.ipynb       # Notebook kiểm thử môi trường và nạp thư viện
 ├── src/
