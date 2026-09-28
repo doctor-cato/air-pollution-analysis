@@ -24,9 +24,9 @@
 Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text{PM}_{2.5}$ và mối liên hệ với các yếu tố khí tượng bề mặt tại khu vực Hà Nội. Đề tài tuân thủ chặt chẽ vòng đời khoa học dữ liệu **CRISP-DM**, giải quyết các câu hỏi nghiên cứu về:
 
 1. **Quy luật chu kỳ thời gian:** Phân tích biến động $\text{PM}_{2.5}$ theo chu kỳ ngày đêm (*diurnal*), ngày trong tuần (*weekday vs. weekend*), và chu kỳ mùa vụ (*seasonal*).
-2. **Suy luận thống kê có đối chứng:** Kiểm định giả thuyết phi tham số so sánh mức độ ô nhiễm giữa các khoảng thời gian kèm Effect Size ($r_{rb}$) và khoảng tin cậy Bootstrap.
+2. **Suy luận thống kê có đối chứng:** Kiểm định giả thuyết so sánh mức độ ô nhiễm giữa các khoảng thời gian kèm kích thước hiệu ứng và khoảng tin cậy Bootstrap theo phương pháp kiểm định phù hợp với dữ liệu.
 3. **Mô hình hóa hồi quy giải thích:** Định lượng mức độ liên hệ của nhiệt độ, độ ẩm, tốc độ gió, áp suất lên nồng độ bụi thông qua hồi quy OLS (kèm chẩn đoán 4 giả định LINE).
-4. **Mô hình phân loại cảnh báo sớm:** Xây dựng mô hình phân loại ngày có nguy cơ ô nhiễm nghiêm trọng ($\text{PM}_{2.5} > 50\,\mu\text{g/m}^3$ theo QCVN 05:2023/BTNMT), tối ưu hóa Recall và PR-AUC.
+4. **Mô hình phân loại cảnh báo sớm:** Xây dựng bài toán phân loại cảnh báo đợt ô nhiễm dựa trên nồng độ $\text{PM}_{2.5}$ trung bình 24 giờ tổng hợp (tham chiếu ngưỡng quy chuẩn QCVN 05:2023/BTNMT là $45\,\mu\text{g/Nm}^3$ áp dụng từ 01/01/2026, kèm bước chuẩn hóa tương thích giữa đơn vị quan trắc $\mu\text{g/m}^3$ thực tế và $\mu\text{g/Nm}^3$ quy chuẩn), tối ưu hóa Recall và PR-AUC theo mục tiêu vận hành bảo vệ sức khỏe cộng đồng.
 
 ---
 
@@ -42,9 +42,11 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 - [x] Tạo file `requirements.txt` cố định phiên bản tương thích với Python 3.10+ (hỗ trợ pre-built wheels cho Windows/Linux/macOS).
 - [x] Xây dựng notebook `notebooks/00_environment_test.ipynb` kiểm thử tự động toàn bộ thư viện cốt lõi, kiểm tra I/O Parquet, Matplotlib và Scikit-Learn Pipeline.
 - [x] Biên soạn tài liệu `README.md` tiếng Việt với cam kết liêm chính học thuật và hướng dẫn tái lập.
+- [x] Xác lập Câu hỏi nghiên cứu mục tiêu và 4 câu hỏi thành phần SQ1–SQ4 đảm bảo tính trung lập khoa học ([`docs/research_questions.md`](docs/research_questions.md)) [Issue #2].
+- [x] Xây dựng Từ điển dữ liệu chuẩn hóa trung lập nguồn Canonical Data Schema với 11 trường dữ liệu và 8 thuộc tính chuẩn hóa ([`docs/data_dictionary.md`](docs/data_dictionary.md)) [Issue #2].
 
 ### 2.2. Kế hoạch thực hiện tiếp theo (Theo `docs/roadmap.md`)
-- **Tuần 02:** Xây dựng pipeline thu thập dữ liệu tự động từ OpenAQ REST API (trạm Đại sứ quán Hoa Kỳ tại Hà Nội) và Open-Meteo Historical Weather API; biên soạn Từ điển Dữ liệu (`docs/data_dictionary.md`). *(Chưa thu thập dữ liệu)*.
+- **Tuần 02:** Thẩm định hồ sơ đa nguồn và ban hành quyết định nguồn dữ liệu ([Issue #19]); xây dựng pipeline thu thập dữ liệu tự động cho ô nhiễm không khí ([Issue #3]) và khí tượng ([Issue #4]). *(Chưa thu thập dữ liệu)*.
 - **Tuần 03–05:** Kiểm toán 6 chiều chất lượng dữ liệu, làm sạch logic vật lý, nội suy chuỗi thời gian có kiểm soát, tích hợp dữ liệu và đóng gói Pipeline chống rò rỉ dữ liệu sang định dạng Parquet.
 - **Tuần 06–08:** Phân tích khám phá dữ liệu (EDA), tính toán 4 họ chỉ số thống kê, thiết kế 7 biểu đồ ấn phẩm giải thích theo nguyên tắc Tufte/Cleveland, hoàn thành Báo cáo Giữa kỳ.
 - **Tuần 09–11:** Thực hiện kiểm định giả thuyết phi tham số, xây dựng mô hình hồi quy OLS (chẩn đoán LINE), phát triển mô hình phân loại cảnh báo ô nhiễm với điều chỉnh ngưỡng quyết định (*Threshold tuning*).
@@ -70,7 +72,9 @@ air-pollution-analysis/
 │       └── .gitkeep
 ├── docs/
 │   ├── roadmap.md                      # Lộ trình và đặc tả yêu cầu chi tiết 15 tuần
-│   └── ROADMAP_INFO3020_Air_Pollution.md
+│   ├── ROADMAP_INFO3020_Air_Pollution.md
+│   ├── research_questions.md           # Câu hỏi nghiên cứu & khung phân tích SQ1–SQ4 [Issue #2]
+│   └── data_dictionary.md              # Từ điển dữ liệu chuẩn hóa Canonical Schema [Issue #2]
 ├── notebooks/
 │   └── 00_environment_test.ipynb       # Notebook kiểm thử môi trường và nạp thư viện
 ├── src/
@@ -135,7 +139,7 @@ air-pollution-analysis/
 
 Dự án cam kết tuân thủ nghiêm ngặt chuẩn đầu ra CLO4 và quy chế học thuật của Trường Đại học CMC:
 
-- **Dữ liệu thật – Nguồn xác thực:** Toàn bộ dữ liệu được thu thập từ nguồn công khai chính thống có thể kiểm chứng (OpenAQ BAM 1020 và Open-Meteo ERA5), đối chiếu theo quy chuẩn Việt Nam (QCVN 05:2023/BTNMT) và khuyến cáo của Tổ chức Y tế Thế giới (WHO 2021).
+- **Dữ liệu thật – Nguồn xác thực:** Toàn bộ dữ liệu sẽ được thu thập từ các nguồn công khai chính thống có thể kiểm chứng sau khi hoàn tất quy trình thẩm định đa nguồn tại Issue #19, đối chiếu theo quy chuẩn Việt Nam (QCVN 05:2023/BTNMT) và khuyến cáo của Tổ chức Y tế Thế giới (WHO 2021).
 - **Không ngụy tạo số liệu:** Tuyệt đối không tự ý bịa đặt, can thiệp hoặc sửa đổi dữ liệu thô. Không xóa bỏ các điểm dị biệt thực tế (như các đợt nghịch nhiệt mùa đông hay sự kiện pháo hoa) khi chưa có căn cứ vật lý.
 - **Không ngụy tạo độ đo:** Mọi chỉ số thống kê ($R^2$, RMSE, Recall, Precision, PR-AUC, $p$-value, Effect Size) đều là kết quả thực tế thu được từ quá trình chạy mã nguồn trên tập kiểm tra độc lập, không điều chỉnh để tạo ra kết quả "đẹp" giả tạo.
 - **Minh bạch giả định:** Luôn kiểm tra và báo cáo trung thực các giả định thống kê (kiểm định phân phối, chẩn đoán 4 giả định LINE trong hồi quy). Khi giả định bị vi phạm, giải trình nguyên nhân và áp dụng phương pháp điều chỉnh thích hợp.
