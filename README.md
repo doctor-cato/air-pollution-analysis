@@ -24,9 +24,9 @@
 Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text{PM}_{2.5}$ và mối liên hệ với các yếu tố khí tượng bề mặt tại khu vực Hà Nội. Đề tài tuân thủ chặt chẽ vòng đời khoa học dữ liệu **CRISP-DM**, giải quyết các câu hỏi nghiên cứu về:
 
 1. **Quy luật chu kỳ thời gian:** Phân tích biến động $\text{PM}_{2.5}$ theo chu kỳ ngày đêm (*diurnal*), ngày trong tuần (*weekday vs. weekend*), và chu kỳ mùa vụ (*seasonal*).
-2. **Suy luận thống kê có đối chứng:** Kiểm định giả thuyết phi tham số so sánh mức độ ô nhiễm giữa các khoảng thời gian kèm Effect Size ($r_{rb}$) và khoảng tin cậy Bootstrap.
+2. **Suy luận thống kê có đối chứng:** Kiểm định giả thuyết so sánh mức độ ô nhiễm giữa các khoảng thời gian kèm kích thước hiệu ứng và khoảng tin cậy Bootstrap theo phương pháp kiểm định phù hợp với dữ liệu.
 3. **Mô hình hóa hồi quy giải thích:** Định lượng mức độ liên hệ của nhiệt độ, độ ẩm, tốc độ gió, áp suất lên nồng độ bụi thông qua hồi quy OLS (kèm chẩn đoán 4 giả định LINE).
-4. **Mô hình phân loại cảnh báo sớm:** Xây dựng mô hình phân loại ngày có nguy cơ ô nhiễm nghiêm trọng ($\text{PM}_{2.5} > 50\,\mu\text{g/m}^3$ theo QCVN 05:2023/BTNMT), tối ưu hóa Recall và PR-AUC.
+4. **Mô hình phân loại cảnh báo sớm:** Xây dựng bài toán phân loại cảnh báo đợt ô nhiễm dựa trên nồng độ $\text{PM}_{2.5}$ trung bình 24 giờ tổng hợp (tham chiếu ngưỡng quy chuẩn QCVN 05:2023/BTNMT là $45\,\mu\text{g/Nm}^3$ áp dụng từ 01/01/2026), tối ưu hóa Recall và PR-AUC theo mục tiêu vận hành bảo vệ sức khỏe cộng đồng.
 
 ---
 
@@ -139,7 +139,7 @@ air-pollution-analysis/
 
 Dự án cam kết tuân thủ nghiêm ngặt chuẩn đầu ra CLO4 và quy chế học thuật của Trường Đại học CMC:
 
-- **Dữ liệu thật – Nguồn xác thực:** Toàn bộ dữ liệu được thu thập từ nguồn công khai chính thống có thể kiểm chứng (OpenAQ BAM 1020 và Open-Meteo ERA5), đối chiếu theo quy chuẩn Việt Nam (QCVN 05:2023/BTNMT) và khuyến cáo của Tổ chức Y tế Thế giới (WHO 2021).
+- **Dữ liệu thật – Nguồn xác thực:** Toàn bộ dữ liệu sẽ được thu thập từ các nguồn công khai chính thống có thể kiểm chứng sau khi hoàn tất quy trình thẩm định đa nguồn tại Issue #19, đối chiếu theo quy chuẩn Việt Nam (QCVN 05:2023/BTNMT) và khuyến cáo của Tổ chức Y tế Thế giới (WHO 2021).
 - **Không ngụy tạo số liệu:** Tuyệt đối không tự ý bịa đặt, can thiệp hoặc sửa đổi dữ liệu thô. Không xóa bỏ các điểm dị biệt thực tế (như các đợt nghịch nhiệt mùa đông hay sự kiện pháo hoa) khi chưa có căn cứ vật lý.
 - **Không ngụy tạo độ đo:** Mọi chỉ số thống kê ($R^2$, RMSE, Recall, Precision, PR-AUC, $p$-value, Effect Size) đều là kết quả thực tế thu được từ quá trình chạy mã nguồn trên tập kiểm tra độc lập, không điều chỉnh để tạo ra kết quả "đẹp" giả tạo.
 - **Minh bạch giả định:** Luôn kiểm tra và báo cáo trung thực các giả định thống kê (kiểm định phân phối, chẩn đoán 4 giả định LINE trong hồi quy). Khi giả định bị vi phạm, giải trình nguyên nhân và áp dụng phương pháp điều chỉnh thích hợp.

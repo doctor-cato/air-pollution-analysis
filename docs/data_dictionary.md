@@ -115,36 +115,36 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `timestamp` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (sẽ được đối chiếu và xác thực tại Issue #19, ví dụ: `datetime`, `date.local`, `time`, `timestamp`) |
+| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ đối chiếu và thẩm định tại Issue #19, ví dụ ứng viên: `datetime`, `date.local`, `time`, `timestamp`) |
 | **Definition** | Mốc thời gian ghi nhận quan trắc theo chu kỳ 1 giờ tại địa phương. |
 | **Unit** | ISO 8601 (Định dạng chuẩn: `YYYY-MM-DD HH:00:00+07:00`) |
 | **Datatype** | `datetime64[ns, Asia/Ho_Chi_Minh]` |
 | **Transformation** | Phân tích chuỗi ngày giờ, nhận biết múi giờ nguồn, chuyển đổi đồng nhất về `Asia/Ho_Chi_Minh` (UTC+7) và làm tròn/căn chỉnh về đầu giờ chuẩn (`freq='h'`). |
-| **Source Origin** | Cả hai nguồn: Nguồn chất lượng không khí và Nguồn khí tượng bề mặt (được thẩm định tại Issue #19). |
+| **Source Origin** | Nguồn ứng viên chất lượng không khí và khí tượng bề mặt (chưa thẩm định; quyết định nguồn chính thức deferred to #19). |
 | **Missingness/Availability** | **Bắt buộc 100% (Mandatory)**; không cho phép `NaN / null`. Các mốc thời gian bị khuyết trong chuỗi sẽ được reindex để tạo dòng khuyết thiếu có chủ đích. |
 
 #### 2. `station_id`
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `station_id` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (sẽ xác thực tại Issue #19, ví dụ: `locationId`, `station_code`, hoặc gán mã cố định nếu là file trích xuất trạm đơn) |
+| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ thẩm định tại Issue #19, ví dụ ứng viên: `locationId`, `station_code`, hoặc gán mã cố định nếu là file trích xuất trạm đơn) |
 | **Definition** | Mã định danh kỹ thuật duy nhất cho trạm đo hoặc tọa độ lưới trích xuất tại khu vực Hà Nội. |
 | **Unit** | Danh mục mã (Categorical / Code String) |
 | **Datatype** | `string` |
 | **Transformation** | Chuẩn hóa dạng chuỗi viết hoa, loại bỏ khoảng trắng thừa; nếu nguồn là file đơn trạm khuyết cột này, adapter gán mã trạm cố định theo tài liệu nguồn. |
-| **Source Origin** | Nguồn quan trắc chất lượng không khí (được thẩm định tại Issue #19). |
+| **Source Origin** | Nguồn ứng viên quan trắc chất lượng không khí (chưa thẩm định; quyết định nguồn chính thức deferred to #19). |
 | **Missingness/Availability** | **Bắt buộc 100% (Mandatory)**; không cho phép `NaN / null`. |
 
 #### 3. `location`
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `location` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (sẽ xác thực tại Issue #19, ví dụ: `location`, `site_name`, `station_name`) |
+| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ thẩm định tại Issue #19, ví dụ ứng viên: `location`, `site_name`, `station_name`) |
 | **Definition** | Tên địa danh hoặc mô tả bằng ngôn ngữ tự nhiên về vị trí đặt trạm quan trắc mặt đất. |
 | **Unit** | Văn bản mô tả (Text String) |
 | **Datatype** | `string` |
 | **Transformation** | Chuẩn hóa mã hóa ký tự UTF-8, loại bỏ ký tự lạ hoặc khoảng trắng đầu cuối; dùng phục vụ hiển thị báo cáo. |
-| **Source Origin** | Metadata từ nguồn trạm quan trắc không khí (được thẩm định tại Issue #19). |
+| **Source Origin** | Metadata từ nguồn ứng viên trạm quan trắc không khí (chưa thẩm định; quyết định nguồn chính thức deferred to #19). |
 | **Missingness/Availability** | **Tùy chọn (Optional)**; có thể khuyết nếu nguồn chỉ cung cấp tọa độ hoặc mã trạm. |
 
 ---
@@ -155,24 +155,24 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `pm25` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (sẽ xác thực tại Issue #19, ví dụ: `pm25`, `PM2.5`, `value` khi `parameter='pm25'`) |
-| **Definition** | Nồng độ khối lượng của các hạt bụi mịn có đường kính khí động học nhỏ hơn hoặc bằng 2.5 micromet lơ lửng trong không khí. |
+| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ thẩm định tại Issue #19, ví dụ ứng viên: `pm25`, `PM2.5`, `value` khi `parameter='pm25'`) |
+| **Definition** | Nồng độ khối lượng của các hạt bụi mịn có đường kính khí động học nhỏ hơn hoặc bằng 2.5 micromet lơ lửng trong không khí theo chu kỳ 1 giờ (hourly).<br><br>*(Lưu ý về tần suất đo & quy chuẩn: Dữ liệu canonical được ghi nhận theo từng giờ. Để đối chiếu với các quy chuẩn kỹ thuật như QCVN 05:2023/BTNMT với giới hạn trung bình 24 giờ là $45\,\mu\text{g/Nm}^3$ áp dụng từ 01/01/2026, dữ liệu cần được tổng hợp theo chu kỳ 24 giờ tương thích ở các bước phân tích sau; tuyệt đối không áp trực tiếp ngưỡng trung bình 24 giờ lên từng quan sát đơn lẻ theo giờ).* |
 | **Unit** | $\mu\text{g/m}^3$ (Microgam trên mét khối không khí) |
 | **Datatype** | `float64` |
 | **Transformation** | Kiểm tra đơn vị nguồn; nếu nguồn dùng đơn vị khác (như $\text{mg/m}^3$ hay $\text{ppm}$), nhân hệ số chuyển đổi về $\mu\text{g/m}^3$; ép kiểu số thực 64-bit; chuyển các mã lỗi/marker ngụy trang thành `NaN`. |
-| **Source Origin** | Nguồn dữ liệu chất lượng không khí được phê duyệt tại Issue #19 (ví dụ: trạm quan trắc tham chiếu BAM 1020). |
+| **Source Origin** | Nguồn ứng viên chất lượng không khí (chưa thẩm định; quyết định chọn nguồn chính thức deferred to #19). |
 | **Missingness/Availability** | **Bắt buộc là biến mục tiêu cốt lõi**; tuy nhiên có thể khuyết trong các khung giờ trạm bảo trì hoặc lỗi truyền tín hiệu. Giá trị khuyết biểu diễn dưới dạng `NaN`, không được tự ý điền 0. |
 
 #### 5. `pm10`
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `pm10` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (sẽ xác thực tại Issue #19, ví dụ: `pm10`, `PM10`, `value` khi `parameter='pm10'`) |
-| **Definition** | Nồng độ khối lượng của các hạt bụi thô có đường kính khí động học nhỏ hơn hoặc bằng 10 micromet lơ lửng trong không khí. |
+| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ thẩm định tại Issue #19, ví dụ ứng viên: `pm10`, `PM10`, `value` khi `parameter='pm10'`) |
+| **Definition** | Nồng độ khối lượng của các hạt bụi thô có đường kính khí động học nhỏ hơn hoặc bằng 10 micromet lơ lửng trong không khí theo chu kỳ 1 giờ (hourly). |
 | **Unit** | $\mu\text{g/m}^3$ (Microgam trên mét khối không khí) |
 | **Datatype** | `float64` |
 | **Transformation** | Đổi đơn vị về $\mu\text{g/m}^3$ nếu cần; ép kiểu số thực 64-bit; dùng để kiểm tra tính hợp lý vật lý với `pm25` ($\text{PM}_{2.5} \le \text{PM}_{10} + \epsilon$). |
-| **Source Origin** | Nguồn dữ liệu chất lượng không khí được phê duyệt tại Issue #19. |
+| **Source Origin** | Nguồn ứng viên chất lượng không khí (chưa thẩm định; quyết định chọn nguồn chính thức deferred to #19). |
 | **Missingness/Availability** | **Tùy chọn (Optional)**; phụ thuộc vào việc trạm quan trắc nguồn có gắn đầu đo $\text{PM}_{10}$ hay không. Nếu nguồn không có, toàn bộ cột là `NaN`. |
 
 ---
@@ -183,72 +183,72 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `temperature` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (sẽ xác thực tại Issue #19, ví dụ: `temperature_2m`, `temp`, `temperature`) |
+| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ thẩm định tại Issue #19, ví dụ ứng viên: `temperature_2m`, `temp`, `temperature`) |
 | **Definition** | Nhiệt độ không khí khô đo tại độ cao tiêu chuẩn (thường là 2 mét so với mặt đất). |
 | **Unit** | $^\circ\text{C}$ (Độ Celsius) |
 | **Datatype** | `float64` |
 | **Transformation** | Nếu nguồn dùng đơn vị Kelvin ($K$), chuyển đổi $T_{^\circ\text{C}} = T_K - 273.15$; nếu dùng độ Fahrenheit ($^\circ\text{F}$), chuyển đổi $T_{^\circ\text{C}} = (T_{^\circ\text{F}} - 32) \times 5/9$. Ép kiểu `float64`. |
-| **Source Origin** | Nguồn dữ liệu khí tượng bề mặt được phê duyệt tại Issue #19 (ví dụ: Open-Meteo ERA5 Reanalysis). |
+| **Source Origin** | Nguồn ứng viên khí tượng bề mặt (chưa thẩm định; quyết định chọn nguồn chính thức deferred to #19). |
 | **Missingness/Availability** | Biến thời tiết chính phục vụ mô hình hồi quy; giá trị khuyết biểu diễn dạng `NaN`. |
 
 #### 7. `relative_humidity`
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `relative_humidity` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (sẽ xác thực tại Issue #19, ví dụ: `relative_humidity_2m`, `humidity`, `rh`) |
+| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ thẩm định tại Issue #19, ví dụ ứng viên: `relative_humidity_2m`, `humidity`, `rh`) |
 | **Definition** | Tỷ số phần trăm giữa áp suất hơi nước thực tế và áp suất hơi nước bão hòa ở cùng nhiệt độ và áp suất khí quyển. |
 | **Unit** | $\%$ (Phần trăm, miền giá trị vật lý $0\% - 100\%$) |
 | **Datatype** | `float64` |
 | **Transformation** | Nếu nguồn lưu dưới dạng tỷ lệ thập phân ($0.0 - 1.0$), nhân với 100 để quy về thang $\%$; ép kiểu `float64`. |
-| **Source Origin** | Nguồn dữ liệu khí tượng bề mặt được phê duyệt tại Issue #19. |
+| **Source Origin** | Nguồn ứng viên khí tượng bề mặt (chưa thẩm định; quyết định chọn nguồn chính thức deferred to #19). |
 | **Missingness/Availability** | Biến thời tiết chính; giá trị khuyết biểu diễn dạng `NaN`. |
 
 #### 8. `wind_speed`
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `wind_speed` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (sẽ xác thực tại Issue #19, ví dụ: `wind_speed_10m`, `wind_speed`, `wspd`) |
+| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ thẩm định tại Issue #19, ví dụ ứng viên: `wind_speed_10m`, `wind_speed`, `wspd`) |
 | **Definition** | Tốc độ chuyển động của luồng không khí theo phương nằm ngang đo tại độ cao chuẩn (10 mét). |
 | **Unit** | $\text{m/s}$ (Mét trên giây) |
 | **Datatype** | `float64` |
 | **Transformation** | Nếu nguồn đo bằng $\text{km/h}$, chuyển đổi: $v_{\text{m/s}} = v_{\text{km/h}} / 3.6$; nếu đo bằng dặm/giờ (mph), nhân $0.44704$; nếu đo bằng hải lý (knots), nhân $0.514444$. Ép kiểu `float64`. |
-| **Source Origin** | Nguồn dữ liệu khí tượng bề mặt được phê duyệt tại Issue #19. |
+| **Source Origin** | Nguồn ứng viên khí tượng bề mặt (chưa thẩm định; quyết định chọn nguồn chính thức deferred to #19). |
 | **Missingness/Availability** | Biến thời tiết chính; giá trị khuyết biểu diễn dạng `NaN`. |
 
 #### 9. `wind_direction`
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `wind_direction` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (sẽ xác thực tại Issue #19, ví dụ: `wind_direction_10m`, `wind_direction`, `wdir`) |
+| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ thẩm định tại Issue #19, ví dụ ứng viên: `wind_direction_10m`, `wind_direction`, `wdir`) |
 | **Definition** | Hướng gió thổi tới, tính theo độ góc từ hướng Bắc thực theo chiều kim đồng hồ ($0^\circ - 360^\circ$, với $0^\circ = 360^\circ$ là hướng Bắc, $90^\circ$ là hướng Đông). |
 | **Unit** | Độ ($^\circ$, Góc độ $0^\circ - 360^\circ$) |
 | **Datatype** | `float64` |
 | **Transformation** | Kiểm tra quy ước góc của nguồn (chỉ xác thực khi kiểm tra payload tại Issue #19, không suy diễn định kiến). Ép kiểu `float64`. |
-| **Source Origin** | Nguồn dữ liệu khí tượng bề mặt được phê duyệt tại Issue #19. |
+| **Source Origin** | Nguồn ứng viên khí tượng bề mặt (chưa thẩm định; quyết định chọn nguồn chính thức deferred to #19). |
 | **Missingness/Availability** | Tùy chọn / Phụ thuộc nguồn; giá trị khuyết biểu diễn dạng `NaN`. Khi tốc độ gió bằng 0 (lặng gió), hướng gió có thể là không xác định (`NaN`). |
 
 #### 10. `precipitation`
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `precipitation` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (sẽ xác thực tại Issue #19, ví dụ: `precipitation`, `rain`, `precip`) |
+| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ thẩm định tại Issue #19, ví dụ ứng viên: `precipitation`, `rain`, `precip`) |
 | **Definition** | Tổng lượng nước (mưa lỏng hoặc tương đương nước) rơi xuống bề mặt đất tích lũy trong khoảng thời gian quan sát 1 giờ. |
 | **Unit** | $\text{mm}$ (Milimét) |
 | **Datatype** | `float64` |
 | **Transformation** | Nếu nguồn đo bằng inch, chuyển đổi $P_{\text{mm}} = P_{\text{inch}} \times 25.4$; nếu là lượng mưa tích lũy ngày, phân bổ theo giờ phải theo quy chuẩn xác thực. Ép kiểu `float64`. |
-| **Source Origin** | Nguồn dữ liệu khí tượng bề mặt được phê duyệt tại Issue #19. |
+| **Source Origin** | Nguồn ứng viên khí tượng bề mặt (chưa thẩm định; quyết định chọn nguồn chính thức deferred to #19). |
 | **Missingness/Availability** | Phụ thuộc nguồn; giá trị khuyết biểu diễn dạng `NaN`. **Lưu ý:** Không tự ý gán giá trị 0 khi nguồn khuyết số liệu mà chưa phân biệt được giữa "không có mưa" ($0.0\text{ mm}$) và "không có dữ liệu đo lường". |
 
 #### 11. `surface_pressure`
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `surface_pressure` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (sẽ xác thực tại Issue #19, ví dụ: `surface_pressure`, `pressure`, `pres`) |
+| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ thẩm định tại Issue #19, ví dụ ứng viên: `surface_pressure`, `pressure`, `pres`) |
 | **Definition** | Áp suất khí quyển tác động lên bề mặt đất tại cao độ thực tế của trạm đo. |
 | **Unit** | $\text{hPa}$ (Hectopascal, tương đương $\text{mbar}$) |
 | **Datatype** | `float64` |
 | **Transformation** | Nếu nguồn dùng đơn vị Pascal ($\text{Pa}$), chuyển đổi $p_{\text{hPa}} = p_{\text{Pa}} / 100$; nếu dùng $\text{mmHg}$, nhân $1.33322$; nếu dùng $\text{inHg}$, nhân $33.8639$. Ép kiểu `float64`. |
-| **Source Origin** | Nguồn dữ liệu khí tượng bề mặt được phê duyệt tại Issue #19. |
+| **Source Origin** | Nguồn ứng viên khí tượng bề mặt (chưa thẩm định; quyết định chọn nguồn chính thức deferred to #19). |
 | **Missingness/Availability** | Phụ thuộc nguồn; giá trị khuyết biểu diễn dạng `NaN`. |
 
 ---
@@ -274,32 +274,37 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 
 ## 6. Hiện Trạng Ánh Xạ Nguồn & Thẩm Định Tại Issue #19 (Source Mapping Status)
 
-Tuân thủ quy trình kiểm soát chất lượng của dự án: **Xác lập khung Canonical Schema (Issue #2) → Khảo sát hồ sơ và Ban hành quyết định nguồn (Issue #19) → Triển khai Adapter thu thập (Issue #3 & #4)**.
+> [!IMPORTANT]
+> **Toàn bộ ánh xạ trường nguồn hiện CHƯA ĐƯỢC XÁC THỰC (Unvalidated Source Mappings):**  
+> 1. **Tính độc lập nguồn tuyệt đối:** Canonical Data Schema được xây dựng hoàn toàn độc lập với bất kỳ nhà cung cấp cụ thể nào.  
+> 2. **Cổng thẩm định nguồn Issue #19:** Issue #19 là cổng kỹ thuật bắt buộc để tiến hành khảo sát hồ sơ dữ liệu (*Data Profiling*), kiểm chứng phạm vi địa giới Hà Nội, đo đạc độ bao phủ thời gian thực tế và ban hành quyết định phân định vai trò nguồn (Primary, Secondary, Fallback).  
+> 3. **Không định kiến nguồn:** Trước khi Issue #19 hoàn thành, toàn bộ các nhà cung cấp (OpenAQ, Open-Meteo, Kaggle, AirNow, PAM Air) đều chỉ là **nguồn ứng viên bình đẳng (candidate sources)**. Dự án tuyệt đối không tự ý quyết định hoặc coi bất kỳ nguồn nào là nguồn chính thức.  
+> 4. **Trạng thái TBD:** Toàn bộ tên trường tại nguồn (`Source Field Name`) trong tài liệu này được giữ ở trạng thái `TBD / Chưa xác thực` và việc kiểm chứng chính thức được **deferred to #19**.
 
 ### 6.1. Danh mục các nguồn ứng viên (Candidate Sources)
-Tại thời điểm Issue #2, các nhà cung cấp dữ liệu sau được xác định là nguồn ứng viên tiềm năng cần thẩm định tại Issue #19:
+Tại thời điểm Issue #2, các nhà cung cấp dữ liệu sau được xác định là nguồn ứng viên tiềm năng cần thẩm định khách quan tại Issue #19:
 1. **Tập dữ liệu Kaggle Hà Nội (CSV)**: Dữ liệu ô nhiễm và thời tiết tổng hợp.
-2. **OpenAQ REST API v3**: Dữ liệu quan trắc từ trạm tham chiếu chuẩn BAM 1020 (ví dụ: Đại sứ quán Hoa Kỳ tại Hà Nội).
+2. **OpenAQ REST API v3**: Dữ liệu quan trắc từ trạm đo mặt đất tại Hà Nội.
 3. **Open-Meteo Historical Weather API**: Dữ liệu khí tượng bề mặt từ mô hình tái phân tích ERA5.
 4. **AirNow (US Department of State)**: Dữ liệu lịch sử quan trắc trạm ngoại giao.
 5. **PAM Air Open Portal**: Dữ liệu mạng lưới cảm biến môi trường cộng đồng tại Việt Nam.
 
-### 6.2. Trạng thái ánh xạ trường (Field Mapping Status)
+### 6.2. Trạng thái thẩm định ánh xạ trường (Field Mapping Status)
 Bảng theo dõi trạng thái thẩm định ánh xạ giữa các nguồn ứng viên và Canonical Schema:
 
-| Trường Canonical | Đơn vị chuẩn | Nguồn ứng viên ô nhiễm (OpenAQ / Kaggle / AirNow) | Nguồn ứng viên khí tượng (Open-Meteo / ERA5) | Tình trạng thẩm định |
+| Trường Canonical | Đơn vị chuẩn | Nguồn ứng viên ô nhiễm (Kaggle / OpenAQ / AirNow / PAM Air) | Nguồn ứng viên khí tượng (Open-Meteo / Khí tượng đi kèm) | Tình trạng thẩm định (Validation Status) |
 |---|---|---|---|:---:|
-| `timestamp` | UTC+7 | Ánh xạ trường ngày giờ (TBD) | Ánh xạ trường ngày giờ (TBD) | **Chờ xác thực tại Issue #19** |
-| `station_id` | String | Mã trạm / Identifier (TBD) | Tọa độ điểm lưới / Mã vị trí (TBD) | **Chờ xác thực tại Issue #19** |
-| `location` | String | Tên trạm / Địa chỉ (TBD) | Metadata vị trí (TBD) | **Chờ xác thực tại Issue #19** |
-| `pm25` | $\mu\text{g/m}^3$ | Tham số PM2.5 (TBD) | Không áp dụng | **Chờ xác thực tại Issue #19** |
-| `pm10` | $\mu\text{g/m}^3$ | Tham số PM10 (TBD) | Không áp dụng | **Chờ xác thực tại Issue #19** |
-| `temperature` | $^\circ\text{C}$ | Tùy chọn (nếu có cảm biến) | Tham số nhiệt độ 2m (TBD) | **Chờ xác thực tại Issue #19** |
-| `relative_humidity` | $\%$ | Tùy chọn (nếu có cảm biến) | Tham số độ ẩm 2m (TBD) | **Chờ xác thực tại Issue #19** |
-| `wind_speed` | $\text{m/s}$ | Tùy chọn (nếu có cảm biến) | Tham số tốc độ gió 10m (TBD) | **Chờ xác thực tại Issue #19** |
-| `wind_direction` | Độ ($^\circ$) | Tùy chọn (nếu có cảm biến) | Tham số hướng gió 10m (TBD) | **Chờ xác thực tại Issue #19** |
-| `precipitation` | $\text{mm}$ | Không khả dụng | Tham số lượng mưa tích lũy (TBD) | **Chờ xác thực tại Issue #19** |
-| `surface_pressure` | $\text{hPa}$ | Không khả dụng | Tham số áp suất bề mặt (TBD) | **Chờ xác thực tại Issue #19** |
+| `timestamp` | UTC+7 | Trường ngày giờ (TBD) | Trường ngày giờ (TBD) | **Chưa xác thực (Deferred to #19)** |
+| `station_id` | String | Mã trạm / Identifier (TBD) | Điểm lưới / Mã vị trí (TBD) | **Chưa xác thực (Deferred to #19)** |
+| `location` | String | Tên trạm / Địa danh (TBD) | Metadata vị trí (TBD) | **Chưa xác thực (Deferred to #19)** |
+| `pm25` | $\mu\text{g/m}^3$ | Tham số PM2.5 (TBD) | Không áp dụng | **Chưa xác thực (Deferred to #19)** |
+| `pm10` | $\mu\text{g/m}^3$ | Tham số PM10 (TBD) | Không áp dụng | **Chưa xác thực (Deferred to #19)** |
+| `temperature` | $^\circ\text{C}$ | Tùy chọn (nếu có cảm biến) | Tham số nhiệt độ 2m (TBD) | **Chưa xác thực (Deferred to #19)** |
+| `relative_humidity` | $\%$ | Tùy chọn (nếu có cảm biến) | Tham số độ ẩm 2m (TBD) | **Chưa xác thực (Deferred to #19)** |
+| `wind_speed` | $\text{m/s}$ | Tùy chọn (nếu có cảm biến) | Tham số tốc độ gió 10m (TBD) | **Chưa xác thực (Deferred to #19)** |
+| `wind_direction` | Độ ($^\circ$) | Tùy chọn (nếu có cảm biến) | Tham số hướng gió 10m (TBD) | **Chưa xác thực (Deferred to #19)** |
+| `precipitation` | $\text{mm}$ | Không khả dụng | Tham số lượng mưa tích lũy (TBD) | **Chưa xác thực (Deferred to #19)** |
+| `surface_pressure` | $\text{hPa}$ | Không khả dụng | Tham số áp suất bề mặt (TBD) | **Chưa xác thực (Deferred to #19)** |
 
 > [!NOTE]
 > Để đảm bảo liêm chính học thuật, **dự án không tự bịa đặt tên cột cụ thể của các nguồn khi chưa thực hiện profiling thực tế**. Quyết định chính thức về việc lựa chọn nguồn nào làm Nguồn chính (*Primary*), Nguồn phụ (*Secondary*), hoặc Nguồn dự phòng (*Fallback*) sẽ được ban hành chi tiết trong tài liệu `docs/source_profiling_decision.md` của **Issue #19**.

@@ -78,10 +78,14 @@ Câu hỏi trung tâm này kết nối xuyên suốt các giai đoạn của quy
      - *Chu kỳ ngày đêm (Diurnal / Hourly):* Phân tích biến động nồng độ theo từng giờ trong 24 giờ.
      - *Chu kỳ ngày trong tuần (Day-of-Week):* Đối chiếu chuỗi thời gian giữa các ngày làm việc (Thứ Hai – Thứ Sáu) và ngày cuối tuần (Thứ Bảy – Chủ Nhật).
      - *Chu kỳ tháng & mùa vụ (Monthly & Seasonal):* Theo dõi diễn biến nồng độ qua các tháng và các mùa trong chuỗi dữ liệu thực tế thu thập được.
-  2. **Kiểm định giả thuyết thống kê có đối chứng:**
+  2. **Lựa chọn phép kiểm định thống kê có đối chứng:**
      - Xác lập rõ ràng giả thuyết vô hiệu ($H_0$) và giả thuyết đối ($H_1$) trước khi thực hiện kiểm định.
-     - Kiểm tra giả định phân phối trước khi chọn phép kiểm định (nếu dữ liệu không tuân theo phân phối chuẩn, bắt buộc sử dụng kiểm định phi tham số như Mann-Whitney U hoặc Wilcoxon signed-rank thay vì Student's t-test).
-     - Báo cáo đầy đủ bộ bốn kết quả bắt buộc: Thống kê kiểm định + Giá trị $p$-value + Kích thước hiệu ứng (*Effect size*, ví dụ: tương quan hạng lưỡng điểm $r_{rb}$ hoặc Cliff's delta) + Khoảng tin cậy 95% Bootstrap ($\ge 1.000$ lần lặp).
+     - **Không ấn định trước một phép kiểm định cụ thể tại Issue #2**: Phép kiểm định thống kê thích hợp sẽ được đánh giá và lựa chọn trong giai đoạn phân tích suy luận (Issue #11) dựa trên các tiêu chí phương pháp luận:
+       - *Thiết kế so sánh độc lập hay từng cặp (Independent vs. Paired Comparison):* Ví dụ so sánh hai khoảng thời gian độc lập hay so sánh các cặp quan sát tương ứng.
+       - *Số lượng nhóm đối chứng:* So sánh giữa 2 nhóm (ví dụ: ngày làm việc vs. ngày cuối tuần) hay so sánh nhiều hơn 2 nhóm (> 2 nhóm, ví dụ: so sánh giữa 7 ngày trong tuần, hoặc giữa các mùa trong năm).
+       - *Tính phụ thuộc và tự tương quan chuỗi thời gian (Serial Correlation / Autocorrelation):* Đánh giá mức độ vi phạm giả định quan sát độc lập vốn có của dữ liệu thời gian.
+       - *Kiểm tra các giả định phân phối phù hợp:* Đánh giá tính chuẩn, tính đối xứng và phương sai đồng nhất trước khi quyết định sử dụng kiểm định tham số hay phi tham số.
+     - Khi thực hiện kiểm định (tại Issue #11), bắt buộc báo cáo đầy đủ: Thống kê kiểm định + Giá trị $p$-value + Kích thước hiệu ứng (*Effect size* phù hợp với loại kiểm định) + Khoảng tin cậy Bootstrap 95%.
   3. **Nguyên tắc trung lập thời gian:**
      - **Không khẳng định định kiến trước** rằng giờ nào, ngày nào trong tuần, tháng nào hay mùa nào có nồng độ ô nhiễm cao nhất hoặc thấp nhất.
      - Toàn bộ kết luận về chu kỳ và đỉnh ô nhiễm phải được dẫn xuất từ số liệu quan trắc thực tế của tập dữ liệu sau khi kiểm toán chất lượng.
@@ -123,13 +127,17 @@ Câu hỏi trung tâm này kết nối xuyên suốt các giai đoạn của quy
 
 * **Khung phân tích & Yêu cầu phương pháp luận:**
   1. **Quy trình xây dựng bài toán phân loại:**
-     - *Xác lập ngưỡng cảnh báo vận hành:* Định nghĩa ngưỡng phân loại nồng độ $\text{PM}_{2.5}$ (tham chiếu quy chuẩn kỹ thuật quốc gia QCVN 05:2023/BTNMT với ngưỡng trung bình 24 giờ là $50\,\mu\text{g/m}^3$ hoặc các ngưỡng phân cấp tương thích), được cố định chính thức trước khi huấn luyện mô hình.
-     - *Tạo nhãn phân loại (Binary Target):* Chuyển đổi chuỗi quan sát liên tục thành nhãn nhị phân: Lớp 1 (Nguy cơ vượt ngưỡng / Cảnh báo ô nhiễm) và Lớp 0 (Mức an toàn / Bình thường).
+     - *Xác lập ngưỡng cảnh báo vận hành & Nguyên tắc tổng hợp 24 giờ:*
+       - Tham chiếu Quy chuẩn kỹ thuật quốc gia về chất lượng không khí **QCVN 05:2023/BTNMT**, trong đó giới hạn nồng độ $\text{PM}_{2.5}$ trung bình 24 giờ là **$45\,\mu\text{g/Nm}^3$** (áp dụng chính thức từ ngày 01/01/2026; mức áp dụng trong giai đoạn trước năm 2026 là $50\,\mu\text{g/Nm}^3$).
+       - **Quy tắc phân biệt tần suất đo (Critical Distinction):** Do dữ liệu quan trắc trong Canonical Schema được ghi nhận ở tần suất **theo giờ (`hourly`)**, **tuyệt đối không được áp dụng trực tiếp ngưỡng giới hạn trung bình 24 giờ lên từng quan sát đơn lẻ theo giờ**.
+       - Nếu bài toán cảnh báo sớm sử dụng quy chuẩn này làm mốc đánh giá, biến mục tiêu cảnh báo bắt buộc phải được xây dựng từ **chuỗi giá trị $\text{PM}_{2.5}$ trung bình 24 giờ được tổng hợp đúng quy chuẩn** (ví dụ: giá trị trung bình trượt 24 giờ $\text{PM}_{2.5, \text{24h-rolling}}$ hoặc giá trị trung bình ngày theo lịch khi đạt đủ tỷ lệ mẫu hợp lệ).
+       - Việc định nghĩa công thức tổng hợp cụ thể và chọn ngưỡng vận hành chính thức sẽ được hoàn thiện trong giai đoạn tiền xử lý và mô hình hóa (Issue #7 và #13); **không tự ý triển khai code mô hình/phân loại tại Issue #2**.
+     - *Tạo nhãn phân loại (Binary Target):* Chuyển đổi chuỗi quan sát 24 giờ tổng hợp thành nhãn nhị phân: Lớp 1 (Nguy cơ vượt ngưỡng / Cảnh báo ô nhiễm) và Lớp 0 (Mức an toàn / Bình thường).
      - *Tách tập dữ liệu chống rò rỉ (Leakage Prevention):* Áp dụng phương pháp phân chia tập huấn luyện (Train) và kiểm tra (Test) nghiêm ngặt theo thứ tự thời gian tuyến tính (*Chronological Split*). Tuyệt đối không dùng chia ngẫu nhiên.
      - *Huấn luyện & Tinh chỉnh:* Huấn luyện mô hình tiền xử lý và thuật toán phân loại hoàn toàn trên tập Train; tinh chỉnh siêu tham số và tối ưu ngưỡng quyết định trên tập Validation (hoặc Time-Series Cross-Validation trên Train).
      - *Đánh giá độc lập:* Kiểm chứng hiệu năng cuối cùng một lần duy nhất trên tập Test độc lập chưa từng được tiếp xúc.
   2. **Xác định mục tiêu tối ưu trước khi thực nghiệm (*Pre-defined Optimization Objective*):**
-     - Do số lượng ngày/giờ có ô nhiễm vượt ngưỡng thường chiếm tỷ lệ nhỏ (mất cân bằng lớp), chỉ số **Accuracy (Độ chính xác tổng thể) bị cấm sử dụng đơn độc** để đánh giá mô hình (tránh "Accuracy Trap").
+     - Do số lượng ngày/khoảng thời gian có ô nhiễm vượt ngưỡng thường chiếm tỷ lệ nhỏ (mất cân bằng lớp), chỉ số **Accuracy (Độ chính xác tổng thể) bị cấm sử dụng đơn độc** để đánh giá mô hình (tránh "Accuracy Trap").
      - Mục tiêu tối ưu vận hành hướng tới việc bảo vệ sức khỏe cộng đồng: Báo động trượt (False Negative - bỏ sót đợt ô nhiễm nguy hại) gây hậu quả nghiêm trọng hơn nhiều so với Báo động giả (False Positive - khuyến cáo đeo khẩu trang phòng ngừa).
      - Hướng tối ưu ưu tiên:
        - **Tối đa hóa $F_\beta$ với $\beta > 1$** (ví dụ: $F_2$-score, coi trọng Recall gấp đôi Precision).
@@ -157,6 +165,6 @@ Tài liệu này xác lập "bản khế ước nghiên cứu" (*Research Contra
 | Câu hỏi thành phần | Giai đoạn CRISP-DM | Issue thực hiện | Sản phẩm dự kiến |
 |---|---|:---:|---|
 | **SQ1 (Phân phối thực nghiệm)** | Data Understanding | #8 (Tuần 6–7) | Bảng 4 họ chỉ số thống kê mô tả; biểu đồ phân phối Histogram & KDE; quyết định lựa chọn cặp đại lượng trung tâm. |
-| **SQ2 (Biến thiên thời gian)** | Data Understanding & Evaluation | #8, #9, #11 (Tuần 6–9) | Biểu đồ chu kỳ giờ, ngày trong tuần, tháng, mùa (FIG-01, FIG-02, FIG-03); Bảng kết quả kiểm định phi tham số bộ bốn (Stat, $p$-val, $r_{rb}$, 95% Bootstrap CI). |
+| **SQ2 (Biến thiên thời gian)** | Data Understanding & Evaluation | #8, #9, #11 (Tuần 6–9) | Biểu đồ chu kỳ giờ, ngày trong tuần, tháng, mùa (FIG-01, FIG-02, FIG-03); Bảng kết quả kiểm định thống kê được lựa chọn phù hợp theo bản chất so sánh (số nhóm, tính độc lập, tự tương quan), kèm kích thước hiệu ứng và khoảng tin cậy Bootstrap. |
 | **SQ3 (Liên hệ khí tượng & OLS)** | Modeling & Evaluation | #12 (Tuần 10) | Mô hình OLS; Bảng hệ số $\beta$ kèm khoảng tin cậy; Bộ 4 đồ thị chẩn đoán LINE trên phần dư; Chỉ số VIF và Cook's distance. |
-| **SQ4 (Cảnh báo sớm)** | Modeling & Evaluation | #13 (Tuần 11) | Pipeline phân loại; Đường cong Precision-Recall; Bảng hiệu năng phân loại trên tập Test độc lập; Báo cáo kiểm toán 4 dạng rò rỉ dữ liệu. |
+| **SQ4 (Cảnh báo sớm)** | Modeling & Evaluation | #13 (Tuần 11) | Pipeline phân loại nhị phân cảnh báo ô nhiễm dựa trên giá trị tổng hợp 24h; Đường cong Precision-Recall; Bảng hiệu năng phân loại trên tập Test độc lập; Báo cáo kiểm toán 4 dạng rò rỉ dữ liệu. |
