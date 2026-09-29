@@ -145,7 +145,7 @@ Quá trình thẩm định tuân thủ các nguyên tắc liêm chính học thu
 2. **Quy tắc xác thực nguồn Trạm Mặt Đất (Point / Station Sources - OpenAQ, AirNow):**
    - **Xác thực định danh:** Bản ghi phải có `location_id == 4946811` (đối với OpenAQ) hoặc `Site == "Hanoi"` (đối với AirNow). **Tuyệt đối loại bỏ bản ghi có `location_id == 2178` (Del Norte, Albuquerque, NM, Hoa Kỳ: $35.1353^\circ\text{N}, -106.5847^\circ\text{W}$).**
    - **Xác thực tọa độ:** Tọa độ ghi nhận của OpenAQ 4946811 ($21.0491^\circ\text{N}, 105.8831^\circ\text{E}$) hoặc AirNow ($21.0215^\circ\text{N}, 105.8184^\circ\text{E}$) nằm trọn vẹn trong vùng đô thị Hà Nội.
-   - **Rule xử lý ngoại lai & Tuân thủ Raw Immutability:** Để bảo toàn tuyệt đối tính bất biến của dữ liệu thô (*Raw Immutability*), toàn bộ tệp payload tải về từ nguồn được lưu trữ nguyên trạng trong `data/raw/`. Quy tắc lọc không gian (*Spatial Filtering*) được áp dụng tại bước tiền xử lý / chuẩn hóa dữ liệu (*normalization step*): adapter loại bỏ (*drop*) các bản ghi có tọa độ nằm ngoài Bounding Box Hà Nội hoặc có `location_id == 2178` trước khi đưa vào `data/interim/` và Canonical Schema.
+   - **Rule xử lý ngoại lai & Bảo toàn dữ liệu thô:** toàn bộ tệp payload tải về từ nguồn được lưu **nguyên trạng** (không chỉnh sửa thủ công, không chuyển đổi giá trị trước khi lưu) trong `data/raw/`; mã băm SHA-256 của từng tệp thô được ghi lại trong `data/raw/metadata.json` để kiểm chứng tính toàn vẹn. Quy tắc lọc không gian (*Spatial Filtering*) được áp dụng tại bước tiền xử lý / chuẩn hóa dữ liệu (*normalization step*): adapter loại bỏ (*drop*) các bản ghi có tọa độ nằm ngoài Bounding Box Hà Nội hoặc có `location_id == 2178` trước khi đưa vào `data/interim/` và Canonical Schema.
 
 3. **Quy tắc xác thực nguồn Dữ Liệu Lưới Khí Tượng (Grid-based Sources - Open-Meteo ERA5):**
    - **Tọa độ truy vấn mục tiêu:** Gửi request tại tọa độ trung tâm lõi Hà Nội: $\text{lat}=21.0285^\circ\text{N}, \text{lon}=105.8542^\circ\text{E}$.
@@ -253,7 +253,7 @@ Bảng đối chiếu danh mục trường dữ liệu ứng viên so với **Ca
   ```
 - **Kiểu dữ liệu:** `time` là chuỗi ISO 8601 local time; tất cả biến số là `float64`.
 - **Lưu ý đơn vị tốc độ gió:** Khi dùng tham số `&wind_speed_unit=ms`, API trả trực tiếp $\text{m/s}$ (đã xác nhận từ response). Không cần tự chia 3.6.
-- **Tính đầy đủ (xác nhận):** 0/8,760 missing (2023), 0/8,784 missing (2024) cho tất cả 6 biến số. Hoàn chỉnh tuyệt đối.
+- **Tính đầy đủ (xác nhận tại thời điểm profiling 2026-09-28/29 UTC):** 0/8,760 missing (2023), 0/8,784 missing (2024) cho tất cả 6 biến số, tức $0{,}00\%$ khuyết thiếu trong cửa sổ 2023–2024. Đây là kết quả đo tại một thời điểm cụ thể, không phải đảm bảo cho mọi lần truy vấn sau.
 
 ### 7.3. AirNow DOS CSV
 
@@ -463,7 +463,7 @@ Quyết định tại Issue #19 chuyển giao các yêu cầu đặc tả kỹ t
   - Parse `datetime` với múi giờ: Với OpenAQ chuyển đổi từ UTC ISO 8601 sang `Asia/Ho_Chi_Minh` (UTC+7); với AirNow gán timezone `Asia/Ho_Chi_Minh` cho `Date (LST)`.
   - Tổng hợp chuỗi telemetry dưới giờ của trạm 4946811 thành dữ liệu tổng hợp theo giờ (**hourly aggregated data**) bằng hàm trung bình.
   - Lọc dòng theo `parameter == 'pm25'`; áp dụng quy tắc giá trị: giá trị $< 0\,\mu\text{g/m}^3$ gán `NaN`; giá trị $= 0.0\,\mu\text{g/m}^3$ giữ nguyên nếu hợp lệ (không kèm cờ lỗi QC); chuyển đổi các mã lỗi ngụy trang (`-999`, `-9999` từ AirNow) thành `NaN`.
-  - Lưu tệp thô bất biến vào `data/raw/` (chế độ chỉ đọc).
+  - Lưu tệp thô nguyên trạng vào `data/raw/` (không chỉnh sửa thủ công; mọi biến đổi diễn ra ở lớp chuẩn hóa).
   - Cập nhật `data/raw/metadata.json` với source URL, extraction date, và license.
 
 ### 14.2. Handoff cho Issue #4 (Pipeline Thu thập & Đồng Bộ Dữ liệu Khí Tượng)
@@ -479,8 +479,9 @@ Quyết định tại Issue #19 chuyển giao các yêu cầu đặc tả kỹ t
   `&wind_speed_unit=ms&timezone=Asia%2FHo_Chi_Minh`.
 - **Yêu cầu adapter:**
   - Đặt tên file thô theo dải ngày thực tế: `open_meteo_raw_{start_date}_{end_date}.json` để tránh va chạm cache (cache collision).
-  - Assert 0 missing values trên tất cả 6 biến trước khi lưu.
-  - Lưu tệp thô bất biến vào `data/raw/` (chế độ chỉ đọc).
+  - Bắt buộc truyền `start_date` / `end_date` (không có giá trị mặc định) để không thể vô tình áp đặt lại khung thời gian lịch sử cố định.
+  - Đo và báo cáo tỷ lệ khuyết thiếu trên cả 6 biến; pipeline thực thi áp ngưỡng 0% (xem `WEATHER_PIPELINE_MAX_MISSING_PCT`) và dừng với thông báo lỗi nếu vượt ngưỡng.
+  - Lưu tệp thô nguyên trạng vào `data/raw/` (không chỉnh sửa thủ công) kèm mã băm SHA-256.
   - Cập nhật `data/raw/metadata.json` ghi nhận rành mạch cả `requested_query_window` và `actual_source_coverage`.
 
 ### 14.3. Báo Cáo Triển Khai Thực Tế & Kiểm Định Chất Lượng Khí Tượng (Issue #4 Execution & Validation Report)
@@ -488,12 +489,14 @@ Quyết định tại Issue #19 chuyển giao các yêu cầu đặc tả kỹ t
 Pipeline thu thập và chuẩn hóa dữ liệu khí tượng bề mặt Hà Nội đã được hoàn thiện tại Issue #4, kế thừa cơ chế đồng bộ hóa thời gian động từ PR #25:
 
 1. **Nguồn dữ liệu & Vị trí địa lý:**
-   - **Nguồn chính:** Open-Meteo Historical Weather API (ECMWF ERA5 Reanalysis).
-   - **Tọa độ lưới:** $21.0545^\circ\text{N}, 105.8985^\circ\text{E}$ (độ cao $19.0\,\text{m}$), cách trạm quan trắc chất lượng không khí chuẩn quốc gia 556 Nguyễn Văn Cừ ($21.0491^\circ\text{N}, 105.8831^\circ\text{E}$) chỉ **$1{,}7\,\text{km}$** về phía Đông Bắc. Cự ly này nằm trọn vẹn trong Bounding Box Hà Nội $[20.50, 21.60]^\circ\text{N}, [105.30, 106.10]^\circ\text{E}$.
-   - **Nguồn dự phòng (NOAA ISD 48820 - Sân bay Nội Bài):** Không cần kích hoạt do Open-Meteo ERA5 đạt độ tin cậy tuyệt đối và bao phủ 100% dữ liệu.
+   - **Nguồn chính (PRIMARY):** Open-Meteo Historical Weather API (ECMWF ERA5 Reanalysis) — đúng vai trò đã ban hành tại §12.2.
+   - **Tọa độ truy vấn:** $21.0285^\circ\text{N}, 105.8542^\circ\text{E}$ (tâm lõi đô thị Hà Nội). Adapter kiểm tra tọa độ truy vấn nằm trong Bounding Box ngay khi khởi tạo.
+   - **Điểm lưới ERA5 trả về:** $21.05448^\circ\text{N}, 105.89848^\circ\text{E}$ (độ cao $19.0\,\text{m}$) — cách trạm 556 Nguyễn Văn Cừ ($21.0491^\circ\text{N}, 105.8831^\circ\text{E}$) **$1{,}71\,\text{km}$** (tính từ tọa độ trong payload thô), nằm trọn vẹn trong Bounding Box Hà Nội. Nếu payload không trả về tọa độ, pipeline dừng với lỗi thay vì tự động pass.
+   - **Nguồn dự phòng (NOAA ISD 48820 - Sân bay Nội Bài):** **không kích hoạt**. Lý do: Open-Meteo ERA5 đã cung cấp đủ 6/6 biến Canonical, 0 giá trị khuyết thiếu và bao phủ trọn vẹn dải thời gian quan trắc thực tế. Theo hồ sơ tại §3c mục 3, NOAA thiếu `precipitation` và `surface_pressure`, cần resampling và lệch vị trí ~22 km nên chỉ dùng khi Open-Meteo không khả dụng.
 
 2. **Cơ chế Đồng bộ Hóa Thời Gian Động (Dynamic Temporal Synchronization - PR #25):**
-   - Cửa sổ truy vấn khí tượng tự động suy diễn từ chuỗi thời gian của `df_air_canonical["timestamp"]` (`2025-07-03` đến `2026-07-15`) khi caller không truyền tham số cứng.
+   - Cửa sổ truy vấn khí tượng tự động suy diễn từ chuỗi thời gian canonical `Asia/Ho_Chi_Minh` của `df_air_canonical["timestamp"]` (`2025-07-03` đến `2026-07-15`) khi caller không truyền tham số cứng.
+   - `OpenMeteoAdapter.fetch_raw_data()` **yêu cầu bắt buộc** `start_date` / `end_date` và không có giá trị mặc định nào — không tồn tại bất kỳ khung thời gian lịch sử cố định nào trong mã nguồn (được bảo vệ bởi unit test).
    - Tên tệp thô được sinh động theo dải ngày: `open_meteo_raw_2025-07-03_2026-07-15.json` để ngăn ngừa xung đột bộ nhớ đệm.
 
 3. **Canonical Weather Schema & Kiểu Dữ Liệu:**
@@ -501,9 +504,11 @@ Pipeline thu thập và chuẩn hóa dữ liệu khí tượng bề mặt Hà N�
      - `timestamp`: `datetime64[ns, Asia/Ho_Chi_Minh]` (UTC+7, làm tròn đầu giờ).
      - 6 biến số kiểu `float64`: `temperature` ($^\circ\text{C}$), `relative_humidity` ($\%$), `wind_speed` ($\text{m/s}$), `wind_direction` (độ), `precipitation` ($\text{mm}$), `surface_pressure` ($\text{hPa}$).
 
-4. **Kiểm Định Chất Lượng & Ranh Giới Vật Lý (`validate_weather_canonical`):**
-   - **Tính duy nhất:** Khóa `timestamp` duy nhất tuyệt đối ($0$ duplicate).
-   - **Tính liên tục chuỗi giờ:** Đạt chuẩn lưới liên tục $100\%$ ($9.072$ giờ liên tiếp, khoảng cách giữa các bước đo chính xác $1\,\text{giờ}$, $0$ khoảng trống).
+4. **Kiểm Định Chất Lượng & Ranh Giới Vật Lý (`validate_weather_canonical`)** — hàm chỉ đọc, không sửa dữ liệu đầu vào:
+   - **Phân định mức kết quả:** *validation failure* (ném lỗi: thiếu cột/sai kiểu, sai múi giờ, trùng lặp, không tăng đơn điệu, vi phạm giới hạn vật lý, khuyết thiếu vượt ngưỡng) vs *validation warning* (gaps, giá trị bị cleaning loại bỏ) vs *cleaning* (bước biến đổi riêng, được đếm minh bạch).
+   - **Múi giờ:** bắt buộc tz-aware với offset `+07:00`; sai lệch bị từ chối (ví dụ tz-naive hoặc UTC).
+   - **Tính duy nhất:** $0$ trùng lặp trên khóa `timestamp`.
+   - **Tính liên tục chuỗi giờ:** $9.072$ giờ liên tiếp, bước đo chính xác $1\,\text{giờ}$, $0$ khoảng trống.
    - **Kiểm toán dải vật lý khí hậu Hà Nội:**
      - `temperature`: $[8.9, 38.6]^\circ\text{C}$ (nằm trong $[0, 50]^\circ\text{C}$, trung bình $24.87^\circ\text{C}$).
      - `relative_humidity`: $[30.0, 100.0]\%$ (nằm trong $[0, 100]\%$, trung bình $80.63\%$).
@@ -511,13 +516,19 @@ Pipeline thu thập và chuẩn hóa dữ liệu khí tượng bề mặt Hà N�
      - `wind_direction`: $[1.0, 360.0]^\circ$ (nằm trong $[0, 360]^\circ$, trung bình $147.16^\circ$).
      - `precipitation`: $[0.0, 20.5]\,\text{mm}$ ($\ge 0\,\text{mm}$, trung bình $0.26\,\text{mm}$).
      - `surface_pressure`: $[986.5, 1028.4]\,\text{hPa}$ (nằm trong $[950, 1050]\,\text{hPa}$, trung bình $1008.20\,\text{hPa}$).
-   - **Tỷ lệ khuyết thiếu:** **$0{,}00\%$ missing** trên toàn bộ 6 biến số khí tượng ($9.072/9.072$ bản ghi đầy đủ).
-   - **Xử lý số 0 & Missing ngụy trang (`clean_weather_values`):** Mã lỗi ngụy trang (`-999`, `-9999`) được chuyển thành `NaN`; các giá trị âm phi vật lý được loại bỏ; các giá trị $0.0$ thực tế (lượng mưa $0.0\,\text{mm}$, tốc độ gió $0.0\,\text{m/s}$) được bảo toàn nguyên vẹn.
+   - **Tỷ lệ khuyết thiếu:** $0$ giá trị khuyết thiếu trên toàn bộ 6 biến ($9.072/9.072$ bản ghi đầy đủ), đo bằng `max_missing_pct` và ghi vào `metadata.json`.
+   - **Xử lý số 0 & Missing ngụy trang (`clean_weather_values`):** Mã lỗi ngụy trang (`-999`, `-9999`) và giá trị vi phạm giới hạn vật lý được chuyển thành `NaN`; **thống kê số lượng theo từng nguyên nhân** được ghi vào `df.attrs["weather_cleaning"]` và báo cáo trong `metadata.json`, đảm bảo không có giá trị nào bị loại bỏ âm thầm. Các giá trị $0.0$ thực tế (lượng mưa $0.0\,\text{mm}$, tốc độ gió $0.0\,\text{m/s}$) được bảo toàn nguyên vẹn.
 
 5. **Tích Hợp Chuỗi Thời Gian (Temporal Integration with Air Quality):**
-   - Phép inner join theo `timestamp` đạt đúng **$8.022$ bản ghi** (từ `2025-07-03 22:00:00+07:00` đến `2026-07-15 17:00:00+07:00`).
-   - Tỷ lệ bao phủ đối với chuỗi quan trắc chất lượng không khí đạt **$100{,}0\%$**, không bị nổ dòng (*zero row explosion*), sẵn sàng cho bước tích hợp đa nguồn tại Issue #7.
+   - Phép inner join theo `timestamp` đạt **$8.022$ bản ghi** (từ `2025-07-03 22:00:00+07:00` đến `2026-07-15 17:00:00+07:00`).
+   - Độ bao phủ đối với chuỗi quan trắc chất lượng không khí là **$100{,}0\%$** (tính từ `len(overlap) / len(air_canonical)`), không phát hiện nổ dòng (*row explosion*) — pipeline dừng với lỗi nếu vượt ngưỡng này. Dữ liệu sẵn sàng cho bước tích hợp đa nguồn tại Issue #7.
 
-6. **Giới Hạn Nguồn Dữ Liệu (Source Limitations):**
-   - ERA5 là mô hình tái phân tích khí quyển dạng lưới độ phân giải $0.25^\circ \times 0.25^\circ$ ($\approx 25\,\text{km}$). Mặc dù khoảng cách tới trạm quan trắc ô nhiễm chỉ $1.7\,\text{km}$, dữ liệu phản ánh điều kiện khí tượng vĩ mô khu vực thay vì các hiệu ứng vi khí hậu siêu cục bộ (như hiệu ứng hẻm phố đô thị - street canyon effect). Hạn chế này cần được ghi nhận minh bạch trong các báo cáo phân tích hồi quy tại Issue #12.
+6. **Tệp Dữ Liệu Thô & Truy Vết Xuất Xứ (Raw Artifact & Provenance):**
+   - Tệp thô khí tượng: `data/raw/open_meteo_raw_2025-07-03_2026-07-15.json` ($9.072$ mốc giờ), sinh tên động theo dải ngày truy vấn thực tế.
+   - Payload được ghi **nguyên trạng**; mọi biến đổi (parse, timezone, cleaning, kiểm định) diễn ra ở lớp canonical, không sửa tệp thô.
+   - Mã băm SHA-256 của tệp thô được ghi trong `data/raw/metadata.json` cùng URL truy vấn, thời điểm thu thập, giấy phép và attribution.
+   - **Tệp thô không được commit vào Git** (`.gitignore`: `data/raw/*.json`), đúng quy ước kho dữ liệu thô của dự án; được tái tạo lại bằng `run_collection_pipeline()`.
+
+7. **Giới Hạn Nguồn Dữ Liệu (Source Limitations):**
+   - ERA5 là mô hình tái phân tích khí quyển dạng lưới độ phân giải $0.25^\circ \times 0.25^\circ$ ($\approx 25\,\text{km}$), phản ánh điều kiện khí tượng vĩ mô khu vực thay vì hiệu ứng vi khí hậu siêu cục bộ (ví dụ hiệu ứng hẻm phố đô thị - street canyon effect). Hạn chế này cần được ghi nhận minh bạch trong các báo cáo phân tích hồi quy tại Issue #12.
 

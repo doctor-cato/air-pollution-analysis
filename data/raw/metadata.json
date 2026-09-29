@@ -3,7 +3,7 @@
   "project": "doctor-cato/air-pollution-analysis",
   "issue": "#19 – Source Profiling & Decision Gate (Correction: Disqualification of Location 2178 & Verification of Hanoi Location 4946811)",
   "profiling_timestamp_utc": "2026-09-28T16:47:26Z",
-  "last_updated_utc": "2026-09-29T10:16:39.399315+00:00",
+  "last_updated_utc": "2026-09-29T12:16:22.378588+00:00",
   "target_city": "Hanoi, Vietnam",
   "temporal_coverage": {
     "study_window_start": "2023-01-01T00:00:00+07:00",
@@ -24,8 +24,8 @@
       "longitude_max": 106.1
     },
     "spatial_filtering_rules": {
-      "station_rule": "Raw payload is preserved immutably in data/raw/. During normalization to interim/processed stages, records must match verified Hanoi station_id (OpenAQ: 4946811 - 556 Nguyễn Văn Cừ; AirNow: Site == 'Hanoi') and coordinates must fall strictly within Hanoi bounding box [20.50, 21.60]N, [105.30, 106.10]E. Location 2178 (Del Norte, Albuquerque, NM, USA: 35.1353N, -106.5847W) is strictly DISQUALIFIED and filtered out.",
-      "grid_rule": "Query coordinates set to Hanoi urban core (21.0285N, 105.8542E); matched ERA5 cell (21.0545N, 105.8985E) is within 1.7km of verified Hanoi station 4946811 (556 Nguyễn Văn Cừ: 21.0491N, 105.8831E).",
+      "station_rule": "Raw payload is stored unchanged in data/raw/ (no manual transformation); a SHA-256 digest of each raw file is recorded in this metadata file for integrity verification. During normalization to interim/processed stages, records must match verified Hanoi station_id (OpenAQ: 4946811 - 556 Nguyễn Văn Cừ; AirNow: Site == 'Hanoi') and coordinates must fall strictly within Hanoi bounding box [20.50, 21.60]N, [105.30, 106.10]E. Location 2178 (Del Norte, Albuquerque, NM, USA: 35.1353N, -106.5847W) is strictly DISQUALIFIED and filtered out.",
+      "grid_rule": "Query coordinates set to Hanoi urban core (21.0285N, 105.8542E); OpenMeteoAdapter rejects any query coordinate outside the Hanoi bounding box at construction time, and to_canonical() fails loudly if the response payload omits coordinates. Matched ERA5 cell (21.05448N, 105.89848E) is within 1.71km of verified Hanoi station 4946811 (556 Nguyễn Văn Cừ: 21.0491N, 105.8831E).",
       "airport_rule": "Station 48820 (Noi Bai Airport) is within Hanoi administrative boundary but ~22km north of urban core; flagged as Weather Fallback with microclimate caveat."
     }
   },
@@ -214,7 +214,7 @@
   "collection_pipeline_execution": {
     "executed_issue": "#3 & #4 – Pipeline thu thập và chuẩn hóa dữ liệu chất lượng không khí & khí tượng bề mặt Hà Nội",
     "status": "completed",
-    "execution_timestamp_utc": "2026-09-29T10:16:39.399320+00:00",
+    "execution_timestamp_utc": "2026-09-29T12:16:22.378604+00:00",
     "requested_study_window": {
       "start": "2025-07-03T00:00:00+07:00",
       "end": "2026-07-15T23:00:00+07:00",
@@ -253,13 +253,22 @@
     },
     "open_meteo_ingestion": {
       "source_model": "ECMWF ERA5 Reanalysis",
+      "source_role": "primary_weather_source",
+      "source_endpoint": "https://archive-api.open-meteo.com/v1/archive",
+      "request_url": "https://archive-api.open-meteo.com/v1/archive?latitude=21.0285&longitude=105.8542&start_date=2025-07-03&end_date=2026-07-15&hourly=temperature_2m%2Crelative_humidity_2m%2Cwind_speed_10m%2Cwind_direction_10m%2Cprecipitation%2Csurface_pressure&wind_speed_unit=ms&timezone=Asia%2FHo_Chi_Minh",
+      "license": "Creative Commons Attribution 4.0 International (CC BY 4.0)",
+      "attribution": "Weather data by Open-Meteo.com under CC BY 4.0, containing modified Copernicus Climate Change Service information (ERA5)",
       "requested_query_window": {
         "start_date": "2025-07-03",
         "end_date": "2026-07-15",
-        "derived_dynamically": true
+        "derived_dynamically": true,
+        "derivation_rule": "derived_from_air_quality_canonical_min_max_timestamps"
       },
       "raw_file": "data/raw/open_meteo_raw_2025-07-03_2026-07-15.json",
+      "raw_file_committed_to_git": false,
+      "raw_file_gitignore_rule": "data/raw/*.json",
       "raw_sha256": "59bfececa2dc658c15898df082a19566fce7019048ec8236b55dc731f45bc79c",
+      "raw_preservation": "stored_unchanged_no_manual_transformation",
       "canonical_records": 9072,
       "missing_rate_all_variables": "0.00%",
       "actual_min_timestamp": "2025-07-03 00:00:00+07:00",
@@ -271,8 +280,12 @@
       },
       "data_quality_validation": {
         "status": "passed",
+        "is_valid": true,
+        "warnings": [],
+        "timezone": "Asia/Ho_Chi_Minh",
         "is_continuous_hourly": true,
         "gap_count": 0,
+        "max_missing_pct": 0.0,
         "physical_bounds_checked": [
           "temperature",
           "relative_humidity",
@@ -281,7 +294,13 @@
           "precipitation",
           "surface_pressure"
         ],
-        "bounds_violation_count": 0
+        "physical_bounds_violations_in_canonical_output": 0,
+        "values_nulled_by_cleaning": {
+          "disguised_missing": 0,
+          "out_of_bounds": 0,
+          "unparseable": 0
+        },
+        "validation_function_is_read_only": true
       },
       "interim_file": "data/interim/weather_canonical.parquet"
     },
@@ -299,7 +318,8 @@
       "overlap_records": 8022,
       "overlap_min_timestamp": "2025-07-03 22:00:00+07:00",
       "overlap_max_timestamp": "2026-07-15 17:00:00+07:00",
-      "air_quality_coverage_pct": 100.0
+      "air_quality_coverage_pct": 100.0,
+      "row_explosion_detected": false
     }
   }
 }

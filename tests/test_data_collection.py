@@ -16,14 +16,19 @@ import pandas as pd
 
 from src.data_collection import (
     HANOI_BBOX,
+    CANONICAL_TIMEZONE,
     STATION_OPENAQ_HANOI,
     STATION_AIRNOW_HANOI,
+    STATION_WEATHER_ERA5,
     WEATHER_CANONICAL_COLUMNS,
     WEATHER_PHYSICAL_BOUNDS,
+    WEATHER_QUERY_COORDS,
     clean_air_quality_values,
     clean_weather_values,
     filter_hanoi_bounds,
     assert_canonical_within_hanoi,
+    is_sentinel_code,
+    summarize_weather_cleaning,
     validate_canonical_uniqueness,
     validate_weather_canonical,
     resolve_station_metadata,
@@ -391,6 +396,308 @@ class TestDataCollectionPipeline(unittest.TestCase):
         with self.assertRaises(AssertionError) as ctx:
             adapter.to_canonical(mock_raw_out)
         self.assertIn("nằm ngoài Bounding Box Hà Nội", str(ctx.exception))
+
+    # ------------------------------------------------------------------
+    # AC3 – Hanoi geographic compatibility
+    # ------------------------------------------------------------------
+
+    def test_weather_station_metadata_resolves_to_hanoi_grid(self):
+        """AC3: trạm khí tượng canonical phải là điểm lưới ERA5 nằm trong Hà Nội."""
+        sid, loc, coords = resolve_station_metadata("open_meteo", None)
+        self.assertEqual(sid, STATION_WEATHER_ERA5)
+        self.assertIn("ERA5", loc)
+        lat, lon = coords
+        self.assertTrue(HANOI_BBOX["lat_min"] <= lat <= HANOI_BBOX["lat_max"])
+        self.assertTrue(HANOI_BBOX["lon_min"] <= lon <= HANOI_BBOX["lon_max"])
+
+    def test_open_meteo_default_query_coordinates_are_inside_hanoi_bbox(self):
+        """AC3: tọa độ truy vấn mặc định phải là tâm lõi Hà Nội, nằm trong Bounding Box."""
+        lat, lon = WEATHER_QUERY_COORDS
+        self.assertTrue(HANOI_BBOX["lat_min"] <= lat <= HANOI_BBOX["lat_max"])
+        self.assertTrue(HANOI_BBOX["lon_min"] <= lon <= HANOI_BBOX["lon_max"])
+
+        adapter = OpenMeteoAdapter()
+        self.assertEqual(adapter.latitude, lat)
+        self.assertEqual(adapter.longitude, lon)
+
+    def test_open_meteo_adapter_rejects_non_hanoi_request_coordinates(self):
+        """AC3: adapter phải từ chối tọa độ truy vấn ngoài Hà Nội ngay khi khởi tạo."""
+        with self.assertRaises(ValueError) as ctx:
+            OpenMeteoAdapter(latitude=35.1353, longitude=-106.5847)  # Albuquerque, NM
+        self.assertIn("nằm NGOÀI Bounding Box Hà Nội", str(ctx.exception))
+
+    def test_open_meteo_to_canonical_fails_loud_when_response_has_no_coordinates(self):
+        """AC3: thiếu tọa độ trong payload phải raise, không được thay bằng hằng số nội bộ."""
+        mock_raw_no_coords = {
+            "hourly": {
+                "time": ["2025-07-03T00:00"],
+                "temperature_2m": [25.0],
+                "relative_humidity_2m": [80],
+                "wind_speed_10m": [2.0],
+                "wind_direction_10m": [100],
+                "precipitation": [0.0],
+                "surface_pressure": [1005.0],
+            },
+        }
+        with self.assertRaises(ValueError) as ctx:
+            OpenMeteoAdapter().to_canonical(mock_raw_no_coords)
+        self.assertIn("không trả về tọa độ điểm lưới", str(ctx.exception))
+
+    # ------------------------------------------------------------------
+    # AC2 – dynamic temporal window (không hardcode study window)
+    # ------------------------------------------------------------------
+
+    def test_fetch_raw_data_requires_explicit_window(self):
+        """
+        AC2: fetch_raw_data() KHÔNG được có khung thời gian lịch sử cố định mặc định.
+        Issue #4 yêu cầu loại bỏ hoàn toàn việc áp đặt trước cửa sổ nghiên cứu.
+        """
+        import inspect
+
+        params = inspect.signature(OpenMeteoAdapter.fetch_raw_data).parameters
+        self.assertIn("start_date", params)
+        self.assertIn("end_date", params)
+        self.assertIs(
+            params["start_date"].default, inspect.Parameter.empty, "start_date không được có giá trị mặc định"
+        )
+        self.assertIs(
+            params["end_date"].default, inspect.Parameter.empty, "end_date không được có giá trị mặc định"
+        )
+
+    def test_fetch_raw_data_rejects_empty_window(self):
+        """AC2: cửa sổ rỗng phải bị từ chối rõ ràng, không được âm thầm dùng cửa sổ cố định."""
+        with self.assertRaises(ValueError) as ctx:
+            OpenMeteoAdapter().fetch_raw_data(start_date="", end_date="")
+        self.assertIn("là bắt buộc", str(ctx.exception))
+
+    def test_request_url_encodes_requested_dynamic_window(self):
+        """AC2: URL truy vấn phải mang đúng dải ngày động được yêu cầu (dùng cho provenance)."""
+        url = OpenMeteoAdapter().build_request_url("2025-07-03", "2026-07-15")
+        self.assertIn("start_date=2025-07-03", url)
+        self.assertIn("end_date=2026-07-15", url)
+        self.assertIn("wind_speed_unit=ms", url)
+        self.assertIn("archive-api.open-meteo.com", url)
+
+    # ------------------------------------------------------------------
+    # AC7 – timezone
+    # ------------------------------------------------------------------
+
+    def test_weather_validation_rejects_naive_timestamp(self):
+        """AC7: canonical timestamp bắt buộc tz-aware, naive datetime phải bị từ chối."""
+        df_naive = pd.DataFrame(
+            {
+                "timestamp": pd.date_range("2025-07-03 00:00:00", periods=3, freq="h"),
+                "temperature": [25.0, 25.5, 26.0],
+                "relative_humidity": [80.0, 81.0, 82.0],
+                "wind_speed": [2.0, 2.1, 2.2],
+                "wind_direction": [100.0, 110.0, 120.0],
+                "precipitation": [0.0, 0.0, 0.0],
+                "surface_pressure": [1005.0, 1005.1, 1005.2],
+            }
+        )
+        self.assertIsNone(df_naive["timestamp"].dt.tz)
+        with self.assertRaises(ValueError) as ctx:
+            validate_weather_canonical(df_naive)
+        self.assertIn("tz-aware", str(ctx.exception))
+
+    def test_weather_validation_rejects_wrong_timezone(self):
+        """AC7: timestamp tz-aware nhưng sai múi giờ (ví dụ UTC) vẫn phải bị từ chối."""
+        ts_utc = pd.date_range("2025-07-03 00:00:00", periods=3, freq="h", tz="UTC")
+        df_utc = pd.DataFrame(
+            {
+                "timestamp": ts_utc,
+                "temperature": [25.0, 25.5, 26.0],
+                "relative_humidity": [80.0, 81.0, 82.0],
+                "wind_speed": [2.0, 2.1, 2.2],
+                "wind_direction": [100.0, 110.0, 120.0],
+                "precipitation": [0.0, 0.0, 0.0],
+                "surface_pressure": [1005.0, 1005.1, 1005.2],
+            }
+        )
+        with self.assertRaises(ValueError) as ctx:
+            validate_weather_canonical(df_utc)
+        self.assertIn(CANONICAL_TIMEZONE, str(ctx.exception))
+
+    def test_weather_canonical_reports_hanoi_timezone(self):
+        """AC7: báo cáo kiểm định phải ghi rõ múi giờ canonical đang áp dụng."""
+        adapter = OpenMeteoAdapter()
+        df = adapter.to_canonical(_mock_weather_payload(), validate=False)
+        report = validate_weather_canonical(df)
+        self.assertEqual(report["timezone"], "Asia/Ho_Chi_Minh")
+        self.assertEqual(str(df["timestamp"].dt.tz), CANONICAL_TIMEZONE)
+
+    # ------------------------------------------------------------------
+    # AC8 – sentinel / zero preservation / cleaning transparency
+    # ------------------------------------------------------------------
+
+    def test_is_sentinel_code_keeps_valid_zero(self):
+        """AC8: -999/-9999 là sentinel; 0.0 là giá trị đo hợp lệ, tuyệt đối không phải sentinel."""
+        self.assertTrue(is_sentinel_code(-999))
+        self.assertTrue(is_sentinel_code(-9999.0))
+        self.assertTrue(is_sentinel_code("-999.0"))
+        self.assertFalse(is_sentinel_code(0.0))
+        self.assertFalse(is_sentinel_code(0))
+        self.assertFalse(is_sentinel_code(None))
+        self.assertFalse(is_sentinel_code(float("nan")))
+
+    def test_summarize_weather_cleaning_separates_null_reasons(self):
+        """AC8/AC10: cleaning phải báo cáo minh bạch sentinel vs vi phạm giới hạn vật lý."""
+        raw = {"temperature": [25.0, -999.0, 999.0, 0.0, None, "abc"]}
+        cleaned = {
+            "temperature": [
+                clean_weather_values(v, "temperature") for v in raw["temperature"]
+            ]
+        }
+        stats = summarize_weather_cleaning(raw, cleaned)["temperature"]
+        self.assertEqual(stats["disguised_missing"], 1)   # -999
+        self.assertEqual(stats["out_of_bounds"], 1)        # 999 °C
+        self.assertEqual(stats["unparseable"], 1)          # "abc"
+        # 0.0 hợp lệ và NaN sẵn có không bị tính là giá trị bị loại bỏ
+        self.assertEqual(sum(stats.values()), 3)
+
+    def test_to_canonical_preserves_zero_and_nulls_sentinels(self):
+        """AC8: 0.0 đo được giữ nguyên; sentinel -999 thành NaN; cleaning được đếm minh bạch."""
+        payload = _mock_weather_payload(
+            temperature=[0.0, -999.0, 25.5],
+            precipitation=[0.0, 0.0, 1.2],
+        )
+        df = OpenMeteoAdapter().to_canonical(payload, validate=False)
+
+        self.assertEqual(df["temperature"].iloc[0], 0.0)      # 0 °C hợp lệ
+        self.assertTrue(np.isnan(df["temperature"].iloc[1]))  # -999 -> NaN
+        self.assertEqual(df["temperature"].iloc[2], 25.5)
+        self.assertEqual(list(df["precipitation"][:2]), [0.0, 0.0])  # 0 mm hợp lệ
+
+        cleaning = df.attrs["weather_cleaning"]
+        self.assertEqual(cleaning["temperature"]["disguised_missing"], 1)
+        self.assertEqual(cleaning["temperature"]["out_of_bounds"], 0)
+        self.assertEqual(cleaning["precipitation"]["disguised_missing"], 0)
+
+    def test_validation_surfaces_values_nulled_by_cleaning(self):
+        """
+        AC8/AC9/AC10: giá trị bị lớp cleaning loại bỏ vì vi phạm giới hạn vật lý phải được
+        báo cáo, thay vì báo '0 vi phạm' một cách giả định.
+        """
+        payload = _mock_weather_payload(temperature=[25.0, 999.0, 26.0])
+        df = OpenMeteoAdapter().to_canonical(payload, validate=False)
+        self.assertTrue(np.isnan(df["temperature"].iloc[1]))
+
+        report = validate_weather_canonical(df)
+        self.assertEqual(report["cleaning_totals"]["out_of_bounds"], 1)
+        self.assertTrue(any("vi phạm giới hạn" in w for w in report["warnings"]))
+
+    # ------------------------------------------------------------------
+    # AC6/AC8/AC10 – schema, ordering, missing threshold
+    # ------------------------------------------------------------------
+
+    def test_weather_validation_detects_schema_violation(self):
+        """AC6: thiếu cột canonical phải raise ValueError nêu rõ danh sách cột thiếu."""
+        ts_range = pd.date_range("2025-07-03 00:00:00+07:00", periods=3, freq="h")
+        df_bad = pd.DataFrame({"timestamp": ts_range, "temperature": [25.0, 25.5, 26.0]})
+        with self.assertRaises(ValueError) as ctx:
+            validate_weather_canonical(df_bad)
+        self.assertIn("thiếu cột bắt buộc", str(ctx.exception))
+
+    def test_weather_validation_detects_non_monotonic_timestamps(self):
+        """AC8/AC10: timestamp không tăng đơn điệu phải raise, không tự sắp xếp lại."""
+        ts = [
+            pd.Timestamp("2025-07-03 01:00:00+07:00"),
+            pd.Timestamp("2025-07-03 00:00:00+07:00"),
+        ]
+        df_unsorted = pd.DataFrame({
+            "timestamp": ts,
+            "temperature": [25.0, 26.0],
+            "relative_humidity": [80.0, 81.0],
+            "wind_speed": [2.0, 2.1],
+            "wind_direction": [100.0, 110.0],
+            "precipitation": [0.0, 0.0],
+            "surface_pressure": [1005.0, 1005.1],
+        })
+        before = df_unsorted.copy(deep=True)
+        with self.assertRaises(ValueError) as ctx:
+            validate_weather_canonical(df_unsorted)
+        self.assertIn("tăng đơn điệu", str(ctx.exception))
+        # Hàm kiểm định phải read-only: dữ liệu đầu vào không bị sửa
+        pd.testing.assert_frame_equal(df_unsorted, before)
+
+    def test_weather_validation_fails_when_missing_exceeds_threshold(self):
+        """AC8/AC10: tỷ lệ khuyết thiếu vượt ngưỡng phải raise thay vì im lặng."""
+        ts_range = pd.date_range("2025-07-03 00:00:00+07:00", periods=4, freq="h")
+        df_missing = pd.DataFrame({
+            "timestamp": ts_range,
+            "temperature": [25.0, np.nan, 26.0, 27.0],
+            "relative_humidity": [80.0, 81.0, 82.0, 83.0],
+            "wind_speed": [2.0, 2.1, 2.2, 2.3],
+            "wind_direction": [100.0, 110.0, 120.0, 130.0],
+            "precipitation": [0.0, 0.0, 0.0, 0.0],
+            "surface_pressure": [1005.0, 1005.1, 1005.2, 1005.3],
+        })
+        with self.assertRaises(ValueError) as ctx:
+            validate_weather_canonical(df_missing, max_missing_pct=0.0)
+        self.assertIn("vượt ngưỡng cho phép", str(ctx.exception))
+
+        # Nới ngưỡng thì phải qua được và vẫn báo cáo tỷ lệ khuyết thiếu
+        report = validate_weather_canonical(df_missing, max_missing_pct=50.0)
+        self.assertEqual(report["max_missing_pct"], 25.0)
+
+    def test_weather_validation_reports_gap_as_warning_not_silent_pass(self):
+        """AC10: gián đoạn là WARNING, nhưng `is_valid` phải phản ánh trung thực."""
+        ts = [
+            pd.Timestamp("2025-07-03 00:00:00+07:00"),
+            pd.Timestamp("2025-07-03 01:00:00+07:00"),
+            pd.Timestamp("2025-07-03 04:00:00+07:00"),
+        ]
+        df_gap = pd.DataFrame({
+            "timestamp": ts,
+            "temperature": [25.0, 25.0, 26.0],
+            "relative_humidity": [80.0, 80.0, 80.0],
+            "wind_speed": [2.0, 2.0, 2.0],
+            "wind_direction": [100.0, 100.0, 100.0],
+            "precipitation": [0.0, 0.0, 0.0],
+            "surface_pressure": [1005.0, 1005.0, 1005.0],
+        })
+        report = validate_weather_canonical(df_gap, check_continuity=True)
+        self.assertFalse(report["is_continuous_hourly"])
+        self.assertFalse(report["is_valid"])
+        self.assertEqual(report["validation_status"], "passed_with_warnings")
+        self.assertEqual(report["gap_count"], 1)
+        self.assertTrue(any("gián đoạn" in w for w in report["warnings"]))
+
+    def test_weather_validation_is_read_only(self):
+        """AC10: hàm kiểm định không được âm thầm sửa dữ liệu đầu vào."""
+        df = OpenMeteoAdapter().to_canonical(_mock_weather_payload(), validate=False)
+        snapshot = df.copy(deep=True)
+        validate_weather_canonical(df)
+        pd.testing.assert_frame_equal(df, snapshot)
+        self.assertEqual(list(df.columns), WEATHER_CANONICAL_COLUMNS)
+
+
+def _mock_weather_payload(n_hours: int = 3, **overrides) -> dict:
+    """Payload Open-Meteo tối giản, deterministic, dùng cho unit test (không gọi mạng)."""
+    payload = {
+        "latitude": 21.05448,
+        "longitude": 105.898476,
+        "hourly": {
+            "time": [f"2025-07-03T{h:02d}:00" for h in range(n_hours)],
+            "temperature_2m": [25.0] * n_hours,
+            "relative_humidity_2m": [80.0] * n_hours,
+            "wind_speed_10m": [2.0] * n_hours,
+            "wind_direction_10m": [100.0] * n_hours,
+            "precipitation": [0.0] * n_hours,
+            "surface_pressure": [1005.0] * n_hours,
+        },
+    }
+    for canonical_col, values in overrides.items():
+        provider_field = {
+            "temperature": "temperature_2m",
+            "relative_humidity": "relative_humidity_2m",
+            "wind_speed": "wind_speed_10m",
+            "wind_direction": "wind_direction_10m",
+            "precipitation": "precipitation",
+            "surface_pressure": "surface_pressure",
+        }[canonical_col]
+        payload["hourly"][provider_field] = values
+    return payload
 
 
 if __name__ == "__main__":
