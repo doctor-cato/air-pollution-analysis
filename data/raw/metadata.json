@@ -3,7 +3,7 @@
   "project": "doctor-cato/air-pollution-analysis",
   "issue": "#19 – Source Profiling & Decision Gate (Correction: Disqualification of Location 2178 & Verification of Hanoi Location 4946811)",
   "profiling_timestamp_utc": "2026-09-28T16:47:26Z",
-  "last_updated_utc": "2026-09-29T08:39:39.058537+00:00",
+  "last_updated_utc": "2026-09-29T09:37:42.703910+00:00",
   "target_city": "Hanoi, Vietnam",
   "temporal_coverage": {
     "study_window_start": "2023-01-01T00:00:00+07:00",
@@ -214,10 +214,11 @@
   "collection_pipeline_execution": {
     "executed_issue": "#3 – Pipeline thu thập và chuẩn hóa dữ liệu chất lượng không khí",
     "status": "completed",
-    "execution_timestamp_utc": "2026-09-29T08:39:39.058543+00:00",
+    "execution_timestamp_utc": "2026-09-29T09:37:42.703920+00:00",
     "requested_study_window": {
-      "start": "2023-01-01T00:00:00+07:00",
-      "end": "2024-12-31T23:00:00+07:00",
+      "start": "2025-07-03T00:00:00+07:00",
+      "end": "2026-07-15T23:00:00+07:00",
+      "derived_dynamically_from_air_quality": true,
       "note": "Tham số truy vấn phạm vi phân tích khí tượng ERA5."
     },
     "disqualification_audit": {
@@ -232,14 +233,14 @@
         "latitude": 21.0491,
         "longitude": 105.8831
       },
-      "raw_file": "data/raw/openaq_raw_4946811.parquet",
-      "raw_sha256": "3c2fbd3c0d32ba2ebd8d6229421e0ae531358d95038b54304ca00e041d9555fc",
-      "raw_records_total": 347956,
+      "raw_file": "../data/raw/openaq_raw_4946811.parquet",
+      "raw_sha256": "4168735570d16f80df7136e93b8da96bbb03ed5631c57ca8ffea6f09d92ae60f",
+      "raw_records_total": 349463,
       "filtered_out_records": 0,
-      "canonical_records": 7999,
-      "pm25_valid_observations": 7796,
+      "canonical_records": 8022,
+      "pm25_valid_observations": 7819,
       "pm25_missing_observations": 203,
-      "pm25_missing_rate_pct": 2.54,
+      "pm25_missing_rate_pct": 2.53,
       "actual_min_timestamp": "2025-07-03 22:00:00+07:00",
       "actual_max_timestamp": "2026-07-15 17:00:00+07:00",
       "actual_source_coverage": {
@@ -253,18 +254,19 @@
     "open_meteo_ingestion": {
       "source_model": "ECMWF ERA5 Reanalysis",
       "requested_query_window": {
-        "start_date": "2023-01-01",
-        "end_date": "2024-12-31"
+        "start_date": "2025-07-03",
+        "end_date": "2026-07-15",
+        "derived_dynamically": true
       },
-      "raw_file": "data/raw/open_meteo_raw_2023_2024.json",
-      "raw_sha256": "7f12b53c60c83b172f1bd1b0723aaee9d5e4c3d2e17e65765aa9e108cc59d8a4",
-      "canonical_records": 17544,
+      "raw_file": "../data/raw/open_meteo_raw_2025-07-03_2026-07-15.json",
+      "raw_sha256": "59bfececa2dc658c15898df082a19566fce7019048ec8236b55dc731f45bc79c",
+      "canonical_records": 9072,
       "missing_rate_all_variables": "0.00%",
-      "actual_min_timestamp": "2023-01-01 00:00:00+07:00",
-      "actual_max_timestamp": "2024-12-31 23:00:00+07:00",
+      "actual_min_timestamp": "2025-07-03 00:00:00+07:00",
+      "actual_max_timestamp": "2026-07-15 23:00:00+07:00",
       "actual_source_coverage": {
-        "actual_min_timestamp": "2023-01-01 00:00:00+07:00",
-        "actual_max_timestamp": "2024-12-31 23:00:00+07:00",
+        "actual_min_timestamp": "2025-07-03 00:00:00+07:00",
+        "actual_max_timestamp": "2026-07-15 23:00:00+07:00",
         "coverage_derivation": "computed_directly_from_dataframe_timestamps"
       },
       "interim_file": "data/interim/weather_canonical.parquet"

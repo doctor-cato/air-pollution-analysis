@@ -411,12 +411,12 @@ class AirNowDOSAdapter:
         raw_dir: Path = Path("data/raw"),
         interim_dir: Path = Path("data/interim"),
     ):
-        self.csv_path = Path(csv_path) if csv_path else Path("data/raw/airnow_hanoi_2023.csv")
+        self.raw_dir = Path(raw_dir)
+        self.interim_dir = Path(interim_dir)
+        self.csv_path = Path(csv_path) if csv_path else self.raw_dir / "airnow_hanoi_2023.csv"
         self.station_id, self.location_name, self.coordinates = resolve_station_metadata(
             "airnow", "Hanoi"
         )
-        self.raw_dir = Path(raw_dir)
-        self.interim_dir = Path(interim_dir)
 
     def load_and_canonicalize(self, csv_file: Optional[Union[str, Path]] = None) -> pd.DataFrame:
         """
@@ -501,10 +501,7 @@ class OpenMeteoAdapter:
         Lưu raw payload JSON nguyên gốc vào data/raw/ ở chế độ bất biến.
         """
         if raw_output_name is None:
-            if start_date == "2023-01-01" and end_date == "2024-12-31":
-                raw_output_name = "open_meteo_raw_2023_2024.json"
-            else:
-                raw_output_name = f"open_meteo_raw_{start_date}_{end_date}.json"
+            raw_output_name = f"open_meteo_raw_{start_date}_{end_date}.json"
 
         raw_path = self.raw_dir / raw_output_name
         if not force_reload and raw_path.exists() and raw_path.stat().st_size > 0:
@@ -593,39 +590,72 @@ class OpenMeteoAdapter:
 
 
 def run_collection_pipeline(
-    study_window_start: str = "2023-01-01",
-    study_window_end: str = "2024-12-31",
+    study_window_start: Optional[str] = None,
+    study_window_end: Optional[str] = None,
     airnow_csv_path: Optional[Union[str, Path]] = None,
     save_interim: bool = True,
     metadata_path: Path = Path("data/raw/metadata.json"),
+    raw_dir: Path = Path("data/raw"),
+    interim_dir: Path = Path("data/interim"),
 ) -> Dict[str, Any]:
     """
     Hàm thực thi toàn bộ pipeline thu thập và chuẩn hóa dữ liệu ô nhiễm & khí tượng:
     1. Thu thập dữ liệu thô OpenAQ trạm chuẩn Hà Nội (4946811) từ S3 archive.
-    2. Thu thập dữ liệu thô Open-Meteo ERA5 từ API theo requested query window.
-    3. Kiểm tra và tích hợp AirNow DOS Historical Adapter (xác định trạng thái thực tế, không tạo dữ liệu giả).
-    4. Lọc không gian Bounding Box Hà Nội từng record và chuẩn hóa sang Canonical Schema.
-    5. Xác thực địa lý, bảo đảm 100% bản ghi nằm trong Hà Nội, kiểm tra duplicate key.
-    6. Lưu canonical interim files vào data/interim/.
-    7. Cập nhật metadata.json với execution metrics thực tế (phân biệt rõ requested study window vs actual source coverage).
+    2. Xác định cửa sổ truy vấn khí tượng đồng bộ động từ chuỗi ô nhiễm thực tế (nếu không truyền explicit window).
+    3. Thu thập dữ liệu thô Open-Meteo ERA5 từ API theo requested query window đồng bộ.
+    4. Kiểm tra và tích hợp AirNow DOS Historical Adapter (xác định trạng thái thực tế, không tạo dữ liệu giả).
+    5. Lọc không gian Bounding Box Hà Nội từng record và chuẩn hóa sang Canonical Schema.
+    6. Xác thực địa lý, bảo đảm 100% bản ghi nằm trong Hà Nội, kiểm tra duplicate key.
+    7. Lưu canonical interim files vào data/interim/.
+    8. Cập nhật metadata.json với execution metrics thực tế (phân biệt rõ requested study window vs actual source coverage).
     """
     t_start = time.time()
-    openaq_adapter = OpenAQAdapter(location_id=HANOI_OPENAQ_LOCATION_ID)
-    weather_adapter = OpenMeteoAdapter()
+    raw_dir = Path(raw_dir)
+    interim_dir = Path(interim_dir)
+    metadata_path = Path(metadata_path)
+    openaq_adapter = OpenAQAdapter(
+        location_id=HANOI_OPENAQ_LOCATION_ID,
+        raw_dir=raw_dir,
+        interim_dir=interim_dir,
+    )
+    weather_adapter = OpenMeteoAdapter(
+        raw_dir=raw_dir,
+        interim_dir=interim_dir,
+    )
 
     # 1. OpenAQ 4946811 Ingestion & Canonicalization
     df_openaq_raw, openaq_raw_path = openaq_adapter.fetch_raw_data()
     _, geo_filter_stats = filter_hanoi_bounds(df_openaq_raw)
     df_air_canonical = openaq_adapter.to_canonical(df_openaq_raw)
 
-    # 2. Open-Meteo Ingestion & Canonicalization
+    # 2. Xác định cửa sổ truy vấn khí tượng: đồng bộ động từ chuỗi ô nhiễm thực tế nếu không truyền tham số cứng
+    if study_window_start is None:
+        query_start = df_air_canonical["timestamp"].min().strftime("%Y-%m-%d")
+    else:
+        query_start = study_window_start
+
+    if study_window_end is None:
+        query_end = df_air_canonical["timestamp"].max().strftime("%Y-%m-%d")
+    else:
+        query_end = study_window_end
+
+    logger.info(
+        f"Cửa sổ truy vấn khí tượng Open-Meteo ERA5: {query_start} -> {query_end} "
+        f"({'đồng bộ động từ chuỗi OpenAQ' if study_window_start is None and study_window_end is None else 'theo tham số caller'})"
+    )
+
+    # 3. Open-Meteo Ingestion & Canonicalization
     weather_raw_json, weather_raw_path = weather_adapter.fetch_raw_data(
-        start_date=study_window_start, end_date=study_window_end
+        start_date=query_start, end_date=query_end
     )
     df_weather_canonical = weather_adapter.to_canonical(weather_raw_json)
 
-    # 3. AirNow DOS Historical Adapter Check & Ingestion
-    airnow_adapter = AirNowDOSAdapter(csv_path=airnow_csv_path)
+    # 4. AirNow DOS Historical Adapter Check & Ingestion
+    airnow_adapter = AirNowDOSAdapter(
+        csv_path=airnow_csv_path,
+        raw_dir=raw_dir,
+        interim_dir=interim_dir,
+    )
     df_airnow_canonical = None
     if airnow_adapter.csv_path.exists() and airnow_adapter.csv_path.stat().st_size > 0:
         logger.info(f"Phát hiện tệp AirNow DOS tại {airnow_adapter.csv_path}. Đang tiến hành nạp và chuẩn hóa...")
@@ -689,8 +719,9 @@ def run_collection_pipeline(
     summary = {
         "execution_time_seconds": round(time.time() - t_start, 2),
         "requested_study_window": {
-            "start": study_window_start,
-            "end": study_window_end,
+            "start": query_start,
+            "end": query_end,
+            "derived_dynamically_from_air_quality": bool(study_window_start is None and study_window_end is None),
             "note": "Tham số truy vấn phạm vi phân tích khí tượng ERA5.",
         },
         "openaq": {
@@ -719,8 +750,9 @@ def run_collection_pipeline(
         "open_meteo": {
             "model": "ECMWF ERA5 Reanalysis",
             "requested_query_window": {
-                "start_date": study_window_start,
-                "end_date": study_window_end,
+                "start_date": query_start,
+                "end_date": query_end,
+                "derived_dynamically": bool(study_window_start is None and study_window_end is None),
             },
             "raw_file": str(weather_raw_path),
             "sha256": weather_sha256,
@@ -759,8 +791,9 @@ def run_collection_pipeline(
                 "status": "completed",
                 "execution_timestamp_utc": datetime.now(timezone.utc).isoformat(),
                 "requested_study_window": {
-                    "start": f"{study_window_start}T00:00:00+07:00",
-                    "end": f"{study_window_end}T23:00:00+07:00",
+                    "start": f"{query_start}T00:00:00+07:00",
+                    "end": f"{query_end}T23:00:00+07:00",
+                    "derived_dynamically_from_air_quality": bool(study_window_start is None and study_window_end is None),
                     "note": "Tham số truy vấn phạm vi phân tích khí tượng ERA5.",
                 },
                 "disqualification_audit": {
@@ -796,8 +829,9 @@ def run_collection_pipeline(
                 "open_meteo_ingestion": {
                     "source_model": "ECMWF ERA5 Reanalysis",
                     "requested_query_window": {
-                        "start_date": study_window_start,
-                        "end_date": study_window_end,
+                        "start_date": query_start,
+                        "end_date": query_end,
+                        "derived_dynamically": bool(study_window_start is None and study_window_end is None),
                     },
                     "raw_file": str(weather_raw_path).replace("\\", "/"),
                     "raw_sha256": weather_sha256,

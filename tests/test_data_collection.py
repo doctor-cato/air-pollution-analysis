@@ -172,6 +172,75 @@ class TestDataCollectionPipeline(unittest.TestCase):
         self.assertEqual(min_ts, "2023-05-01 00:00:00+07:00")
         self.assertEqual(max_ts, "2023-05-10 23:00:00+07:00")
 
+    def test_open_meteo_raw_filename_reflects_date_range(self):
+        """Kiểm thử OpenMeteoAdapter sinh tên file raw động theo dải ngày yêu cầu khi raw_output_name=None."""
+        import json
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch, MagicMock
+        from src.data_collection import OpenMeteoAdapter
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            adapter = OpenMeteoAdapter(raw_dir=Path(tmp_dir), interim_dir=Path(tmp_dir))
+
+            mock_ctx = MagicMock()
+            mock_ctx.status = 200
+            mock_ctx.read.return_value = json.dumps({
+                "latitude": 21.0545,
+                "longitude": 105.8985,
+                "hourly": {
+                    "time": ["2025-07-03T00:00"],
+                    "temperature_2m": [28.5],
+                    "relative_humidity_2m": [80],
+                    "wind_speed_10m": [2.1],
+                    "wind_direction_10m": [120],
+                    "precipitation": [0.0],
+                    "surface_pressure": [1005.0],
+                },
+            }).encode("utf-8")
+
+            mock_urlopen = MagicMock()
+            mock_urlopen.__enter__.return_value = mock_ctx
+            mock_urlopen.__exit__.return_value = None
+
+            with patch("urllib.request.urlopen", return_value=mock_urlopen):
+                _, raw_path = adapter.fetch_raw_data(
+                    start_date="2025-07-03",
+                    end_date="2026-07-15",
+                    raw_output_name=None
+                )
+
+            self.assertEqual(raw_path.name, "open_meteo_raw_2025-07-03_2026-07-15.json")
+
+    def test_air_and_weather_temporal_overlap_not_empty(self):
+        """Kiểm thử phép inner join theo timestamp giữa chuỗi ô nhiễm và khí tượng không rỗng."""
+        ts_air = pd.date_range("2025-07-03 22:00:00+07:00", "2025-07-04 10:00:00+07:00", freq="h")
+        ts_weather = pd.date_range("2025-07-03 00:00:00+07:00", "2025-07-05 00:00:00+07:00", freq="h")
+
+        df_air = pd.DataFrame({"timestamp": ts_air, "pm25": [35.0] * len(ts_air)})
+        df_weather = pd.DataFrame({"timestamp": ts_weather, "temperature": [28.0] * len(ts_weather)})
+
+        df_merged = pd.merge(df_air, df_weather, on="timestamp", how="inner")
+        self.assertGreater(len(df_merged), 0)
+        self.assertEqual(df_merged["timestamp"].min(), ts_air.min())
+        self.assertEqual(df_merged["timestamp"].max(), ts_air.max())
+
+    def test_dynamic_sync_window_derivation(self):
+        """Kiểm thử trích xuất dải ngày động (YYYY-MM-DD) từ timestamp tz-aware Asia/Ho_Chi_Minh."""
+        ts_range = pd.date_range(
+            "2025-07-03 22:40:00",
+            "2026-07-15 17:05:00",
+            freq="h",
+            tz="Asia/Ho_Chi_Minh"
+        )
+        df_air_sample = pd.DataFrame({"timestamp": ts_range})
+
+        derived_start = df_air_sample["timestamp"].min().strftime("%Y-%m-%d")
+        derived_end = df_air_sample["timestamp"].max().strftime("%Y-%m-%d")
+
+        self.assertEqual(derived_start, "2025-07-03")
+        self.assertEqual(derived_end, "2026-07-15")
+
 
 if __name__ == "__main__":
     unittest.main()
