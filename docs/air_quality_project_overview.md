@@ -1,61 +1,49 @@
-# Phân tích mức độ ô nhiễm không khí theo thời gian
+# Phân Tích Mức Độ Ô Nhiễm Không Khí Theo Thời Gian (Project Overview)
+
+> **Môn học:** INFO3020 – Nhập môn Khoa học Dữ liệu (*Introduction to Data Science*)
+> **Căn cứ tài liệu có thẩm quyền:** [`docs/roadmap.md`](roadmap.md) (Roadmap 15 tuần), [`docs/source_profiling_decision.md`](source_profiling_decision.md) (Quyết định cổng nguồn Issue #19), và [`docs/data_dictionary.md`](data_dictionary.md) (Canonical Schema Issue #2).
+> **Lưu ý định hướng nguồn dữ liệu:** Tài liệu này khởi nguồn từ bản đề xuất sơ bộ ban đầu của nhóm. Qua quy trình thẩm định dữ liệu đa nguồn tại **Issue #19**, tập dữ liệu Kaggle đã được phân loại là **Tham chiếu ngoài (Reference Only)** do thiếu hồ sơ kiểm định phần cứng và nguy cơ rò rỉ dữ liệu từ việc tiền xử lý sẵn. Quyết định nguồn chính thức được phê duyệt tại Issue #19 bao gồm:
+> - **Chất lượng không khí (Primary):** OpenAQ S3 Public Archive (`location_id = 4946811` – Trạm chuẩn quốc gia 556 Nguyễn Văn Cừ, Long Biên, Hà Nội do NCEM/VEA quản lý); nguồn chuẩn lịch sử / fallback: AirNow DOS Historical CSV (Trạm ĐSQ Hoa Kỳ, Met One BAM-1020).
+> - **Khí tượng bề mặt (Primary):** Open-Meteo Historical Weather API (ECMWF ERA5 Reanalysis, điểm lưới cách trạm 556 Nguyễn Văn Cừ 1.71 km).
+> - **Đồng bộ hóa thời gian động:** Cửa sổ khí tượng ERA5 được đồng bộ động theo chuỗi thời gian thực tế của dữ liệu chất lượng không khí.
+
+---
 
 ## 1. Giới thiệu
 
-Đề tài tập trung phân tích mức độ ô nhiễm không khí tại **Hà Nội** dựa trên dữ liệu PM2.5 và các yếu tố khí tượng theo thời gian.
+Đề tài tập trung nghiên cứu và phân tích chuyên sâu biến thiên nồng độ bụi mịn $\text{PM}_{2.5}$ và mối liên hệ với các yếu tố khí tượng bề mặt tại khu vực **Hà Nội** theo chuỗi thời gian, tuân thủ phương pháp luận khoa học dữ liệu **CRISP-DM**.
 
-Mục tiêu chính là tìm ra các **xu hướng, thời điểm và giai đoạn có mức độ ô nhiễm cao/thấp**, từ đó hiểu rõ hơn sự thay đổi của chất lượng không khí theo giờ, ngày, tháng và mùa.
-
-Dataset được sử dụng là **Hanoi Air Quality (PM2.5) + Weather Data 2024-2026** trên Kaggle. Dataset được mô tả là gồm các quan sát PM2.5 theo giờ cùng với các đặc trưng khí tượng. 
-
-Nguồn dữ liệu:
-- Kaggle: https://www.kaggle.com/datasets/diabolicfox/hanoi-air-quality-pm2-5-weather-data-2024-2026/data
+Mục tiêu chính là tìm ra các **quy luật chu kỳ thời gian đa tầng (theo giờ trong ngày, ngày trong tuần, tháng và mùa)**, kiểm định ý nghĩa thống kê của các khác biệt quan sát được, mô hình hóa quan hệ thống kê với thời tiết (OLS kèm chẩn đoán LINE), và phát triển mô hình cảnh báo sớm các đợt ô nhiễm nguy hại dựa trên giá trị tổng hợp 24 giờ tương thích quy chuẩn QCVN 05:2023/BTNMT mà không gây rò rỉ dữ liệu chuỗi thời gian.
 
 ---
 
 ## 2. Mục tiêu của project
 
-Project hướng tới các mục tiêu:
+Project hướng tới 7 mục tiêu cụ thể:
 
-1. Làm sạch và chuẩn bị dữ liệu để phân tích.
-2. Khám phá sự thay đổi của PM2.5 theo thời gian.
-3. Xác định các khoảng thời gian có mức PM2.5 cao hoặc thấp.
-4. Phân tích sự khác biệt về ô nhiễm giữa:
-   - Các giờ trong ngày.
-   - Các ngày trong tuần.
-   - Các tháng trong năm.
-   - Các mùa.
-5. Khảo sát mối quan hệ giữa PM2.5 và một số yếu tố thời tiết nếu dataset có đầy đủ dữ liệu.
-6. Trực quan hóa kết quả bằng các biểu đồ phù hợp.
-7. Đưa ra kết luận dựa trên dữ liệu thay vì chỉ dựa trên nhận xét trực quan.
+1. Thu thập, chuẩn hóa đa nguồn và bảo toàn dữ liệu thô theo chính sách ba tầng (`data/raw/` kèm SHA-256 trong `metadata.json`).
+2. Làm sạch tất định (xử lý missing ngụy trang, kẹt cảm biến, ràng buộc vật lý $\text{PM}_{2.5} \le \text{PM}_{10}$, cảnh báo độ ẩm cao $\text{RH} > 90\%$) và reindex chuỗi 1 giờ theo trạm quan trắc.
+3. Khám phá phân phối thực nghiệm 4 họ chỉ số thống kê (Location, Spread, Shape, Quantiles) và biến thiên thời gian đa tầng của $\text{PM}_{2.5}$.
+4. Kiểm định giả thuyết thống kê phi tham số có đối chứng (so sánh mùa, ngày làm việc vs cuối tuần, đối chiếu quy chuẩn), bắt buộc báo cáo bộ bốn: thống kê, $p$-value, Effect Size ($r_{rb}$) và 95% Bootstrap CI.
+5. Mô hình hóa mối liên hệ giữa $\text{PM}_{2.5}$ và các yếu tố khí tượng bề mặt qua hồi quy OLS, kiểm tra 4 giả định chẩn đoán LINE, VIF và Cook's distance, diễn giải hệ số $\beta$ phi nhân quả.
+6. Xây dựng pipeline phân loại cảnh báo sớm ô nhiễm vượt ngưỡng an toàn, xử lý mất cân bằng lớp và tối ưu hóa ngưỡng quyết định (Threshold tuning) theo mục tiêu vận hành bảo vệ sức khỏe cộng đồng (ưu tiên Recall và PR-AUC).
+7. Trực quan hóa ấn phẩm theo chuẩn Edward Tufte và William Cleveland (bộ 7 biểu đồ FIG-01 đến FIG-07, tiêu đề dạng kết luận rút ra từ dữ liệu).
 
 ---
 
-## 3. Dữ liệu
+## 3. Dữ liệu & Canonical Schema
 
 ### Biến chính
+**`pm25`** ($\mu\text{g/m}^3$) là biến mục tiêu cốt lõi của nghiên cứu, phản ánh nồng độ khối lượng bụi mịn trong điều kiện môi trường thực tế tại trạm đo.
 
-**PM2.5** là biến trung tâm của project, được sử dụng để biểu diễn nồng độ bụi mịn trong không khí.
+### Lược đồ chuẩn hóa Canonical Schema (11 trường dữ liệu):
+- **Định danh & Thời gian:** `timestamp` (`datetime64[ns, Asia/Ho_Chi_Minh]`), `station_id` (`string`), `location` (`string`).
+- **Chất lượng không khí:** `pm25` (`float64`, $\mu\text{g/m}^3$), `pm10` (`float64`, $\mu\text{g/m}^3$).
+- **Khí tượng bề mặt:** `temperature` ($^\circ\text{C}$), `relative_humidity` ($\%$), `wind_speed` ($\text{m/s}$), `wind_direction` (độ), `precipitation` ($\text{mm}$), `surface_pressure` ($\text{hPa}$).
 
-Các biến thời gian có thể được tạo thêm từ timestamp:
-
-- Year
-- Month
-- Day
-- Hour
-- Day of Week
-- Season
-
-Nếu dataset có các biến khí tượng phù hợp, có thể sử dụng thêm:
-
-- Temperature
-- Humidity
-- Wind Speed
-- Precipitation
-- Pressure
-- Các biến thời tiết khác có trong dataset
-
-> **Lưu ý:** PM2.5 không đồng nghĩa với AQI. PM2.5 là nồng độ của một loại chất ô nhiễm, trong khi AQI là một chỉ số được tính theo quy chuẩn/phương pháp cụ thể.
+> **Lưu ý về quy chuẩn & đơn vị:**
+> - $\text{PM}_{2.5}$ không đồng nghĩa với AQI. AQI được tính từ $\text{PM}_{2.5}$ và không được đưa vào tập đặc trưng để tránh rò rỉ dữ liệu (Target Leakage).
+> - Đơn vị canonical là $\mu\text{g/m}^3$ (thực tế môi trường). Giới hạn quy chuẩn QCVN 05:2023/BTNMT là $45\,\mu\text{g/Nm}^3$ (trung bình 24 giờ, áp dụng từ 01/01/2026; trước đó là $50\,\mu\text{g/Nm}^3$). Khi đối chiếu, cần tổng hợp chuỗi 24 giờ và kiểm tra tính tương thích đơn vị đo. Không áp trực tiếp ngưỡng 24h lên từng giờ đơn lẻ.
 
 ---
 
@@ -214,44 +202,52 @@ Dùng để quan sát mối quan hệ giữa PM2.5 và các biến thời tiết
 
 ## 7. Kết quả đầu ra dự kiến
 
-Sau khi hoàn thành project, nhóm có thể đưa ra:
+Theo chuẩn mực môn học INFO3020 và lộ trình tại [`docs/roadmap.md`](roadmap.md), sản phẩm bàn giao của đồ án bao gồm:
 
-- Xu hướng PM2.5 theo thời gian.
-- Các giờ có mức PM2.5 trung bình cao/thấp.
-- Các tháng hoặc mùa có mức ô nhiễm khác nhau.
-- Những giai đoạn xuất hiện PM2.5 tăng cao.
-- Mối quan hệ giữa PM2.5 và các yếu tố thời tiết.
-- Các biểu đồ trực quan giúp giải thích kết quả.
+- Bộ dữ liệu sạch đóng băng lưu Snappy Parquet `data/processed/air_pollution_final.parquet` kèm `data/raw/metadata.json` ghi nhận xuất xứ và mã băm SHA-256.
+- Từ điển dữ liệu chuẩn hóa (`docs/data_dictionary.md`) và Nhật ký làm sạch (`docs/cleaning_log.md`).
+- Báo cáo phân tích chất lượng 6 chiều (`docs/data_quality_audit.md`).
+- Báo cáo thống kê mô tả 4 họ chỉ số (`reports/statistical_profile.csv`) và kiểm định giả thuyết phi tham số bộ bốn (Thống kê, $p$-value, Effect Size $r_{rb}$, 95% Bootstrap CI).
+- Bộ 7 biểu đồ ấn phẩm giải thích chuẩn Tufte/Cleveland (`figures/FIG-01.png` đến `FIG-07.png`, 300 DPI).
+- Mô hình hồi quy OLS kèm báo cáo chẩn đoán 4 giả định LINE trên phần dư và diễn giải hệ số $\beta$ phi nhân quả.
+- Mô hình phân loại cảnh báo sớm ô nhiễm với đường cong PR và tối ưu ngưỡng quyết định trên tập Train/Val, kiểm chứng độc lập trên Test.
+- Báo cáo Giữa kỳ (`reports/midterm_report.pdf`), Báo cáo Cuối kỳ SCQA (`reports/final_report.pdf`), Datasheet for Dataset (`docs/datasheet.md`), và Model Card 1 trang (`docs/model_card.md`).
 
-**Không đưa ra kết luận trước khi phân tích dữ liệu thực tế.** Các nhận xét cuối cùng phải dựa trên kết quả tính toán từ dataset.
-
----
-
-## 8. Công cụ dự kiến
-
-Project có thể được thực hiện bằng:
-
-- **Python**
-- **Pandas** — xử lý dữ liệu
-- **NumPy** — tính toán
-- **Matplotlib** — trực quan hóa
-- **Seaborn** — biểu đồ thống kê
-- **Jupyter Notebook / Google Colab** — môi trường thực hiện
+**Không đưa ra kết luận trước khi phân tích dữ liệu thực tế.** Mọi nhận xét và kết luận khoa học phải dựa trên bằng chứng định lượng kiểm chứng được từ mã nguồn và dữ liệu thực tế.
 
 ---
 
-## 9. Phạm vi project
+## 8. Công cụ & Tech Stack Chuẩn Mực
 
-Project tập trung vào **phân tích dữ liệu và tìm hiểu xu hướng ô nhiễm theo thời gian**.
+Project được thực hiện hoàn toàn bằng môi trường mã nguồn mở tái lập:
 
-Dự báo PM2.5 bằng các mô hình Machine Learning hoặc Time Series như ARIMA/LSTM **không phải phần bắt buộc của giai đoạn này** và chỉ nên bổ sung nếu môn học yêu cầu hoặc nhóm muốn mở rộng project.
+- **Ngôn ngữ:** Python 3.10+
+- **Thao tác & Lưu trữ:** Pandas, NumPy, PyArrow (định dạng Snappy Parquet).
+- **Trực quan hóa:** Matplotlib (hướng đối tượng `fig, ax`), Seaborn.
+- **Thống kê & Suy luận:** SciPy (`scipy.stats`), Statsmodels (`statsmodels.api`, `statsmodels.tsa`).
+- **Học máy & Pipeline:** Scikit-Learn (`sklearn.pipeline`, `sklearn.compose`, `sklearn.ensemble`).
+- **Kiểm thử & CI:** Python `unittest`, GitHub Actions (`.github/workflows/ci.yml`).
+- **Môi trường thực thi:** Jupyter Notebook (`notebooks/`), module hóa trong `src/`.
+
+---
+
+## 9. Phạm vi Đồ án (Project Scope)
+
+- **Thuộc phạm vi:**
+  - Thu thập, làm sạch tất định và quản trị xuất xứ dữ liệu thời gian thực tế tại Hà Nội.
+  - Phân tích khám phá (EDA) chuỗi thời gian đa tầng (giờ, ngày, tháng, mùa).
+  - Kiểm định giả thuyết phi tham số đối chứng có Effect Size và Bootstrap CI.
+  - Hồi quy tuyến tính giải thích OLS kèm kiểm định 4 giả định LINE và kiểm soát đa cộng tuyến VIF.
+  - Phân loại cảnh báo sớm nguy cơ ô nhiễm vượt ngưỡng an toàn, tối ưu hóa ngưỡng vận hành theo Recall và PR-AUC.
+- **Ngoài phạm vi (Prohibited / Out of Scope):**
+  - ❌ Deep Learning (LSTM, GRU, Transformers): Không thuộc phạm vi INFO3020; là mô hình hộp đen làm mất tính giải trình thống kê.
+  - ❌ Apache Spark / Hadoop: Tập dữ liệu quan trắc chuỗi giờ có quy mô $\approx 5 - 20\text{ MB}$, Pandas và Parquet xử lý tối ưu trong vài mili-giây; sử dụng Spark là over-engineering.
+  - ❌ Thử nghiệm can thiệp A/B (RCT): Bài toán mang bản chất nghiên cứu quan sát tự nhiên.
 
 ---
 
 ## 10. Kết luận định hướng
 
-Thông qua dữ liệu PM2.5 theo giờ kết hợp với dữ liệu thời tiết, project hướng tới việc biến dữ liệu thô thành những thông tin dễ hiểu về **mức độ và xu hướng ô nhiễm không khí tại Hà Nội theo thời gian**.
+Thông qua việc kết hợp dữ liệu quan trắc nồng độ $\text{PM}_{2.5}$ theo giờ và dữ liệu khí tượng bề mặt ERA5 được đồng bộ hóa thời gian động, dự án áp dụng phương pháp luận CRISP-DM chặt chẽ để trả lời câu hỏi cốt lõi:
 
-Trọng tâm của project là:
-
-> **“Ô nhiễm không khí thay đổi như thế nào theo thời gian và những yếu tố nào có thể liên quan đến sự thay đổi đó?”**
+> **“Nồng độ bụi mịn $\text{PM}_{2.5}$ tại Hà Nội biến động theo những quy luật chu kỳ thời gian nào, chịu sự liên hệ ra sao bởi các yếu tố khí tượng bề mặt, và làm thế nào để xây dựng mô hình cảnh báo sớm các đợt ô nhiễm vượt ngưỡng an toàn mà không vi phạm rò rỉ dữ liệu?”**

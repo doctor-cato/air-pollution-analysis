@@ -189,7 +189,7 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 | **Datatype** | `float64` |
 | **Transformation** | Open-Meteo trả về trực tiếp đơn vị $^\circ\text{C}$; ép kiểu `float64`; kiểm tra giới hạn vật lý tự nhiên ($0^\circ\text{C} \le T \le 50^\circ\text{C}$). (Nếu dùng NOAA ISD fallback: lấy phần số và chia 10). |
 | **Source Origin** | Nguồn chính: Open-Meteo Historical Weather API (ERA5 Reanalysis) – phê duyệt tại Issue #19. Nguồn dự phòng (Fallback): NOAA ISD 48820. |
-| **Missingness/Availability** | Biến thời tiết chính; kết quả profiling thực tế: **0/17,544 khuyết (0.00% missing)** trong toàn bộ 2023–2024. |
+| **Missingness/Availability** | Biến thời tiết chính; kết quả profiling ban đầu (khung 2023–2024): **0/17,544 khuyết (0.00% missing)**. Khi chạy thực tế theo cơ chế Dynamic Temporal Synchronization (khung trạm OpenAQ 4946811 từ 03/07/2025 đến 15/07/2026), tập dữ liệu thu nhận **9,072 giờ đầy đủ (0/9,072 khuyết, 0.00% missing)**. |
 
 #### 7. `relative_humidity`
 | Thuộc tính | Đặc tả chi tiết |
@@ -201,7 +201,7 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 | **Datatype** | `float64` |
 | **Transformation** | Open-Meteo trả về trực tiếp thang $\%$; ép kiểu `float64`; kiểm tra giới hạn vật lý $0\% \le \text{RH} \le 100\%$. |
 | **Source Origin** | Nguồn chính: Open-Meteo Historical Weather API (ERA5 Reanalysis) – phê duyệt tại Issue #19. |
-| **Missingness/Availability** | Biến thời tiết chính; profiling thực tế: **0.00% missing** (17,544/17,544 giờ đầy đủ). |
+| **Missingness/Availability** | Biến thời tiết chính; profiling ban đầu (khung 2023–2024): **0.00% missing** (17,544/17,544 giờ). Khung chạy thực tế Dynamic Temporal Synchronization: **0.00% missing** (9,072/9,072 giờ đầy đủ). |
 
 #### 8. `wind_speed`
 | Thuộc tính | Đặc tả chi tiết |
@@ -213,7 +213,7 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 | **Datatype** | `float64` |
 | **Transformation** | API được truy vấn kèm tham số `&wind_speed_unit=ms` để nhận trực tiếp $\text{m/s}$; ép kiểu `float64`; kiểm tra điều kiện không âm ($\ge 0\,\text{m/s}$). |
 | **Source Origin** | Nguồn chính: Open-Meteo Historical Weather API (ERA5 Reanalysis) – phê duyệt tại Issue #19. |
-| **Missingness/Availability** | Biến thời tiết chính; profiling thực tế: **0.00% missing** (17,544/17,544 giờ đầy đủ). |
+| **Missingness/Availability** | Biến thời tiết chính; profiling ban đầu (khung 2023–2024): **0.00% missing** (17,544/17,544 giờ). Khung chạy thực tế Dynamic Temporal Synchronization: **0.00% missing** (9,072/9,072 giờ đầy đủ). |
 
 #### 9. `wind_direction`
 | Thuộc tính | Đặc tả chi tiết |
@@ -225,7 +225,7 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 | **Datatype** | `float64` |
 | **Transformation** | Chuẩn hóa modulo 360 độ; ép kiểu `float64`. |
 | **Source Origin** | Nguồn chính: Open-Meteo Historical Weather API (ERA5 Reanalysis) – phê duyệt tại Issue #19. |
-| **Missingness/Availability** | Biến thời tiết; profiling thực tế: **0.00% missing** (17,544/17,544 giờ đầy đủ). |
+| **Missingness/Availability** | Biến thời tiết; profiling ban đầu (khung 2023–2024): **0.00% missing** (17,544/17,544 giờ). Khung chạy thực tế Dynamic Temporal Synchronization: **0.00% missing** (9,072/9,072 giờ đầy đủ). |
 
 #### 10. `precipitation`
 | Thuộc tính | Đặc tả chi tiết |
@@ -237,7 +237,7 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 | **Datatype** | `float64` |
 | **Transformation** | Ép kiểu `float64`; kiểm tra điều kiện không âm ($\ge 0.0\,\text{mm}$). |
 | **Source Origin** | Nguồn chính: Open-Meteo Historical Weather API (ERA5 Reanalysis) – phê duyệt tại Issue #19. |
-| **Missingness/Availability** | Biến thời tiết; profiling thực tế: **0.00% missing** (17,544/17,544 giờ đầy đủ). |
+| **Missingness/Availability** | Biến thời tiết; profiling ban đầu (khung 2023–2024): **0.00% missing** (17,544/17,544 giờ). Khung chạy thực tế Dynamic Temporal Synchronization: **0.00% missing** (9,072/9,072 giờ đầy đủ). |
 
 #### 11. `surface_pressure`
 | Thuộc tính | Đặc tả chi tiết |
@@ -249,7 +249,7 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 | **Datatype** | `float64` |
 | **Transformation** | Open-Meteo trả về trực tiếp đơn vị $\text{hPa}$; ép kiểu `float64`; kiểm tra dải áp suất bề mặt thực tế ($950 - 1050\,\text{hPa}$). |
 | **Source Origin** | Nguồn chính: Open-Meteo Historical Weather API (ERA5 Reanalysis) – phê duyệt tại Issue #19. |
-| **Missingness/Availability** | Biến thời tiết; profiling thực tế: **0.00% missing** (17,544/17,544 giờ đầy đủ). |
+| **Missingness/Availability** | Biến thời tiết; profiling ban đầu (khung 2023–2024): **0.00% missing** (17,544/17,544 giờ). Khung chạy thực tế Dynamic Temporal Synchronization: **0.00% missing** (9,072/9,072 giờ đầy đủ). |
 
 ---
 
@@ -315,10 +315,12 @@ Tại Issue #19, 6 nhà cung cấp dữ liệu đã được thẩm định th�
 
 ## 7. Nguyên Tắc Biến Đổi & Chuẩn Hóa Đơn Vị (Transformation Principles)
 
-Khi triển khai các module adapter trong `src/data_loader.py` (tại Issue #3 và #4), các kỹ sư dữ liệu phải tuân thủ nghiêm ngặt các nguyên tắc biến đổi sau:
+Khi triển khai các module adapter trong `src/data_collection.py` (tại Issue #3 và #4) cũng như các loader kế tiếp (`src/data_loader.py`), các kỹ sư dữ liệu phải tuân thủ nghiêm ngặt các nguyên tắc biến đổi sau:
 
-1. **Bảo toàn dữ liệu gốc (Raw Immutability):**
-   - Dữ liệu tải về từ API hoặc file gốc được lưu trữ nguyên vẹn ở chế độ chỉ đọc trong `data/raw/`. Mọi phép biến đổi chỉ diễn ra trên bộ nhớ (RAM) thông qua script và xuất ra `data/interim/` hoặc `data/processed/`.
+1. **Chính sách dữ liệu thô ba tầng (Three-tier Raw Data Policy - Mục 3.2 Roadmap):**
+   - **Tầng A (Lưu trữ độc lập):** Dữ liệu thô tải về từ API hoặc nguồn ngoài được lưu trữ nguyên bản payload trong thư mục `data/raw/` (JSON/Parquet).
+   - **Tầng B (Bảo toàn & Băm kiểm tra):** Không chỉnh sửa nội dung tệp thô bằng tay; mã băm SHA-256 được tính toán và ghi nhận trong `data/raw/metadata.json` để kiểm toán tính toàn vẹn độc lập. Mọi phép làm sạch và chuẩn hóa chỉ diễn ra trên bộ nhớ thông qua mã nguồn xác định và xuất ra `data/processed/` (hoặc `data/interim/`).
+   - **Tầng C (Quản lý phiên bản Git):** Thư mục `data/raw/` chứa các tệp dữ liệu thô dung lượng lớn được loại trừ khỏi Git qua `.gitignore` (`data/raw/*.json`, `data/raw/*.parquet`), cho phép tái tạo độc lập qua pipeline nạp mà không làm phình repository.
 2. **Quy tắc chuyển đổi đơn vị đo (Unit Conversion Formulas):**
    - *Nhiệt độ:* 
      $$T_{^\circ\text{C}} = T_K - 273.15$$

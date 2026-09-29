@@ -36,33 +36,39 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 > **Phân định rõ ràng giữa mã nguồn hiện có và kế hoạch tương lai:**  
 > Dự án đang ở giai đoạn **Milestone 1 (Thiết lập dự án, khảo sát nguồn & thu thập dữ liệu — Tuần 01–02)**. Đã hoàn tất phần thu thập và chuẩn hóa dữ liệu. Toàn bộ các phân tích thống kê, mô hình học máy và các giai đoạn kiểm toán/làm sạch phía sau vẫn là kế hoạch đặc tả trong [`docs/roadmap.md`](docs/roadmap.md) và **chưa được hiện thực hóa**.
 
-### 2.1. Đã triển khai (Milestone 1)
+### 2.1. Hiện trạng Triển khai (Milestone 1)
+
+> [!IMPORTANT]
+> **Trạng thái Milestone 1 sau review:** **4/5 issue DONE, 1/5 issue IN PROGRESS.**
+> - **Issue #1, #2, #19, #3:** Đã hoàn tất và nghiệm thu (**DONE**).
+> - **Issue #4:** Đã hiện thực hóa đầy đủ trên nhánh với 39/39 unit test đạt chuẩn; PR #26 đang mở chờ merge vào `main` (**IN PROGRESS**).
+> - Toàn bộ các phân tích thống kê nâng cao, mô hình học máy và pipeline tiền xử lý chống rò rỉ phía sau thuộc Milestone 2–6 và **chưa bắt đầu**.
 
 **Tuần 01 — Thiết lập dự án & Canonical Schema**
-- [x] Thiết lập khung cây thư mục chuẩn mực theo vòng đời CRISP-DM.
-- [x] Cấu hình file `.gitignore` nghiêm ngặt, cách ly dữ liệu thô, cache nhị phân, môi trường ảo và thông tin xác thực.
-- [x] Tạo file `requirements.txt` cố định phiên bản tương thích với Python 3.10+ (hỗ trợ pre-built wheels cho Windows/Linux/macOS).
-- [x] Xây dựng notebook `notebooks/00_environment_test.ipynb` kiểm thử tự động toàn bộ thư viện cốt lõi, kiểm tra I/O Parquet, Matplotlib và Scikit-Learn Pipeline.
-- [x] Biên soạn tài liệu `README.md` tiếng Việt với cam kết liêm chính học thuật và hướng dẫn tái lập.
+- [x] Thiết lập khung cây thư mục chuẩn mực theo vòng đời CRISP-DM [Issue #1].
+- [x] Cấu hình file `.gitignore` nghiêm ngặt, cách ly dữ liệu thô, cache nhị phân, môi trường ảo và thông tin xác thực [Issue #1].
+- [x] Tạo file `requirements.txt` cố định phiên bản tương thích với Python 3.10+ (hỗ trợ pre-built wheels cho Windows/Linux/macOS) [Issue #1].
+- [x] Xây dựng notebook `notebooks/00_environment_test.ipynb` kiểm thử tự động toàn bộ thư viện cốt lõi, kiểm tra I/O Parquet, Matplotlib và Scikit-Learn Pipeline [Issue #1].
+- [x] Biên soạn tài liệu `README.md` tiếng Việt với cam kết liêm chính học thuật và hướng dẫn tái lập [Issue #1].
 - [x] Xác lập Câu hỏi nghiên cứu mục tiêu và 4 câu hỏi thành phần SQ1–SQ4 đảm bảo tính trung lập khoa học ([`docs/research_questions.md`](docs/research_questions.md)) [Issue #2].
 - [x] Xây dựng Từ điển dữ liệu chuẩn hóa trung lập nguồn Canonical Data Schema với 11 trường dữ liệu và 8 thuộc tính chuẩn hóa ([`docs/data_dictionary.md`](docs/data_dictionary.md)) [Issue #2].
 
 **Tuần 02 — Thẩm định nguồn & thu thập dữ liệu**
 - [x] Khảo sát hồ sơ đa nguồn, kiểm chứng phạm vi địa lý Hà Nội và độ bao phủ thời gian thực tế; ban hành quyết định nguồn theo ma trận đa tiêu chí ([`docs/source_profiling_decision.md`](docs/source_profiling_decision.md)) [Issue #19].
-- [x] Pipeline thu thập & chuẩn hóa dữ liệu chất lượng không khí từ OpenAQ (AWS S3 public bucket, `locationid=4946811`), giữ nguyên đơn vị quan trắc `(station_id, timestamp)` [Issue #3].
+- [x] Pipeline thu thập & chuẩn hóa dữ liệu chất lượng không khí từ OpenAQ (AWS S3 public bucket, `locationid=4946811` - 556 Nguyễn Văn Cừ, Long Biên, Hà Nội), giữ nguyên đơn vị quan trắc `(station_id, timestamp)` [Issue #3].
+- [x] Hiện thực hóa `AirNowDOSAdapter` (`VN002_HANOI_US_EMBASSY`, Met One BAM-1020) trong `src/data_collection.py` sẵn sàng cho dữ liệu lịch sử khi có tệp thô [Issue #3].
 - [x] Pipeline thu thập & chuẩn hóa 6 biến khí tượng từ Open-Meteo ERA5 Reanalysis, đồng bộ động dải thời gian với chuỗi quan trắc chất lượng không khí [Issue #4].
 - [x] Lưu payload thô dưới `data/raw/` khi pipeline chạy, kèm `metadata.json` ghi nhận xuất xứ, tham số truy vấn, mã băm SHA-256 và giấy phép (theo [chính sách dữ liệu thô ba tầng](docs/roadmap.md#32-cổng-quyết-định-nguồn-dữ-liệu-issue-19-as-source-selection-gate)) [Issue #3, #4].
-- [x] Bộ unit test tất định cho pipeline thu thập (`tests/test_data_collection.py`) và pipeline kiểm định tự động bằng GitHub Actions (`.github/workflows/ci.yml`).
+- [x] Bộ 39 unit tests tất định cho pipeline thu thập (`tests/test_data_collection.py`) và pipeline kiểm định tự động bằng GitHub Actions (`.github/workflows/ci.yml`).
 
 > [!NOTE]
 > **Về dữ liệu thô:** tệp thô tải từ API **không được Git-track** — đây là chính sách kho dữ liệu của repository, không phải thiếu sót. Tính toàn vẹn được kiểm chứng bằng mã băm SHA-256 ghi trong `data/raw/metadata.json`. Xem [Mục 3.2 của roadmap](docs/roadmap.md#32-cổng-quyết-định-nguồn-dữ-liệu-issue-19-as-source-selection-gate).
 
 ### 2.2. Kế hoạch thực hiện tiếp theo (Theo `docs/roadmap.md`)
-- **Tuần 03–05:** Kiểm toán 6 chiều chất lượng dữ liệu ([Issue #5]), làm sạch tất định và lập cleaning log ([Issue #6]), tích hợp dữ liệu, đóng băng tập dữ liệu và đóng gói Pipeline chống rò rỉ sang định dạng Parquet ([Issue #7]). *(Chưa bắt đầu)*.
-- **Tuần 03–05:** Kiểm toán 6 chiều chất lượng dữ liệu, làm sạch logic vật lý, nội suy chuỗi thời gian có kiểm soát, tích hợp dữ liệu và đóng gói Pipeline chống rò rỉ dữ liệu sang định dạng Parquet.
-- **Tuần 06–08:** Phân tích khám phá dữ liệu (EDA), tính toán 4 họ chỉ số thống kê, thiết kế 7 biểu đồ ấn phẩm giải thích theo nguyên tắc Tufte/Cleveland, hoàn thành Báo cáo Giữa kỳ.
-- **Tuần 09–11:** Thực hiện kiểm định giả thuyết phi tham số, xây dựng mô hình hồi quy OLS (chẩn đoán LINE), phát triển mô hình phân loại cảnh báo ô nhiễm với điều chỉnh ngưỡng quyết định (*Threshold tuning*).
-- **Tuần 12–15:** Đánh giá định kiến dữ liệu (*Bias Audit*), lập Datasheet for Dataset, Model Card 1 trang, hoàn thiện mã nguồn và bảo vệ đồ án cuối kỳ.
+- **Tuần 03–05 (Milestone 2):** Kiểm toán 6 chiều chất lượng dữ liệu ([Issue #5]), làm sạch tất định và lập cleaning log ([Issue #6]), tích hợp dữ liệu, đóng băng tập dữ liệu, phân chia chuỗi thời gian tuyến tính và đóng gói Pipeline chống rò rỉ sang định dạng Parquet ([Issue #7]). *(Chưa bắt đầu)*.
+- **Tuần 06–08 (Milestone 3):** Phân tích khám phá dữ liệu (EDA), tính toán 4 họ chỉ số thống kê, thiết kế 7 biểu đồ ấn phẩm giải thích theo nguyên tắc Tufte/Cleveland, hoàn thành Báo cáo Giữa kỳ ([Issue #8, #9, #10]).
+- **Tuần 09–11 (Milestone 4):** Thực hiện kiểm định giả thuyết phi tham số, xây dựng mô hình hồi quy OLS (chẩn đoán LINE), phát triển mô hình phân loại cảnh báo ô nhiễm với điều chỉnh ngưỡng quyết định (*Threshold tuning*) ([Issue #11, #12, #13]).
+- **Tuần 12–15 (Milestones 5 & 6):** Đánh giá định kiến dữ liệu (*Bias Audit*), đo đạc tài nguyên vs Spark, lập Datasheet for Dataset, Model Card 1 trang, hoàn thiện mã nguồn và bảo vệ đồ án cuối kỳ ([Issue #14, #15, #16, #17]).
 
 ---
 
@@ -70,27 +76,38 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 
 ```text
 air-pollution-analysis/
+├── .github/
+│   └── workflows/
+│       └── ci.yml                      # Pipeline CI GitHub Actions (syntax, unittests, smoke test)
 ├── .gitignore                          # Quy tắc loại trừ dữ liệu thô, cache, môi trường ảo
 ├── CONTRIBUTING.md                     # Hướng dẫn đóng góp, quy trình Git và chuẩn mã nguồn
 ├── LICENSE                             # Giấy phép mã nguồn mở MIT
 ├── README.md                           # Tài liệu tổng quan, hướng dẫn thiết lập và quản trị
 ├── requirements.txt                    # Danh sách thư viện phụ thuộc tương thích Python 3.10+
 ├── data/
-│   ├── raw/                            # DỮ LIỆU GỐC (giữ nguyên trạng, không sửa tay, không Git-track)
+│   ├── raw/                            # Dữ liệu gốc lưu khi chạy pipeline (không Git-track)
+│   │   ├── metadata.json               # Xuất xứ, tham số truy vấn, mã băm SHA-256, bản quyền
 │   │   └── .gitkeep
-│   ├── interim/                        # Dữ liệu trung gian sau kiểm toán và tiền xử lý
+│   ├── interim/                        # Dữ liệu trung gian canonical Parquet sau nạp & chuẩn hóa
 │   │   └── .gitkeep
-│   └── processed/                      # Dữ liệu sạch hoàn chỉnh lưu định dạng Parquet
+│   └── processed/                      # Dữ liệu sạch hoàn chỉnh đóng băng lưu Parquet
 │       └── .gitkeep
 ├── docs/
-│   ├── roadmap.md                      # Lộ trình và đặc tả yêu cầu chi tiết 15 tuần
-│   ├── ROADMAP_INFO3020_Air_Pollution.md
+│   ├── roadmap.md                      # Lộ trình và đặc tả yêu cầu chi tiết 15 tuần (Authoritative Plan)
+│   ├── ROADMAP_INFO3020_Air_Pollution.md # Bản sao tham chiếu đề cương gốc (Đã thay thế một phần)
 │   ├── research_questions.md           # Câu hỏi nghiên cứu & khung phân tích SQ1–SQ4 [Issue #2]
-│   └── data_dictionary.md              # Từ điển dữ liệu chuẩn hóa Canonical Schema [Issue #2]
+│   ├── data_dictionary.md              # Từ điển dữ liệu chuẩn hóa Canonical Schema [Issue #2]
+│   ├── source_profiling.md             # Mục lục tài liệu thẩm định hồ sơ đa nguồn [Issue #19]
+│   ├── source_profiling_decision.md    # Báo cáo thẩm định & quyết định cổng nguồn dữ liệu [Issue #19]
+│   └── air_quality_project_overview.md # Tài liệu tổng quan định hướng đề tài
 ├── notebooks/
-│   └── 00_environment_test.ipynb       # Notebook kiểm thử môi trường và nạp thư viện
+│   ├── 00_environment_test.ipynb       # Notebook kiểm thử môi trường và nạp thư viện [Issue #1]
+│   └── 01_data_collection.ipynb        # Thực thi pipeline thu thập & kiểm định dữ liệu [Issue #3, #4]
 ├── src/
-│   └── __init__.py                     # Package chứa các module mã nguồn Python tái sử dụng
+│   ├── __init__.py
+│   └── data_collection.py              # Adapter OpenAQ, Open-Meteo, AirNow và validation [Issue #3, #4]
+├── tests/
+│   └── test_data_collection.py         # 39 unit tests kiểm thử pipeline thu thập và validation [Issue #4]
 ├── figures/                            # Thư mục lưu biểu đồ xuất bản chất lượng cao (300 DPI)
 │   └── .gitkeep
 └── reports/                            # Báo cáo giữa kỳ và báo cáo tổng kết đồ án
@@ -130,20 +147,44 @@ air-pollution-analysis/
    pip install -r requirements.txt
    ```
 
-4. **Kiểm chứng môi trường bằng Notebook tự động:**
+4. **Kiểm chứng môi trường bằng Notebook tự động (Smoke Test):**
    ```bash
    jupyter nbconvert --to notebook --execute notebooks/00_environment_test.ipynb
    ```
-   Nếu lệnh chạy với mã thoát `0` và hiển thị thông báo `ALL ENVIRONMENT TESTS PASSED`, môi trường đã sẵn sàng phục vụ các giai đoạn tiếp theo.
+   Nếu lệnh chạy với mã thoát `0` và hiển thị thông báo `ALL ENVIRONMENT TESTS PASSED`, môi trường đã sẵn sàng.
+
+5. **Chạy bộ Unit Tests kiểm định toàn trình (39 tests tất định):**
+   ```bash
+   python -m unittest discover tests -v
+   ```
+   Toàn bộ 39 unit tests trong `tests/test_data_collection.py` kiểm chứng adapter OpenAQ, Open-Meteo, AirNow, logic lọc địa lý Hà Nội, kiểm định chất lượng khí tượng `validate_weather_canonical()`, và cơ chế đồng bộ thời gian động. Các test này độc lập với mạng Internet và thực thi tất định trong CI.
+
+6. **Kiểm tra cú pháp và quy chuẩn diff:**
+   ```bash
+   python -m compileall -q src tests
+   python -c "import src.data_collection"
+   git diff --check
+   ```
+
+7. **Thực thi Pipeline Thu thập & Chuẩn hóa Dữ liệu (Chạy cục bộ):**
+   ```bash
+   # Chạy script pipeline độc lập:
+   python src/data_collection.py
+
+   # Hoặc thực thi notebook thu thập và trực quan hóa:
+   jupyter nbconvert --to notebook --execute notebooks/01_data_collection.ipynb
+   ```
+   > [!NOTE]
+   > `notebooks/01_data_collection.ipynb` và `run_collection_pipeline()` tải dữ liệu thực tế từ AWS S3 OpenAQ và Open-Meteo API, ghi payload vào `data/raw/` và xuất Parquet vào `data/interim/`. Do phụ thuộc vào kết nối mạng bên ngoài và tệp thô không commit vào Git, quy trình này **chỉ chạy cục bộ** và cố ý không đưa vào CI GitHub Actions tự động (`.github/workflows/ci.yml`).
 
 ---
 
 ## 5. Nguyên tắc Quản trị Dữ liệu & Kỹ thuật
 
-- **Toàn vẹn dữ liệu thô (`data/raw/`):** Tuyệt đối không chỉnh sửa thủ công tệp dữ liệu thô. Mọi thao tác làm sạch và biến đổi phải được thực thi hoàn toàn bằng code có tính tái lập và lưu vào `data/interim/` hoặc `data/processed/`. Tính toàn vẹn được kiểm chứng bằng mã băm SHA-256 ghi trong `data/raw/metadata.json`; xem [chính sách dữ liệu thô ba tầng](docs/roadmap.md#32-cổng-quyết-định-nguồn-dữ-liệu-issue-19-as-source-selection-gate).
-- **Ngăn chặn rò rỉ dữ liệu chuỗi thời gian (*Temporal Leakage*):** Phân chia tập huấn luyện/kiểm tra phải thực hiện nghiêm ngặt theo trình tự thời gian. Điểm cắt phải được luận giải từ đặc tính thực nghiệm của tập dữ liệu đã đóng băng (độ bao phủ, kích thước mẫu, tính liên tục, tính đại diện theo mùa), **không** đặt trước một tỷ lệ hay năm cố định. Tuyệt đối không sử dụng phép chia ngẫu nhiên.
+- **Bảo toàn dữ liệu thô theo chính sách ba tầng (`data/raw/`):** Tệp thô tải từ API được ghi nguyên trạng dưới `data/raw/` trong quá trình pipeline thực thi (không sửa đổi thủ công, không chuyển đổi giá trị trước khi lưu). Mã băm SHA-256 của từng tệp được lưu trong `data/raw/metadata.json` để kiểm chứng toàn vẹn độc lập. Tệp thô không commit vào Git theo chính sách kho dữ liệu (`.gitignore`: `data/raw/*.json`, `data/raw/*.parquet`) và có thể tái tạo từ nguồn qua pipeline (xem [Mục 3.2 của roadmap](docs/roadmap.md#32-cổng-quyết-định-nguồn-dữ-liệu-issue-19-as-source-selection-gate)).
+- **Ngăn chặn rò rỉ dữ liệu chuỗi thời gian (*Temporal Leakage*):** Phân chia tập huấn luyện/kiểm tra phải thực hiện nghiêm ngặt theo trình tự thời gian ($T_{\text{train}} < T_{\text{test}}$). Điểm cắt phải được luận giải từ đặc tính thực nghiệm của tập dữ liệu đã đóng băng (độ bao phủ, kích thước mẫu, tính liên tục, tính đại diện theo mùa), **không** đặt trước một tỷ lệ hay năm cố định. Tuyệt đối không sử dụng phép chia ngẫu nhiên.
 - **Tính tiền định (*Determinism*):** Tất cả các phép biến đổi ngẫu nhiên, mô hình hóa đều phải cố định hạt giống số ngẫu nhiên (`random_state=42`). Mọi notebook phải thực thi tuần tự, trơn tru qua thao tác **Restart Kernel & Run All**.
-- **Không đưa công nghệ quá mức cần thiết (*No Over-Engineering*):** Với quy mô dữ liệu quan trắc thực tế hiện tại (chuỗi khí tượng 9.072 mốc giờ, chuỗi chất lượng không khí 8.022 bản ghi; tổng dung lượng dưới $20\text{ MB}$), dự án sử dụng định dạng cột nén Snappy **Parquet** và thư viện **Pandas**. Tuyệt đối không sử dụng Apache Spark hay Deep Learning phức tạp làm mất đi tính minh bạch và khả năng giải trình thống kê.
+- **Không đưa công nghệ quá mức cần thiết (*No Over-Engineering*):** Với quy mô dữ liệu quan trắc thực tế hiện tại (chuỗi khí tượng 9.072 mốc giờ, chuỗi chất lượng không khí 8.022 bản ghi, tập giao thoa thời gian 8.022 mốc giờ; tổng dung lượng dưới $20\text{ MB}$), dự án sử dụng định dạng cột nén Snappy **Parquet** và thư viện **Pandas**. Tuyệt đối không sử dụng Apache Spark hay Deep Learning phức tạp làm mất đi tính minh bạch và khả năng giải trình thống kê.
 
 ---
 

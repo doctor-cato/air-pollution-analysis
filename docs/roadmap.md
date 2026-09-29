@@ -803,8 +803,8 @@ Chi tiết luồng thực hiện:
   2. Kiểm chứng phạm vi địa lý: thiết lập bộ lọc không gian bảo đảm toàn bộ quan sát thuộc địa giới hành chính Hà Nội [Issue #19].
   3. Đo đạc mốc thời gian thực tế (min, max, latest timestamp có thể truy xuất); không áp đặt khung thời gian cứng [Issue #19].
   4. Lập ma trận so sánh đa tiêu chí và ban hành quyết định phân định vai trò nguồn (Primary, Secondary, Reference, Fallback, Unused) trong `docs/source_profiling_decision.md` [Issue #19].
-  5. Xây dựng adapter thu thập/chuẩn hóa dữ liệu chất lượng không khí trong `src/data_loader.py` theo nguồn ô nhiễm được duyệt, bảo toàn đơn vị quan trắc `(station_id, timestamp)` [Issue #3].
-  6. Xây dựng adapter thu thập/chuẩn hóa dữ liệu khí tượng bề mặt trong `src/data_loader.py` theo nguồn khí tượng được duyệt [Issue #4].
+  5. Xây dựng adapter thu thập/chuẩn hóa dữ liệu chất lượng không khí trong `src/data_collection.py` theo nguồn ô nhiễm được duyệt, bảo toàn đơn vị quan trắc `(station_id, timestamp)` [Issue #3].
+  6. Xây dựng adapter thu thập/chuẩn hóa dữ liệu khí tượng bề mặt trong `src/data_collection.py` theo nguồn khí tượng được duyệt [Issue #4].
   7. Ghi payload thô nguyên bản vào `data/raw/` khi pipeline thực thi và cập nhật metadata, xuất xứ, mã băm SHA-256, giấy phép vào `data/raw/metadata.json` theo **Chính sách ba tầng** tại Mục 3.2 [Issue #3, #4].
   8. Kiểm thử quy trình nạp và ánh xạ Canonical Schema qua notebook `notebooks/01_data_collection.ipynb`.
 * **Deliverables:** Tài liệu `docs/source_profiling_decision.md`, module adapter trong `src/`, notebook `01_data_collection.ipynb`, tệp dữ liệu thô trong `data/raw/`, `data/raw/metadata.json`.

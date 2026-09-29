@@ -7,8 +7,8 @@ Tài liệu này quy định quy trình làm việc, chuẩn mực mã nguồn v
 ## 1. Nguyên Tắc Cốt Lõi
 
 - **Tuân thủ vòng đời CRISP-DM:** Mọi thay đổi phải bám sát mục tiêu nghiên cứu và tiến độ môn học trong [`docs/roadmap.md`](docs/roadmap.md).
-- **Dữ liệu thô bất biến:** Thư mục `data/raw/` là chỉ đọc. Tuyệt đối không chỉnh sửa thủ công hoặc commit file dữ liệu thô vào Git.
-- **Không rò rỉ dữ liệu chuỗi thời gian:** Chia tập dữ liệu (train/test split) bắt buộc theo thứ tự thời gian. Không dùng random split. Transformer phải fit trên tập train.
+- **Bảo toàn dữ liệu thô (`data/raw/`):** Tệp payload từ API được lưu nguyên trạng (không chỉnh sửa thủ công, không chuyển đổi trước khi lưu); mã băm SHA-256 được ghi vào `data/raw/metadata.json` để kiểm chứng toàn vẹn; tệp thô không commit vào Git theo chính sách kho dữ liệu ba tầng (xem [`docs/roadmap.md`](docs/roadmap.md#32-cổng-quyết-định-nguồn-dữ-liệu-issue-19-as-source-selection-gate)).
+- **Không rò rỉ dữ liệu chuỗi thời gian:** Chia tập dữ liệu (train/test split) bắt buộc theo thứ tự thời gian tuyến tính ($T_{\text{train}} < T_{\text{test}}$). Không dùng random split. Transformer/Scaler phải fit strictly trên tập train.
 - **Tính tái lập:** Cố định `random_state=42`. Toàn bộ notebook phải chạy thành công từ đầu đến cuối qua **Restart Kernel & Run All**.
 - **Không over-engineering:** Không đưa vào các công nghệ không cần thiết (Apache Spark, Deep Learning hộp đen) khi dữ liệu có thể xử lý hiệu quả bằng Pandas và Parquet.
 
@@ -39,15 +39,18 @@ git checkout -b <loại-nhánh>/<mã-issue>-<mô-tả-ngắn>
 - `refactor/`: Tái cấu trúc mã nguồn (chuyển code từ notebook sang `src/`).
 - `chore/`: Cấu hình môi trường, cập nhật dependencies, bảo trì Git.
 
-*Ví dụ:* `feat/issue-2-data-dictionary`, `fix/issue-6-timestamp-reindex`.
+*Ví dụ:* `feat/issue-3-air-quality-pipeline`, `fix/issue-4-weather-temporal-sync`.
 
 ### Bước 2: Phát triển và kiểm thử cục bộ
 - Viết code sạch, tuân thủ PEP 8.
-- Chuyển các hàm tái sử dụng hoặc có độ dài > 30 dòng từ notebook vào thư mục `src/`.
-- Kiểm tra tính tương thích của môi trường:
+- Chuyển các hàm tái sử dụng hoặc có độ dài > 30 dòng từ notebook vào thư mục `src/` (ví dụ `src/data_collection.py`).
+- Kiểm tra tính tương thích của môi trường và chạy kiểm thử tự động cục bộ:
   ```bash
   pip install -r requirements.txt
-  jupyter nbconvert --to notebook --execute notebooks/<tên_notebook>.ipynb
+  python -m compileall -q src tests
+  python -c "import src.data_collection"
+  python -m unittest discover tests -v
+  jupyter nbconvert --to notebook --execute notebooks/00_environment_test.ipynb
   ```
 
 ### Bước 3: Quy ước Commit
@@ -74,11 +77,13 @@ Trước khi commit và push, luôn chạy:
 ```bash
 git status
 git diff
+git diff --check
 ```
 **Kiểm tra an toàn:**
 - [ ] Không có file dữ liệu thô (`.json`, `.csv`, `.parquet` trong `data/raw/`).
 - [ ] Không có secret, API key hay file `.env`.
 - [ ] Không có cache (`__pycache__/`, `.ipynb_checkpoints/`) hay môi trường ảo.
+- [ ] `git diff --check` không phát sinh lỗi khoảng trắng hay định dạng thừa.
 
 ### Bước 5: Mở Pull Request (PR)
 1. Đẩy nhánh lên GitHub:
@@ -86,12 +91,18 @@ git diff
    git push -u origin <tên-nhánh>
    ```
 2. Tạo Pull Request trỏ vào nhánh `main`.
-3. Điền mô tả PR:
+3. CI pipeline (`.github/workflows/ci.yml`) sẽ tự động chạy kiểm tra:
+   - Cú pháp Python (`compileall`)
+   - Import sanity check
+   - Toàn bộ unit tests (`unittest discover tests`)
+   - Smoke test với `notebooks/00_environment_test.ipynb`
+   - Kiểm tra `git diff --check`
+4. Điền mô tả PR:
    - Tóm tắt mục đích và nội dung thay đổi.
-   - Dẫn chiếu Issue liên quan (ví dụ: `Closes #2`).
+   - Dẫn chiếu Issue liên quan (ví dụ: `Closes #4`).
    - Bằng chứng kiểm chứng (lệnh test và kết quả thực tế).
-4. Nhận review từ thành viên nhóm, chỉnh sửa nếu cần trước khi merge.
-5. Merge bằng phương thức **Squash and merge** để giữ lịch sử nhánh `main` gọn gàng.
+5. Nhận review từ thành viên nhóm, chỉnh sửa nếu cần trước khi merge.
+6. Merge bằng phương thức **Squash and merge** để giữ lịch sử nhánh `main` gọn gàng.
 
 ---
 
@@ -99,3 +110,4 @@ git diff
 
 - **Ngôn ngữ:** Toàn bộ tài liệu báo cáo, từ điển dữ liệu, nhật ký làm sạch và giải thích biểu đồ viết bằng **Tiếng Việt**.
 - **Trung thực:** Báo cáo đúng hiện trạng triển khai, không tuyên bố hoàn thành các hạng mục còn nằm trong lộ trình kế hoạch.
+- **Tính nhất quán:** Mọi tài liệu phải đồng bộ với các quyết định đã được duyệt tại Milestone 1 (Issue #19, #3, #4), bao gồm: lược đồ Canonical Schema, trạm chuẩn 4946811, điểm lưới ERA5, múi giờ `Asia/Ho_Chi_Minh` (UTC+7), và cơ chế đồng bộ thời gian động.

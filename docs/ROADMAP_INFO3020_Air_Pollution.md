@@ -2,7 +2,7 @@
 
 > **Đề tài:** Phân tích mức độ ô nhiễm không khí theo thời gian (*Time-Series Air Pollution Analysis*)  
 > **Căn cứ tài liệu:** Toàn bộ slide bài giảng và tóm tắt chuyên đề từ **Week 1 đến Week 12**, Đề cương 15 tuần của ThS. Phạm Ngọc Đông – Khoa CNTT & Truyền thông, Trường Đại học CMC.  
-> **Nơi lưu trữ:** `C:\Users\Admin\Documents\code_workspace\khdl\ROADMAP_INFO3020_Air_Pollution.md`
+> **Nơi lưu trữ:** `docs/ROADMAP_INFO3020_Air_Pollution.md`
 
 > [!WARNING]
 > **Tài liệu tham chiếu gốc — ĐÃ BỊ THAY THẾ MỘT PHẦN.** Đây là bản chép nguyên văn đề cương
