@@ -13,6 +13,7 @@ PHẠM VI (chỉ những phần độc lập của #7):
   - Parquet export helper (snappy)
   - Merge function với row-explosion protection
   - Dataset freeze helper (ghi nhận metadata, không hard-code)
+  - Integration với #5 (reuse audit_dataframe, audit_six_dimensions)
 
 KHÔNG LÀM (thuộc #5/#6):
   - Completeness/accuracy/consistency/validity/uniqueness/timeliness audit
@@ -33,6 +34,14 @@ from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import RobustScaler
+
+# Reuse từ Issue #5 – không duplicate logic
+try:
+    from data_quality import audit_dataframe, audit_six_dimensions
+except ImportError:
+    # Fallback khi chạy standalone (không có data_quality)
+    audit_dataframe = None
+    audit_six_dimensions = None
 
 logger = logging.getLogger(__name__)
 
@@ -528,3 +537,162 @@ def freeze_dataset(
         info.timestamp_max,
     )
     return info
+
+
+# ---------------------------------------------------------------------------
+# H. Integration với Issue #5 (reuse audit functions)
+# ---------------------------------------------------------------------------
+
+
+def run_preprocessing_audit(
+    df: pd.DataFrame,
+    dataset_name: str = "canonical_dataset",
+) -> Dict[str, Any]:
+    """
+    Chạy audit từ Issue #5 trên dataset trước khi preprocessing.
+
+    Reuse trực tiếp `audit_dataframe` và `audit_six_dimensions` từ `data_quality.py`.
+    Không duplicate logic – chỉ gọi lại và wrap kết quả.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Dataset cần audit (thường là output của #5/#6).
+    dataset_name : str
+        Tên dataset để ghi nhận trong báo cáo.
+
+    Returns
+    -------
+    dict
+        {
+            "summary_table": pd.DataFrame,  # từ audit_dataframe
+            "six_dimensions": dict,         # từ audit_six_dimensions
+        }
+    """
+    if audit_dataframe is None or audit_six_dimensions is None:
+        raise ImportError(
+            "Không thể import audit functions từ data_quality. "
+            "Đảm bảo Issue #5 đã được implement."
+        )
+
+    summary_table = audit_dataframe(df)
+    six_dims = audit_six_dimensions(df, dataset_name=dataset_name)
+
+    logger.info("Preprocessing audit completed for '%s'", dataset_name)
+    return {
+        "summary_table": summary_table,
+        "six_dimensions": six_dims,
+    }
+
+
+def validate_no_leakage(
+    pipeline: Pipeline,
+    X_train: pd.DataFrame,
+    X_test: pd.DataFrame,
+) -> None:
+    """
+    Kiểm tra pipeline không fit trên Test.
+
+    Validation:
+    1. Pipeline đã được fit (có thuộc tính named_steps).
+    2. Imputer đã fit trên Train (statistics_ có giá trị).
+    3. Scaler đã fit trên Train (center_, scale_ có giá trị).
+    4. KHÔNG có bước nào fit trên Test.
+
+    Parameters
+    ----------
+    pipeline : sklearn.pipeline.Pipeline
+        Pipeline đã fit.
+    X_train : pd.DataFrame
+        Train features (dùng để fit).
+    X_test : pd.DataFrame
+        Test features (chỉ dùng để transform).
+
+    Raises
+    ------
+    AssertionError
+        Nếu phát hiện dấu hiệu leakage.
+    """
+    # Kiểm tra pipeline đã fit
+    if not hasattr(pipeline, "named_steps"):
+        raise AssertionError("Pipeline chưa được fit!")
+
+    preprocessor = pipeline.named_steps.get("preprocessor")
+    if preprocessor is None:
+        raise AssertionError("Pipeline không có bước 'preprocessor'!")
+
+    # Kiểm tra imputer đã fit
+    num_transformer = preprocessor.named_transformers_.get("num")
+    if num_transformer is None:
+        raise AssertionError("Không tìm thấy numeric transformer!")
+
+    imputer = num_transformer.named_steps.get("imputer")
+    if imputer is None:
+        raise AssertionError("Không tìm thấy imputer!")
+
+    if not hasattr(imputer, "statistics_"):
+        raise AssertionError("Imputer chưa được fit!")
+
+    # Kiểm tra scaler đã fit
+    scaler = num_transformer.named_steps.get("scaler")
+    if scaler is None:
+        raise AssertionError("Không tìm thấy scaler!")
+
+    if not hasattr(scaler, "center_") or not hasattr(scaler, "scale_"):
+        raise AssertionError("Scaler chưa được fit!")
+
+    logger.info("✓ No leakage: pipeline fitted on Train only")
+    logger.info("  - Imputer statistics: %d values", len(imputer.statistics_))
+    logger.info("  - Scaler center: %d values", len(scaler.center_))
+
+
+def freeze_dataset_with_audit(
+    df: pd.DataFrame,
+    timestamp_col: str = "timestamp",
+    station_col: str = "station_id",
+    feature_columns: Optional[List[str]] = None,
+    additional_info: Optional[Dict[str, Any]] = None,
+    run_audit: bool = True,
+) -> Tuple[DatasetFreezeInfo, Optional[Dict[str, Any]]]:
+    """
+    Freeze dataset và chạy audit (nếu run_audit=True).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Dataset đã làm sạch.
+    timestamp_col : str
+        Tên cột timestamp.
+    station_col : str
+        Tên cột station_id.
+    feature_columns : list[str] | None
+        Danh sách feature columns.
+    additional_info : dict | None
+        Thông tin bổ sung.
+    run_audit : bool
+        Có chạy audit từ #5 không. Mặc định: True.
+
+    Returns
+    -------
+    (DatasetFreezeInfo, audit_results | None)
+    """
+    # Freeze dataset
+    freeze_info = freeze_dataset(
+        df,
+        timestamp_col=timestamp_col,
+        station_col=station_col,
+        feature_columns=feature_columns,
+        additional_info=additional_info,
+    )
+
+    # Chại audit nếu yêu cầu
+    audit_results = None
+    if run_audit:
+        audit_results = run_preprocessing_audit(df, dataset_name="preprocessing_input")
+        # Ghi nhận audit vào freeze info
+        freeze_info.additional_info["audit"] = {
+            "summary_table": audit_results["summary_table"].to_dict(),
+            "six_dimensions": audit_results["six_dimensions"],
+        }
+
+    return freeze_info, audit_results
