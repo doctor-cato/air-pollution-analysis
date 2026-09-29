@@ -124,8 +124,9 @@ class TestDataQualityFramework(unittest.TestCase):
 
     def test_8_zero_stuck_value_detection(self):
         """8. Kiểm thử phát hiện và đo lường chuỗi giá trị 0 kéo dài (prolonged zeros)."""
-        # Tạo chuỗi zero 7 giờ liên tiếp
+        # Tạo chuỗi zero 7 giờ liên tiếp cùng 1 trạm
         df_zero = self.df_sample.copy()
+        df_zero["station_id"] = "STATION_A"
         df_zero["pm25"] = [10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 50.0, 60.0]
 
         zeros_audit = audit_prolonged_zeros(df_zero, target_cols=["pm25"], threshold_hours=6)
@@ -136,6 +137,48 @@ class TestDataQualityFramework(unittest.TestCase):
         self.assertEqual(pm25_zero_res["prolonged_zero_streaks_count"], 1)
         self.assertEqual(len(pm25_zero_res["prolonged_streaks_details"]), 1)
         self.assertEqual(pm25_zero_res["prolonged_streaks_details"][0]["streak_length_hours"], 7)
+
+    def test_8b_prolonged_zeros_timestamp_gap_aware(self):
+        """8b. Regression Test: Kiểm thử khoảng trống thời gian (gap) phải ngắt streak số 0."""
+        # 4 số 0 liên tiếp, sau đó nhảy cóc 3 giờ, rồi tiếp tục 4 số 0
+        ts_gap = [
+            pd.Timestamp("2025-01-01 00:00:00+07:00"),
+            pd.Timestamp("2025-01-01 01:00:00+07:00"),
+            pd.Timestamp("2025-01-01 02:00:00+07:00"),
+            pd.Timestamp("2025-01-01 03:00:00+07:00"),
+            # Gap: nhảy thẳng từ 03:00 sang 06:00 (cách 3 giờ)
+            pd.Timestamp("2025-01-01 06:00:00+07:00"),
+            pd.Timestamp("2025-01-01 07:00:00+07:00"),
+            pd.Timestamp("2025-01-01 08:00:00+07:00"),
+            pd.Timestamp("2025-01-01 09:00:00+07:00"),
+        ]
+        df_gap = pd.DataFrame({
+            "timestamp": ts_gap,
+            "pm25": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        })
+        # Ngưỡng 6 giờ: Mỗi đoạn chỉ dài 4 giờ -> không được coi là prolonged zero (>=6h)
+        zeros_audit = audit_prolonged_zeros(df_gap, target_cols=["pm25"], threshold_hours=6)
+        res = zeros_audit["pm25"]
+
+        self.assertEqual(res["zero_count"], 8)
+        self.assertEqual(res["longest_zero_streak_hours"], 4)  # Gap làm đứt streak
+        self.assertEqual(res["prolonged_zero_streaks_count"], 0)
+
+    def test_8c_prolonged_zeros_multi_station_aware(self):
+        """8c. Regression Test: Kiểm thử không nối chuỗi zero giữa các trạm khác nhau."""
+        ts_common = pd.date_range("2025-01-01 00:00:00+07:00", periods=5, freq="h")
+        # Station A có 4 số 0, Station B có 4 số 0 (cả 2 đều < 6h)
+        df_multi = pd.DataFrame({
+            "timestamp": list(ts_common) + list(ts_common),
+            "station_id": ["STATION_A"] * 5 + ["STATION_B"] * 5,
+            "pm25": [0.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 20.0],
+        })
+        zeros_audit = audit_prolonged_zeros(df_multi, target_cols=["pm25"], threshold_hours=6)
+        res = zeros_audit["pm25"]
+
+        self.assertEqual(res["zero_count"], 8)
+        self.assertEqual(res["longest_zero_streak_hours"], 4)  # Không bị cộng dồn thành 8
+        self.assertEqual(res["prolonged_zero_streaks_count"], 0)
 
     def test_9_timestamp_statistics_and_sampling_intervals(self):
         """9. Kiểm thử tính toán dải thời gian min/max và khoảng cách lấy mẫu (sampling interval)."""
@@ -158,23 +201,72 @@ class TestDataQualityFramework(unittest.TestCase):
         self.assertEqual(profile["max_interval_hours"], 3.0)
         self.assertEqual(profile["irregular_intervals_count"], 1)
 
-    def test_10_missingness_by_station_and_time(self):
-        """10. Kiểm thử phân tích hình thái khuyết thiếu theo trạm và thời gian."""
-        # Phân tích diurnal và missing blocks
-        patterns = analyze_missingness_patterns(self.df_sample, target_col="pm25")
+    def test_10_missingness_by_station_and_source(self):
+        """10. Kiểm thử phân tích hình thái khuyết thiếu theo trạm và nguồn (reusable metrics)."""
+        df_with_source = self.df_sample.copy()
+        df_with_source["source"] = ["OpenAQ"] * 5 + ["AirNow"] * 5
+
+        patterns = analyze_missingness_patterns(df_with_source, target_col="pm25")
 
         self.assertEqual(patterns["target_variable"], "pm25")
         self.assertEqual(patterns["missing_count"], 2)
         self.assertEqual(patterns["missing_pct"], 20.0)
+
+        # Kiểm tra reusable metrics theo station_id
+        self.assertIn("missingness_by_station", patterns)
+        stn_res = patterns["missingness_by_station"]
+        self.assertEqual(stn_res["STATION_A"]["missing_count"], 1)
+        self.assertEqual(stn_res["STATION_A"]["total_records"], 5)
+        self.assertEqual(stn_res["STATION_A"]["missing_pct"], 20.0)
+        self.assertEqual(stn_res["STATION_B"]["missing_count"], 1)
+
+        # Kiểm tra reusable metrics theo source
+        self.assertIn("missingness_by_source", patterns)
+        src_res = patterns["missingness_by_source"]
+        self.assertEqual(src_res["OpenAQ"]["missing_count"], 1)
+        self.assertEqual(src_res["OpenAQ"]["total_records"], 5)
+        self.assertEqual(src_res["AirNow"]["missing_count"], 1)
+
+        # Kiểm tra chẩn đoán Rubin
         self.assertIn("rubin_diagnosis", patterns)
+        self.assertIn("mcar_diagnostic_hypothesis", patterns["rubin_diagnosis"])
         self.assertIn("uncertainty_declaration", patterns["rubin_diagnosis"])
 
-        # Kiểm tra missing theo station
-        by_station = self.df_sample.groupby("station_id")["pm25"].agg(
-            total="count", missing=lambda x: x.isna().sum()
-        )
-        self.assertEqual(by_station.loc["STATION_A", "missing"], 1)
-        self.assertEqual(by_station.loc["STATION_B", "missing"], 1)
+    def test_11_diurnal_denominator_exactness(self):
+        """11. Regression Test: Kiểm thử mẫu số tính missingness theo giờ dùng total records (size), không dùng count."""
+        # Tạo 2 dòng cùng vào lúc 08:00: 1 dòng quan sát (pm25=50), 1 dòng missing (pm25=NaN)
+        ts_hr = [
+            pd.Timestamp("2025-01-01 08:00:00+07:00"),
+            pd.Timestamp("2025-01-02 08:00:00+07:00"),
+        ]
+        df_hr = pd.DataFrame({"timestamp": ts_hr, "pm25": [50.0, np.nan]})
+        patterns = analyze_missingness_patterns(df_hr, target_col="pm25")
+
+        diurnal = patterns["diurnal_missing_pattern"]
+        self.assertIn(8, diurnal)
+        # Mẫu số đúng là 2 (tổng số bản ghi), không phải 1 (số giá trị non-null)
+        self.assertEqual(diurnal[8]["total"], 2)
+        self.assertEqual(diurnal[8]["missing"], 1)
+        self.assertEqual(diurnal[8]["missing_pct"], 50.0)
+
+    def test_12_aerodynamic_inversion_strict_and_tolerance(self):
+        """12. Regression Test: Kiểm thử ràng buộc PM2.5 <= PM10 cả vi phạm chặt và dung sai sai số đo."""
+        df_aero = pd.DataFrame({
+            "pm25": [20.0, 31.0, 35.0],
+            "pm10": [25.0, 30.0, 30.0],
+            # Cặp 1: 20 <= 25 (Hợp lệ)
+            # Cặp 2: 31 > 30 (Vi phạm strict, nhưng <= 30 + 2.0 -> trong ngưỡng dung sai)
+            # Cặp 3: 35 > 30 (Vi phạm strict và vượt cả ngưỡng 30 + 2.0)
+        })
+        dims = audit_six_dimensions(df_aero)
+        aero = dims["dimensions"]["accuracy"]["aerodynamic_subset_inversion"]
+
+        self.assertEqual(aero["evaluated_pairs"], 3)
+        self.assertEqual(aero["strict_inversion_count"], 2)
+        self.assertEqual(round(aero["strict_inversion_pct"], 2), 66.67)
+        self.assertEqual(aero["tolerance_inversion_count"], 1)
+        self.assertEqual(round(aero["tolerance_inversion_pct"], 2), 33.33)
+        self.assertIn("documentation_rationale", aero)
 
 
 if __name__ == "__main__":
