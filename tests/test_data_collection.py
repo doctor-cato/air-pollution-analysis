@@ -18,11 +18,16 @@ from src.data_collection import (
     HANOI_BBOX,
     STATION_OPENAQ_HANOI,
     STATION_AIRNOW_HANOI,
+    WEATHER_CANONICAL_COLUMNS,
+    WEATHER_PHYSICAL_BOUNDS,
     clean_air_quality_values,
+    clean_weather_values,
     filter_hanoi_bounds,
     assert_canonical_within_hanoi,
     validate_canonical_uniqueness,
+    validate_weather_canonical,
     resolve_station_metadata,
+    OpenMeteoAdapter,
 )
 
 
@@ -240,6 +245,152 @@ class TestDataCollectionPipeline(unittest.TestCase):
 
         self.assertEqual(derived_start, "2025-07-03")
         self.assertEqual(derived_end, "2026-07-15")
+
+    def test_weather_canonical_schema_and_types(self):
+        """Kiểm thử chuẩn hóa Open-Meteo: Đủ 7 cột canonical, ép kiểu float64 và timezone Asia/Ho_Chi_Minh."""
+        mock_raw = {
+            "latitude": 21.0545,
+            "longitude": 105.8985,
+            "hourly": {
+                "time": ["2025-07-03T00:00", "2025-07-03T01:00"],
+                "temperature_2m": [25.5, 24.8],
+                "relative_humidity_2m": [80, 85],
+                "wind_speed_10m": [2.1, 1.8],
+                "wind_direction_10m": [120, 135],
+                "precipitation": [0.0, 1.2],
+                "surface_pressure": [1005.2, 1004.9],
+            },
+        }
+        adapter = OpenMeteoAdapter()
+        df_canonical = adapter.to_canonical(mock_raw)
+
+        # 1. Kiểm tra danh mục cột
+        self.assertEqual(list(df_canonical.columns), WEATHER_CANONICAL_COLUMNS)
+
+        # 2. Kiểm tra timezone
+        self.assertIsNotNone(df_canonical["timestamp"].dt.tz)
+        self.assertEqual(str(df_canonical["timestamp"].dt.tz), "Asia/Ho_Chi_Minh")
+
+        # 3. Kiểm tra kiểu dữ liệu float64 cho 6 biến
+        for col in WEATHER_CANONICAL_COLUMNS[1:]:
+            self.assertEqual(df_canonical[col].dtype, np.float64, f"Cột {col} chưa được ép kiểu float64!")
+
+    def test_weather_validation_passes_valid_data(self):
+        """Kiểm thử validate_weather_canonical thành công đối với chuỗi giờ chuẩn."""
+        ts_range = pd.date_range("2025-07-03 00:00:00+07:00", periods=24, freq="h")
+        df_valid = pd.DataFrame({
+            "timestamp": ts_range,
+            "temperature": np.linspace(24.0, 32.0, 24),
+            "relative_humidity": np.linspace(70.0, 85.0, 24),
+            "wind_speed": np.linspace(1.5, 4.0, 24),
+            "wind_direction": np.linspace(90.0, 180.0, 24),
+            "precipitation": [0.0] * 20 + [2.5, 5.0, 1.0, 0.0],
+            "surface_pressure": np.linspace(1005.0, 1008.0, 24),
+        })
+
+        report = validate_weather_canonical(df_valid)
+        self.assertTrue(report["is_valid"])
+        self.assertTrue(report["is_continuous_hourly"])
+        self.assertEqual(report["gap_count"], 0)
+        self.assertEqual(report["total_records"], 24)
+
+    def test_weather_validation_detects_physical_bounds_violations(self):
+        """Kiểm thử phát hiện vi phạm giới hạn vật lý khí tượng và ném lỗi ValueError."""
+        ts_range = pd.date_range("2025-07-03 00:00:00+07:00", periods=3, freq="h")
+
+        # Nhiệt độ phi lý (65°C tại Hà Nội)
+        df_invalid_temp = pd.DataFrame({
+            "timestamp": ts_range,
+            "temperature": [25.0, 65.0, 28.0],
+            "relative_humidity": [80.0, 80.0, 80.0],
+            "wind_speed": [2.0, 2.0, 2.0],
+            "wind_direction": [100.0, 100.0, 100.0],
+            "precipitation": [0.0, 0.0, 0.0],
+            "surface_pressure": [1005.0, 1005.0, 1005.0],
+        })
+        with self.assertRaises(ValueError) as ctx:
+            validate_weather_canonical(df_invalid_temp)
+        self.assertIn("vi phạm giới hạn vật lý", str(ctx.exception))
+
+    def test_weather_validation_detects_duplicate_timestamps(self):
+        """Kiểm thử validate_weather_canonical phát hiện trùng lặp timestamp."""
+        ts = pd.Timestamp("2025-07-03 10:00:00+07:00")
+        df_dup = pd.DataFrame({
+            "timestamp": [ts, ts],
+            "temperature": [25.0, 26.0],
+            "relative_humidity": [80.0, 80.0],
+            "wind_speed": [2.0, 2.0],
+            "wind_direction": [100.0, 100.0],
+            "precipitation": [0.0, 0.0],
+            "surface_pressure": [1005.0, 1005.0],
+        })
+        with self.assertRaises(ValueError) as ctx:
+            validate_weather_canonical(df_dup)
+        self.assertIn("Data Quality Violation", str(ctx.exception))
+
+    def test_weather_validation_detects_temporal_gap(self):
+        """Kiểm thử phát hiện khoảng gián đoạn thời gian (> 1 giờ) trong chuỗi khí tượng."""
+        ts = [
+            pd.Timestamp("2025-07-03 00:00:00+07:00"),
+            pd.Timestamp("2025-07-03 01:00:00+07:00"),
+            pd.Timestamp("2025-07-03 04:00:00+07:00"),  # Nhảy cóc 3 giờ
+        ]
+        df_gap = pd.DataFrame({
+            "timestamp": ts,
+            "temperature": [25.0, 25.0, 26.0],
+            "relative_humidity": [80.0, 80.0, 80.0],
+            "wind_speed": [2.0, 2.0, 2.0],
+            "wind_direction": [100.0, 100.0, 100.0],
+            "precipitation": [0.0, 0.0, 0.0],
+            "surface_pressure": [1005.0, 1005.0, 1005.0],
+        })
+        report = validate_weather_canonical(df_gap, check_continuity=True)
+        self.assertFalse(report["is_continuous_hourly"])
+        self.assertEqual(report["gap_count"], 1)
+
+    def test_clean_weather_values_handles_disguised_missing_and_valid_zero(self):
+        """Kiểm thử clean_weather_values: bóc trần mã lỗi, xử lý giá trị âm, bảo toàn 0.0 hợp lệ."""
+        # Mã lỗi ngụy trang -> NaN
+        self.assertTrue(np.isnan(clean_weather_values(-999)))
+        self.assertTrue(np.isnan(clean_weather_values("-9999")))
+        self.assertTrue(np.isnan(clean_weather_values("invalid")))
+
+        # Giá trị âm phi vật lý -> NaN
+        self.assertTrue(np.isnan(clean_weather_values(-2.5, "wind_speed")))
+        self.assertTrue(np.isnan(clean_weather_values(-1.0, "precipitation")))
+        self.assertTrue(np.isnan(clean_weather_values(105.0, "relative_humidity")))
+
+        # Giá trị 0.0 hợp lệ -> giữ nguyên 0.0
+        val_rain = clean_weather_values(0.0, "precipitation")
+        self.assertEqual(val_rain, 0.0)
+        self.assertFalse(np.isnan(val_rain))
+
+        val_wind = clean_weather_values(0.0, "wind_speed")
+        self.assertEqual(val_wind, 0.0)
+        self.assertFalse(np.isnan(val_wind))
+
+        # Giá trị hợp lệ bình thường
+        self.assertEqual(clean_weather_values(28.5, "temperature"), 28.5)
+
+    def test_open_meteo_adapter_rejects_out_of_bounds_grid_coordinates(self):
+        """Kiểm thử OpenMeteoAdapter ném lỗi nếu tọa độ điểm lưới trả về nằm ngoài Bounding Box Hà Nội."""
+        mock_raw_out = {
+            "latitude": 35.1353,  # Albuquerque, NM
+            "longitude": -106.5847,
+            "hourly": {
+                "time": ["2025-07-03T00:00"],
+                "temperature_2m": [25.0],
+                "relative_humidity_2m": [80],
+                "wind_speed_10m": [2.0],
+                "wind_direction_10m": [100],
+                "precipitation": [0.0],
+                "surface_pressure": [1005.0],
+            },
+        }
+        adapter = OpenMeteoAdapter()
+        with self.assertRaises(AssertionError) as ctx:
+            adapter.to_canonical(mock_raw_out)
+        self.assertIn("nằm ngoài Bounding Box Hà Nội", str(ctx.exception))
 
 
 if __name__ == "__main__":

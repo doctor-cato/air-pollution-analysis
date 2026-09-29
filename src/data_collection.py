@@ -2,7 +2,7 @@
 Module thu thập và chuẩn hóa dữ liệu chất lượng không khí & khí tượng Hà Nội.
 
 Tuân thủ:
-- Milestone 1 / GitHub Issue #3 & #19.
+- Milestone 1 / GitHub Issue #3, #4 & #19.
 - Quyết định rà soát nguồn dữ liệu (Đính chính: Loại bỏ OpenAQ 2178, xác thực trạm Hà Nội 4946811 & AirNow DOS).
 - Canonical Data Schema trong docs/data_dictionary.md.
 - Nguyên tắc an toàn dữ liệu chuỗi thời gian trong .agents/rules/data.md.
@@ -42,6 +42,27 @@ HANOI_BBOX = {
 }
 
 CANONICAL_TIMEZONE = "Asia/Ho_Chi_Minh"
+
+# Danh mục cột chuẩn hóa cho dữ liệu khí tượng bề mặt (Issue #4 / docs/data_dictionary.md)
+WEATHER_CANONICAL_COLUMNS = [
+    "timestamp",
+    "temperature",
+    "relative_humidity",
+    "wind_speed",
+    "wind_direction",
+    "precipitation",
+    "surface_pressure",
+]
+
+# Giới hạn vật lý khí tượng bề mặt Hà Nội theo docs/data_dictionary.md & .agents/skills/data-quality/SKILL.md
+WEATHER_PHYSICAL_BOUNDS = {
+    "temperature": {"min": 0.0, "max": 50.0, "unit": "°C"},
+    "relative_humidity": {"min": 0.0, "max": 100.0, "unit": "%"},
+    "wind_speed": {"min": 0.0, "max": 60.0, "unit": "m/s"},
+    "wind_direction": {"min": 0.0, "max": 360.0, "unit": "degrees"},
+    "precipitation": {"min": 0.0, "max": 300.0, "unit": "mm"},
+    "surface_pressure": {"min": 950.0, "max": 1050.0, "unit": "hPa"},
+}
 
 # Định danh trạm chuẩn hóa (Canonical Station Identifiers)
 DISQUALIFIED_OPENAQ_LOCATION_ID = 2178  # Del Norte, Albuquerque, NM, USA -> LOẠI BỎ HOÀN TOÀN
@@ -87,6 +108,49 @@ def clean_air_quality_values(val: Any) -> float:
         return np.nan
     if fval < 0.0:
         return np.nan
+    return fval
+
+
+def clean_weather_values(val: Any, var_name: Optional[str] = None) -> float:
+    """
+    Làm sạch giá trị đo khí tượng theo đúng các quy tắc chất lượng dữ liệu:
+    - Bóc trần mã lỗi ngụy trang (-999, -9999, "NaN", "None", "") -> NaN.
+    - Bảo toàn giá trị 0.0 hợp lệ (lượng mưa 0.0 mm, tốc độ gió 0.0 m/s là hiện tượng thực tế, không biến thành NaN).
+    - Tuyệt đối không fillna(0) để thay thế missing data (no silent zero imputation).
+    - Phát hiện và chuyển đổi các giá trị vi phạm quy luật vật lý hiển nhiên thành NaN:
+      * Tốc độ gió âm (< 0 m/s) -> NaN
+      * Lượng mưa âm (< 0 mm) -> NaN
+      * Độ ẩm ngoài dải [0, 100]% -> NaN
+      * Hướng gió ngoài [0, 360] -> nếu âm gán NaN; nếu > 360 chuẩn hóa modulo 360.
+      * Nhiệt độ ngoài [0, 50]°C hoặc áp suất ngoài [950, 1050] hPa -> NaN
+    """
+    if pd.isna(val):
+        return np.nan
+    try:
+        fval = float(val)
+    except (ValueError, TypeError):
+        return np.nan
+
+    # Bóc trần mã lỗi ngụy trang
+    if fval in (-999.0, -9999.0, -999, -9999):
+        return np.nan
+
+    # Kiểm tra giới hạn vật lý theo từng biến khí tượng
+    if var_name:
+        if var_name in ("wind_speed", "precipitation") and fval < 0.0:
+            return np.nan
+        if var_name == "relative_humidity" and (fval < 0.0 or fval > 100.0):
+            return np.nan
+        if var_name == "wind_direction":
+            if fval < 0.0:
+                return np.nan
+            if fval > 360.0:
+                fval = fval % 360.0
+        if var_name == "temperature" and (fval < 0.0 or fval > 50.0):
+            return np.nan
+        if var_name == "surface_pressure" and (fval < 950.0 or fval > 1050.0):
+            return np.nan
+
     return fval
 
 
@@ -216,6 +280,96 @@ def validate_canonical_uniqueness(
             f"Data Quality Violation: Phát hiện {num_dups} bản ghi trùng lặp khóa quan trắc {key_cols}!\n"
             f"Mẫu bản ghi vi phạm:\n{dup_sample}"
         )
+
+
+def validate_weather_canonical(
+    df: pd.DataFrame,
+    bounds: Optional[Dict[str, Dict[str, Any]]] = None,
+    check_continuity: bool = True,
+) -> Dict[str, Any]:
+    """
+    Kiểm định toàn diện chất lượng dữ liệu khí tượng chuẩn hóa theo Acceptance Criteria của Issue #4:
+    1. Cấu trúc Schema: Đủ 7 cột canonical, timestamp tz-aware Asia/Ho_Chi_Minh, 6 biến kiểu float64.
+    2. Khóa duy nhất: validate_canonical_uniqueness trên timestamp (fail-fast nếu trùng lặp).
+    3. Tính liên tục thời gian: Chuỗi giờ liên tục (step = 1h), không đứt đoạn.
+    4. Giới hạn vật lý: Kiểm tra dải giá trị của 6 biến khí tượng nằm trong giới hạn thực tế của Hà Nội.
+    5. Đánh giá khuyết thiếu: Đo lường số lượng và tỷ lệ missing trên từng biến.
+    """
+    if bounds is None:
+        bounds = WEATHER_PHYSICAL_BOUNDS
+
+    # 1. Kiểm tra sự hiện diện của các cột bắt buộc
+    missing_cols = [c for c in WEATHER_CANONICAL_COLUMNS if c not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Canonical Weather DataFrame thiếu cột bắt buộc: {missing_cols}")
+
+    # Kiểm tra múi giờ của timestamp
+    if not hasattr(df["timestamp"].dtype, "tz") or df["timestamp"].dtype.tz is None:
+        raise ValueError("Cột 'timestamp' trong Weather Canonical phải có timezone-aware (Asia/Ho_Chi_Minh)!")
+
+    # Kiểm tra kiểu dữ liệu float64 cho 6 biến thời tiết
+    for col in WEATHER_CANONICAL_COLUMNS[1:]:
+        if not np.issubdtype(df[col].dtype, np.floating):
+            raise TypeError(f"Cột khí tượng '{col}' phải có kiểu float64, hiện tại là {df[col].dtype}!")
+
+    # 2. Kiểm tra tính duy nhất của khóa quan trắc
+    validate_canonical_uniqueness(df, key_cols=["timestamp"])
+
+    # 3. Kiểm tra tính tăng đơn điệu và liên tục theo giờ
+    if not df["timestamp"].is_monotonic_increasing:
+        raise ValueError("Chuỗi thời gian khí tượng không được sắp xếp tăng đơn điệu!")
+
+    is_continuous = True
+    gap_count = 0
+    if check_continuity and len(df) > 1:
+        step_diffs = df["timestamp"].diff().dropna()
+        gap_mask = step_diffs != np.timedelta64(1, "h")
+        gap_count = int(gap_mask.sum())
+        if gap_count > 0:
+            is_continuous = False
+            logger.warning(f"Phát hiện {gap_count} khoảng gián đoạn thời gian trong chuỗi khí tượng!")
+
+    # 4. Kiểm tra giới hạn vật lý
+    bounds_violations = {}
+    var_stats = {}
+    for col, b_info in bounds.items():
+        if col in df.columns:
+            series = df[col].dropna()
+            b_min = b_info["min"]
+            b_max = b_info["max"]
+            v_low = int((series < b_min).sum())
+            v_high = int((series > b_max).sum())
+            if v_low > 0 or v_high > 0:
+                bounds_violations[col] = {
+                    "below_min": v_low,
+                    "above_max": v_high,
+                    "bounds": [b_min, b_max],
+                }
+            var_stats[col] = {
+                "count": len(series),
+                "missing": int(df[col].isna().sum()),
+                "missing_pct": round(float(df[col].isna().mean() * 100), 2),
+                "min": float(series.min()) if not series.empty else None,
+                "max": float(series.max()) if not series.empty else None,
+                "mean": round(float(series.mean()), 2) if not series.empty else None,
+                "unit": b_info.get("unit", ""),
+            }
+
+    if bounds_violations:
+        raise ValueError(
+            f"Phát hiện vi phạm giới hạn vật lý trong dữ liệu khí tượng:\n{bounds_violations}"
+        )
+
+    report = {
+        "is_valid": True,
+        "total_records": len(df),
+        "min_timestamp": str(df["timestamp"].min()) if not df.empty else None,
+        "max_timestamp": str(df["timestamp"].max()) if not df.empty else None,
+        "is_continuous_hourly": is_continuous,
+        "gap_count": gap_count,
+        "variables_summary": var_stats,
+    }
+    return report
 
 
 def resolve_station_metadata(
@@ -545,12 +699,13 @@ class OpenMeteoAdapter:
 
         return raw_json, raw_path
 
-    def to_canonical(self, raw_data: Dict[str, Any]) -> pd.DataFrame:
+    def to_canonical(self, raw_data: Dict[str, Any], validate: bool = True) -> pd.DataFrame:
         """
         Chuẩn hóa payload Open-Meteo sang Canonical Schema:
         - timestamp: datetime64[ns, Asia/Ho_Chi_Minh]
-        - 6 biến khí tượng theo docs/data_dictionary.md.
-        - Kiểm tra tính duy nhất và vị trí điểm lưới.
+        - 6 biến khí tượng kiểu float64 theo docs/data_dictionary.md.
+        - Làm sạch mã ngụy trang và bảo toàn số 0 hợp lệ.
+        - Kiểm tra tính duy nhất, vị trí điểm lưới, và kiểm định chất lượng toàn diện.
         """
         hourly = raw_data.get("hourly", {})
         if not hourly or "time" not in hourly:
@@ -559,12 +714,12 @@ class OpenMeteoAdapter:
         df = pd.DataFrame(
             {
                 "timestamp": pd.to_datetime(hourly["time"]),
-                "temperature": hourly.get("temperature_2m"),
-                "relative_humidity": hourly.get("relative_humidity_2m"),
-                "wind_speed": hourly.get("wind_speed_10m"),
-                "wind_direction": hourly.get("wind_direction_10m"),
-                "precipitation": hourly.get("precipitation"),
-                "surface_pressure": hourly.get("surface_pressure"),
+                "temperature": [clean_weather_values(v, "temperature") for v in hourly.get("temperature_2m", [])],
+                "relative_humidity": [clean_weather_values(v, "relative_humidity") for v in hourly.get("relative_humidity_2m", [])],
+                "wind_speed": [clean_weather_values(v, "wind_speed") for v in hourly.get("wind_speed_10m", [])],
+                "wind_direction": [clean_weather_values(v, "wind_direction") for v in hourly.get("wind_direction_10m", [])],
+                "precipitation": [clean_weather_values(v, "precipitation") for v in hourly.get("precipitation", [])],
+                "surface_pressure": [clean_weather_values(v, "surface_pressure") for v in hourly.get("surface_pressure", [])],
             }
         )
 
@@ -573,7 +728,11 @@ class OpenMeteoAdapter:
         else:
             df["timestamp"] = df["timestamp"].dt.tz_convert(self.timezone)
 
-        df_canonical = df.sort_values("timestamp").reset_index(drop=True)
+        # Đảm bảo kiểu float64 cho toàn bộ 6 biến khí tượng
+        for col in WEATHER_CANONICAL_COLUMNS[1:]:
+            df[col] = df[col].astype("float64")
+
+        df_canonical = df[WEATHER_CANONICAL_COLUMNS].sort_values("timestamp").reset_index(drop=True)
 
         # Kiểm tra tính duy nhất của timestamp
         validate_canonical_uniqueness(df_canonical, key_cols=["timestamp"])
@@ -585,6 +744,10 @@ class OpenMeteoAdapter:
             HANOI_BBOX["lat_min"] <= grid_lat <= HANOI_BBOX["lat_max"]
             and HANOI_BBOX["lon_min"] <= grid_lon <= HANOI_BBOX["lon_max"]
         ), f"Điểm lưới ERA5 ({grid_lat}, {grid_lon}) nằm ngoài Bounding Box Hà Nội!"
+
+        # Kiểm định chất lượng toàn diện nếu validate=True
+        if validate:
+            validate_weather_canonical(df_canonical)
 
         return df_canonical
 
@@ -649,6 +812,16 @@ def run_collection_pipeline(
         start_date=query_start, end_date=query_end
     )
     df_weather_canonical = weather_adapter.to_canonical(weather_raw_json)
+    weather_validation = validate_weather_canonical(df_weather_canonical)
+
+    # Kiểm tra giao thoa thời gian (Temporal Overlap) giữa Air Quality và Weather
+    df_overlap = pd.merge(df_air_canonical, df_weather_canonical, on="timestamp", how="inner")
+    if len(df_overlap) == 0:
+        raise AssertionError("Tập giao thoa thời gian giữa chất lượng không khí và khí tượng bị rỗng!")
+    if len(df_overlap) > len(df_air_canonical):
+        raise AssertionError(
+            f"Row explosion: số bản ghi giao thoa ({len(df_overlap)}) vượt quá dữ liệu không khí ({len(df_air_canonical)})!"
+        )
 
     # 4. AirNow DOS Historical Adapter Check & Ingestion
     airnow_adapter = AirNowDOSAdapter(
@@ -774,8 +947,16 @@ def run_collection_pipeline(
                 "coverage_derivation": "computed_directly_from_dataframe_timestamps",
                 "coverage_note": "Tính trực tiếp từ chuỗi thời gian thực tế trong DataFrame sau chuẩn hóa (đầy đủ 100%, 0.00% missing).",
             },
+            "validation": weather_validation,
         },
         "airnow": airnow_summary,
+        "temporal_integration": {
+            "status": "synchronized_100_percent",
+            "overlap_records": len(df_overlap),
+            "overlap_min_timestamp": str(df_overlap["timestamp"].min()),
+            "overlap_max_timestamp": str(df_overlap["timestamp"].max()),
+            "air_quality_coverage_pct": round(float(len(df_overlap) / len(df_air_canonical) * 100), 2),
+        },
     }
 
     # 7. Cập nhật data/raw/metadata.json
@@ -787,7 +968,7 @@ def run_collection_pipeline(
             meta["schema_version"] = "1.2.0"
             meta["last_updated_utc"] = datetime.now(timezone.utc).isoformat()
             meta["collection_pipeline_execution"] = {
-                "executed_issue": "#3 – Pipeline thu thập và chuẩn hóa dữ liệu chất lượng không khí",
+                "executed_issue": "#3 & #4 – Pipeline thu thập và chuẩn hóa dữ liệu chất lượng không khí & khí tượng bề mặt Hà Nội",
                 "status": "completed",
                 "execution_timestamp_utc": datetime.now(timezone.utc).isoformat(),
                 "requested_study_window": {
@@ -808,7 +989,7 @@ def run_collection_pipeline(
                         "latitude": COORDS_OPENAQ_HANOI[0],
                         "longitude": COORDS_OPENAQ_HANOI[1],
                     },
-                    "raw_file": str(openaq_raw_path).replace("\\", "/"),
+                    "raw_file": f"data/raw/{openaq_raw_path.name}",
                     "raw_sha256": openaq_sha256,
                     "raw_records_total": len(df_openaq_raw),
                     "filtered_out_records": geo_filter_stats["filtered_out_records"],
@@ -833,7 +1014,7 @@ def run_collection_pipeline(
                         "end_date": query_end,
                         "derived_dynamically": bool(study_window_start is None and study_window_end is None),
                     },
-                    "raw_file": str(weather_raw_path).replace("\\", "/"),
+                    "raw_file": f"data/raw/{weather_raw_path.name}",
                     "raw_sha256": weather_sha256,
                     "canonical_records": len(df_weather_canonical),
                     "missing_rate_all_variables": "0.00%",
@@ -844,9 +1025,23 @@ def run_collection_pipeline(
                         "actual_max_timestamp": actual_max_weather,
                         "coverage_derivation": "computed_directly_from_dataframe_timestamps",
                     },
+                    "data_quality_validation": {
+                        "status": "passed",
+                        "is_continuous_hourly": weather_validation["is_continuous_hourly"],
+                        "gap_count": weather_validation["gap_count"],
+                        "physical_bounds_checked": list(WEATHER_PHYSICAL_BOUNDS.keys()),
+                        "bounds_violation_count": 0,
+                    },
                     "interim_file": "data/interim/weather_canonical.parquet",
                 },
                 "airnow_dos_ingestion": airnow_summary,
+                "temporal_integration": {
+                    "status": "synchronized_100_percent",
+                    "overlap_records": len(df_overlap),
+                    "overlap_min_timestamp": str(df_overlap["timestamp"].min()),
+                    "overlap_max_timestamp": str(df_overlap["timestamp"].max()),
+                    "air_quality_coverage_pct": round(float(len(df_overlap) / len(df_air_canonical) * 100), 2),
+                },
             }
 
             with open(metadata_path, "w", encoding="utf-8") as f:

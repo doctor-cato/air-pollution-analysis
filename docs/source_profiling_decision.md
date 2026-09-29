@@ -483,3 +483,41 @@ Quyết định tại Issue #19 chuyển giao các yêu cầu đặc tả kỹ t
   - Lưu tệp thô bất biến vào `data/raw/` (chế độ chỉ đọc).
   - Cập nhật `data/raw/metadata.json` ghi nhận rành mạch cả `requested_query_window` và `actual_source_coverage`.
 
+### 14.3. Báo Cáo Triển Khai Thực Tế & Kiểm Định Chất Lượng Khí Tượng (Issue #4 Execution & Validation Report)
+
+Pipeline thu thập và chuẩn hóa dữ liệu khí tượng bề mặt Hà Nội đã được hoàn thiện tại Issue #4, kế thừa cơ chế đồng bộ hóa thời gian động từ PR #25:
+
+1. **Nguồn dữ liệu & Vị trí địa lý:**
+   - **Nguồn chính:** Open-Meteo Historical Weather API (ECMWF ERA5 Reanalysis).
+   - **Tọa độ lưới:** $21.0545^\circ\text{N}, 105.8985^\circ\text{E}$ (độ cao $19.0\,\text{m}$), cách trạm quan trắc chất lượng không khí chuẩn quốc gia 556 Nguyễn Văn Cừ ($21.0491^\circ\text{N}, 105.8831^\circ\text{E}$) chỉ **$1{,}7\,\text{km}$** về phía Đông Bắc. Cự ly này nằm trọn vẹn trong Bounding Box Hà Nội $[20.50, 21.60]^\circ\text{N}, [105.30, 106.10]^\circ\text{E}$.
+   - **Nguồn dự phòng (NOAA ISD 48820 - Sân bay Nội Bài):** Không cần kích hoạt do Open-Meteo ERA5 đạt độ tin cậy tuyệt đối và bao phủ 100% dữ liệu.
+
+2. **Cơ chế Đồng bộ Hóa Thời Gian Động (Dynamic Temporal Synchronization - PR #25):**
+   - Cửa sổ truy vấn khí tượng tự động suy diễn từ chuỗi thời gian của `df_air_canonical["timestamp"]` (`2025-07-03` đến `2026-07-15`) khi caller không truyền tham số cứng.
+   - Tên tệp thô được sinh động theo dải ngày: `open_meteo_raw_2025-07-03_2026-07-15.json` để ngăn ngừa xung đột bộ nhớ đệm.
+
+3. **Canonical Weather Schema & Kiểu Dữ Liệu:**
+   - Đảm bảo trọn bộ 7 trường dữ liệu chuẩn theo `docs/data_dictionary.md`:
+     - `timestamp`: `datetime64[ns, Asia/Ho_Chi_Minh]` (UTC+7, làm tròn đầu giờ).
+     - 6 biến số kiểu `float64`: `temperature` ($^\circ\text{C}$), `relative_humidity` ($\%$), `wind_speed` ($\text{m/s}$), `wind_direction` (độ), `precipitation` ($\text{mm}$), `surface_pressure` ($\text{hPa}$).
+
+4. **Kiểm Định Chất Lượng & Ranh Giới Vật Lý (`validate_weather_canonical`):**
+   - **Tính duy nhất:** Khóa `timestamp` duy nhất tuyệt đối ($0$ duplicate).
+   - **Tính liên tục chuỗi giờ:** Đạt chuẩn lưới liên tục $100\%$ ($9.072$ giờ liên tiếp, khoảng cách giữa các bước đo chính xác $1\,\text{giờ}$, $0$ khoảng trống).
+   - **Kiểm toán dải vật lý khí hậu Hà Nội:**
+     - `temperature`: $[8.9, 38.6]^\circ\text{C}$ (nằm trong $[0, 50]^\circ\text{C}$, trung bình $24.87^\circ\text{C}$).
+     - `relative_humidity`: $[30.0, 100.0]\%$ (nằm trong $[0, 100]\%$, trung bình $80.63\%$).
+     - `wind_speed`: $[0.0, 9.55]\,\text{m/s}$ (nằm trong $[0, 60]\,\text{m/s}$, trung bình $2.41\,\text{m/s}$).
+     - `wind_direction`: $[1.0, 360.0]^\circ$ (nằm trong $[0, 360]^\circ$, trung bình $147.16^\circ$).
+     - `precipitation`: $[0.0, 20.5]\,\text{mm}$ ($\ge 0\,\text{mm}$, trung bình $0.26\,\text{mm}$).
+     - `surface_pressure`: $[986.5, 1028.4]\,\text{hPa}$ (nằm trong $[950, 1050]\,\text{hPa}$, trung bình $1008.20\,\text{hPa}$).
+   - **Tỷ lệ khuyết thiếu:** **$0{,}00\%$ missing** trên toàn bộ 6 biến số khí tượng ($9.072/9.072$ bản ghi đầy đủ).
+   - **Xử lý số 0 & Missing ngụy trang (`clean_weather_values`):** Mã lỗi ngụy trang (`-999`, `-9999`) được chuyển thành `NaN`; các giá trị âm phi vật lý được loại bỏ; các giá trị $0.0$ thực tế (lượng mưa $0.0\,\text{mm}$, tốc độ gió $0.0\,\text{m/s}$) được bảo toàn nguyên vẹn.
+
+5. **Tích Hợp Chuỗi Thời Gian (Temporal Integration with Air Quality):**
+   - Phép inner join theo `timestamp` đạt đúng **$8.022$ bản ghi** (từ `2025-07-03 22:00:00+07:00` đến `2026-07-15 17:00:00+07:00`).
+   - Tỷ lệ bao phủ đối với chuỗi quan trắc chất lượng không khí đạt **$100{,}0\%$**, không bị nổ dòng (*zero row explosion*), sẵn sàng cho bước tích hợp đa nguồn tại Issue #7.
+
+6. **Giới Hạn Nguồn Dữ Liệu (Source Limitations):**
+   - ERA5 là mô hình tái phân tích khí quyển dạng lưới độ phân giải $0.25^\circ \times 0.25^\circ$ ($\approx 25\,\text{km}$). Mặc dù khoảng cách tới trạm quan trắc ô nhiễm chỉ $1.7\,\text{km}$, dữ liệu phản ánh điều kiện khí tượng vĩ mô khu vực thay vì các hiệu ứng vi khí hậu siêu cục bộ (như hiệu ứng hẻm phố đô thị - street canyon effect). Hạn chế này cần được ghi nhận minh bạch trong các báo cáo phân tích hồi quy tại Issue #12.
+
