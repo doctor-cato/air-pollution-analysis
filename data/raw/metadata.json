@@ -3,7 +3,7 @@
   "project": "doctor-cato/air-pollution-analysis",
   "issue": "#19 – Source Profiling & Decision Gate (Correction: Disqualification of Location 2178 & Verification of Hanoi Location 4946811)",
   "profiling_timestamp_utc": "2026-09-28T16:47:26Z",
-  "last_updated_utc": "2026-09-29T07:15:00Z",
+  "last_updated_utc": "2026-09-29T08:18:15.916395+00:00",
   "target_city": "Hanoi, Vietnam",
   "temporal_coverage": {
     "study_window_start": "2023-01-01T00:00:00+07:00",
@@ -48,7 +48,14 @@
       },
       "timezone": "Asia/Bangkok",
       "instrument": "Reference Grade Environmental Monitor (Government Monitor)",
-      "parameters_available": ["pm25", "pm10", "no2", "co", "so2", "o3"],
+      "parameters_available": [
+        "pm25",
+        "pm10",
+        "no2",
+        "co",
+        "so2",
+        "o3"
+      ],
       "sensors": {
         "pm25": 13502150,
         "pm10": 13502165,
@@ -206,36 +213,44 @@
   },
   "collection_pipeline_execution": {
     "executed_issue": "#3 – Pipeline thu thập và chuẩn hóa dữ liệu chất lượng không khí",
-    "status": "pending_reexecution_due_to_location_2178_disqualification",
-    "reexecution_required": true,
-    "disqualification_note": "Initial ingestion in PR #24 was executed against location_id 2178 (Del Norte, Albuquerque, NM, USA). Because location 2178 is disqualified and excluded from Hanoi analysis, this execution is flagged for re-run in Issue #3 against verified Hanoi stations (OpenAQ 4946811 for operational / AirNow DOS for 2023 historical).",
-    "execution_timestamp_utc": "2026-09-29T06:13:01.324383+00:00",
-    "study_window": {
+    "status": "completed",
+    "execution_timestamp_utc": "2026-09-29T08:18:15.916401+00:00",
+    "requested_study_window": {
       "start": "2023-01-01T00:00:00+07:00",
       "end": "2024-12-31T23:00:00+07:00"
     },
+    "disqualification_audit": {
+      "disqualified_location_id": 2178,
+      "reason": "Albuquerque, NM, USA (35.1353N, -106.5847W). 100% purged and excluded from Hanoi analysis."
+    },
     "openaq_ingestion": {
-      "source_location_id": 2178,
-      "raw_file": "data/raw/openaq_raw_2023_2024.parquet",
-      "raw_sha256": "7286cb3da40488e27903a0daf314a538cf4a94163b27886e5c0d193b5783612a",
-      "raw_records_total": 116906,
-      "canonical_records": 15501,
-      "pm25_valid_observations": 14400,
-      "pm25_missing_observations": 1101,
-      "pm25_missing_rate_pct": 7.1,
-      "min_timestamp": "2023-01-01T15:00:00+07:00",
-      "max_timestamp": "2025-01-01T14:00:00+07:00",
+      "source_location_id": 4946811,
+      "canonical_station_id": "VN001_HANOI_556_NGUYEN_VAN_CU",
+      "station_name": "556 Nguyễn Văn Cừ",
+      "coordinates": {
+        "latitude": 21.0491,
+        "longitude": 105.8831
+      },
+      "raw_file": "data/raw/openaq_raw_4946811.parquet",
+      "raw_sha256": "3c2fbd3c0d32ba2ebd8d6229421e0ae531358d95038b54304ca00e041d9555fc",
+      "raw_records_total": 347956,
+      "filtered_out_records": 0,
+      "canonical_records": 7999,
+      "pm25_valid_observations": 7796,
+      "pm25_missing_observations": 203,
+      "pm25_missing_rate_pct": 2.54,
+      "actual_min_timestamp": "2025-07-03 22:00:00+07:00",
+      "actual_max_timestamp": "2026-07-15 17:00:00+07:00",
       "interim_file": "data/interim/air_quality_canonical.parquet"
     },
     "open_meteo_ingestion": {
       "source_model": "ECMWF ERA5 Reanalysis",
       "raw_file": "data/raw/open_meteo_raw_2023_2024.json",
       "raw_sha256": "7f12b53c60c83b172f1bd1b0723aaee9d5e4c3d2e17e65765aa9e108cc59d8a4",
-      "raw_records_total": 17544,
       "canonical_records": 17544,
       "missing_rate_all_variables": "0.00%",
-      "min_timestamp": "2023-01-01T00:00:00+07:00",
-      "max_timestamp": "2024-12-31T23:00:00+07:00",
+      "actual_min_timestamp": "2023-01-01 00:00:00+07:00",
+      "actual_max_timestamp": "2024-12-31 23:00:00+07:00",
       "interim_file": "data/interim/weather_canonical.parquet"
     }
   }
