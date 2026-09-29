@@ -1,9 +1,9 @@
 {
   "schema_version": "1.2.0",
   "project": "doctor-cato/air-pollution-analysis",
-  "issue": "#19 – Source Profiling & Decision Gate",
+  "issue": "#19 – Source Profiling & Decision Gate (Correction: Disqualification of Location 2178 & Verification of Hanoi Location 4946811)",
   "profiling_timestamp_utc": "2026-09-28T16:47:26Z",
-  "last_updated_utc": "2026-09-29T06:13:01.324373+00:00",
+  "last_updated_utc": "2026-09-29T07:15:00Z",
   "target_city": "Hanoi, Vietnam",
   "temporal_coverage": {
     "study_window_start": "2023-01-01T00:00:00+07:00",
@@ -24,8 +24,8 @@
       "longitude_max": 106.1
     },
     "spatial_filtering_rules": {
-      "station_rule": "Raw payload is preserved immutably in data/raw/. During normalization to interim/processed stages, records must match valid station_id (2178) and coordinates must fall strictly within Hanoi bounding box; out-of-bounds records are filtered.",
-      "grid_rule": "Query coordinates set to Hanoi urban core (21.0285N, 105.8542E); matched ERA5 cell (21.0545N, 105.8985E) is within 8.7km of station in urban Hanoi.",
+      "station_rule": "Raw payload is preserved immutably in data/raw/. During normalization to interim/processed stages, records must match verified Hanoi station_id (OpenAQ: 4946811 - 556 Nguyễn Văn Cừ; AirNow: Site == 'Hanoi') and coordinates must fall strictly within Hanoi bounding box [20.50, 21.60]N, [105.30, 106.10]E. Location 2178 (Del Norte, Albuquerque, NM, USA: 35.1353N, -106.5847W) is strictly DISQUALIFIED and filtered out.",
+      "grid_rule": "Query coordinates set to Hanoi urban core (21.0285N, 105.8542E); matched ERA5 cell (21.0545N, 105.8985E) is within 1.7km of verified Hanoi station 4946811 (556 Nguyễn Văn Cừ: 21.0491N, 105.8831E).",
       "airport_rule": "Station 48820 (Noi Bai Airport) is within Hanoi administrative boundary but ~22km north of urban core; flagged as Weather Fallback with microclimate caveat."
     }
   },
@@ -38,62 +38,72 @@
     "air_quality": {
       "role": "primary",
       "provider": "OpenAQ",
-      "station_name": "US Diplomatic Post: Hanoi",
-      "location_id": 2178,
+      "network": "Hanoi Air Quality Monitoring Network (Provider ID: 67)",
+      "station_name": "556 Nguyễn Văn Cừ",
+      "location_id": 4946811,
+      "station_type": "Government Monitor (Northern Center for Environmental Monitoring - NCEM / VEA)",
       "coordinates": {
-        "latitude": 21.0215,
-        "longitude": 105.8184
+        "latitude": 21.0491,
+        "longitude": 105.8831
       },
-      "instrument": "Met One BAM-1020 (US EPA FEM EQPM-0308-170)",
-      "parameters_available": [
-        "pm25",
-        "pm10",
-        "no2",
-        "co",
-        "so2",
-        "o3",
-        "no",
-        "nox"
-      ],
+      "timezone": "Asia/Bangkok",
+      "instrument": "Reference Grade Environmental Monitor (Government Monitor)",
+      "parameters_available": ["pm25", "pm10", "no2", "co", "so2", "o3"],
+      "sensors": {
+        "pm25": 13502150,
+        "pm10": 13502165,
+        "no2": 13502159,
+        "co": 13502158,
+        "so2": 13502161,
+        "o3": 13502160
+      },
       "primary_parameter": "pm25",
       "unit": "µg/m³",
-      "data_type": "hourly_aggregated_data",
+      "data_type": "sub_hourly_raw_and_hourly_aggregated",
       "endpoints": {
-        "rest_api": "https://api.openaq.org/v3/sensors/{id}/hours",
-        "s3_public_archive": "https://openaq-data-archive.s3.amazonaws.com/records/csv.gz/locationid=2178/"
+        "rest_api": "https://api.openaq.org/v3/locations/4946811",
+        "s3_public_archive": "https://openaq-data-archive.s3.amazonaws.com/records/csv.gz/locationid=4946811/"
       },
       "authentication": "X-API-Key required for REST API v3; None required for S3 public archive",
       "license": "Open Database License (ODC-BY) v1.0",
-      "attribution": "Data provided by OpenAQ and data originators (US Department of State / US EPA)",
+      "attribution": "Data provided by OpenAQ and Hanoi Air Quality Monitoring Network (VEA/CEM)",
       "profiling_metrics": {
-        "verified_rows_pm25_2023_2024": 14424,
-        "expected_rows_2023_2024": 17544,
-        "completeness_pm25_pct": 82.2,
-        "completeness_2023_pm25_pct": 69.1,
-        "completeness_2024_pm25_pct": 95.3,
-        "missing_rate_2023_pct": 30.9,
-        "missing_rate_2024_pct": 4.7,
-        "min_timestamp": "2023-01-01T00:00:00+07:00",
-        "max_timestamp": "2024-12-31T23:00:00+07:00",
-        "latest_available_timestamp": "2026-09-21 (latest S3 archive file verified at profiling)",
-        "resolution": "1 hour"
+        "verified_s3_files": 352,
+        "first_observed_utc": "2025-07-03T15:40:00Z",
+        "last_observed_utc": "2026-07-15T10:05:00Z",
+        "verified_files_2023": 0,
+        "verified_files_2024": 0,
+        "verified_files_2025": 180,
+        "verified_files_2026": 172,
+        "verified_rows_pm25_2023_2024": 0,
+        "completeness_2023_pm25_pct": 0.0,
+        "completeness_2024_pm25_pct": 0.0,
+        "min_timestamp_available": "2025-07-03T22:40:00+07:00",
+        "max_timestamp_available": "2026-07-15T17:05:00+07:00",
+        "latest_available_timestamp": "2026-07-15T17:05:00+07:00 (latest S3 archive file verified at profiling)",
+        "resolution": "sub-hourly telemetry (~5-10 min) / 1 hour aggregated",
+        "correction_notice": "Location 2178 (Del Norte, Albuquerque, NM, USA) was previously cited in error due to copying OpenAQ tutorial example ID. Location 2178 is disqualified and excluded from Hanoi analysis. Real Hanoi station is 4946811."
       }
     },
     "air_quality_backup": {
       "role": "fallback",
       "provider": "AirNow (US Department of State)",
       "station_name": "Site: Hanoi (US Embassy)",
-      "instrument": "Met One BAM-1020",
+      "coordinates": {
+        "latitude": 21.0215,
+        "longitude": 105.8184
+      },
+      "instrument": "Met One BAM-1020 (US EPA FEM EQPM-0308-170)",
       "format": "Historical CSV",
       "temporal_coverage_public": "Documented: 2016-01-01 to 2023-12-31",
       "min_timestamp": "Documented: 2016-01-01T00:00:00+07:00",
       "max_timestamp": "Documented: 2023-12-31T23:00:00+07:00",
       "latest_available_timestamp": "Documented: 2023-12-31T23:00:00+07:00 (public archive)",
-      "nominal_annual_rows": "Not verifiable directly (chưa có tệp mở 2023 trực tiếp)",
+      "nominal_annual_rows": "Not verifiable directly (chưa có tệp mở 2023 trực tiếp không login)",
       "disguised_missing_marker": "-999",
       "license": "U.S. Public Domain",
       "attribution": "US Department of State / AirNow",
-      "limitations": "Direct public downloads for year 2024 are restricted (requires organizational login via AirNow-Tech / State Dept); serves as offline cross-validation for 2023."
+      "limitations": "Direct public downloads for year 2024 are restricted (requires organizational login via AirNow-Tech / State Dept); serves as primary historical ground truth for 2023."
     },
     "meteorology": {
       "role": "primary",
@@ -114,7 +124,7 @@
         "latitude": 21.05448,
         "longitude": 105.89848,
         "elevation_m": 19.0,
-        "distance_to_station_km": 8.7
+        "distance_to_station_km": 1.7
       },
       "authentication": "None required (free for non-commercial/academic use)",
       "rate_limit": "10,000 requests/day",
@@ -163,6 +173,19 @@
     }
   },
   "unused_sources": {
+    "openaq_location_2178": {
+      "role": "disqualified_excluded",
+      "provider": "OpenAQ / AirNow (US EPA)",
+      "station_name": "Del Norte-2178",
+      "location_id": 2178,
+      "coordinates": {
+        "latitude": 35.1353,
+        "longitude": -106.584702
+      },
+      "city": "Albuquerque, New Mexico, USA",
+      "timezone": "America/Denver (UTC-07:00)",
+      "reason_for_disqualification": "Critical geographic misidentification. Erroneously cited from OpenAQ tutorial documentation example. Located in Albuquerque, New Mexico, USA (UTC-07:00), entirely outside Vietnam and Hanoi bounding box. All associated metrics (14,424 rows in 2023-2024) are retracted and strictly excluded from the Hanoi project."
+    },
     "pam_air_portal": {
       "role": "unused",
       "provider": "D&L Technology Integration and Consulting JSC",
@@ -183,7 +206,9 @@
   },
   "collection_pipeline_execution": {
     "executed_issue": "#3 – Pipeline thu thập và chuẩn hóa dữ liệu chất lượng không khí",
-    "status": "completed",
+    "status": "pending_reexecution_due_to_location_2178_disqualification",
+    "reexecution_required": true,
+    "disqualification_note": "Initial ingestion in PR #24 was executed against location_id 2178 (Del Norte, Albuquerque, NM, USA). Because location 2178 is disqualified and excluded from Hanoi analysis, this execution is flagged for re-run in Issue #3 against verified Hanoi stations (OpenAQ 4946811 for operational / AirNow DOS for 2023 historical).",
     "execution_timestamp_utc": "2026-09-29T06:13:01.324383+00:00",
     "study_window": {
       "start": "2023-01-01T00:00:00+07:00",

@@ -127,25 +127,25 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `station_id` |
-| **Source Field Name** | `location_id` (OpenAQ: giá trị số nguyên `2178`); Điểm lưới Open-Meteo (`lat=21.05448, lon=105.89848`) |
+| **Source Field Name** | `location_id` (OpenAQ: giá trị số nguyên `4946811`); `Site` (AirNow DOS CSV: `"Hanoi"`); Điểm lưới Open-Meteo (`lat=21.05448, lon=105.89848`) |
 | **Definition** | Mã định danh kỹ thuật duy nhất cho trạm đo hoặc tọa độ lưới trích xuất tại khu vực Hà Nội. |
 | **Unit** | Danh mục mã (Categorical / Code String) |
 | **Datatype** | `string` |
-| **Transformation** | Chuẩn hóa mã trạm quan trắc mặt đất duy nhất thành: `VN001_HANOI_US_EMBASSY` (cho trạm OpenAQ location_id=2178). |
-| **Source Origin** | Nguồn chính: OpenAQ (Metadata trạm US Diplomatic Post: Hanoi) – thẩm định tại Issue #19. |
+| **Transformation** | Chuẩn hóa mã trạm quan trắc mặt đất duy nhất thành: `VN001_HANOI_556_NGUYEN_VAN_CU` (cho trạm OpenAQ location_id=4946811) hoặc `VN002_HANOI_US_EMBASSY` (cho trạm AirNow DOS CSV `Site == "Hanoi"`).<br>*(Lưu ý đính chính Issue #19: location_id=2178 thuộc Del Norte, Albuquerque, NM, Hoa Kỳ đã bị loại bỏ/disqualified do trích dẫn nhầm mã ví dụ tài liệu OpenAQ).* |
+| **Source Origin** | Nguồn chính hiện hành: OpenAQ (Metadata trạm 556 Nguyễn Văn Cừ, NCEM/VEA, location_id=4946811); Nguồn chuẩn lịch sử 2023: AirNow US Embassy (Site: Hanoi, BAM-1020) – thẩm định và đính chính tại Issue #19. |
 | **Missingness/Availability** | **Bắt buộc 100% (Mandatory)**; không cho phép `NaN / null`. |
 
 #### 3. `location`
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `location` |
-| **Source Field Name** | `location` (OpenAQ S3 archive / API: `"US Diplomatic Post: Hanoi"`) |
+| **Source Field Name** | `location` (OpenAQ S3 archive / API: `"556 Nguyễn Văn Cừ"`); `Site` (AirNow DOS CSV: `"Hanoi"`) |
 | **Definition** | Tên địa danh hoặc mô tả bằng ngôn ngữ tự nhiên về vị trí đặt trạm quan trắc mặt đất. |
 | **Unit** | Văn bản mô tả (Text String) |
 | **Datatype** | `string` |
-| **Transformation** | Chuẩn hóa chuỗi ký tự UTF-8, loại bỏ khoảng trắng thừa: `"US Diplomatic Post: Hanoi"`. |
-| **Source Origin** | Nguồn chính: OpenAQ (Metadata trạm mặt đất) – thẩm định tại Issue #19. |
-| **Missingness/Availability** | **Bắt buộc 100% (Mandatory)** trên tập canonical hợp nhất; phản ánh trạm quan trắc quy chiếu lõi đô thị. |
+| **Transformation** | Chuẩn hóa chuỗi ký tự UTF-8, loại bỏ khoảng trắng thừa: `"556 Nguyễn Văn Cừ"` (hoặc `"US Diplomatic Post: Hanoi"` đối với trạm AirNow). |
+| **Source Origin** | Nguồn chính hiện hành: OpenAQ (Trạm quan trắc chuẩn quốc gia 556 Nguyễn Văn Cừ); Nguồn chuẩn lịch sử: AirNow US Embassy – thẩm định tại Issue #19. |
+| **Missingness/Availability** | **Bắt buộc 100% (Mandatory)** trên tập canonical hợp nhất; phản ánh trạm quan trắc quy chiếu nội thành Hà Nội. |
 
 ---
 
@@ -155,25 +155,25 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `pm25` |
-| **Source Field Name** | `value` khi `parameter == 'pm25'` (OpenAQ S3 / API); `Value` (AirNow DOS CSV - Fallback) |
-| **Definition** | Nồng độ khối lượng của các hạt bụi mịn có đường kính khí động học nhỏ hơn hoặc bằng 2.5 micromet lơ lửng trong không khí theo chu kỳ 1 giờ (hourly).<br><br>*(Lưu ý về tần suất đo & quy chuẩn: Dữ liệu canonical được ghi nhận theo từng giờ. Để đối chiếu với các quy chuẩn kỹ thuật như QCVN 05:2023/BTNMT với giới hạn trung bình 24 giờ là $45\,\mu\text{g/Nm}^3$ áp dụng từ 01/01/2026, dữ liệu cần được tổng hợp theo chu kỳ 24 giờ tương thích ở các bước phân tích sau; tuyệt đối không áp trực tiếp ngưỡng trung bình 24 giờ lên từng quan sát đơn lẻ theo giờ).*<br><br>*(Lưu ý về phân biệt đơn vị đo $\mu\text{g/m}^3$ vs. $\mu\text{g/Nm}^3$: Đơn vị canonical của tập dữ liệu là $\mu\text{g/m}^3$ đo ở điều kiện môi trường thực tế từ thiết bị Met One BAM-1020. Quy chuẩn QCVN 05:2023/BTNMT sử dụng đơn vị $\mu\text{g/Nm}^3$ ở điều kiện chuẩn nhiệt độ và áp suất. Hai đơn vị này **không thể so sánh trực tiếp như cùng một đơn vị đo** mà cần được xử lý/chuẩn hóa phù hợp dựa trên thông số khí tượng thực tế nếu đối chiếu).* |
+| **Source Field Name** | `value` khi `parameter == 'pm25'` (OpenAQ S3 / API cảm biến 13502150); `Value` (AirNow DOS CSV) |
+| **Definition** | Nồng độ khối lượng của các hạt bụi mịn có đường kính khí động học nhỏ hơn hoặc bằng 2.5 micromet lơ lửng trong không khí theo chu kỳ 1 giờ (hourly).<br><br>*(Lưu ý về tần suất đo & quy chuẩn: Dữ liệu canonical được ghi nhận theo từng giờ. Để đối chiếu với các quy chuẩn kỹ thuật như QCVN 05:2023/BTNMT với giới hạn trung bình 24 giờ là $45\,\mu\text{g/Nm}^3$ áp dụng từ 01/01/2026, dữ liệu cần được tổng hợp theo chu kỳ 24 giờ tương thích ở các bước phân tích sau; tuyệt đối không áp trực tiếp ngưỡng trung bình 24 giờ lên từng quan sát đơn lẻ theo giờ).*<br><br>*(Lưu ý về phân biệt đơn vị đo $\mu\text{g/m}^3$ vs. $\mu\text{g/Nm}^3$: Đơn vị canonical của tập dữ liệu là $\mu\text{g/m}^3$ đo ở điều kiện môi trường thực tế từ thiết bị quan trắc chuẩn. Quy chuẩn QCVN 05:2023/BTNMT sử dụng đơn vị $\mu\text{g/Nm}^3$ ở điều kiện chuẩn nhiệt độ và áp suất. Hai đơn vị này **không thể so sánh trực tiếp như cùng một đơn vị đo** mà cần được xử lý/chuẩn hóa phù hợp dựa trên thông số khí tượng thực tế nếu đối chiếu).* |
 | **Unit** | $\mu\text{g/m}^3$ (Microgam trên mét khối không khí thực tế đo ở điều kiện môi trường - actual/ambient conditions; phân biệt với đơn vị quy chuẩn $\mu\text{g/Nm}^3$) |
 | **Datatype** | `float64` |
-| **Transformation** | Lọc theo `parameter == 'pm25'`; ép kiểu `float64`; áp dụng quy tắc kiểm tra giá trị vật lý: giá trị âm ($< 0\,\mu\text{g/m}^3$) là bất thường vật lý $\to$ gán `NaN`; giá trị bằng 0 ($= 0.0\,\mu\text{g/m}^3$) được giữ nguyên nếu là quan trắc hợp lệ từ cảm biến (chỉ gán `NaN` nếu đi kèm QC invalid flag từ trạm); bóc trần mã lỗi ngụy trang (ví dụ `-999` từ AirNow nếu dùng fallback) thành `NaN`. |
-| **Source Origin** | Nguồn chính: OpenAQ REST API v3 / S3 Archive (location_id=2178, Met One BAM-1020). Nguồn dự phòng (Fallback): AirNow DOS CSV. Phê duyệt chính thức tại Issue #19. |
-| **Missingness/Availability** | **Biến mục tiêu cốt lõi**. Kết quả profiling thực tế: 14,424 giờ có dữ liệu trong 2023–2024 (completeness: 82.2%; năm 2023 đạt 69.1%, năm 2024 đạt 95.3%). Giá trị khuyết thiếu tự nhiên biểu diễn bằng `NaN`, không tự ý điền 0. |
+| **Transformation** | Lọc theo `parameter == 'pm25'`; ép kiểu `float64`; áp dụng quy tắc kiểm tra giá trị vật lý: giá trị âm ($< 0\,\mu\text{g/m}^3$) là bất thường vật lý $\to$ gán `NaN`; giá trị bằng 0 ($= 0.0\,\mu\text{g/m}^3$) được giữ nguyên nếu là quan trắc hợp lệ từ cảm biến (chỉ gán `NaN` nếu đi kèm QC invalid flag từ trạm); bóc trần mã lỗi ngụy trang (ví dụ `-999` từ AirNow) thành `NaN`. |
+| **Source Origin** | Nguồn chính hiện hành: OpenAQ REST API v3 / S3 Archive (location_id=4946811 - 556 Nguyễn Văn Cừ, cảm biến 13502150). Nguồn chuẩn lịch sử 2023: AirNow DOS CSV (Site: Hanoi, BAM-1020). Phê duyệt và đính chính chính thức tại Issue #19. |
+| **Missingness/Availability** | **Biến mục tiêu cốt lõi**.<br>*(Lưu ý đính chính Issue #19: Số liệu 14,424 dòng của location 2178 trước đây đã bị thu hồi do đo đạc tại Albuquerque, NM, Hoa Kỳ).*<br>Dữ liệu thực tế tại Hà Nội: Trạm OpenAQ 4946811 có 352 tệp S3 lưu trữ từ 03/07/2025 đến 15/07/2026 (0 bản ghi trong 2023–2024 do OpenAQ mới tích hợp mạng lưới từ 07/2025). Đối với mốc lịch sử 2023, nguồn AirNow DOS CSV cung cấp chuỗi đo hourly liên tục (cần bóc trần mã ngụy trang `-999`). Giá trị khuyết thiếu tự nhiên biểu diễn bằng `NaN`, không tự ý điền 0. |
 
 #### 5. `pm10`
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `pm10` |
-| **Source Field Name** | `value` khi `parameter == 'pm10'` (OpenAQ S3 / API) |
+| **Source Field Name** | `value` khi `parameter == 'pm10'` (OpenAQ S3 / API cảm biến 13502165) |
 | **Definition** | Nồng độ khối lượng của các hạt bụi thô có đường kính khí động học nhỏ hơn hoặc bằng 10 micromet lơ lửng trong không khí theo chu kỳ 1 giờ (hourly). |
 | **Unit** | $\mu\text{g/m}^3$ (Microgam trên mét khối không khí) |
 | **Datatype** | `float64` |
 | **Transformation** | Lọc theo `parameter == 'pm10'`; ép kiểu `float64`; dùng để kiểm tra tính hợp lý vật lý với `pm25` ($\text{PM}_{2.5} \le \text{PM}_{10} + \epsilon$). |
-| **Source Origin** | Nguồn chính: OpenAQ (location_id=2178 – phát hiện thực nghiệm có cung cấp thông số `pm10` trong archive 2023–2024 tại Issue #19). |
-| **Missingness/Availability** | **Tùy chọn bổ trợ (Secondary variable)**; độ bao phủ và tính đầy đủ sẽ được kiểm chứng chi tiết tại Issue #3. Nếu các khung giờ không có đo đạc, giá trị là `NaN`. |
+| **Source Origin** | Nguồn chính: OpenAQ (location_id=4946811 – trạm 556 Nguyễn Văn Cừ, cảm biến 13502165 – thẩm định thực nghiệm tại Issue #19). |
+| **Missingness/Availability** | **Tùy chọn bổ trợ (Secondary variable)**; độ bao phủ và tính đầy đủ đồng hành cùng chuỗi đo `pm25` của trạm 4946811. Nếu các khung giờ không có đo đạc, giá trị là `NaN`. |
 
 ---
 
@@ -277,30 +277,30 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 
 > [!NOTE]
 > **Toàn bộ ánh xạ trường nguồn ĐÃ ĐƯỢC XÁC THỰC THỰC NGHIỆM (Validated Source Mappings):**  
-> 1. **Cổng thẩm định nguồn Issue #19:** Issue #19 đã hoàn tất khảo sát hồ sơ dữ liệu (*Data Profiling*), kiểm chứng thực nghiệm tại Hà Nội và ban hành quyết định Cổng Nguồn Dữ liệu tại [`docs/source_profiling_decision.md`](source_profiling_decision.md).  
+> 1. **Cổng thẩm định nguồn Issue #19:** Issue #19 đã hoàn tất khảo sát hồ sơ dữ liệu (*Data Profiling*), kiểm chứng thực nghiệm tại Hà Nội và ban hành quyết định Cổng Nguồn Dữ liệu tại [`docs/source_profiling_decision.md`](source_profiling_decision.md) (bao gồm đính chính loại bỏ location 2178 tại Mỹ và xác thực trạm chuẩn 4946811 tại Long Biên, Hà Nội).  
 > 2. **Phân định vai trò nguồn:**  
->    - **Chất lượng không khí:** Primary = OpenAQ REST API v3 / S3 Archive (location_id=2178, trạm ĐSQ Hoa Kỳ tại Hà Nội, Met One BAM-1020); Fallback = AirNow US Department of State Historical CSV.  
->    - **Khí tượng bề mặt:** Primary = Open-Meteo Historical Weather API (ERA5 Reanalysis, điểm lưới Hà Nội); Fallback = NOAA Integrated Surface Database (ISD, Trạm WMO 48820 - Sân bay Nội Bài).  
+>    - **Chất lượng không khí:** Primary hiện hành = OpenAQ REST API v3 / S3 Archive (location_id=4946811, trạm 556 Nguyễn Văn Cừ, Long Biên, Hà Nội); Primary lịch sử 2023 / Fallback = AirNow US Department of State Historical CSV (Site: Hanoi, trạm ĐSQ Hoa Kỳ, Met One BAM-1020).  
+>    - **Khí tượng bề mặt:** Primary = Open-Meteo Historical Weather API (ERA5 Reanalysis, điểm lưới Hà Nội cách trạm 556 Nguyễn Văn Cừ 1.7 km); Fallback = NOAA Integrated Surface Database (ISD, Trạm WMO 48820 - Sân bay Nội Bài).  
 > 3. **Ánh xạ trường chính thức:** Bảng dưới đây thể hiện ánh xạ đã được xác thực trực tiếp qua phản hồi API và cấu trúc tệp thực tế.
 
 ### 6.1. Danh mục các nguồn ứng viên đã thẩm định (Candidate Sources Profiled)
 Tại Issue #19, 6 nhà cung cấp dữ liệu đã được thẩm định thực nghiệm:
-1. **OpenAQ REST API v3 / S3 Archive (location_id=2178)**: Nguồn chính chất lượng không khí (PM2.5, PM10).
+1. **OpenAQ REST API v3 / S3 Archive (location_id=4946811 - 556 Nguyễn Văn Cừ)**: Nguồn chính chất lượng không khí hiện hành (PM2.5, PM10). *(Đính chính: location_id=2178 Del Norte, Albuquerque, NM, Hoa Kỳ đã bị loại bỏ/disqualified)*.
 2. **Open-Meteo Historical Weather API (ERA5)**: Nguồn chính khí tượng bề mặt (6 biến Canonical).
-3. **AirNow (US Department of State)**: Nguồn dự phòng (Fallback source) chất lượng không khí.
+3. **AirNow (US Department of State)**: Nguồn chuẩn lịch sử (2023) / Dự phòng (Fallback source) chất lượng không khí.
 4. **NOAA ISD (WMO Station 48820 - Sân bay Nội Bài)**: Nguồn dự phòng (Fallback source) khí tượng bề mặt.
 5. **Tập dữ liệu Kaggle Hà Nội (CSV)**: Nguồn tham chiếu phân phối thống kê ngoài (Reference only).
 6. **PAM Air Portal**: Nguồn loại bỏ do bản quyền đóng và thiếu REST API mở (Unused).
 
 ### 6.2. Bảng ánh xạ trường đã thẩm định (Validated Field Mapping Matrix)
 
-| Trường Canonical | Đơn vị chuẩn | Nguồn chính Ô nhiễm (OpenAQ location 2178) | Nguồn chính Khí tượng (Open-Meteo ERA5) | Tình trạng thẩm định (Validation Status) |
+| Trường Canonical | Đơn vị chuẩn | Nguồn chính Ô nhiễm (OpenAQ 4946811 / AirNow) | Nguồn chính Khí tượng (Open-Meteo ERA5) | Tình trạng thẩm định (Validation Status) |
 |---|---|---|---|:---:|
-| `timestamp` | UTC+7 | `datetime` (S3) / `period.datetimeFrom.utc` (API) | `time` (với `&timezone=Asia/Ho_Chi_Minh`) | **Đã xác thực (Validated tại #19)** |
-| `station_id` | String | `location_id` (`2178` $\to$ `VN001_HANOI_US_EMBASSY`) | Tọa độ lưới `21.05448N, 105.89848E` | **Đã xác thực (Validated tại #19)** |
-| `location` | String | `location` (`"US Diplomatic Post: Hanoi"`) | Metadata vị trí lưới Hà Nội | **Đã xác thực (Validated tại #19)** |
-| `pm25` | $\mu\text{g/m}^3$ | `value` khi `parameter == "pm25"` (BAM-1020) | Không áp dụng | **Đã xác thực (Validated tại #19)** |
-| `pm10` | $\mu\text{g/m}^3$ | `value` khi `parameter == "pm10"` (Archive S3) | Không áp dụng | **Đã xác thực (Validated tại #19)** |
+| `timestamp` | UTC+7 | `datetime` (S3) / `Date (LST)` (AirNow) | `time` (với `&timezone=Asia/Ho_Chi_Minh`) | **Đã xác thực (Validated tại #19)** |
+| `station_id` | String | `location_id` (`4946811` $\to$ `VN001_HANOI_556_NGUYEN_VAN_CU`) / `Site` (`"Hanoi"` $\to$ `VN002_HANOI_US_EMBASSY`) | Tọa độ lưới `21.05448N, 105.89848E` | **Đã xác thực (Validated tại #19)** |
+| `location` | String | `location` (`"556 Nguyễn Văn Cừ"`) / `Site` (`"Hanoi"`) | Metadata vị trí lưới Hà Nội | **Đã xác thực (Validated tại #19)** |
+| `pm25` | $\mu\text{g/m}^3$ | `value` khi `parameter == "pm25"` (Cảm biến 13502150 / BAM-1020) | Không áp dụng | **Đã xác thực (Validated tại #19)** |
+| `pm10` | $\mu\text{g/m}^3$ | `value` khi `parameter == "pm10"` (Cảm biến 13502165) | Không áp dụng | **Đã xác thực (Validated tại #19)** |
 | `temperature` | $^\circ\text{C}$ | Không có cảm biến | `temperature_2m` | **Đã xác thực (Validated tại #19)** |
 | `relative_humidity` | $\%$ | Không có cảm biến | `relative_humidity_2m` | **Đã xác thực (Validated tại #19)** |
 | `wind_speed` | $\text{m/s}$ | Không có cảm biến | `wind_speed_10m` (`&wind_speed_unit=ms`) | **Đã xác thực (Validated tại #19)** |
