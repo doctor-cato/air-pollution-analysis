@@ -36,12 +36,13 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 > **Phân định rõ ràng giữa mã nguồn hiện có và kế hoạch tương lai:**  
 > Dự án đang ở giai đoạn **Milestone 1 (Thiết lập dự án, khảo sát nguồn & thu thập dữ liệu — Tuần 01–02)**. Đã hoàn tất phần thu thập và chuẩn hóa dữ liệu. Toàn bộ các phân tích thống kê, mô hình học máy và các giai đoạn kiểm toán/làm sạch phía sau vẫn là kế hoạch đặc tả trong [`docs/roadmap.md`](docs/roadmap.md) và **chưa được hiện thực hóa**.
 
-### 2.1. Hiện trạng Triển khai (Milestone 1)
+### 2.1. Hiện trạng Triển khai (Milestone 1–2)
 
 > [!IMPORTANT]
-> **Trạng thái Milestone 1 sau review:** **4/5 issue DONE, 1/5 issue IN PROGRESS.**
+> **Trạng thái hiện tại sau review:** **Issue #1–#5 đều DONE** (kể cả #4, PR #26 đã merge vào `main`).
 > - **Issue #1, #2, #19, #3:** Đã hoàn tất và nghiệm thu (**DONE**).
-> - **Issue #4:** Đã hiện thực hóa đầy đủ trên nhánh với 39/39 unit test đạt chuẩn; PR #26 đang mở chờ merge vào `main` (**IN PROGRESS**).
+> - **Issue #4:** PR #26 đã merge vào `main` (**DONE**).
+> - **Issue #5:** Bộ kiểm toán chất lượng 6 chiều đã hoàn thành và merge qua PR #27 (`src/data_quality.py`, `docs/data_quality_audit.md`, `notebooks/02_quality_audit.ipynb`) (**DONE**).
 > - Toàn bộ các phân tích thống kê nâng cao, mô hình học máy và pipeline tiền xử lý chống rò rỉ phía sau thuộc Milestone 2–6 và **chưa bắt đầu**.
 
 **Tuần 01 — Thiết lập dự án & Canonical Schema**
@@ -59,13 +60,13 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 - [x] Hiện thực hóa `AirNowDOSAdapter` (`VN002_HANOI_US_EMBASSY`, Met One BAM-1020) trong `src/data_collection.py` sẵn sàng cho dữ liệu lịch sử khi có tệp thô [Issue #3].
 - [x] Pipeline thu thập & chuẩn hóa 6 biến khí tượng từ Open-Meteo ERA5 Reanalysis, đồng bộ động dải thời gian với chuỗi quan trắc chất lượng không khí [Issue #4].
 - [x] Lưu payload thô dưới `data/raw/` khi pipeline chạy, kèm `metadata.json` ghi nhận xuất xứ, tham số truy vấn, mã băm SHA-256 và giấy phép (theo [chính sách dữ liệu thô ba tầng](docs/roadmap.md#32-cổng-quyết-định-nguồn-dữ-liệu-issue-19-as-source-selection-gate)) [Issue #3, #4].
-- [x] Bộ 39 unit tests tất định cho pipeline thu thập (`tests/test_data_collection.py`) và pipeline kiểm định tự động bằng GitHub Actions (`.github/workflows/ci.yml`).
+- [x] Bộ **71** unit tests tất định cho pipeline thu thập (`tests/test_data_collection.py`) và pipeline kiểm định tự động bằng GitHub Actions (`.github/workflows/ci.yml`).
 
 > [!NOTE]
 > **Về dữ liệu thô:** tệp thô tải từ API **không được Git-track** — đây là chính sách kho dữ liệu của repository, không phải thiếu sót. Tính toàn vẹn được kiểm chứng bằng mã băm SHA-256 ghi trong `data/raw/metadata.json`. Xem [Mục 3.2 của roadmap](docs/roadmap.md#32-cổng-quyết-định-nguồn-dữ-liệu-issue-19-as-source-selection-gate).
 
 ### 2.2. Kế hoạch thực hiện tiếp theo (Theo `docs/roadmap.md`)
-- **Tuần 03–05 (Milestone 2):** Kiểm toán 6 chiều chất lượng dữ liệu ([Issue #5]), làm sạch tất định và lập cleaning log ([Issue #6]), tích hợp dữ liệu, đóng băng tập dữ liệu, phân chia chuỗi thời gian tuyến tính và đóng gói Pipeline chống rò rỉ sang định dạng Parquet ([Issue #7]). *(Chưa bắt đầu)*.
+- **Tuần 03–05 (Milestone 2):** ~~Kiểm toán 6 chiều chất lượng dữ liệu~~ ([Issue #5] — **đã xong**, PR #27). Còn lại: làm sạch tất định và lập cleaning log ([Issue #6]), tích hợp dữ liệu, đóng băng tập dữ liệu, phân chia chuỗi thời gian tuyến tính và đóng gói Pipeline chống rò rỉ sang định dạng Parquet ([Issue #7]).
 - **Tuần 06–08 (Milestone 3):** Phân tích khám phá dữ liệu (EDA), tính toán 4 họ chỉ số thống kê, thiết kế 7 biểu đồ ấn phẩm giải thích theo nguyên tắc Tufte/Cleveland, hoàn thành Báo cáo Giữa kỳ ([Issue #8, #9, #10]).
 - **Tuần 09–11 (Milestone 4):** Thực hiện kiểm định giả thuyết phi tham số, xây dựng mô hình hồi quy OLS (chẩn đoán LINE), phát triển mô hình phân loại cảnh báo ô nhiễm với điều chỉnh ngưỡng quyết định (*Threshold tuning*) ([Issue #11, #12, #13]).
 - **Tuần 12–15 (Milestones 5 & 6):** Đánh giá định kiến dữ liệu (*Bias Audit*), đo đạc tài nguyên vs Spark, lập Datasheet for Dataset, Model Card 1 trang, hoàn thiện mã nguồn và bảo vệ đồ án cuối kỳ ([Issue #14, #15, #16, #17]).
@@ -79,6 +80,8 @@ air-pollution-analysis/
 ├── .github/
 │   └── workflows/
 │       └── ci.yml                      # Pipeline CI GitHub Actions (syntax, unittests, smoke test)
+├── .agents/                            # Quy tắc, kỹ năng và quy trình chuẩn hoá cho tác nhân/người đóng góp
+├── AGENTS.md                           # Chỉ dẫn kiến trúc & quy tắc kỹ thuật cho tác nhân
 ├── .gitignore                          # Quy tắc loại trừ dữ liệu thô, cache, môi trường ảo
 ├── CONTRIBUTING.md                     # Hướng dẫn đóng góp, quy trình Git và chuẩn mã nguồn
 ├── LICENSE                             # Giấy phép mã nguồn mở MIT
@@ -99,15 +102,22 @@ air-pollution-analysis/
 │   ├── data_dictionary.md              # Từ điển dữ liệu chuẩn hóa Canonical Schema [Issue #2]
 │   ├── source_profiling.md             # Mục lục tài liệu thẩm định hồ sơ đa nguồn [Issue #19]
 │   ├── source_profiling_decision.md    # Báo cáo thẩm định & quyết định cổng nguồn dữ liệu [Issue #19]
+│   ├── data_quality_audit.md           # Báo cáo kiểm toán chất lượng 6 chiều [Issue #5]
 │   └── air_quality_project_overview.md # Tài liệu tổng quan định hướng đề tài
 ├── notebooks/
 │   ├── 00_environment_test.ipynb       # Notebook kiểm thử môi trường và nạp thư viện [Issue #1]
-│   └── 01_data_collection.ipynb        # Thực thi pipeline thu thập & kiểm định dữ liệu [Issue #3, #4]
+│   ├── 01_data_collection.ipynb        # Thực thi pipeline thu thập & kiểm định dữ liệu [Issue #3, #4]
+│   └── 02_quality_audit.ipynb          # Trình bày kết quả kiểm toán 6 chiều [Issue #5]
+├── scripts/
+│   └── fetch_dataset.py                # Tải & kiểm chứng tập dữ liệu từ nguồn công khai (không cần API key)
 ├── src/
 │   ├── __init__.py
-│   └── data_collection.py              # Adapter OpenAQ, Open-Meteo, AirNow và validation [Issue #3, #4]
+│   ├── data_collection.py              # Adapter OpenAQ, Open-Meteo, AirNow và validation [Issue #3, #4]
+│   └── data_quality.py                 # Hàm kiểm toán chất lượng 6 chiều & phân tích khuyết thiếu [Issue #5]
 ├── tests/
-│   └── test_data_collection.py         # 39 unit tests kiểm thử pipeline thu thập và validation [Issue #4]
+│   ├── test_data_collection.py         # 57 unit tests kiểm thử pipeline thu thập và validation [Issue #3, #4]
+│   ├── test_data_quality.py            # 14 unit tests cho bộ kiểm toán 6 chiều [Issue #5]
+│   └── test_fetch_dataset.py           # 9 unit tests cho cơ chế thu thập & kiểm chứng tập dữ liệu
 ├── figures/                            # Thư mục lưu biểu đồ xuất bản chất lượng cao (300 DPI)
 │   └── .gitkeep
 └── reports/                            # Báo cáo giữa kỳ và báo cáo tổng kết đồ án
@@ -121,6 +131,7 @@ air-pollution-analysis/
 ### Yêu cầu Tiên quyết
 - **Python:** Phiên bản 3.10 trở lên (khuyến nghị Python 3.10 – 3.14).
 - **Git:** Cài đặt sẵn trên hệ thống.
+- **Kết nối Internet:** Bắt buộc **chỉ ở bước 5** (tải tập dữ liệu). Các bước còn lại chạy offline.
 
 ### Các bước Cài đặt
 
@@ -153,29 +164,54 @@ air-pollution-analysis/
    ```
    Nếu lệnh chạy với mã thoát `0` và hiển thị thông báo `ALL ENVIRONMENT TESTS PASSED`, môi trường đã sẵn sàng.
 
-5. **Chạy bộ Unit Tests kiểm định toàn trình (39 tests tất định):**
+5. **Thu thập & kiểm chứng tập dữ liệu (bước duy nhất cần mạng):**
+   ```bash
+   python scripts/fetch_dataset.py
+   ```
+   Lệnh này tải tập dữ liệu từ **hai nguồn công khai, không cần API key**, ghi payload thô vào `data/raw/`, sinh Parquet canonical vào `data/interim/`, rồi **tự đối chiếu nội dung với `data/raw/metadata.json`** (số bản ghi thô, số bản ghi canonical, dải thời gian thực tế, số bản ghi giao thoa và tỷ lệ độ phủ) để báo cáo tập dữ liệu có khớp bản đã kiểm toán hay không.
+
+   | Nguồn | Vai trò | Giấy phép | Cần API key? |
+   |---|---|---|---|
+   | OpenAQ S3 public archive (`location_id=4946811`) | Chất lượng không khí | ODC-BY v1.0 | Không |
+   | Open-Meteo Historical Weather API (ECMWF ERA5) | Khí tượng bề mặt | CC BY 4.0 | Không |
+
+   > [!IMPORTANT]
+   > **Vì sao tập dữ liệu không nằm trong Git?** Theo chính sách dữ liệu ba tầng ([`docs/roadmap.md` §3.2](docs/roadmap.md)), tệp thô tải từ API **không bắt buộc phải được Git-track** (Tầng C) — chúng được tái tạo từ nguồn công khai. Việc kiểm chứng toàn vẹn dựa trên mã băm SHA-256 ghi trong `data/raw/metadata.json` (Tầng B).
+   >
+   > **Giới hạn cần biết:** bucket OpenAQ S3 là **kho sống** — nhà cung cấp tiếp tục nạp dữ liệu mới, nên một lần tải ở thời điểm sau có thể nhiều dòng hơn bản đã kiểm toán. Ngoài ra, định dạng Parquet **không tái lập được theo byte** giữa các máy (khối nén và metadata nội bộ phụ thuộc phiên bản thư viện), nên SHA-256 kiểm chứng được *tính toàn vẹn của tệp đã lưu* chứ không dựng lại được *tập dữ liệu*. Vì vậy `scripts/fetch_dataset.py` kiểm chứng bằng **so khớp nội dung** (số bản ghi, dải thời gian, độ phủ giao thoa) thay vì so khớp byte.
+
+6. **Chạy bộ Unit Tests kiểm định toàn trình (80 tests tất định):**
    ```bash
    python -m unittest discover tests -v
    ```
-   Toàn bộ 39 unit tests trong `tests/test_data_collection.py` kiểm chứng adapter OpenAQ, Open-Meteo, AirNow, logic lọc địa lý Hà Nội, kiểm định chất lượng khí tượng `validate_weather_canonical()`, và cơ chế đồng bộ thời gian động. Các test này độc lập với mạng Internet và thực thi tất định trong CI.
+   Bộ gồm **57** unit tests trong `tests/test_data_collection.py` (kiểm chứng adapter OpenAQ, Open-Meteo, AirNow, logic lọc địa lý Hà Nội, kiểm định chất lượng khí tượng `validate_weather_canonical()`, cơ chế đồng bộ thời gian động), **14** unit tests trong `tests/test_data_quality.py` (bộ kiểm toán chất lượng 6 chiều) và **9** unit tests trong `tests/test_fetch_dataset.py` (cơ chế thu thập & kiểm chứng tập dữ liệu) — **tổng cộng 80 test**. Tất cả độc lập với mạng Internet và thực thi tất định trong CI.
 
-6. **Kiểm tra cú pháp và quy chuẩn diff:**
+7. **Kiểm tra cú pháp và quy chuẩn diff:**
    ```bash
-   python -m compileall -q src tests
+   python -m compileall -q src tests scripts
    python -c "import src.data_collection"
    git diff --check
    ```
 
-7. **Thực thi Pipeline Thu thập & Chuẩn hóa Dữ liệu (Chạy cục bộ):**
+8. **Thực thi các notebook phân tích:**
    ```bash
-   # Chạy script pipeline độc lập:
-   python src/data_collection.py
-
-   # Hoặc thực thi notebook thu thập và trực quan hóa:
    jupyter nbconvert --to notebook --execute notebooks/01_data_collection.ipynb
+   jupyter nbconvert --to notebook --execute notebooks/02_quality_audit.ipynb
    ```
    > [!NOTE]
-   > `notebooks/01_data_collection.ipynb` và `run_collection_pipeline()` tải dữ liệu thực tế từ AWS S3 OpenAQ và Open-Meteo API, ghi payload vào `data/raw/` và xuất Parquet vào `data/interim/`. Do phụ thuộc vào kết nối mạng bên ngoài và tệp thô không commit vào Git, quy trình này **chỉ chạy cục bộ** và cố ý không đưa vào CI GitHub Actions tự động (`.github/workflows/ci.yml`).
+   > Các notebook này gọi `run_collection_pipeline()`, tải dữ liệu thực tế từ AWS S3 OpenAQ và Open-Meteo API, ghi payload vào `data/raw/` và xuất Parquet vào `data/interim/`. Do phụ thuộc vào kết nối mạng bên ngoài và tệp thô không commit vào Git, quy trình này **chỉ chạy cục bộ** và cố ý không đưa vào CI GitHub Actions tự động (`.github/workflows/ci.yml`).
+
+### Tóm tắt chuỗi tái lập cho người đánh giá
+
+```text
+git clone
+  → pip install -r requirements.txt                (bước 2–3)
+  → python scripts/fetch_dataset.py                (bước 5, cần mạng, có đối chiếu metadata)
+  → python -m unittest discover tests              (bước 6, 80 test, offline)
+  → jupyter nbconvert --execute notebooks/01_data_collection.ipynb
+  → jupyter nbconvert --execute notebooks/02_quality_audit.ipynb
+  → dữ liệu canonical trong data/interim/ đã sẵn sàng cho mọi phân tích phía sau
+```
 
 ---
 

@@ -147,6 +147,7 @@ nguồn ô nhiễm được duyệt   nguồn khí tượng được duyệt
      - **Tầng B — Bảo toàn & truy vết xuất xứ:** nội dung tệp thô được giữ nguyên trạng (không chỉnh sửa, không chuyển đổi giá trị trước khi ghi) và có mã băm SHA-256 khớp tệp trên đĩa, đủ để kiểm chứng toàn vẹn độc lập.
      - **Tầng C — Chính sách theo dõi phiên bản:** tệp thô tải từ API **không bắt buộc phải được Git-track**; `.gitignore` loại trừ `data/raw/*.json` và `data/raw/*.parquet` là hành vi đúng theo chính sách kho dữ liệu, và tệp thô có thể tái tạo lại từ nguồn.
    - Tầng B là tiêu chuẩn kiểm chứng **thay thế** cho tuyên bố "bất biến". Repository không thực thi khoá chế độ chỉ đọc ở tầng hệ thống tập tin, nên các tài liệu và tiêu chí nghiệm thu **không** dùng cụm "dữ liệu thô bất biến / ở chế độ chỉ đọc" như một yêu cầu không kiểm chứng được. Định nghĩa đầy đủ: Issue #4 § "Chính sách dữ liệu thô ba tầng".
+   - **Cơ chế tái tạo thực thi (bổ sung cho Tầng C):** `python scripts/fetch_dataset.py` tải lại tập dữ liệu từ hai nguồn công khai — OpenAQ S3 public archive (ODC-BY v1.0) và Open-Meteo ERA5 (CC BY 4.0), **không cần API key** — rồi tự đối chiếu nội dung với `data/raw/metadata.json`. Cờ `--skip-fetch` dùng để kiểm chứng dữ liệu đang có sẵn trên đĩa mà không gọi mạng. Chi tiết về giới hạn tái lập byte (kho S3 là kho sống; Parquet không tái lập được theo byte) tại `README.md` §4.
 
 ---
 
@@ -751,24 +752,33 @@ Chi tiết luồng thực hiện:
 | #2 | Câu hỏi nghiên cứu + Canonical Schema | `docs/research_questions.md`, `docs/data_dictionary.md` | Từ điển định nghĩa 6 trường khí tượng + ranh giới vật lý tại §4.3 | **DONE** | — |
 | #19 | Cổng quyết định nguồn | `docs/source_profiling_decision.md`, `data/raw/metadata.json` | Ma trận đa tiêu chí §12.2; vai trò nguồn ghi trong metadata | **DONE** | Không có. Quyết định nguồn giữ nguyên, không bị đảo ngược |
 | #3 | Pipeline chất lượng không khí | `OpenAQAdapter` trong `src/data_collection.py` | 8.022 bản ghi canonical, tz `Asia/Ho_Chi_Minh`, mã băm SHA-256 trong metadata | **DONE** | Adapter AirNow DOS chưa thực thi (cần thông tin xác thực AirNow-Tech) |
-| #4 | Pipeline khí tượng + đồng bộ thời gian | `OpenMeteoAdapter`, `validate_weather_canonical` | 9.072 bản ghi/giờ, 0 trùng lặp, 0 khoảng trống, 0 khuyết thiếu; 39/39 unit test | **IN PROGRESS** | PR #26 chưa merge; #4 chưa đóng |
-| #5 | Kiểm toán chất lượng 6 chiều | Chưa có | Chưa có `docs/data_quality_audit.md`, chưa có `notebooks/02_quality_audit.ipynb` | **NOT STARTED** | — |
+| #4 | Pipeline khí tượng + đồng bộ thời gian | `OpenMeteoAdapter`, `validate_weather_canonical` | 9.072 bản ghi/giờ, 0 trùng lặp, 0 khoảng trống, 0 khuyết thiếu; PR #26 đã merge | **DONE** | — |
+| #5 | Kiểm toán chất lượng 6 chiều | `src/data_quality.py`, `docs/data_quality_audit.md`, `notebooks/02_quality_audit.ipynb` | PR #27 đã merge; `docs/data_quality_audit.md` đã hiệu chỉnh theo dữ liệu thực tế trên đĩa | **DONE** | — |
 | #6 | Làm sạch tất định, cleaning log | Chưa có | Chưa có `docs/cleaning_log.md` | **NOT STARTED** | — |
 | #7 | Ghép dữ liệu, đóng băng, split, pipeline | Chưa có | Chưa có `src/cleaning_pipeline.py`, chưa có `data/processed/air_pollution_final.parquet` | **NOT STARTED** | — |
 
 ### G.3. Kết luận trạng thái Milestone 1
 
 > [!IMPORTANT]
-> **Milestone 1 chưa đóng hoàn toàn.** Trạng thái thực tế: **4/5 issue DONE, 1/5 IN PROGRESS.**
+> **Milestone 1 đã đóng.** Trạng thái thực tế: **5/5 issue DONE** (`#1`, `#2`, `#19`, `#3`, `#4`).
 >
-> - `#4` đã có hiện thực trên branch và test đầy đủ, nhưng PR #26 **đang mở, chưa merge**,
->   nên tiêu chí "đã merge vào `main`" chưa thỏa. Không đóng issue trước khi PR được duyệt.
-> - Điều kiện hoàn tất của `#4` là: PR #26 được merge vào `main` **và** toàn bộ tiêu chí
->   nghiệm thu AC4-1 → AC4-20 được tick. Sau khi AC được chuẩn hóa theo chính sách ba tầng
->   (Mục 3.2), **không còn khoảng trống kỹ thuật nào** chặn #4 — khoảng trống còn lại thuần
->   tuý thủ tục hợp nhất.
-> - Các số liệu thực nghiệm nêu trong báo cáo (#4) là **kết quả của một lần thực thi cụ thể**
+> - `#4` đã hoàn tất: PR #26 **đã merge vào `main`**, toàn bộ tiêu chí nghiệm thu
+>   AC4-1 → AC4-20 đã được tick sau khi AC được chuẩn hóa theo chính sách ba tầng (Mục 3.2).
+> - **Milestone 2 đã bắt đầu:** `#5` (kiểm toán chất lượng 6 chiều) **DONE** qua PR #27.
+>   Còn lại: `#6` (làm sạch tất định + cleaning log) và `#7` (ghép dữ liệu, đóng băng, split, pipeline).
+> - Các số liệu thực nghiệm nêu trong các báo cáo (#4, #5) là **kết quả của một lần thực thi cụ thể**
 >   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
+> - Bộ kiểm thử hiện gồm **71 + 14 = 85 unit test tất định**, tất cả PASS
+>   (`tests/test_data_collection.py` + `tests/test_data_quality.py`).
+
+> [!WARNING]
+> **Khoảng trống độ phủ thời gian (DATA COVERAGE GAP) — chưa được giải quyết, cần theo dõi ở M2:**
+> Khung thời gian mục tiêu của dự án là **2023-01-01 → 2024-12-31** (`temporal_coverage` trong
+> `data/raw/metadata.json`), nhưng tập dữ liệu vận hành thực tế chỉ phủ **2025-07-03 → 2026-07-15**,
+> vì trạm OpenAQ `4946811` chỉ được tích hợp lưu trữ từ 07/2025. Việc mở rộng phủ về 2023–2024
+> phụ thuộc nguồn dữ liệu lịch sử (AirNow DOS cần thông tin xác thực của tổ chức/State Dept) và
+> **không được giải quyết bằng cách tự tạo hoặc nội suy dữ liệu**. Khung nghiên cứu **không** bị
+> thay đổi để làm pipeline chạy; khoảng trống này được ghi nhận minh bạch và chuyển giao cho M2.
 
 ---
 

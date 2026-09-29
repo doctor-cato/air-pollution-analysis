@@ -38,11 +38,15 @@ Toàn bộ chỉ số định lượng trong báo cáo được trích xuất tr
 | **Nguồn dữ liệu gốc** | OpenAQ S3 Public Archive (`location_id=4946811`) | Open-Meteo Historical Weather API (ECMWF ERA5 Reanalysis) |
 | **Trạm quan trắc / Điểm lưới** | `VN001_HANOI_556_NGUYEN_VAN_CU` (556 Nguyễn Văn Cừ, Long Biên, Hà Nội) | Điểm lưới ERA5 ($21.0545^\circ\text{N}, 105.8985^\circ\text{E}$) |
 | **Tọa độ thực tế** | $21.0491^\circ\text{N}, 105.8831^\circ\text{E}$ | $21.0545^\circ\text{N}, 105.8985^\circ\text{E}$ (cách trạm quan trắc 1.7 km) |
-| **Tổng số bản ghi** | **7,999 mốc giờ** | **17,544 mốc giờ** |
+| **Tổng số bản ghi** | **8.022 mốc giờ** | **9.072 mốc giờ** |
 | **Số trường (cột)** | 5 cột (`timestamp`, `station_id`, `location`, `pm25`, `pm10`) | 7 cột (`timestamp`, `temperature`, `relative_humidity`, `wind_speed`, `wind_direction`, `precipitation`, `surface_pressure`) |
-| **Dải thời gian thực tế (`actual_source_coverage`)** | **`2025-07-03 22:00:00+07:00` $\to$ `2026-07-15 17:00:00+07:00`** | **`2023-01-01 00:00:00+07:00` $\to$ `2024-12-31 23:00:00+07:00`** |
+| **Dải thời gian thực tế (`actual_source_coverage`)** | **`2025-07-03 22:00:00+07:00` $\to$ `2026-07-15 17:00:00+07:00`** | **`2025-07-03 00:00:00+07:00` $\to$ `2026-07-15 23:00:00+07:00`** |
 | **Cơ chế dẫn xuất dải thời gian** | Tính toán động trực tiếp từ `min()` và `max()` timestamp trong DataFrame | Tính toán động trực tiếp từ `min()` và `max()` timestamp trong DataFrame |
-| **Cửa sổ nghiên cứu truy vấn (`requested_study_window`)** | Tham số dự án: 2023–2024 (lưu ý: OpenAQ trạm 4946811 bắt đầu từ 07/2025) | 2023–2024 (truy vấn thành công đủ 17,544 giờ liên tục) |
+| **Cửa sổ nghiên cứu truy vấn (`requested_study_window`)** | Tham số dự án: 2023–2024 (lưu ý: OpenAQ trạm 4946811 bắt đầu từ 07/2025) | 2025-07-03 $\to$ 2026-07-15 (cửa sổ được **dẫn xuất động** từ `min()`/`max()` của chuỗi chất lượng không khí, không phải khung 2023–2024) |
+
+> [!IMPORTANT]
+> **Giao thoa thời gian (Temporal Overlap) — đã kiểm chứng:**
+> Phép `inner join` trên khóa `timestamp` cho ra **8.022 bản ghi**, tức **100,00%** tập chất lượng không khí có dữ liệu khí tượng đi kèm. **Không** xảy ra Row Explosion (số bản ghi sau join không vượt quá số bản ghi trước join). Khoảng giao thoa: `2025-07-03 22:00` → `2026-07-15 17:00`. Cùng kết luận này được ghi nhận độc lập trong `data/raw/metadata.json` → `collection_pipeline_execution.temporal_integration` (`air_quality_coverage_pct = 100.0`, `row_explosion_detected = false`).
 
 ---
 
@@ -52,18 +56,18 @@ Kết quả kiểm toán từng cột thông qua hàm `audit_dataframe(df)` và 
 
 | Cột (Variable) | Kiểu dữ liệu (dtype) | Tổng số dòng | Số lượng khuyết (`NaN`) | Tỷ lệ khuyết (%) | Số giá trị duy nhất | Giá trị nhỏ nhất (Min) | Phân vị 25% | Trung vị (Median) | Phân vị 75% | Giá trị lớn nhất (Max) | Ký tự ngụy trang (`N/A`, `null`, `None`) |
 |---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **`timestamp`** (Air) | `datetime64[us, +07:00]` | 7,999 | 0 | 0.00% | 7,999 | 2025-07-03 22:00 | - | - | - | 2026-07-15 17:00 | 0 |
-| **`station_id`** | `str` | 7,999 | 0 | 0.00% | 1 | `VN001...` | - | - | - | `VN001...` | 0 |
-| **`location`** | `str` | 7,999 | 0 | 0.00% | 1 | `556 Nguyễn Văn Cừ` | - | - | - | `556 Nguyễn Văn Cừ` | 0 |
-| **`pm25`** | `float64` | 7,999 | **203** | **2.54%** | 7,748 | 1.06 | 25.33 | 37.92 | 58.08 | 252.64 | 0 |
-| **`pm10`** | `float64` | 7,999 | **123** | **1.54%** | 7,819 | 1.01 | 37.93 | 55.57 | 83.28 | 339.99 | 0 |
-| **`timestamp`** (Weather) | `datetime64[us, +07:00]` | 17,544 | 0 | 0.00% | 17,544 | 2023-01-01 00:00 | - | - | - | 2024-12-31 23:00 | 0 |
-| **`temperature`** | `float64` | 17,544 | 0 | 0.00% | 315 | 6.70 | 21.08 | 25.50 | 28.40 | 40.20 | 0 |
-| **`relative_humidity`** | `int64` | 17,544 | 0 | 0.00% | 79 | 21.0 | 69.0 | 81.0 | 91.0 | 100.0 | 0 |
-| **`wind_speed`** | `float64` | 17,544 | 0 | 0.00% | 129 | 0.0 | 1.80 | 2.50 | 3.30 | 16.70 | 0 |
-| **`wind_direction`** | `int64` | 17,544 | 0 | 0.00% | 360 | 0.0 | 81.0 | 134.0 | 171.0 | 360.0 | 0 |
-| **`precipitation`** | `float64` | 17,544 | 0 | 0.00% | 158 | 0.0 | 0.0 | 0.0 | 0.0 | 24.10 | 0 |
-| **`surface_pressure`** | `float64` | 17,544 | 0 | 0.00% | 401 | 979.9 | 1002.6 | 1008.2 | 1014.4 | 1032.2 | 0 |
+| **`timestamp`** (Air) | `datetime64[ns, Asia/Ho_Chi_Minh]` | 8.022 | 0 | 0,00% | 8.022 | 2025-07-03 22:00 | - | - | - | 2026-07-15 17:00 | 0 |
+| **`station_id`** | `object` | 8.022 | 0 | 0,00% | 1 | `VN001...` | - | - | - | `VN001...` | 0 |
+| **`location`** | `object` | 8.022 | 0 | 0,00% | 1 | `556 Nguyễn Văn Cừ` | - | - | - | `556 Nguyễn Văn Cừ` | 0 |
+| **`pm25`** | `float64` | 8.022 | **203** | **2,53%** | 7.666 | 1,06 | 25,29 | 37,91 | 58,09 | 252,64 | 0 |
+| **`pm10`** | `float64` | 8.022 | **123** | **1,53%** | 7.759 | 1,01 | 37,88 | 55,56 | 83,36 | 339,99 | 0 |
+| **`timestamp`** (Weather) | `datetime64[ns, Asia/Ho_Chi_Minh]` | 9.072 | 0 | 0,00% | 9.072 | 2025-07-03 00:00 | - | - | - | 2026-07-15 23:00 | 0 |
+| **`temperature`** | `float64` | 9.072 | 0 | 0,00% | 283 | 8,90 | 21,30 | 25,40 | 28,40 | 38,60 | 0 |
+| **`relative_humidity`** | `float64` | 9.072 | 0 | 0,00% | 68 | 30,0 | 71,0 | 83,0 | 92,0 | 100,0 | 0 |
+| **`wind_speed`** | `float64` | 9.072 | 0 | 0,00% | 626 | 0,0 | 1,43 | 2,31 | 3,23 | 9,55 | 0 |
+| **`wind_direction`** | `float64` | 9.072 | 0 | 0,00% | 360 | 1,0 | 82,0 | 139,0 | 175,0 | 360,0 | 0 |
+| **`precipitation`** | `float64` | 9.072 | 0 | 0,00% | 100 | 0,0 | 0,0 | 0,0 | 0,1 | 20,50 | 0 |
+| **`surface_pressure`** | `float64` | 9.072 | 0 | 0,00% | 377 | 986,5 | 1002,4 | 1007,6 | 1014,1 | 1028,4 | 0 |
 
 ---
 
@@ -73,12 +77,12 @@ Kết quả kiểm toán từng cột thông qua hàm `audit_dataframe(df)` và 
 
 | Chiều chất lượng (Dimension) | Tiêu chí đo lường (Metric) | Bằng chứng thực nghiệm định lượng (Actual Evidence) | Kết quả quan sát & Đánh giá (Result / Observation) | Hạn chế kỹ thuật & Khuyến nghị (Limitation & Recommendation) |
 |---|---|---|---|---|
-| **1. Completeness** *(Độ đầy đủ)* | Tỷ lệ khuyết thiếu từng biến & Độ bao phủ lưới 1 giờ liên tục | - Tập Weather: 0/17,544 ô khuyết (0.00% missing trên 100% biến).<br>- Tập Air Quality: PM2.5 thiếu 203/7,999 mốc (2.54%), PM10 thiếu 123 mốc (1.54%).<br>- Lưới thời gian liên tục từ `2025-07-03 22:00` đến `2026-07-15 17:00` là 9,044 giờ; thực tế ghi nhận 7,999 giờ (thiếu 1,045 giờ ngắt quãng trên S3, tương đương 11.55%). | - Tập thời tiết đạt độ đầy đủ tuyệt đối 100%.<br>- Tập chất lượng không khí đạt độ khả dụng cao (97.46% PM2.5).<br>- Tồn tại các khoảng trống thời gian do trạm ngừng phát sóng telemetry lên S3. | - Khoảng trống 1,045 giờ chưa xuất hiện dưới dạng hàng `NaN` trong bảng interim.<br>- **Khuyến nghị Issue #6:** Thực hiện `reindex` chuỗi thời gian liên tục 1 giờ độc lập cho trạm để bộc lộ các hàng khuyết tự nhiên kèm cờ `pm25_was_missing`. |
-| **2. Accuracy** *(Độ chính xác)* | Giới hạn vật lý khí quyển & Tính hợp lý khí động học ($\text{PM}_{2.5} \le \text{PM}_{10}$) | - Nhiệt độ: min 6.7°C, max 40.2°C (0 vi phạm bounds [0, 50]°C).<br>- Độ ẩm: min 21%, max 100% (0 vi phạm bounds [0, 100]%).<br>- Tốc độ gió: min 0.0, max 16.7 m/s (0 giá trị âm).<br>- PM2.5: min 1.06, max 252.64 µg/m³ (0 giá trị âm).<br>- **Ràng buộc khí động học:** Trong 7,673 cặp đo đồng thời:<br>  + **Vi phạm nghiệm ngặt ($\text{PM}_{2.5} > \text{PM}_{10}$): 323 cặp (4.21%)**.<br>  + **Vượt ngưỡng dung sai ($\text{PM}_{2.5} > \text{PM}_{10} + 2.0\,\mu\text{g/m}^3$): 282 cặp (3.68%)**.<br>  + *Cơ sở dung sai:* BAM-1020 và cảm biến quang học có độ không đảm bảo đo lường thiết bị (instrumentation measurement uncertainty $\approx \pm 2.0\,\mu\text{g/m}^3$ theo chuẩn US EPA / QCVN).<br>- Độ ẩm cao: 3,745 giờ có $\text{RH} > 90\%$ (21.35%). | - Toàn bộ các biến vật lý đơn lẻ đều nằm trong giới hạn tự nhiên hợp lý tại Hà Nội.<br>- Bằng chứng thực nghiệm ghi nhận 4.21% vi phạm nghiệm ngặt và 3.68% vượt ngưỡng dung sai nồng độ bụi ($\text{PM}_{2.5} > \text{PM}_{10}$). Mẫu hình quan sát có thể liên quan đến sai số đo giữa các cảm biến quang học độc lập và ảnh hưởng của độ ẩm môi trường; nguyên nhân vật lý cụ thể chưa được xác minh trực tiếp từ log thiết bị tại trạm. | - Cần phân biệt rõ sai số phần cứng và biến động thực tế.<br>- **Khuyến nghị Issue #6:** Chuyển các cặp nghịch đảo vượt quá sai số đo ($\epsilon = 2.0\,\mu\text{g/m}^3$) thành `NaN`, gắn cờ `is_high_humidity_fog = 1` cho giờ $\text{RH} > 90\%$ thay vì xóa dòng. |
-| **3. Consistency** *(Độ nhất quán)* | Sự đồng nhất về đơn vị, múi giờ và thứ tự thời gian | - Đơn vị: PM2.5/PM10 ($\mu\text{g/m}^3$), Nhiệt độ ($^\circ\text{C}$), Độ ẩm ($\%$), Gió ($\text{m/s}$), Áp suất ($\text{hPa}$), Mưa ($\text{mm}$).<br>- Múi giờ: 100% bản ghi được định danh `Asia/Ho_Chi_Minh` (UTC+7).<br>- Thứ tự thời gian: `df['timestamp'].is_monotonic_increasing == True` trên cả hai tập. | - Đồng nhất 100% với Canonical Data Dictionary.<br>- Không có hiện tượng trượt pha thời gian giữa giờ địa phương và UTC. | - Hai tập dữ liệu interim hiện tại chưa đồng pha dải năm (Air: 2025–2026; Weather: 2023–2024), do đó không thực hiện phép ghép (`join`) trong Issue #5 để tránh Row Explosion hoặc rò rỉ giả tạo. |
-| **4. Validity** *(Tính hợp lệ)* | Định dạng kiểu dữ liệu (dtypes) và lược đồ chuẩn | - `timestamp`: `datetime64[us, Asia/Ho_Chi_Minh]`.<br>- Các biến đo lường: `float64` và `int64`.<br>- Định danh: `station_id` và `location` là `str`.<br>- Không có giá trị vô cực (`inf`) hoặc mã lỗi ngụy trang. | - 100% cột hợp lệ theo lược đồ giao diện Canonical Schema. | Không phát hiện vi phạm định dạng. |
+| **1. Completeness** *(Độ đầy đủ)* | Tỷ lệ khuyết thiếu từng biến & Độ bao phủ lưới 1 giờ liên tục | - Tập Weather: 0/9.072 ô khuyết (0,00% missing trên 100% biến).<br>- Tập Air Quality: PM2.5 thiếu 203/8.022 mốc (2,53%), PM10 thiếu 123 mốc (1,53%).<br>- Lưới thời gian liên tục từ `2025-07-03 22:00` đến `2026-07-15 17:00` là 9.044 giờ; thực tế ghi nhận 8.022 giờ (thiếu 1.022 giờ ngắt quãng trên S3, tương đương 11,30%). | - Tập thời tiết đạt độ đầy đủ tuyệt đối 100%.<br>- Tập chất lượng không khí đạt độ khả dụng cao (97,47% PM2.5).<br>- Tồn tại các khoảng trống thời gian do trạm ngừng phát sóng telemetry lên S3. | - Khoảng trống 1.022 giờ chưa xuất hiện dưới dạng hàng `NaN` trong bảng interim.<br>- **Khuyến nghị Issue #6:** Thực hiện `reindex` chuỗi thời gian liên tục 1 giờ độc lập cho trạm để bộc lộ các hàng khuyết tự nhiên kèm cờ `pm25_was_missing`. |
+| **2. Accuracy** *(Độ chính xác)* | Giới hạn vật lý khí quyển & Tính hợp lý khí động học ($\text{PM}_{2.5} \le \text{PM}_{10}$) | - Nhiệt độ: min 8,9°C, max 38,6°C (0 vi phạm bounds [0, 50]°C).<br>- Độ ẩm: min 30%, max 100% (0 vi phạm bounds [0, 100]%).<br>- Tốc độ gió: min 0,0, max 9,55 m/s (0 giá trị âm).<br>- PM2.5: min 1,06, max 252,64 µg/m³ (0 giá trị âm).<br>- **Ràng buộc khí động học:** Trong 7.696 cặp đo đồng thời:<br>  + **Vi phạm nghiệm ngặt ($\text{PM}_{2.5} > \text{PM}_{10}$): 324 cặp (4,21%)**.<br>  + **Vượt ngưỡng dung sai ($\text{PM}_{2.5} > \text{PM}_{10} + 2.0\,\mu\text{g/m}^3$): 282 cặp (3,66%)**.<br>  + *Cơ sở dung sai:* BAM-1020 và cảm biến quang học có độ không đảm bảo đo lường thiết bị (instrumentation measurement uncertainty $\approx \pm 2.0\,\mu\text{g/m}^3$ theo chuẩn US EPA / QCVN).<br>- Độ ẩm cao: 2.843 giờ có $\text{RH} > 90\%$ (31,34%). | - Toàn bộ các biến vật lý đơn lẻ đều nằm trong giới hạn tự nhiên hợp lý tại Hà Nội.<br>- Bằng chứng thực nghiệm ghi nhận 4,21% vi phạm nghiệm ngặt và 3,66% vượt ngưỡng dung sai nồng độ bụi ($\text{PM}_{2.5} > \text{PM}_{10}$). Mẫu hình quan sát có thể liên quan đến sai số đo giữa các cảm biến quang học độc lập và ảnh hưởng của độ ẩm môi trường; nguyên nhân vật lý cụ thể chưa được xác minh trực tiếp từ log thiết bị tại trạm. | - Cần phân biệt rõ sai số phần cứng và biến động thực tế.<br>- **Khuyến nghị Issue #6:** Chuyển các cặp nghịch đảo vượt quá sai số đo ($\epsilon = 2.0\,\mu\text{g/m}^3$) thành `NaN`, gắn cờ `is_high_humidity_fog = 1` cho giờ $\text{RH} > 90\%$ thay vì xóa dòng. |
+| **3. Consistency** *(Độ nhất quán)* | Sự đồng nhất về đơn vị, múi giờ và thứ tự thời gian | - Đơn vị: PM2.5/PM10 ($\mu\text{g/m}^3$), Nhiệt độ ($^\circ\text{C}$), Độ ẩm ($\%$), Gió ($\text{m/s}$), Áp suất ($\text{hPa}$), Mưa ($\text{mm}$).<br>- Múi giờ: 100% bản ghi được định danh `Asia/Ho_Chi_Minh` (UTC+7).<br>- Thứ tự thời gian: `df['timestamp'].is_monotonic_increasing == True` trên cả hai tập. | - Đồng nhất 100% với Canonical Data Dictionary.<br>- Không có hiện tượng trượt pha thời gian giữa giờ địa phương và UTC.<br>- Hai tập interim **cùng phủ dải 2025-07 → 2026-07** và đã `inner join` thành công: **8.022 bản ghi, độ phủ 100,00%**, không Row Explosion. | - Dải thời gian vận hành (2025-07 → 2026-07) **không** phù hợp khung mục tiêu 2023–2024 của dự án; việc mở rộng phụ thuộc nguồn lịch sử và thuộc phạm vi M2. |
+| **4. Validity** *(Tính hợp lệ)* | Định dạng kiểu dữ liệu (dtypes) và lược đồ chuẩn | - `timestamp`: `datetime64[ns, Asia/Ho_Chi_Minh]`.<br>- Các biến đo lường: `float64`.<br>- Định danh: `station_id` và `location` là `object`.<br>- Không có giá trị vô cực (`inf`) hoặc mã lỗi ngụy trang. | - 100% cột hợp lệ theo lược đồ giao diện Canonical Schema. | Không phát hiện vi phạm định dạng. |
 | **5. Uniqueness** *(Tính duy nhất)* | Tính duy nhất của khóa quan sát (Observation Key) | - Tập Air Quality: Khóa `(station_id, timestamp)` có **0 bản ghi trùng lặp** (duplicate rate = 0.00%).<br>- Tập Weather: Khóa `timestamp` có **0 bản ghi trùng lặp** (duplicate rate = 0.00%). | - Tính duy nhất đạt 100%. Toàn vẹn khóa chính hoàn hảo. | Không có rủi ro trùng lặp bản ghi. |
-| **6. Timeliness** *(Tính kịp thời)* | Tần suất lấy mẫu, khoảng cách quan trắc và độ trễ | - Khoảng cách lấy mẫu trung vị: **1.0 giờ** trên cả hai tập.<br>- Tập Weather: 17,543/17,543 khoảng cách đều đúng 1.0 giờ (100% hoàn hảo).<br>- Tập Air: 7,904/7,998 khoảng cách đúng 1.0 giờ (98.82%), 42 khoảng cách 2 giờ, 14 khoảng cách 3 giờ, khoảng cách lớn nhất 15 giờ.<br>- Dải thời gian thực tế: phản ánh trung thực năng lực vận hành trạm. | - Tần suất lấy mẫu theo giờ được duy trì ổn định.<br>- Tập thời tiết đạt tính liên tục hoàn hảo.<br>- Tập ô nhiễm có độ trễ gián đoạn cục bộ ngắn hạn (1–3 giờ). | - Cần phân biệt rõ giữa `requested_study_window` (cửa sổ nghiên cứu giả định) và `actual_source_coverage` (thực tế vận hành). |
+| **6. Timeliness** *(Tính kịp thời)* | Tần suất lấy mẫu, khoảng cách quan trắc và độ trễ | - Khoảng cách lấy mẫu trung vị: **1,0 giờ** trên cả hai tập.<br>- Tập Weather: 9.071/9.071 khoảng cách đều đúng 1,0 giờ (100% hoàn hảo).<br>- Tập Air: 7.928/8.021 khoảng cách đúng 1,0 giờ (98,84%); 42 khoảng cách 2 giờ, 14 khoảng cách 3 giờ; khoảng cách lớn nhất **626 giờ**.<br>- Dải thời gian thực tế: phản ánh trung thực năng lực vận hành trạm. | - Tần suất lấy mẫu theo giờ được duy trì ổn định.<br>- Tập thời tiết đạt tính liên tục hoàn hảo.<br>- Tập ô nhiễm có độ trễ gián đoạn cục bộ ngắn hạn (1–3 giờ) **và** một đợt mất dữ liệu kéo dài rất dài (626 giờ ≈ 26 ngày). | - Cần phân biệt rõ giữa `requested_study_window` (cửa sổ nghiên cứu giả định) và `actual_source_coverage` (thực tế vận hành).<br>- Đợt mất 626 giờ phải được rà soát kỹ tại Issue #6 (`reindex`) vì có thể là khoảng trống thời gian thực chứ không chỉ là nhiễu telemetry ngắn hạn. |
 
 ---
 
@@ -86,13 +90,13 @@ Kết quả kiểm toán từng cột thông qua hàm `audit_dataframe(df)` và 
 
 ### 5.1. Khuyết thiếu theo biến (Variable Dimension)
 - **Khí tượng bề mặt:** 0.00% missing trên cả 6 thông số, phản ánh ưu thế chất lượng của mô hình tái phân tích ECMWF ERA5 được đồng hóa dữ liệu toàn cầu.
-- **Chất lượng không khí:** Tỷ lệ khuyết thiếu rất thấp ($\text{PM}_{2.5}$: 2.54%; $\text{PM}_{10}$: 1.54%). 
+- **Chất lượng không khí:** Tỷ lệ khuyết thiếu rất thấp ($\text{PM}_{2.5}$: 2,53%; $\text{PM}_{10}$: 1,53%). 
 - **Đặc điểm đồng khuyết thiếu:** Không có bất kỳ mốc giờ nào cả $\text{PM}_{2.5}$ và $\text{PM}_{10}$ đồng thời bị khuyết (`both_missing == 0`). Khi $\text{PM}_{2.5}$ bị khuyết (203 giờ), cảm biến $\text{PM}_{10}$ vẫn đo đạc bình thường; ngược lại khi $\text{PM}_{10}$ khuyết (123 giờ), $\text{PM}_{2.5}$ vẫn ghi nhận dữ liệu. Điều này tương thích với nhận định rằng hai kênh đo đạc hoạt động độc lập trên cùng một trạm; cần log kỹ thuật từ thiết bị để xác minh cấu hình phần cứng.
 
 ### 5.2. Khuyết thiếu theo thời gian (Temporal Dimension)
 - **Chu kỳ ngày đêm (Diurnal Missing Pattern):**
   - Tỷ lệ thiếu $\text{PM}_{2.5}$ tập trung cao nhất vào ban đêm và rạng sáng: Khung giờ $00:00 - 04:00$ đạt từ **$3.80\%$ đến $4.79\%$** (đỉnh cao nhất tại $01:00$ với 16 giờ khuyết).
-  - Tỷ lệ thiếu thấp nhất vào khung trưa và chiều: Khung giờ $10:00 - 17:00$ dao động từ **$0.60\%$ đến $1.51\%$** (thấp nhất tại $11:00$ với chỉ 2 giờ khuyết, tương đương $0.60\%$).
+  - Tỷ lệ thiếu thấp nhất vào khung trưa và chiều: Khung giờ $10:00 - 17:00$ dao động từ **$0.60\%$ đến $1.80\%$** (thấp nhất tại $11:00$ với chỉ 2 giờ khuyết, tương đương $0.60\%$).
 - **Phân bố theo tháng:**
   - Tháng 07/2025: $\text{PM}_{2.5}$ đạt $0.0\%$ missing, trong khi $\text{PM}_{10}$ khuyết 111 giờ ($17.87\%$) do cảm biến $\text{PM}_{10}$ hiệu chỉnh đầu chu kỳ.
   - Tháng 08/2025: $\text{PM}_{2.5}$ khuyết 41 giờ ($5.58\%$), xuất hiện đợt mất tín hiệu 23 giờ liên tục ngày 19/08/2025.
@@ -126,7 +130,9 @@ Kết quả kiểm toán từng cột thông qua hàm `audit_dataframe(df)` và 
 > [!CAUTION]
 > **TUYÊN BỐ BẤT ĐỊNH (Uncertainty Declaration):**  
 > Dữ liệu quan sát hiện tại **chưa đủ cơ sở thực nghiệm để khẳng định dứt khoát một cơ chế khuyết thiếu duy nhất** (*Observed data are insufficient to identify the missingness mechanism conclusively*).  
-> Nguyên nhân kỹ thuật: Tập dữ liệu trạm quan trắc mặt đất trạm 556 Nguyễn Văn Cừ mới được OpenAQ tích hợp lưu trữ từ tháng 07/2025 (chuỗi đo 2025–2026), trong khi tập khí tượng ERA5 hiện có trên `data/interim/` phục vụ cửa sổ 2023–2024. Do không có sự giao thoa đồng thời giữa chuỗi đo ô nhiễm và chuỗi đo thời tiết trên cùng một khoảng thời gian, nhóm nghiên cứu không thể chạy mô hình hồi quy logistic để kiểm định tương quan giữa xác suất khuyết thiếu $\text{PM}_{2.5}$ với nhiệt độ, lượng mưa hay áp suất. Cơ chế MAR kết hợp MCAR cục bộ được đưa ra dưới dạng **giả định chẩn đoán kỹ thuật có cơ sở**, cần được thẩm định thêm khi dữ liệu được làm sạch tại Issue #6.
+> Nguyên nhân kỹ thuật: Tập dữ liệu trạm quan trắc mặt đất 556 Nguyễn Văn Cừ mới được OpenAQ tích hợp lưu trữ từ tháng 07/2025, nên chuỗi đo vận hành là 2025-07 → 2026-07, **không** phủ được khung mục tiêu 2023–2024 của dự án. Tuy vậy, **hai chuỗi có giao thoa hoàn toàn**: `inner join` trên khóa `timestamp` cho ra 8.022 bản ghi với độ phủ 100,00% và không Row Explosion (xem `data/raw/metadata.json` → `collection_pipeline_execution.temporal_integration`).
+>
+> Vì vậy, khẳng định rằng "không thể kiểm định cơ chế khuyết thiếu vì thiếu giao thoa" là **không còn đúng**. Dữ liệu đủ điều kiện để chạy kiểm định hồi quy logistic giữa xác suất khuyết thiếu $\text{PM}_{2.5}$ và các biến khí tượng quan sát được; tuy nhiên Issue #5 **chưa** thực hiện kiểm định đó. Do đó cơ chế MCAR/MAR/MNAR ở §6 vẫn là **giả định chẩn đoán dựa trên mô tả hình thái**, chưa được kiểm định thống kê, và cần được thẩm định tại Issue #6 (hoặc Issue #7 khi dựng pipeline tích hợp).
 
 ---
 
@@ -142,8 +148,8 @@ Khung kiểm toán đã được nâng cấp theo chuẩn **timestamp-aware** v�
   - Biến `pm10`: **0 lần xuất hiện giá trị 0.0** (min thực tế là $1.01\,\mu\text{g/m}^3$).
   - **Kết luận:** Trạm quan trắc chuẩn quốc gia 556 Nguyễn Văn Cừ không có bất kỳ hiện tượng trôi gốc về 0 (zero-drift) hay mất nguồn duy trì đường số 0 giả mạo nào.
 - **Tập khí tượng bề mặt:**
-  - Biến `precipitation`: Có 13,178 giờ có lượng mưa bằng $0.0\,\text{mm}$ (chiếm 75.11%). Chuỗi không mưa dài nhất kéo dài **324 giờ liên tục** (~13.5 ngày). Đây là hiện tượng khí tượng tự nhiên bình thường trong mùa khô tại miền Bắc Việt Nam, không phải lỗi kỹ thuật.
-  - Biến `wind_speed`: Có 5 giờ lặng gió ($0.0\,\text{m/s}$), chuỗi dài nhất là 1 giờ đơn lẻ.
+  - Biến `precipitation`: Có 6.727 giờ có lượng mưa bằng $0.0\,\text{mm}$ (chiếm 74,15%). Chuỗi không mưa dài nhất kéo dài **275 giờ liên tục** (~11,5 ngày); có 252 đợt kéo dài trên 6 giờ. Đây là hiện tượng khí tượng tự nhiên bình thường trong mùa khô tại miền Bắc Việt Nam, không phải lỗi kỹ thuật.
+  - Biến `wind_speed`: Có 10 giờ lặng gió ($0.0\,\text{m/s}$), chuỗi dài nhất là 2 giờ; không có đợt nào vượt ngưỡng 6 giờ.
 - **Ghi chú chuyển giao Issue #6:** Không có trường hợp kẹt cảm biến nồng độ bụi ở mức 0. Bằng chứng định lượng này chuyển giao cho Issue #6 để rà soát thêm trường hợp nồng độ không đổi kéo dài quá 6 giờ ở các mức giá trị dương khác (stuck constant values).
 
 ---
@@ -156,7 +162,7 @@ Nguyên lý **1–10–100 Rule** (George Labovitz & Yu Sang Chang) chỉ ra r�
 ┌─────────────────────────────────┐
 │ CHI PHÍ PHÒNG NGỪA / AUDIT: $1   │  ◄── [ ISSUE #5: DATA QUALITY AUDIT ]
 │ Phát hiện sớm 282 điểm đảo      │      Đo lường, định lượng 6 chiều, gắn cờ lỗi
-│ nghịch, 1,045 giờ ngắt quãng    │      Chi phí thấp nhất, bảo toàn tính nguyên bản.
+│ nghịch, 1.022 giờ ngắt quãng    │      Chi phí thấp nhất, bảo toàn tính nguyên bản.
 └─────────────────────────────────┘
                  │
                  ▼
@@ -174,7 +180,7 @@ Nguyên lý **1–10–100 Rule** (George Labovitz & Yu Sang Chang) chỉ ra r�
 └─────────────────────────────────┘
 ```
 
-1. **Giai đoạn Kiểm toán Issue #5 (\$1):** Chỉ tốn chi phí tính toán đơn giản trên `data/interim/` để phát hiện ra 282 cặp giá trị nghịch đảo vật lý, 1,045 giờ gián đoạn chuỗi đo và xác nhận 100% không trùng lặp khóa.
+1. **Giai đoạn Kiểm toán Issue #5 (\$1):** Chỉ tốn chi phí tính toán đơn giản trên `data/interim/` để phát hiện ra 282 cặp giá trị nghịch đảo vật lý, 1.022 giờ gián đoạn chuỗi đo và xác nhận 100% không trùng lặp khóa.
 2. **Giai đoạn Làm sạch Issue #6 (\$10):** Dựa trên bằng chứng định lượng từ Issue #5, kỹ sư dữ liệu chỉ cần áp dụng quy tắc tất định chính xác mà không phải tái thẩm định toàn bộ tập dữ liệu thô.
 3. **Giai đoạn Huấn luyện & Cảnh báo (\$100):** Ngăn chặn triệt để nguy cơ mô hình OLS bị bóp méo hệ số hồi quy hoặc mô hình phân loại cảnh báo sớm (Early Alerting) đưa ra các dự báo giả mạo, bảo đảm liêm chính học thuật và độ tin cậy khoa học cao nhất theo chuẩn CMC University.
 
@@ -184,11 +190,11 @@ Nguyên lý **1–10–100 Rule** (George Labovitz & Yu Sang Chang) chỉ ra r�
 
 ### 9.1. Tóm tắt kết quả kiểm toán
 1. Toàn bộ dữ liệu Canonical tuân thủ nghiêm ngặt lược đồ giao diện `docs/data_dictionary.md`, không có duplicate records trên khóa quan trắc, không còn mã lỗi ngụy trang.
-2. Dữ liệu khí tượng đạt chất lượng hoàn hảo (0% missing trên 17,544 giờ).
+2. Dữ liệu khí tượng đạt chất lượng hoàn hảo (0% missing trên 9.072 giờ).
 3. Dữ liệu chất lượng không khí đạt độ bao phủ cao (97.46% PM2.5 khả dụng), với tỷ lệ khuyết tập trung vào ban đêm và các đợt gián đoạn ngắn hạn.
 
 ### 9.2. Danh mục bàn giao kỹ thuật cho Issue #6 (Làm sạch tất định)
 - **Handoff 1 (Xử lý nghịch đảo khí động học):** Cung cấp danh sách 282 bản ghi $\text{PM}_{2.5} > \text{PM}_{10} + 2.0\,\mu\text{g/m}^3$ để Issue #6 chuyển đổi thành `NaN`.
-- **Handoff 2 (Reindex chuỗi thời gian liên tục):** Cung cấp thông số lưới 9,044 giờ để Issue #6 reindex độc lập theo trạm `VN001_HANOI_556_NGUYEN_VAN_CU`, bộc lộ 1,045 giờ thiếu và gắn cờ `pm25_was_missing = 1` cho các đợt mất tín hiệu $>6$ giờ.
-- **Handoff 3 (Cảnh báo độ ẩm cao):** Gắn cờ `is_high_humidity_fog = 1` cho 3,745 giờ có $\text{RH} > 90\%$ để phân tích tán xạ quang học mà không xóa dòng.
+- **Handoff 2 (Reindex chuỗi thời gian liên tục):** Cung cấp thông số lưới 9.044 giờ để Issue #6 reindex độc lập theo trạm `VN001_HANOI_556_NGUYEN_VAN_CU`, bộc lộ 1.022 giờ thiếu và gắn cờ `pm25_was_missing = 1` cho các đợt mất tín hiệu $>6$ giờ.
+- **Handoff 3 (Cảnh báo độ ẩm cao):** Gắn cờ `is_high_humidity_fog = 1` cho 2.843 giờ có $\text{RH} > 90\%$ để phân tích tán xạ quang học mà không xóa dòng.
 - **Handoff 4 (Ghi nhật ký làm sạch):** Mọi thao tác làm sạch ở Issue #6 phải được ghi nhận đầy đủ vào [`docs/cleaning_log.md`](cleaning_log.md).
