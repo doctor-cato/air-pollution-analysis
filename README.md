@@ -34,15 +34,16 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 
 > [!IMPORTANT]
 > **Phân định rõ ràng giữa mã nguồn hiện có và kế hoạch tương lai:**  
-> Dự án đang ở giai đoạn **Milestone 1 (Thiết lập dự án, khảo sát nguồn & thu thập dữ liệu — Tuần 01–02)**. Đã hoàn tất phần thu thập và chuẩn hóa dữ liệu. Toàn bộ các phân tích thống kê, mô hình học máy và các giai đoạn kiểm toán/làm sạch phía sau vẫn là kế hoạch đặc tả trong [`docs/roadmap.md`](docs/roadmap.md) và **chưa được hiện thực hóa**.
+> Dự án đang ở giai đoạn **Milestone 2 (Kiểm toán & Làm sạch dữ liệu — Tuần 03–05)**. Đã hoàn tất phần thu thập, chuẩn hóa, kiểm toán chất lượng 6 chiều và làm sạch tất định. Toàn bộ các phân tích thống kê, mô hình học máy và các giai đoạn tiền xử lý/làm mô hình phía sau vẫn là kế hoạch đặc tả trong [`docs/roadmap.md`](docs/roadmap.md) và **chưa được hiện thực hóa**.
 
 ### 2.1. Hiện trạng Triển khai (Milestone 1–2)
 
 > [!IMPORTANT]
-> **Trạng thái hiện tại sau review:** **Issue #1–#5 đều DONE** (kể cả #4, PR #26 đã merge vào `main`).
+> **Trạng thái hiện tại sau review:** **Issue #1–#6 đều DONE** (kể cả #4, PR #26 và #5, PR #27 đã merge vào `main`).
 > - **Issue #1, #2, #19, #3:** Đã hoàn tất và nghiệm thu (**DONE**).
 > - **Issue #4:** PR #26 đã merge vào `main` (**DONE**).
 > - **Issue #5:** Bộ kiểm toán chất lượng 6 chiều đã hoàn thành và merge qua PR #27 (`src/data_quality.py`, `docs/data_quality_audit.md`, `notebooks/02_quality_audit.ipynb`) (**DONE**).
+> - **Issue #6:** Làm sạch tất định đã triển khai (`src/cleaning.py`, `docs/cleaning_log.md`, `notebooks/03_data_cleaning.ipynb`) (**DONE**).
 > - Toàn bộ các phân tích thống kê nâng cao, mô hình học máy và pipeline tiền xử lý chống rò rỉ phía sau thuộc Milestone 2–6 và **chưa bắt đầu**.
 
 **Tuần 01 — Thiết lập dự án & Canonical Schema**
@@ -62,11 +63,18 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 - [x] Lưu payload thô dưới `data/raw/` khi pipeline chạy, kèm `metadata.json` ghi nhận xuất xứ, tham số truy vấn, mã băm SHA-256 và giấy phép (theo [chính sách dữ liệu thô ba tầng](docs/roadmap.md#32-cổng-quyết-định-nguồn-dữ-liệu-issue-19-as-source-selection-gate)) [Issue #3, #4].
 - [x] Bộ **71** unit tests tất định cho pipeline thu thập (`tests/test_data_collection.py`) và pipeline kiểm định tự động bằng GitHub Actions (`.github/workflows/ci.yml`).
 
+**Tuần 03–04 — Kiểm toán & Làm sạch dữ liệu**
+- [x] Kiểm toán chất lượng 6 chiều và phân tích cơ chế khuyết thiếu Rubin với **tuyên bố bất định** minh bạch ([Issue #5], `src/data_quality.py`, [`docs/data_quality_audit.md`](docs/data_quality_audit.md), `notebooks/02_quality_audit.ipynb`).
+- [x] Làm sạch **tất định**: chuẩn hóa múi giờ UTC+7, khử trùng lặp, bóc trần missing ngụy trang, lọc giá trị âm phi lý, thực thi ràng buộc khí động học $\text{PM}_{2.5} \le \text{PM}_{10}$, reindex lưới 1 giờ liên tục **độc lập theo từng trạm** ([Issue #6], `src/cleaning.py`).
+- [x] Nhận diện lỗi kẹt cảm biến và gắn cờ chẩn đoán `is_high_humidity_fog`, `pm25_was_missing` — **không** xóa bản ghi, **không** điền khuyết ([`docs/cleaning_log.md`](docs/cleaning_log.md)).
+- [x] Biên soạn **Cleaning Log** tự động sinh từ mã nguồn, ghi nhận 100% phép biến đổi kèm số dòng bị tác động ([`docs/cleaning_log.md`](docs/cleaning_log.md)).
+- [x] Bộ **77** unit tests tất định cho lớp làm sạch (`tests/test_cleaning.py`), bao gồm kiểm chứng **không điền khuyết** và **tính tất định** (idempotent).
+
 > [!NOTE]
 > **Về dữ liệu thô:** tệp thô tải từ API **không được Git-track** — đây là chính sách kho dữ liệu của repository, không phải thiếu sót. Tính toàn vẹn được kiểm chứng bằng mã băm SHA-256 ghi trong `data/raw/metadata.json`. Xem [Mục 3.2 của roadmap](docs/roadmap.md#32-cổng-quyết-định-nguồn-dữ-liệu-issue-19-as-source-selection-gate).
 
 ### 2.2. Kế hoạch thực hiện tiếp theo (Theo `docs/roadmap.md`)
-- **Tuần 03–05 (Milestone 2):** ~~Kiểm toán 6 chiều chất lượng dữ liệu~~ ([Issue #5] — **đã xong**, PR #27). Còn lại: làm sạch tất định và lập cleaning log ([Issue #6]), tích hợp dữ liệu, đóng băng tập dữ liệu, phân chia chuỗi thời gian tuyến tính và đóng gói Pipeline chống rò rỉ sang định dạng Parquet ([Issue #7]).
+- **Tuần 03–05 (Milestone 2):** ~~Kiểm toán 6 chiều chất lượng dữ liệu~~ ([Issue #5] — **đã xong**, PR #27) và ~~làm sạch tất định & lập cleaning log~~ ([Issue #6] — **đã xong**). Còn lại: tích hợp dữ liệu, đóng băng tập dữ liệu, phân chia chuỗi thời gian tuyến tính và đóng gói Pipeline chống rò rỉ sang định dạng Parquet ([Issue #7]).
 - **Tuần 06–08 (Milestone 3):** Phân tích khám phá dữ liệu (EDA), tính toán 4 họ chỉ số thống kê, thiết kế 7 biểu đồ ấn phẩm giải thích theo nguyên tắc Tufte/Cleveland, hoàn thành Báo cáo Giữa kỳ ([Issue #8, #9, #10]).
 - **Tuần 09–11 (Milestone 4):** Thực hiện kiểm định giả thuyết phi tham số, xây dựng mô hình hồi quy OLS (chẩn đoán LINE), phát triển mô hình phân loại cảnh báo ô nhiễm với điều chỉnh ngưỡng quyết định (*Threshold tuning*) ([Issue #11, #12, #13]).
 - **Tuần 12–15 (Milestones 5 & 6):** Đánh giá định kiến dữ liệu (*Bias Audit*), đo đạc tài nguyên vs Spark, lập Datasheet for Dataset, Model Card 1 trang, hoàn thiện mã nguồn và bảo vệ đồ án cuối kỳ ([Issue #14, #15, #16, #17]).
@@ -91,7 +99,7 @@ air-pollution-analysis/
 │   ├── raw/                            # Dữ liệu gốc lưu khi chạy pipeline (không Git-track)
 │   │   ├── metadata.json               # Xuất xứ, tham số truy vấn, mã băm SHA-256, bản quyền
 │   │   └── .gitkeep
-│   ├── interim/                        # Dữ liệu trung gian canonical Parquet sau nạp & chuẩn hóa
+│   ├── interim/                        # Dữ liệu trung gian canonical Parquet (sau nạp, chuẩn hóa và làm sạch tất định)
 │   │   └── .gitkeep
 │   └── processed/                      # Dữ liệu sạch hoàn chỉnh đóng băng lưu Parquet
 │       └── .gitkeep
@@ -103,20 +111,24 @@ air-pollution-analysis/
 │   ├── source_profiling.md             # Mục lục tài liệu thẩm định hồ sơ đa nguồn [Issue #19]
 │   ├── source_profiling_decision.md    # Báo cáo thẩm định & quyết định cổng nguồn dữ liệu [Issue #19]
 │   ├── data_quality_audit.md           # Báo cáo kiểm toán chất lượng 6 chiều [Issue #5]
+│   ├── cleaning_log.md                 # Nhật ký làm sạch tất định (sinh tự động) [Issue #6]
 │   └── air_quality_project_overview.md # Tài liệu tổng quan định hướng đề tài
 ├── notebooks/
 │   ├── 00_environment_test.ipynb       # Notebook kiểm thử môi trường và nạp thư viện [Issue #1]
 │   ├── 01_data_collection.ipynb        # Thực thi pipeline thu thập & kiểm định dữ liệu [Issue #3, #4]
-│   └── 02_quality_audit.ipynb          # Trình bày kết quả kiểm toán 6 chiều [Issue #5]
+│   ├── 02_quality_audit.ipynb          # Trình bày kết quả kiểm toán 6 chiều [Issue #5]
+│   └── 03_data_cleaning.ipynb          # Thực thi làm sạch tất định & sinh Cleaning Log [Issue #6]
 ├── scripts/
 │   └── fetch_dataset.py                # Tải & kiểm chứng tập dữ liệu từ nguồn công khai (không cần API key)
 ├── src/
 │   ├── __init__.py
 │   ├── data_collection.py              # Adapter OpenAQ, Open-Meteo, AirNow và validation [Issue #3, #4]
-│   └── data_quality.py                 # Hàm kiểm toán chất lượng 6 chiều & phân tích khuyết thiếu [Issue #5]
+│   ├── data_quality.py                 # Hàm kiểm toán chất lượng 6 chiều & phân tích khuyết thiếu [Issue #5]
+│   └── cleaning.py                     # Làm sạch tất định, kẹt cảm biến, reindex & sinh Cleaning Log [Issue #6]
 ├── tests/
 │   ├── test_data_collection.py         # 57 unit tests kiểm thử pipeline thu thập và validation [Issue #3, #4]
 │   ├── test_data_quality.py            # 14 unit tests cho bộ kiểm toán 6 chiều [Issue #5]
+│   ├── test_cleaning.py                # 77 unit tests cho lớp làm sạch tất định [Issue #6]
 │   └── test_fetch_dataset.py           # 9 unit tests cho cơ chế thu thập & kiểm chứng tập dữ liệu
 ├── figures/                            # Thư mục lưu biểu đồ xuất bản chất lượng cao (300 DPI)
 │   └── .gitkeep
@@ -180,26 +192,31 @@ air-pollution-analysis/
    >
    > **Giới hạn cần biết:** bucket OpenAQ S3 là **kho sống** — nhà cung cấp tiếp tục nạp dữ liệu mới, nên một lần tải ở thời điểm sau có thể nhiều dòng hơn bản đã kiểm toán. Ngoài ra, định dạng Parquet **không tái lập được theo byte** giữa các máy (khối nén và metadata nội bộ phụ thuộc phiên bản thư viện), nên SHA-256 kiểm chứng được *tính toàn vẹn của tệp đã lưu* chứ không dựng lại được *tập dữ liệu*. Vì vậy `scripts/fetch_dataset.py` kiểm chứng bằng **so khớp nội dung** (số bản ghi, dải thời gian, độ phủ giao thoa) thay vì so khớp byte.
 
-6. **Chạy bộ Unit Tests kiểm định toàn trình (80 tests tất định):**
+6. **Chạy bộ Unit Tests kiểm định toàn trình (164 tests tất định):**
    ```bash
    python -m unittest discover tests -v
    ```
-   Bộ gồm **57** unit tests trong `tests/test_data_collection.py` (kiểm chứng adapter OpenAQ, Open-Meteo, AirNow, logic lọc địa lý Hà Nội, kiểm định chất lượng khí tượng `validate_weather_canonical()`, cơ chế đồng bộ thời gian động), **14** unit tests trong `tests/test_data_quality.py` (bộ kiểm toán chất lượng 6 chiều) và **9** unit tests trong `tests/test_fetch_dataset.py` (cơ chế thu thập & kiểm chứng tập dữ liệu) — **tổng cộng 80 test**. Tất cả độc lập với mạng Internet và thực thi tất định trong CI.
+   Bộ gồm **57** unit tests trong `tests/test_data_collection.py` (kiểm chứng adapter OpenAQ, Open-Meteo, AirNow, logic lọc địa lý Hà Nội, kiểm định chất lượng khí tượng `validate_weather_canonical()`, cơ chế đồng bộ thời gian động), **14** unit tests trong `tests/test_data_quality.py` (bộ kiểm toán chất lượng 6 chiều), **84** unit tests trong `tests/test_cleaning.py` (làm sạch tất định: chuẩn hóa múi giờ, khử trùng lặp, ràng buộc khí động học, reindex đa trạm, kẹt cảm biến, cờ chẩn đoán, tính tất định và bảo toàn giá trị cực trị) và **9** unit tests trong `tests/test_fetch_dataset.py` (cơ chế thu thập & kiểm chứng tập dữ liệu) — **tổng cộng 164 test**. Tất cả độc lập với mạng Internet và thực thi tất định trong CI.
 
 7. **Kiểm tra cú pháp và quy chuẩn diff:**
    ```bash
    python -m compileall -q src tests scripts
    python -c "import src.data_collection"
+   python -c "import src.data_quality"
+   python -c "import src.cleaning"
    git diff --check
    ```
 
-8. **Thực thi các notebook phân tích:**
+8. **Thực thi các notebook phân tích (theo đúng thứ tự tuần 03–04):**
    ```bash
    jupyter nbconvert --to notebook --execute notebooks/01_data_collection.ipynb
    jupyter nbconvert --to notebook --execute notebooks/02_quality_audit.ipynb
+   jupyter nbconvert --to notebook --execute notebooks/03_data_cleaning.ipynb
    ```
    > [!NOTE]
    > Các notebook này gọi `run_collection_pipeline()`, tải dữ liệu thực tế từ AWS S3 OpenAQ và Open-Meteo API, ghi payload vào `data/raw/` và xuất Parquet vào `data/interim/`. Do phụ thuộc vào kết nối mạng bên ngoài và tệp thô không commit vào Git, quy trình này **chỉ chạy cục bộ** và cố ý không đưa vào CI GitHub Actions tự động (`.github/workflows/ci.yml`).
+   >
+   > **Thứ tự là bắt buộc.** `03_data_cleaning.ipynb` ghi đè hai tệp canonical trong `data/interim/`, nên `02_quality_audit.ipynb` phải chạy **trước** `03` để báo cáo kiểm toán mô tả đúng trạng thái trước làm sạch. Nếu chạy lại `03` trên artifact đã làm sạch, mã nguồn sẽ **cảnh báo tái lập** và [`docs/cleaning_log.md`](docs/cleaning_log.md) sẽ ghi rõ điều đó.
 
 ### Tóm tắt chuỗi tái lập cho người đánh giá
 
@@ -207,10 +224,11 @@ air-pollution-analysis/
 git clone
   → pip install -r requirements.txt                (bước 2–3)
   → python scripts/fetch_dataset.py                (bước 5, cần mạng, có đối chiếu metadata)
-  → python -m unittest discover tests              (bước 6, 80 test, offline)
+  → python -m unittest discover tests              (bước 6, 164 test, offline)
   → jupyter nbconvert --execute notebooks/01_data_collection.ipynb
   → jupyter nbconvert --execute notebooks/02_quality_audit.ipynb
-  → dữ liệu canonical trong data/interim/ đã sẵn sàng cho mọi phân tích phía sau
+  → jupyter nbconvert --execute notebooks/03_data_cleaning.ipynb  (sinh docs/cleaning_log.md)
+  → dữ liệu canonical ĐÃ LÀM SẠCH trong data/interim/ sẵn sàng cho Issue #7
 ```
 
 ---

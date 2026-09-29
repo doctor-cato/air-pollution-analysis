@@ -36,6 +36,7 @@ jobs:
         run: |
           python -c "import src.data_collection"
           python -c "import src.data_quality"
+          python -c "import src.cleaning"
 
       # Chỉ chạy unit test. KHÔNG chạy run_collection_pipeline() vì cần
       # gọi OpenAQ S3 / Open-Meteo / AirNow qua mạng (không deterministic).
@@ -78,6 +79,12 @@ jobs:
       # 01_data_collection.ipynb CỐ TÌNH KHÔNG chạy trong CI: nó gọi
       # run_collection_pipeline() -> tải OpenAQ/Open-Meteo/AirNow từ Internet và
       # phụ thuộc dữ liệu thô không được commit. Bắt buộc chạy thủ công local.
+      #
+      # 02_quality_audit.ipynb và 03_data_cleaning.ipynb cũng cố ý không chạy trong
+      # CI: chúng đọc data/interim/*.parquet, mà .gitignore loại bỏ và chỉ sinh được
+      # sau khi chạy 01 (cần network). Thay vào đó, logic của 03 nằm hoàn toàn trong
+      # src/cleaning.py và được kiểm thử offline đầy đủ bằng tests/test_cleaning.py,
+      # vốn chạy ở job `validate` phía trên.
       - name: Thực thi 00_environment_test.ipynb
         env:
           MPLBACKEND: Agg
