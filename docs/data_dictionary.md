@@ -155,12 +155,12 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `pm25` |
-| **Source Field Name** | `value` khi `parameter == 'pm25'` (OpenAQ S3 / API); `Value` (AirNow DOS CSV - Backup) |
+| **Source Field Name** | `value` khi `parameter == 'pm25'` (OpenAQ S3 / API); `Value` (AirNow DOS CSV - Fallback) |
 | **Definition** | Nồng độ khối lượng của các hạt bụi mịn có đường kính khí động học nhỏ hơn hoặc bằng 2.5 micromet lơ lửng trong không khí theo chu kỳ 1 giờ (hourly).<br><br>*(Lưu ý về tần suất đo & quy chuẩn: Dữ liệu canonical được ghi nhận theo từng giờ. Để đối chiếu với các quy chuẩn kỹ thuật như QCVN 05:2023/BTNMT với giới hạn trung bình 24 giờ là $45\,\mu\text{g/Nm}^3$ áp dụng từ 01/01/2026, dữ liệu cần được tổng hợp theo chu kỳ 24 giờ tương thích ở các bước phân tích sau; tuyệt đối không áp trực tiếp ngưỡng trung bình 24 giờ lên từng quan sát đơn lẻ theo giờ).*<br><br>*(Lưu ý về phân biệt đơn vị đo $\mu\text{g/m}^3$ vs. $\mu\text{g/Nm}^3$: Đơn vị canonical của tập dữ liệu là $\mu\text{g/m}^3$ đo ở điều kiện môi trường thực tế từ thiết bị Met One BAM-1020. Quy chuẩn QCVN 05:2023/BTNMT sử dụng đơn vị $\mu\text{g/Nm}^3$ ở điều kiện chuẩn nhiệt độ và áp suất. Hai đơn vị này **không thể so sánh trực tiếp như cùng một đơn vị đo** mà cần được xử lý/chuẩn hóa phù hợp dựa trên thông số khí tượng thực tế nếu đối chiếu).* |
 | **Unit** | $\mu\text{g/m}^3$ (Microgam trên mét khối không khí thực tế đo ở điều kiện môi trường - actual/ambient conditions; phân biệt với đơn vị quy chuẩn $\mu\text{g/Nm}^3$) |
 | **Datatype** | `float64` |
-| **Transformation** | Lọc theo `parameter == 'pm25'`; ép kiểu `float64`; áp dụng quy tắc kiểm tra giá trị vật lý: giá trị âm ($< 0\,\mu\text{g/m}^3$) là bất thường vật lý $\to$ gán `NaN`; giá trị bằng 0 ($= 0.0\,\mu\text{g/m}^3$) được giữ nguyên nếu là quan trắc hợp lệ từ cảm biến (chỉ gán `NaN` nếu đi kèm QC invalid flag từ trạm); bóc trần mã lỗi ngụy trang (ví dụ `-999` từ AirNow nếu dùng backup) thành `NaN`. |
-| **Source Origin** | Nguồn chính: OpenAQ REST API v3 / S3 Archive (location_id=2178, Met One BAM-1020). Nguồn dự phòng: AirNow DOS CSV. Phê duyệt chính thức tại Issue #19. |
+| **Transformation** | Lọc theo `parameter == 'pm25'`; ép kiểu `float64`; áp dụng quy tắc kiểm tra giá trị vật lý: giá trị âm ($< 0\,\mu\text{g/m}^3$) là bất thường vật lý $\to$ gán `NaN`; giá trị bằng 0 ($= 0.0\,\mu\text{g/m}^3$) được giữ nguyên nếu là quan trắc hợp lệ từ cảm biến (chỉ gán `NaN` nếu đi kèm QC invalid flag từ trạm); bóc trần mã lỗi ngụy trang (ví dụ `-999` từ AirNow nếu dùng fallback) thành `NaN`. |
+| **Source Origin** | Nguồn chính: OpenAQ REST API v3 / S3 Archive (location_id=2178, Met One BAM-1020). Nguồn dự phòng (Fallback): AirNow DOS CSV. Phê duyệt chính thức tại Issue #19. |
 | **Missingness/Availability** | **Biến mục tiêu cốt lõi**. Kết quả profiling thực tế: 14,424 giờ có dữ liệu trong 2023–2024 (completeness: 82.2%; năm 2023 đạt 69.1%, năm 2024 đạt 95.3%). Giá trị khuyết thiếu tự nhiên biểu diễn bằng `NaN`, không tự ý điền 0. |
 
 #### 5. `pm10`
@@ -183,12 +183,12 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `temperature` |
-| **Source Field Name** | `temperature_2m` (Open-Meteo ERA5); `TMP` (NOAA ISD 48820 - Backup) |
+| **Source Field Name** | `temperature_2m` (Open-Meteo ERA5); `TMP` (NOAA ISD 48820 - Fallback) |
 | **Definition** | Nhiệt độ không khí khô đo tại độ cao tiêu chuẩn (2 mét so với mặt đất). |
 | **Unit** | $^\circ\text{C}$ (Độ Celsius) |
 | **Datatype** | `float64` |
-| **Transformation** | Open-Meteo trả về trực tiếp đơn vị $^\circ\text{C}$; ép kiểu `float64`; kiểm tra giới hạn vật lý tự nhiên ($0^\circ\text{C} \le T \le 50^\circ\text{C}$). (Nếu dùng NOAA ISD backup: lấy phần số và chia 10). |
-| **Source Origin** | Nguồn chính: Open-Meteo Historical Weather API (ERA5 Reanalysis) – phê duyệt tại Issue #19. Nguồn dự phòng: NOAA ISD 48820. |
+| **Transformation** | Open-Meteo trả về trực tiếp đơn vị $^\circ\text{C}$; ép kiểu `float64`; kiểm tra giới hạn vật lý tự nhiên ($0^\circ\text{C} \le T \le 50^\circ\text{C}$). (Nếu dùng NOAA ISD fallback: lấy phần số và chia 10). |
+| **Source Origin** | Nguồn chính: Open-Meteo Historical Weather API (ERA5 Reanalysis) – phê duyệt tại Issue #19. Nguồn dự phòng (Fallback): NOAA ISD 48820. |
 | **Missingness/Availability** | Biến thời tiết chính; kết quả profiling thực tế: **0/17,544 khuyết (0.00% missing)** trong toàn bộ 2023–2024. |
 
 #### 7. `relative_humidity`
@@ -207,7 +207,7 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `wind_speed` |
-| **Source Field Name** | `wind_speed_10m` (Open-Meteo ERA5, với `&wind_speed_unit=ms`); `WND` (NOAA ISD - Backup) |
+| **Source Field Name** | `wind_speed_10m` (Open-Meteo ERA5, với `&wind_speed_unit=ms`); `WND` (NOAA ISD - Fallback) |
 | **Definition** | Tốc độ chuyển động của luồng không khí theo phương nằm ngang đo tại độ cao chuẩn (10 mét). |
 | **Unit** | $\text{m/s}$ (Mét trên giây) |
 | **Datatype** | `float64` |
@@ -279,16 +279,16 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 > **Toàn bộ ánh xạ trường nguồn ĐÃ ĐƯỢC XÁC THỰC THỰC NGHIỆM (Validated Source Mappings):**  
 > 1. **Cổng thẩm định nguồn Issue #19:** Issue #19 đã hoàn tất khảo sát hồ sơ dữ liệu (*Data Profiling*), kiểm chứng thực nghiệm tại Hà Nội và ban hành quyết định Cổng Nguồn Dữ liệu tại [`docs/source_profiling_decision.md`](source_profiling_decision.md).  
 > 2. **Phân định vai trò nguồn:**  
->    - **Chất lượng không khí:** Primary = OpenAQ REST API v3 / S3 Archive (location_id=2178, trạm ĐSQ Hoa Kỳ tại Hà Nội, Met One BAM-1020); Backup = AirNow US Department of State Historical CSV.  
->    - **Khí tượng bề mặt:** Primary = Open-Meteo Historical Weather API (ERA5 Reanalysis, điểm lưới Hà Nội); Backup = NOAA Integrated Surface Database (ISD, Trạm WMO 48820 - Sân bay Nội Bài).  
+>    - **Chất lượng không khí:** Primary = OpenAQ REST API v3 / S3 Archive (location_id=2178, trạm ĐSQ Hoa Kỳ tại Hà Nội, Met One BAM-1020); Fallback = AirNow US Department of State Historical CSV.  
+>    - **Khí tượng bề mặt:** Primary = Open-Meteo Historical Weather API (ERA5 Reanalysis, điểm lưới Hà Nội); Fallback = NOAA Integrated Surface Database (ISD, Trạm WMO 48820 - Sân bay Nội Bài).  
 > 3. **Ánh xạ trường chính thức:** Bảng dưới đây thể hiện ánh xạ đã được xác thực trực tiếp qua phản hồi API và cấu trúc tệp thực tế.
 
 ### 6.1. Danh mục các nguồn ứng viên đã thẩm định (Candidate Sources Profiled)
 Tại Issue #19, 6 nhà cung cấp dữ liệu đã được thẩm định thực nghiệm:
 1. **OpenAQ REST API v3 / S3 Archive (location_id=2178)**: Nguồn chính chất lượng không khí (PM2.5, PM10).
 2. **Open-Meteo Historical Weather API (ERA5)**: Nguồn chính khí tượng bề mặt (6 biến Canonical).
-3. **AirNow (US Department of State)**: Nguồn dự phòng chất lượng không khí.
-4. **NOAA ISD (WMO Station 48820 - Sân bay Nội Bài)**: Nguồn dự phòng khí tượng bề mặt.
+3. **AirNow (US Department of State)**: Nguồn dự phòng (Fallback source) chất lượng không khí.
+4. **NOAA ISD (WMO Station 48820 - Sân bay Nội Bài)**: Nguồn dự phòng (Fallback source) khí tượng bề mặt.
 5. **Tập dữ liệu Kaggle Hà Nội (CSV)**: Nguồn tham chiếu phân phối thống kê ngoài (Reference only).
 6. **PAM Air Portal**: Nguồn loại bỏ do bản quyền đóng và thiếu REST API mở (Unused).
 

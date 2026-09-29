@@ -3,7 +3,7 @@
   "project": "doctor-cato/air-pollution-analysis",
   "issue": "#19 – Source Profiling & Decision Gate",
   "profiling_timestamp_utc": "2026-09-28T16:47:26Z",
-  "last_updated_utc": "2026-09-29T04:10:00Z",
+  "last_updated_utc": "2026-09-29T04:50:00Z",
   "target_city": "Hanoi, Vietnam",
   "temporal_coverage": {
     "study_window_start": "2023-01-01T00:00:00+07:00",
@@ -24,9 +24,9 @@
       "longitude_max": 106.10
     },
     "spatial_filtering_rules": {
-      "station_rule": "Records must match valid station_id (2178) and coordinates must fall strictly within Hanoi bounding box; out-of-bounds records are dropped.",
+      "station_rule": "Raw payload is preserved immutably in data/raw/. During normalization to interim/processed stages, records must match valid station_id (2178) and coordinates must fall strictly within Hanoi bounding box; out-of-bounds records are filtered.",
       "grid_rule": "Query coordinates set to Hanoi urban core (21.0285N, 105.8542E); matched ERA5 cell (21.0545N, 105.8985E) is within 8.7km of station in urban Hanoi.",
-      "airport_rule": "Station 48820 (Noi Bai Airport) is within Hanoi administrative boundary but ~22km north of urban core; flagged as Weather Backup with microclimate caveat."
+      "airport_rule": "Station 48820 (Noi Bai Airport) is within Hanoi administrative boundary but ~22km north of urban core; flagged as Weather Fallback with microclimate caveat."
     }
   },
   "data_quality_rules": {
@@ -71,7 +71,7 @@
       }
     },
     "air_quality_backup": {
-      "role": "backup",
+      "role": "fallback",
       "provider": "AirNow (US Department of State)",
       "station_name": "Site: Hanoi (US Embassy)",
       "instrument": "Met One BAM-1020",
@@ -80,7 +80,7 @@
       "min_timestamp": "2016-01-01T00:00:00+07:00",
       "max_timestamp": "2023-12-31T23:00:00+07:00",
       "latest_available_timestamp": "2023-12-31T23:00:00+07:00 (public archive)",
-      "nominal_annual_rows": 8760,
+      "nominal_annual_rows": "Not verifiable directly (chưa có tệp mở 2023 trực tiếp)",
       "disguised_missing_marker": "-999",
       "license": "U.S. Public Domain",
       "attribution": "US Department of State / AirNow",
@@ -116,12 +116,12 @@
         "missing_rate_all_variables": "0.00%",
         "min_timestamp": "2023-01-01T00:00:00+07:00",
         "max_timestamp": "2024-12-31T23:00:00+07:00",
-        "latest_available_timestamp": "2026-09-29T23:00:00+07:00 (continuous update)",
+        "latest_available_timestamp": "2026-09-24T06:00:00+07:00 (pure ECMWF ERA5 reanalysis with ~5-day assimilation lag)",
         "resolution": "1 hour continuous"
       }
     },
     "meteorology_backup": {
-      "role": "backup",
+      "role": "fallback",
       "provider": "NOAA Integrated Surface Database (ISD) / WMO",
       "station_name": "NOIBAI INTERNATIONAL, VM",
       "wmo_id": "48820",

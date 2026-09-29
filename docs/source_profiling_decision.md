@@ -47,21 +47,21 @@ Quá trình thẩm định tuân thủ các nguyên tắc liêm chính học thu
 
 | Chỉ tiêu profiling | OpenAQ (S3 Archive, loc=2178) | Open-Meteo ERA5 | NOAA ISD (Station 48820099999) | AirNow DOS Historical | Kaggle Hanoi Datasets | PAM Air Portal |
 |---|---|---|---|---|---|---|
-| **Vai trò dự kiến** | **Primary (Air Quality)** | **Primary (Weather)** | **Backup (Weather)** | **Backup (Air Quality)** | **Reference Only** | **Unused** |
-| **Số dòng 2023 (toàn bộ params)** | 53,277 | Không áp dụng | 17,178 | 8,760 (danh nghĩa) | ~8,760–30,000 (tùy file) | Không công khai (API đóng) |
-| **Số dòng 2023 (pm25)** | **6,049** (hourly aggregated) | Không có biến ô nhiễm | Không có biến ô nhiễm | ~8,000–8,500 (sau trừ -999) | Tùy tệp tác giả đăng | Không thể tải qua script mở |
+| **Vai trò theo Quyết định** | **Primary (Air Quality)** | **Primary (Weather)** | **Fallback (Weather)** | **Fallback (Air Quality)** | **Reference Only** | **Unused** |
+| **Số dòng 2023 (toàn bộ params)** | 53,277 | Không áp dụng | 17,178 | 8,760 (danh nghĩa) | Not verifiable directly (không có schema chuẩn) | Không công khai (API đóng) |
+| **Số dòng 2023 (pm25)** | **6,049** (hourly aggregated) | Không có biến ô nhiễm | Không có biến ô nhiễm | Not verifiable directly (chưa có tệp mở 2023 trực tiếp không login) | Not verifiable directly (thay đổi theo từng file upload) | Không thể tải qua script mở |
 | **Số dòng 2023 (khí tượng)** | Không có biến khí tượng | **8,760** (1h continuous) | 17,178 (METAR ~30m) | Không có biến khí tượng | Ghép sẵn (tùy tác giả) | Không thể tải qua script mở |
-| **Số dòng 2024 (toàn bộ params)** | 63,821 | Không áp dụng | 16,704 | Không có file mở trực tiếp | Tùy file | Không công khai (API đóng) |
-| **Số dòng 2024 (pm25)** | **8,375** (hourly aggregated) | Không có biến ô nhiễm | Không có biến ô nhiễm | Cần tài khoản AirNow-Tech | Tùy tệp tác giả đăng | Không thể tải qua script mở |
+| **Số dòng 2024 (toàn bộ params)** | 63,821 | Không áp dụng | 16,704 | Không có file mở trực tiếp | Not verifiable directly | Không công khai (API đóng) |
+| **Số dòng 2024 (pm25)** | **8,375** (hourly aggregated) | Không có biến ô nhiễm | Không có biến ô nhiễm | Cần tài khoản AirNow-Tech | Not verifiable directly | Không thể tải qua script mở |
 | **Số dòng 2024 (khí tượng)** | Không có biến khí tượng | **8,784** (1h continuous) | 16,704 (METAR ~30m) | Không có biến khí tượng | Ghép sẵn (tùy tác giả) | Không thể tải qua script mở |
 | **Tổng quan trắc pm25 (2023–2024)** | **14,424** dòng thực tế | Không áp dụng | Không áp dụng | Không đủ 2024 mở | Không kiểm chứng được gốc | Không thể trích xuất |
 | **Tổng quan trắc khí tượng (2023–2024)** | Không áp dụng | **17,544** dòng liên tục | **33,882** bản ghi (~30m) | Không áp dụng | Không kiểm chứng được gốc | Không thể trích xuất |
 | **Số cột / cấu trúc trường** | 9 cột (flat CSV) | 7 trường (1 thời gian + 6 biến) | 30 cột chuẩn ISD | ~11 cột (CSV) | 5–12 cột (không cố định) | Payload JSON đóng |
 | **min_timestamp (cửa sổ nghiên cứu)** | 2023-01-01T00:00:00+07:00 | 2023-01-01T00:00:00+07:00 | 2023-01-01T00:00:00+07:00 | 2016-01-01 (bắt đầu trạm) | Tùy file (~2022 hoặc 2024) | ~2019 |
 | **max_timestamp (cửa sổ nghiên cứu)** | 2024-12-31T23:00:00+07:00 | 2024-12-31T23:00:00+07:00 | 2024-12-31T23:30:00+07:00 | 2023-12-31 (bản mở cuối) | Tùy file (2024–2026) | Thời gian thực |
-| **latest_available_timestamp (tại profiling)** | **2026-09-21** (file S3 mới nhất) | **2026-09-29T23:00** (cập nhật liên tục) | **2025-12-31** (2026 chưa ra) | **2023-12-31** (công khai) | Tùy tác giả cập nhật | Hiện tại (chỉ qua Web GUI) |
+| **latest_available_timestamp (tại profiling)** | **2026-09-21** (file S3 mới nhất) | **2026-09-24T06:00** (ERA5 Reanalysis thuần túy, trễ ~5 ngày) | **2025-12-31** (2026 chưa ra) | **2023-12-31** (kho mở) | Tùy tác giả cập nhật | Hiện tại (chỉ qua Web GUI) |
 | **Sampling frequency** | 1 giờ (hourly aggregated) | 1 giờ (cố định) | ~30 phút (METAR FM-15) | 1 giờ | 1 giờ (ghép sẵn) | 5–15 phút (telemetry) |
-| **Missing rate pm25 (2023)** | **6,049/8,760 = 30.9% missing** | Không áp dụng | Không áp dụng | ~5–12% (ước tính qua -999) | Biểu kiến 0% (do bị điền sẵn) | Không thể đo lường qua API mở |
+| **Missing rate pm25 (2023)** | **6,049/8,760 = 30.9% missing** | Không áp dụng | Không áp dụng | Not verifiable directly (chưa có tệp mở 2023 trực tiếp) | Biểu kiến 0% (do bị điền sẵn) | Không thể đo lường qua API mở |
 | **Missing rate pm25 (2024)** | **8,375/8,784 = 4.7% missing** | Không áp dụng | Không áp dụng | Không có file công khai 2024 | Biểu kiến 0% (do bị điền sẵn) | Không thể đo lường qua API mở |
 | **Missing rate tổng hợp pm25 (2-year)** | **14,424/17,544 = 17.8% missing** | Không áp dụng | Không áp dụng | Không đủ 2 năm công khai | Không thể xác định tỷ lệ gốc | Không thể đo lường qua API mở |
 | **Missing rate nhiệt độ (2023)** | Không có biến nhiệt độ | **0/8,760 = 0.00%** | **0/17,178 = 0.00%** (TMP) | Không có biến nhiệt độ | Biểu kiến 0% (đã impute) | Không thể đo lường qua API mở |
@@ -82,21 +82,23 @@ Quá trình thẩm định tuân thủ các nguyên tắc liêm chính học thu
 
 2. **Open-Meteo Historical Weather API (ERA5 Reanalysis):**
    - *Tính toàn vẹn thực nghiệm:* Xác nhận qua truy vấn API thực tế: $17.544$ mốc thời gian liên tục ($8.760$ giờ năm 2023 + $8.784$ giờ năm 2024), **$0{,}00\%$ missing** trên toàn bộ 6 biến số khí tượng.
+   - *Độ trễ và latest_available_timestamp:* Khi truy vấn mô hình tái phân tích ERA5 thuần túy (`models=era5`), mốc thời gian mới nhất ghi nhận tại thời điểm profiling là **`2026-09-24T06:00:00+07:00`** (độ trễ cố hữu $\approx 5$ ngày do chu trình đồng hóa khí quyển toàn cầu của ECMWF). Điều này hoàn toàn không ảnh hưởng tới cửa sổ nghiên cứu 2023–2024 của đồ án (đã hoàn tất $100\%$).
    - *Độ lệch lưới:* Lưới ERA5 ($0{,}25^\circ \approx 25\text{ km}$) khớp điểm lưới $21.0545^\circ\text{N}, 105.8985^\circ\text{E}$, cách trạm ĐSQ Hoa Kỳ $\approx 8{,}7\text{ km}$ về phía Đông Bắc, hoàn toàn nằm trong ranh giới địa lý Hà Nội.
 
 3. **NOAA Integrated Surface Database (ISD – Trạm WMO 48820 Nội Bài):**
    - *Tính sẵn sàng thực tế:* File năm 2023 có $17.178$ bản ghi ($365/365$ ngày có dữ liệu, trung bình $47{,}1$ quan sát/ngày); file năm 2024 có $16.704$ bản ghi ($359/366$ ngày, khuyết 7 ngày). Nhiệt độ khô (`TMP`) và áp suất mực biển (`SLP`) đạt $0{,}00\%$ missing trong năm 2023.
-   - *Giới hạn khiến xếp làm Backup:* Trạm METAR sân bay thiếu hẳn trường đo lượng mưa liên tục (`precipitation` không xuất hiện trong trường AA1/AA2 của đa số bản ghi); trường áp suất bề mặt (`surface_pressure`) không đo trực tiếp mà chỉ có áp suất mực biển (`SLP`); tần suất quan sát $\approx 30$ phút đòi hỏi phải resample; khoảng cách $\approx 22\text{ km}$ về phía Bắc khiến vi khí hậu có độ lệch nhất định so với vùng lõi đô thị.
+   - *Giới hạn khiến xếp làm Fallback:* Trạm METAR sân bay thiếu hẳn trường đo lượng mưa liên tục (`precipitation` không xuất hiện trong trường AA1/AA2 của đa số bản ghi); trường áp suất bề mặt (`surface_pressure`) không đo trực tiếp mà chỉ có áp suất mực biển (`SLP`); tần suất quan sát $\approx 30$ phút đòi hỏi phải resample; khoảng cách $\approx 22\text{ km}$ về phía Bắc khiến vi khí hậu có độ lệch nhất định so với vùng lõi đô thị.
 
 4. **AirNow (US Department of State Historical CSV):**
-   - *Hiện trạng truy cập:* Dữ liệu xuất phát từ cùng trạm BAM-1020 của ĐSQ Hoa Kỳ. Tuy nhiên, các tệp mở công khai trực tiếp hiện chỉ cung cấp đến hết ngày **31/12/2023**. Năm 2024 không có đường dẫn tải trực tiếp công khai mà đòi hỏi tài khoản tổ chức qua AirNow-Tech.
-   - *Missing ngụy trang:* Dữ liệu sử dụng marker `-999` cho các khung giờ mất tín hiệu. Xếp làm nguồn dự phòng đối chuẩn cho giai đoạn 2023.
+   - *Hiện trạng truy cập:* Dữ liệu xuất phát từ cùng trạm BAM-1020 của ĐSQ Hoa Kỳ. Tuy nhiên, các tệp mở công khai trực tiếp hiện chỉ cung cấp đến hết ngày **31/12/2023**. Năm 2024 không có đường dẫn tải trực tiếp công khai mà đòi hỏi tài khoản tổ chức qua AirNow-Tech. Do không thể tải tệp sơ cấp 2023 tự động không cần xác thực tại thời điểm profiling, các metric dòng thiếu được ghi nhận là *Not verifiable directly* để bảo đảm tính trung thực học thuật.
+   - *Missing ngụy trang:* Dữ liệu sử dụng marker `-999` cho các khung giờ mất tín hiệu. Xếp làm nguồn dự phòng đối chuẩn (*Fallback Source*) cho giai đoạn 2023.
 
 5. **Tập dữ liệu Kaggle Hà Nội (Community Datasets):**
-   - *Lý do không thể trích xuất metric khách quan:* Các tập dữ liệu trên Kaggle do các cá nhân đăng tải không độc lập và không đồng nhất. Phần lớn các tệp đã bị tiền xử lý (loại bỏ duplicate, tự ý điền khuyết bằng trung bình/nội suy), làm biến mất các thông số missing rate và phân phối tự nhiên ban đầu. Nguy cơ rò rỉ dữ liệu (*Data Leakage*) từ các feature trễ tạo sẵn là rất cao. Chỉ giữ vai trò tham chiếu phân phối thống kê ngoài (*Reference only*).
+   - *Lý do không thể trích xuất metric khách quan:* Các tập dữ liệu trên Kaggle do các cá nhân đăng tải không độc lập và không đồng nhất (kích thước và số dòng thay đổi tùy tác giả từ vài nghìn đến vài chục nghìn dòng). Phần lớn các tệp đã bị tiền xử lý (loại bỏ duplicate, tự ý điền khuyết bằng trung bình/nội suy), làm biến mất các thông số missing rate và phân phối tự nhiên ban đầu (biểu kiến 0% missing phản ánh phép điền khuyết nhân tạo chứ không phải quan trắc thực tế). Nguy cơ rò rỉ dữ liệu (*Data Leakage*) từ các feature trễ tạo sẵn là rất cao. Do đó các metric sơ cấp ghi nhận là *Not verifiable directly*. Chỉ giữ vai trò tham chiếu phân phối thống kê ngoài (*Reference only*).
 
 6. **PAM Air Portal:**
    - *Lý do không trích xuất được metrics qua script:* Mạng lưới cảm biến IoT của D&L không mở REST API cho cộng đồng tải dữ liệu thô hàng loạt (`bulk export`). Mọi truy xuất API đòi hỏi token đối tác trả phí. Việc không thể kiểm chứng định lượng độc lập qua script tự động là rào cản kỹ thuật khiến nguồn này bị xếp vào nhóm loại bỏ (*Unused*).
+
 
 ---
 
@@ -124,7 +126,7 @@ Quá trình thẩm định tuân thủ các nguyên tắc liêm chính học thu
 2. **Quy tắc xác thực nguồn Trạm Mặt Đất (Point / Station Sources - OpenAQ, AirNow):**
    - **Xác thực định danh:** Bản ghi phải có `location_id == 2178` (hoặc `Site == "Hanoi"` đối với AirNow).
    - **Xác thực tọa độ:** Tọa độ ghi nhận ($21.0215^\circ\text{N}, 105.8184^\circ\text{E}$) nằm trọn vẹn trong vùng lõi đô thị Hà Nội (quận Ba Đình / Đống Đa).
-   - **Rule xử lý ngoại lai:** Mọi bản ghi có tọa độ nằm ngoài Bounding Box Hà Nội hoặc sai lệch `location_id` sẽ bị adapter loại bỏ (*drop*) ngay tại tầng ingestion, không đưa vào `data/raw/`.
+   - **Rule xử lý ngoại lai & Tuân thủ Raw Immutability:** Để bảo toàn tuyệt đối tính bất biến của dữ liệu thô (*Raw Immutability*), toàn bộ tệp payload tải về từ nguồn được lưu trữ nguyên trạng trong `data/raw/`. Quy tắc lọc không gian (*Spatial Filtering*) được áp dụng tại bước tiền xử lý / chuẩn hóa dữ liệu (*normalization step*): adapter loại bỏ (*drop*) các bản ghi có tọa độ nằm ngoài Bounding Box Hà Nội hoặc sai lệch `location_id` trước khi đưa vào `data/interim/` và Canonical Schema.
 
 3. **Quy tắc xác thực nguồn Dữ Liệu Lưới Khí Tượng (Grid-based Sources - Open-Meteo ERA5):**
    - **Tọa độ truy vấn mục tiêu:** Gửi request tại tọa độ trung tâm lõi Hà Nội: $\text{lat}=21.0285^\circ\text{N}, \text{lon}=105.8542^\circ\text{E}$ (khớp với vị trí đô thị xung quanh trạm ĐSQ Hoa Kỳ).
@@ -132,7 +134,7 @@ Quá trình thẩm định tuân thủ các nguyên tắc liêm chính học thu
 
 4. **Quy tắc xác thực trạm Khí Tượng Dự Phòng (NOAA ISD / WMO 48820):**
    - **Tọa độ trạm:** Trạm WMO 48820 đặt tại Sân bay Quốc tế Nội Bài ($21.221192^\circ\text{N}, 105.807178^\circ\text{E}$), thuộc huyện Sóc Sơn, Thành phố Hà Nội.
-   - **Đánh giá ranh giới:** Trạm nằm hoàn toàn trong địa giới hành chính Hà Nội và Bounding Box chuẩn. Tuy nhiên, do khoảng cách $\approx 22\,\text{km}$ về phía Bắc so với trạm đo ô nhiễm lõi đô thị, trạm chỉ được phê duyệt làm **Nguồn Dự Phòng (Weather Backup)** kèm cảnh báo về sai số vi khí hậu.
+   - **Đánh giá ranh giới:** Trạm nằm hoàn toàn trong địa giới hành chính Hà Nội và Bounding Box chuẩn. Tuy nhiên, do khoảng cách $\approx 22\,\text{km}$ về phía Bắc so với trạm đo ô nhiễm lõi đô thị, trạm chỉ được phê duyệt làm **Nguồn Dự Phòng / Thay Thế (Weather Fallback Source)** kèm cảnh báo về sai số vi khí hậu.
 
 ---
 
@@ -144,7 +146,7 @@ Quá trình thẩm định tuân thủ các nguyên tắc liêm chính học thu
 |---|---|---|---|---|---|---|
 | **1. Kaggle Datasets** | Tùy tệp (thường 2022/2024) | Tùy tệp (thường 2024/2026) | Phụ thuộc uploader cập nhật | 1 giờ | Có (file ghép sẵn) | Không kiểm chứng được gốc; đã bị điền khuyết nhân tạo. |
 | **2. OpenAQ v3 (S3 Archive)** | **2023-01-01T00:00** | **2024-12-31T23:00** | **2026-09-21** (file S3 mới nhất) | 1 giờ | **Có (hourly aggregated)** | **14,424 giờ có dữ liệu (82.2%)**. 2023 đạt 69.1%, 2024 đạt 95.3%. Khuyết tự nhiên thực tế, không bị điền giả. |
-| **3. Open-Meteo ERA5** | **2023-01-01T00:00** | **2024-12-31T23:00** | **2026-09-29T23:00** (thời gian thực) | 1 giờ | **Có (1h continuous)** | **0% khuyết thiếu.** Đúng 17,544 giờ liên tục (8,760h năm 2023 + 8,784h năm nhuận 2024). |
+| **3. Open-Meteo ERA5** | **2023-01-01T00:00** | **2024-12-31T23:00** | **2026-09-24T06:00** (ERA5 thuần túy, trễ ~5 ngày) | 1 giờ | **Có (1h continuous)** | **0% khuyết thiếu.** Đúng 17,544 giờ liên tục (8,760h năm 2023 + 8,784h năm nhuận 2024). |
 | **4. AirNow DOS CSV** | 2016-01-01 | 2023-12-31 | **2023-12-31** (bản công khai) | 1 giờ | **Có** | Giai đoạn 2023 có khoảng khuyết thực tế mã hóa `-999`. Năm 2024 chưa có file công khai mở. |
 | **5. PAM Air Portal** | ~2019 | Hiện tại | Thời gian thực (chỉ xem trên web) | 5–15 phút | Cần tổng hợp | Không thể kiểm chứng dải lịch sử mở qua script. |
 | **6. NOAA ISD 48820** | **2023-01-01T00:00** | **2024-12-31T23:30** | **2025-12-31** (năm 2026 chưa phát hành) | ~30 phút | Cần resample | 2023 có 17,178 obs (365/365 ngày); 2024 có 16,704 obs (359/366 ngày, thiếu 7 ngày). |
@@ -340,13 +342,13 @@ Căn cứ vào các kết quả thẩm định và ma trận so sánh đa tiêu 
 ├──────────────────────────────────────────────────────────────────────────┤
 │ 1. AIR QUALITY (PM2.5):                                                  │
 │    • PRIMARY SOURCE  : OpenAQ REST API v3 / S3 Archive (locationId=2178) │
-│    • BACKUP SOURCE   : AirNow US Department of State Historical CSV      │
+│    • FALLBACK SOURCE : AirNow US Department of State Historical CSV      │
 │    • REFERENCE ONLY  : Kaggle Hanoi Datasets                             │
 │    • UNUSED          : PAM Air Portal (Lý do: Bản quyền đóng, API đóng) │
 │                                                                          │
 │ 2. METEOROLOGY (WEATHER):                                                │
 │    • PRIMARY SOURCE  : Open-Meteo Historical Weather API (ERA5)          │
-│    • BACKUP SOURCE   : NOAA ISD (WMO Station 48820 – Nội Bài Airport)   │
+│    • FALLBACK SOURCE : NOAA ISD (WMO Station 48820 – Nội Bài Airport)   │
 │    • UNUSED          : PAM Air Portal (Lý do: Không đủ 6 biến số)       │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
@@ -362,7 +364,7 @@ Căn cứ vào các kết quả thẩm định và ma trận so sánh đa tiêu 
     5. Giấy phép bản quyền mở ODC-BY v1.0 cho phép khai thác học thuật minh bạch.
   - *Lưu ý về completeness:* pm25 2023 chỉ đạt 69.1% (6,049/8,760 giờ). Pipeline Issue #3 cần xử lý khoảng khuyết bằng `NaN` (không impute tự động) và kiểm đếm row sau khi tải để phát hiện dropout kéo dài.
 
-- **Nguồn Dự Phòng (Backup Source): AirNow US Department of State Historical CSV**
+- **Nguồn Dự Phòng (Fallback Source): AirNow US Department of State Historical CSV**
   - *Lý do chọn:* Lưu trữ dữ liệu từ cùng trạm BAM-1020. Đóng vai trò kiểm chứng đối chuẩn (*cross-validation*) và phương án dự phòng ngoại tuyến nếu API/S3 OpenAQ gặp sự cố. Chỉ có đến cuối 2023.
 
 - **Nguồn Tham Chiếu (Reference Only): Kaggle Hanoi Datasets**
@@ -380,7 +382,7 @@ Căn cứ vào các kết quả thẩm định và ma trận so sánh đa tiêu 
     3. API công khai hoàn toàn, không yêu cầu key, không cần xác thực.
     4. Giấy phép mở CC BY 4.0.
 
-- **Nguồn Dự Phòng (Backup Source): NOAA Integrated Surface Database (ISD – Station 48820099999 Nội Bài Airport)**
+- **Nguồn Dự Phòng (Fallback Source): NOAA Integrated Surface Database (ISD – Station 48820099999 Nội Bài Airport)**
   - *Hồ sơ profiling thực tế:*
     - Tệp file 2023: 17,178 bản ghi, 365/365 ngày, trung bình 47.1 obs/ngày (~30 phút/lần).
     - Tệp file 2024: 16,704 bản ghi, 359/366 ngày (7 ngày thiếu dữ liệu).
@@ -388,7 +390,7 @@ Căn cứ vào các kết quả thẩm định và ma trận so sánh đa tiêu 
     - **Thiếu:** `precipitation` (AA1/AA2 không có trong phần lớn bản ghi), `surface_pressure` trực tiếp (chỉ có SLP cần hiệu chỉnh).
     - **Tần suất không đều:** cần resampling về 1 giờ (e.g. lấy giá trị gần nhất trong cửa sổ ±30 phút).
     - **Vị trí lệch:** Nội Bài (21.221°N, 105.807°E) cách trạm PM2.5 ~20km về phía Bắc — sai số vi khí hậu đô thị đáng kể.
-  - *Lý do xếp là Backup:* Open-Meteo hoàn toàn đáp ứng yêu cầu; NOAA chỉ dự phòng nếu ERA5 không khả dụng.
+  - *Lý do xếp là Fallback:* Open-Meteo hoàn toàn đáp ứng yêu cầu; NOAA chỉ dự phòng nếu ERA5 không khả dụng.
 
 ---
 
@@ -399,7 +401,7 @@ Căn cứ vào các kết quả thẩm định và ma trận so sánh đa tiêu 
 3. **Đại diện không gian đơn trạm:** Dữ liệu $\text{PM}_{2.5}$ phản ánh nồng độ tại khu vực lõi nội thành Hà Nội (Ba Đình / Đống Đa), chưa phản ánh toàn diện các khu vực ngoại thành hoặc khu công nghiệp ven đô. Hạn chế này cần nêu rõ trong Datasheet for Dataset tại Issue #14.
 4. **Độ phân giải không gian của ERA5:** Dữ liệu khí tượng Open-Meteo xuất phát từ lưới ERA5 kích thước $\approx 25\,\text{km} \times 25\,\text{km}$. Điểm lưới thực tế ($21.054^\circ\text{N}, 105.898^\circ\text{E}$) cách trạm PM2.5 ($21.022^\circ\text{N}, 105.818^\circ\text{E}$) khoảng **8 km** – chấp nhận được trong nghiên cứu tầm đô thị.
 5. **Giới hạn Rate Limit OpenAQ v3 REST API:** Cần API key và áp dụng rate limit. Pipeline Issue #3 ưu tiên dùng S3 archive (không cần key) cho dữ liệu lịch sử; REST API chỉ dùng cho dữ liệu real-time.
-6. **NOAA ISD thiếu 2 biến Canonical:** `precipitation` và `surface_pressure` không đầy đủ trong file ISD 48820. NOAA chỉ dùng làm backup thời tiết, không thể thay thế Open-Meteo.
+6. **NOAA ISD thiếu 2 biến Canonical:** `precipitation` và `surface_pressure` không đầy đủ trong file ISD 48820. NOAA chỉ dùng làm fallback thời tiết, không thể thay thế Open-Meteo.
 
 ---
 
