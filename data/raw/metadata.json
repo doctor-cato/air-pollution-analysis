@@ -3,7 +3,7 @@
   "project": "doctor-cato/air-pollution-analysis",
   "issue": "#19 – Source Profiling & Decision Gate (Correction: Disqualification of Location 2178 & Verification of Hanoi Location 4946811)",
   "profiling_timestamp_utc": "2026-09-28T16:47:26Z",
-  "last_updated_utc": "2026-09-29T08:39:39.058537+00:00",
+  "last_updated_utc": "2026-09-29T14:41:00.056742+00:00",
   "target_city": "Hanoi, Vietnam",
   "temporal_coverage": {
     "study_window_start": "2023-01-01T00:00:00+07:00",
@@ -214,7 +214,7 @@
   "collection_pipeline_execution": {
     "executed_issue": "#3 – Pipeline thu thập và chuẩn hóa dữ liệu chất lượng không khí",
     "status": "completed",
-    "execution_timestamp_utc": "2026-09-29T08:39:39.058543+00:00",
+    "execution_timestamp_utc": "2026-09-29T14:41:00.056748+00:00",
     "requested_study_window": {
       "start": "2023-01-01T00:00:00+07:00",
       "end": "2024-12-31T23:00:00+07:00",
@@ -274,6 +274,9 @@
       "station_name": "US Diplomatic Post: Hanoi",
       "adapter_status": "implemented",
       "ingestion_status": "not_executed_pending_raw_input",
+      "adapter_implemented": true,
+      "ingestion_executed": false,
+      "status": "pending_raw_input",
       "role": "historical_source_fallback",
       "raw_input": "unavailable_in_current_execution",
       "note": "AirNowDOSAdapter is implemented in src/data_collection.py. Ingestion is pending valid raw CSV from AirNow-Tech / State Dept due to access restrictions."

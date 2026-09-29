@@ -172,6 +172,47 @@ class TestDataCollectionPipeline(unittest.TestCase):
         self.assertEqual(min_ts, "2023-05-01 00:00:00+07:00")
         self.assertEqual(max_ts, "2023-05-10 23:00:00+07:00")
 
+    def test_requested_vs_actual_coverage_distinction(self):
+        """Test 1: Phân định rạch ròi giữa requested window và actual data coverage."""
+        from src.data_collection import extract_temporal_coverage
+        requested_window = {"start": "2023-01-01", "end": "2024-12-31"}
+        ts_actual = pd.date_range("2023-03-05 00:00:00+07:00", "2023-06-10 23:00:00+07:00", freq="h")
+        df_actual = pd.DataFrame({"timestamp": ts_actual, "val": range(len(ts_actual))})
+
+        actual_cov = extract_temporal_coverage(df_actual)
+        self.assertEqual(actual_cov["actual_min_timestamp"], "2023-03-05 00:00:00+07:00")
+        self.assertEqual(actual_cov["actual_max_timestamp"], "2023-06-10 23:00:00+07:00")
+        # Assert actual coverage KHÔNG BẰNG requested window
+        self.assertNotEqual(actual_cov["actual_min_timestamp"], requested_window["start"])
+        self.assertNotEqual(actual_cov["actual_max_timestamp"], requested_window["end"])
+
+    def test_extract_temporal_coverage_empty_dataset_safe(self):
+        """Test 2: Đảm bảo xử lý an toàn không crash khi DataFrame rỗng."""
+        from src.data_collection import extract_temporal_coverage
+        df_empty = pd.DataFrame()
+        cov_empty = extract_temporal_coverage(df_empty)
+        self.assertIsNone(cov_empty["actual_min_timestamp"])
+        self.assertIsNone(cov_empty["actual_max_timestamp"])
+
+        df_empty_with_col = pd.DataFrame({"timestamp": pd.Series(dtype="datetime64[ns]")})
+        cov_empty_col = extract_temporal_coverage(df_empty_with_col)
+        self.assertIsNone(cov_empty_col["actual_min_timestamp"])
+        self.assertIsNone(cov_empty_col["actual_max_timestamp"])
+
+    def test_airnow_status_when_raw_input_unavailable(self):
+        """Test 3: Kiểm thử trạng thái AirNow khi chưa có raw input: adapter implemented, ingestion executed = False."""
+        from src.data_collection import get_airnow_ingestion_summary
+        summary = get_airnow_ingestion_summary(csv_path="data/raw/non_existent_airnow_file.csv")
+
+        self.assertTrue(summary["adapter_implemented"])
+        self.assertFalse(summary["ingestion_executed"])
+        self.assertEqual(summary["status"], "pending_raw_input")
+        self.assertEqual(summary["adapter_status"], "implemented")
+        self.assertEqual(summary["ingestion_status"], "not_executed_pending_raw_input")
+        self.assertEqual(summary["raw_input"], "unavailable_in_current_execution")
+        # Tuyệt đối không claim AirNow là successfully ingested
+        self.assertNotEqual(summary["ingestion_status"], "executed")
+
 
 if __name__ == "__main__":
     unittest.main()
