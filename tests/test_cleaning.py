@@ -1193,6 +1193,42 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
         self.assertNotIn("pd.Timedelta(hours=1)", log)
         self.assertIn("np.timedelta64(1, 'h')", log)
 
+    def test_mixed_utc_offsets_are_converted_not_crashed_on(self):
+        """Cột lẫn lộn UTC offset từng ném AttributeError từ `.dt`."""
+        mixed = pd.DataFrame(
+            {
+                "timestamp": [
+                    "2025-01-01T00:00:00Z",
+                    "2025-01-01T08:00:00+08:00",
+                    "2025-01-01T01:00:00+01:00",
+                ],
+                "pm25": [10.0, 11.0, 12.0],
+                "pm10": [15.0, 16.0, 17.0],
+            }
+        )
+        out, stats = normalize_timestamps(mixed)
+        self.assertEqual(str(out["timestamp"].dt.tz), CANONICAL_TIMEZONE)
+        self.assertEqual(stats["rows_mixed_offsets_utc_first"], 3)
+        # Mốc thời gian tuyệt đối được giữ: 00:00Z = 07:00 giờ Hà Nội.
+        self.assertEqual(out["timestamp"].iloc[0].hour, 7)
+
+    def test_already_sorted_frame_is_not_reported_as_reordered(self):
+        """`Series.equals` chỉ so giá trị nên reset index làm báo động giả."""
+        ts = pd.date_range("2025-01-01", periods=4, freq="h", tz=CANONICAL_TIMEZONE)
+        df = pd.DataFrame({"timestamp": ts, "pm25": [1.0, 2.0, 3.0, 4.0]},
+                          index=[7, 8, 9, 10])
+        _, stats = sort_chronologically(df)
+        self.assertEqual(stats["rows_reordered"], 0)
+        self.assertTrue(stats["was_monotonic_increasing"])
+
+    def test_humidity_lookup_rejects_a_polluted_air_frame(self):
+        """Frame ô nhiễm mang sẵn `relative_humidity` từng gây KeyError mù."""
+        air = self._air(4)
+        air["relative_humidity"] = 95.0
+        with self.assertRaises(ValueError) as ctx:
+            attach_high_humidity_flag(air, self._weather(4))
+        self.assertIn("relative_humidity", str(ctx.exception))
+
     def test_epsilon_is_labelled_as_reporting_tier_not_action_threshold(self):
         """`epsilon` không tham gia quyết định hành động — đừng gọi nó là ngưỡng."""
         self.tmp.mkdir(parents=True, exist_ok=True)

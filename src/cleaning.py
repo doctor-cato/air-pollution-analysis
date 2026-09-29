@@ -323,8 +323,18 @@ def normalize_timestamps(
             "Làm sạch tất định không được âm thầm biến mốc thời gian hỏng thành NaT."
         )
 
-    was_naive = parsed.dt.tz is None
-    was_canonical = before_tz is not None and str(before_tz) == timezone
+    # Cột lẫn lộn nhiều UTC offset khiến `to_datetime` trả về kiểu `object`, và
+    # `.dt` sẽ ném AttributeError khó hiểu thay vì chuyển đổi như tài liệu mô tả.
+    # Gom về UTC trước (mốc thời gian tuyệt đối không đổi) rồi chuyển xuống múi
+    # giờ địa phương. Cột naive cho ra `datetime64[ns]` nên không bị tính nhầm.
+    mixed_offsets = parsed.dtype == object
+    if mixed_offsets:
+        parsed = pd.to_datetime(out[TIMESTAMP_COLUMN], errors="coerce", utc=True)
+
+    was_naive = not mixed_offsets and parsed.dt.tz is None
+    was_canonical = (
+        not mixed_offsets and before_tz is not None and str(before_tz) == timezone
+    )
     if was_naive:
         parsed = parsed.dt.tz_localize(timezone)
     else:
@@ -339,6 +349,7 @@ def normalize_timestamps(
         "rows_converted_from_other_timezone": (
             0 if (was_naive or was_canonical) else int(len(out))
         ),
+        "rows_mixed_offsets_utc_first": int(len(out)) if mixed_offsets else 0,
         "rows_unparseable": unparseable,
         "canonical_timezone": timezone,
     }
@@ -358,11 +369,14 @@ def sort_chronologically(
     _require_columns(df, key_cols, "Bước sắp xếp tăng dần")
 
     out = df.sort_values(list(key_cols), kind="mergesort").reset_index(drop=True)
+    # `Series.equals` chỉ so GIÁ TRỊ, nên reset index khiến một frame đã đúng thứ
+    # tự bị báo "1 dòng bị sắp xếp lại". So sánh danh sách giá trị thật sự.
+    reordered = df[TIMESTAMP_COLUMN].tolist() != out[TIMESTAMP_COLUMN].tolist()
     return out, {
         "sort_keys": list(key_cols),
         "sort_algorithm": "mergesort (ổn định, tất định)",
         "was_monotonic_increasing": bool(df[TIMESTAMP_COLUMN].is_monotonic_increasing),
-        "rows_reordered": int(not df[TIMESTAMP_COLUMN].equals(out[TIMESTAMP_COLUMN])),
+        "rows_reordered": int(reordered),
     }
 
 
@@ -977,6 +991,14 @@ def attach_high_humidity_flag(
     """
     _require_columns(df, [TIMESTAMP_COLUMN], "Bước gắn cờ sương mù độ ẩm cao")
     _require_columns(weather_df, [TIMESTAMP_COLUMN, "relative_humidity"], "Tập khí tượng")
+
+    if "relative_humidity" in df.columns:
+        # Nếu không chặn, pandas tự đổi tên thành relative_humidity_x/_y khi merge
+        # và dòng `out.pop("relative_humidity")` bên dưới ném KeyError khó hiểu.
+        raise ValueError(
+            "Tập ô nhiễm đã mang sẵn cột `relative_humidity`. Cột độ ẩm thô phải "
+            "CHỈ tới từ tập khí tượng; hãy bỏ cột này khỏi df trước khi gắn cờ."
+        )
 
     duplicate_hours = int(weather_df.duplicated(subset=[TIMESTAMP_COLUMN]).sum())
     if duplicate_hours > 0:

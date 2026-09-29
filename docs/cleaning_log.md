@@ -100,6 +100,7 @@ mốc thời gian** nhằm sinh cờ chẩn đoán và không được giữ l�
 | `timezone_after` | `Asia/Ho_Chi_Minh` |
 | `rows_localized` | `0` |
 | `rows_converted_from_other_timezone` | `0` |
+| `rows_mixed_offsets_utc_first` | `0` |
 | `rows_unparseable` | `0` |
 | `canonical_timezone` | `Asia/Ho_Chi_Minh` |
 
@@ -337,6 +338,7 @@ khó giải thích về mặt khoa học. Bản ghi chỉ có một kênh duy nh
 | `timezone_after` | `Asia/Ho_Chi_Minh` |
 | `rows_localized` | `0` |
 | `rows_converted_from_other_timezone` | `0` |
+| `rows_mixed_offsets_utc_first` | `0` |
 | `rows_unparseable` | `0` |
 | `canonical_timezone` | `Asia/Ho_Chi_Minh` |
 
