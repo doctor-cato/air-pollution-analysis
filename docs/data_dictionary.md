@@ -115,37 +115,37 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `timestamp` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ đối chiếu và thẩm định tại Issue #19, ví dụ ứng viên: `datetime`, `date.local`, `time`, `timestamp`) |
+| **Source Field Name** | `datetime` (OpenAQ S3 archive) / `period.datetimeFrom.utc` (OpenAQ REST API v3); `time` (Open-Meteo ERA5) |
 | **Definition** | Mốc thời gian ghi nhận quan trắc theo chu kỳ 1 giờ tại địa phương. |
 | **Unit** | ISO 8601 (Định dạng chuẩn: `YYYY-MM-DD HH:00:00+07:00`) |
 | **Datatype** | `datetime64[ns, Asia/Ho_Chi_Minh]` |
-| **Transformation** | Phân tích chuỗi ngày giờ, nhận biết múi giờ nguồn, chuyển đổi đồng nhất về `Asia/Ho_Chi_Minh` (UTC+7) và làm tròn/căn chỉnh về đầu giờ chuẩn (`freq='h'`). |
-| **Source Origin** | Nguồn ứng viên chất lượng không khí và khí tượng bề mặt (chưa thẩm định; quyết định nguồn chính thức deferred to #19). |
+| **Transformation** | - OpenAQ S3: Parse chuỗi ISO 8601 đã có offset `+07:00` thành tz-aware datetime.<br>- Open-Meteo: Truy vấn với `&timezone=Asia/Ho_Chi_Minh`, parse chuỗi ngày giờ local và gán múi giờ `Asia/Ho_Chi_Minh` (UTC+7). Căn chỉnh làm tròn đầu giờ chuẩn (`freq='h'`). |
+| **Source Origin** | Nguồn chính: OpenAQ (Chất lượng không khí) & Open-Meteo ERA5 (Khí tượng bề mặt) – đã thẩm định và phê duyệt tại Issue #19. |
 | **Missingness/Availability** | **Bắt buộc 100% (Mandatory)**; không cho phép `NaN / null`. Các mốc thời gian bị khuyết trong chuỗi sẽ được reindex để tạo dòng khuyết thiếu có chủ đích. |
 
 #### 2. `station_id`
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `station_id` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ thẩm định tại Issue #19, ví dụ ứng viên: `locationId`, `station_code`, hoặc gán mã cố định nếu là file trích xuất trạm đơn) |
+| **Source Field Name** | `location_id` (OpenAQ: giá trị số nguyên `2178`); Điểm lưới Open-Meteo (`lat=21.05448, lon=105.89848`) |
 | **Definition** | Mã định danh kỹ thuật duy nhất cho trạm đo hoặc tọa độ lưới trích xuất tại khu vực Hà Nội. |
 | **Unit** | Danh mục mã (Categorical / Code String) |
 | **Datatype** | `string` |
-| **Transformation** | Chuẩn hóa dạng chuỗi viết hoa, loại bỏ khoảng trắng thừa; nếu nguồn là file đơn trạm khuyết cột này, adapter gán mã trạm cố định theo tài liệu nguồn. |
-| **Source Origin** | Nguồn ứng viên quan trắc chất lượng không khí (chưa thẩm định; quyết định nguồn chính thức deferred to #19). |
+| **Transformation** | Chuẩn hóa mã trạm quan trắc mặt đất duy nhất thành: `VN001_HANOI_US_EMBASSY` (cho trạm OpenAQ location_id=2178). |
+| **Source Origin** | Nguồn chính: OpenAQ (Metadata trạm US Diplomatic Post: Hanoi) – thẩm định tại Issue #19. |
 | **Missingness/Availability** | **Bắt buộc 100% (Mandatory)**; không cho phép `NaN / null`. |
 
 #### 3. `location`
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `location` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ thẩm định tại Issue #19, ví dụ ứng viên: `location`, `site_name`, `station_name`) |
+| **Source Field Name** | `location` (OpenAQ S3 archive / API: `"US Diplomatic Post: Hanoi"`) |
 | **Definition** | Tên địa danh hoặc mô tả bằng ngôn ngữ tự nhiên về vị trí đặt trạm quan trắc mặt đất. |
 | **Unit** | Văn bản mô tả (Text String) |
 | **Datatype** | `string` |
-| **Transformation** | Chuẩn hóa mã hóa ký tự UTF-8, loại bỏ ký tự lạ hoặc khoảng trắng đầu cuối; dùng phục vụ hiển thị báo cáo. |
-| **Source Origin** | Metadata từ nguồn ứng viên trạm quan trắc không khí (chưa thẩm định; quyết định nguồn chính thức deferred to #19). |
-| **Missingness/Availability** | **Tùy chọn (Optional)**; có thể khuyết nếu nguồn chỉ cung cấp tọa độ hoặc mã trạm. |
+| **Transformation** | Chuẩn hóa chuỗi ký tự UTF-8, loại bỏ khoảng trắng thừa: `"US Diplomatic Post: Hanoi"`. |
+| **Source Origin** | Nguồn chính: OpenAQ (Metadata trạm mặt đất) – thẩm định tại Issue #19. |
+| **Missingness/Availability** | **Bắt buộc 100% (Mandatory)** trên tập canonical hợp nhất; phản ánh trạm quan trắc quy chiếu lõi đô thị. |
 
 ---
 
@@ -155,25 +155,25 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `pm25` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ thẩm định tại Issue #19, ví dụ ứng viên: `pm25`, `PM2.5`, `value` khi `parameter='pm25'`) |
-| **Definition** | Nồng độ khối lượng của các hạt bụi mịn có đường kính khí động học nhỏ hơn hoặc bằng 2.5 micromet lơ lửng trong không khí theo chu kỳ 1 giờ (hourly).<br><br>*(Lưu ý về tần suất đo & quy chuẩn: Dữ liệu canonical được ghi nhận theo từng giờ. Để đối chiếu với các quy chuẩn kỹ thuật như QCVN 05:2023/BTNMT với giới hạn trung bình 24 giờ là $45\,\mu\text{g/Nm}^3$ áp dụng từ 01/01/2026, dữ liệu cần được tổng hợp theo chu kỳ 24 giờ tương thích ở các bước phân tích sau; tuyệt đối không áp trực tiếp ngưỡng trung bình 24 giờ lên từng quan sát đơn lẻ theo giờ).*<br><br>*(Lưu ý về phân biệt đơn vị đo $\mu\text{g/m}^3$ vs. $\mu\text{g/Nm}^3$: Đơn vị canonical của tập dữ liệu là $\mu\text{g/m}^3$ đo ở điều kiện môi trường thực tế. Quy chuẩn QCVN 05:2023/BTNMT sử dụng đơn vị $\mu\text{g/Nm}^3$ ở điều kiện chuẩn nhiệt độ và áp suất. Hai đơn vị này **không thể so sánh trực tiếp như cùng một đơn vị đo** mà cần được xử lý/chuẩn hóa phù hợp dựa trên thông số khí tượng thực tế nếu đối chiếu; không tự ý áp đặt công thức chuyển đổi cố định khi chưa xác thực điều kiện chuẩn của nguồn tại Issue #19).* |
+| **Source Field Name** | `value` khi `parameter == 'pm25'` (OpenAQ S3 / API); `Value` (AirNow DOS CSV - Fallback) |
+| **Definition** | Nồng độ khối lượng của các hạt bụi mịn có đường kính khí động học nhỏ hơn hoặc bằng 2.5 micromet lơ lửng trong không khí theo chu kỳ 1 giờ (hourly).<br><br>*(Lưu ý về tần suất đo & quy chuẩn: Dữ liệu canonical được ghi nhận theo từng giờ. Để đối chiếu với các quy chuẩn kỹ thuật như QCVN 05:2023/BTNMT với giới hạn trung bình 24 giờ là $45\,\mu\text{g/Nm}^3$ áp dụng từ 01/01/2026, dữ liệu cần được tổng hợp theo chu kỳ 24 giờ tương thích ở các bước phân tích sau; tuyệt đối không áp trực tiếp ngưỡng trung bình 24 giờ lên từng quan sát đơn lẻ theo giờ).*<br><br>*(Lưu ý về phân biệt đơn vị đo $\mu\text{g/m}^3$ vs. $\mu\text{g/Nm}^3$: Đơn vị canonical của tập dữ liệu là $\mu\text{g/m}^3$ đo ở điều kiện môi trường thực tế từ thiết bị Met One BAM-1020. Quy chuẩn QCVN 05:2023/BTNMT sử dụng đơn vị $\mu\text{g/Nm}^3$ ở điều kiện chuẩn nhiệt độ và áp suất. Hai đơn vị này **không thể so sánh trực tiếp như cùng một đơn vị đo** mà cần được xử lý/chuẩn hóa phù hợp dựa trên thông số khí tượng thực tế nếu đối chiếu).* |
 | **Unit** | $\mu\text{g/m}^3$ (Microgam trên mét khối không khí thực tế đo ở điều kiện môi trường - actual/ambient conditions; phân biệt với đơn vị quy chuẩn $\mu\text{g/Nm}^3$) |
 | **Datatype** | `float64` |
-| **Transformation** | Kiểm tra đơn vị nguồn; nếu nguồn dùng đơn vị khác (như $\text{mg/m}^3$ hay $\text{ppm}$), nhân hệ số chuyển đổi về $\mu\text{g/m}^3$; ép kiểu số thực 64-bit; chuyển các mã lỗi/marker ngụy trang thành `NaN`. |
-| **Source Origin** | Nguồn ứng viên chất lượng không khí (chưa thẩm định; quyết định chọn nguồn chính thức deferred to #19). |
-| **Missingness/Availability** | **Bắt buộc là biến mục tiêu cốt lõi**; tuy nhiên có thể khuyết trong các khung giờ trạm bảo trì hoặc lỗi truyền tín hiệu. Giá trị khuyết biểu diễn dưới dạng `NaN`, không được tự ý điền 0. |
+| **Transformation** | Lọc theo `parameter == 'pm25'`; ép kiểu `float64`; áp dụng quy tắc kiểm tra giá trị vật lý: giá trị âm ($< 0\,\mu\text{g/m}^3$) là bất thường vật lý $\to$ gán `NaN`; giá trị bằng 0 ($= 0.0\,\mu\text{g/m}^3$) được giữ nguyên nếu là quan trắc hợp lệ từ cảm biến (chỉ gán `NaN` nếu đi kèm QC invalid flag từ trạm); bóc trần mã lỗi ngụy trang (ví dụ `-999` từ AirNow nếu dùng fallback) thành `NaN`. |
+| **Source Origin** | Nguồn chính: OpenAQ REST API v3 / S3 Archive (location_id=2178, Met One BAM-1020). Nguồn dự phòng (Fallback): AirNow DOS CSV. Phê duyệt chính thức tại Issue #19. |
+| **Missingness/Availability** | **Biến mục tiêu cốt lõi**. Kết quả profiling thực tế: 14,424 giờ có dữ liệu trong 2023–2024 (completeness: 82.2%; năm 2023 đạt 69.1%, năm 2024 đạt 95.3%). Giá trị khuyết thiếu tự nhiên biểu diễn bằng `NaN`, không tự ý điền 0. |
 
 #### 5. `pm10`
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `pm10` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ thẩm định tại Issue #19, ví dụ ứng viên: `pm10`, `PM10`, `value` khi `parameter='pm10'`) |
+| **Source Field Name** | `value` khi `parameter == 'pm10'` (OpenAQ S3 / API) |
 | **Definition** | Nồng độ khối lượng của các hạt bụi thô có đường kính khí động học nhỏ hơn hoặc bằng 10 micromet lơ lửng trong không khí theo chu kỳ 1 giờ (hourly). |
 | **Unit** | $\mu\text{g/m}^3$ (Microgam trên mét khối không khí) |
 | **Datatype** | `float64` |
-| **Transformation** | Đổi đơn vị về $\mu\text{g/m}^3$ nếu cần; ép kiểu số thực 64-bit; dùng để kiểm tra tính hợp lý vật lý với `pm25` ($\text{PM}_{2.5} \le \text{PM}_{10} + \epsilon$). |
-| **Source Origin** | Nguồn ứng viên chất lượng không khí (chưa thẩm định; quyết định chọn nguồn chính thức deferred to #19). |
-| **Missingness/Availability** | **Tùy chọn (Optional)**; phụ thuộc vào việc trạm quan trắc nguồn có gắn đầu đo $\text{PM}_{10}$ hay không. Nếu nguồn không có, toàn bộ cột là `NaN`. |
+| **Transformation** | Lọc theo `parameter == 'pm10'`; ép kiểu `float64`; dùng để kiểm tra tính hợp lý vật lý với `pm25` ($\text{PM}_{2.5} \le \text{PM}_{10} + \epsilon$). |
+| **Source Origin** | Nguồn chính: OpenAQ (location_id=2178 – phát hiện thực nghiệm có cung cấp thông số `pm10` trong archive 2023–2024 tại Issue #19). |
+| **Missingness/Availability** | **Tùy chọn bổ trợ (Secondary variable)**; độ bao phủ và tính đầy đủ sẽ được kiểm chứng chi tiết tại Issue #3. Nếu các khung giờ không có đo đạc, giá trị là `NaN`. |
 
 ---
 
@@ -183,73 +183,73 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `temperature` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ thẩm định tại Issue #19, ví dụ ứng viên: `temperature_2m`, `temp`, `temperature`) |
-| **Definition** | Nhiệt độ không khí khô đo tại độ cao tiêu chuẩn (thường là 2 mét so với mặt đất). |
+| **Source Field Name** | `temperature_2m` (Open-Meteo ERA5); `TMP` (NOAA ISD 48820 - Fallback) |
+| **Definition** | Nhiệt độ không khí khô đo tại độ cao tiêu chuẩn (2 mét so với mặt đất). |
 | **Unit** | $^\circ\text{C}$ (Độ Celsius) |
 | **Datatype** | `float64` |
-| **Transformation** | Nếu nguồn dùng đơn vị Kelvin ($K$), chuyển đổi $T_{^\circ\text{C}} = T_K - 273.15$; nếu dùng độ Fahrenheit ($^\circ\text{F}$), chuyển đổi $T_{^\circ\text{C}} = (T_{^\circ\text{F}} - 32) \times 5/9$. Ép kiểu `float64`. |
-| **Source Origin** | Nguồn ứng viên khí tượng bề mặt (chưa thẩm định; quyết định chọn nguồn chính thức deferred to #19). |
-| **Missingness/Availability** | Biến thời tiết chính phục vụ mô hình hồi quy; giá trị khuyết biểu diễn dạng `NaN`. |
+| **Transformation** | Open-Meteo trả về trực tiếp đơn vị $^\circ\text{C}$; ép kiểu `float64`; kiểm tra giới hạn vật lý tự nhiên ($0^\circ\text{C} \le T \le 50^\circ\text{C}$). (Nếu dùng NOAA ISD fallback: lấy phần số và chia 10). |
+| **Source Origin** | Nguồn chính: Open-Meteo Historical Weather API (ERA5 Reanalysis) – phê duyệt tại Issue #19. Nguồn dự phòng (Fallback): NOAA ISD 48820. |
+| **Missingness/Availability** | Biến thời tiết chính; kết quả profiling thực tế: **0/17,544 khuyết (0.00% missing)** trong toàn bộ 2023–2024. |
 
 #### 7. `relative_humidity`
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `relative_humidity` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ thẩm định tại Issue #19, ví dụ ứng viên: `relative_humidity_2m`, `humidity`, `rh`) |
-| **Definition** | Tỷ số phần trăm giữa áp suất hơi nước thực tế và áp suất hơi nước bão hòa ở cùng nhiệt độ và áp suất khí quyển. |
+| **Source Field Name** | `relative_humidity_2m` (Open-Meteo ERA5) |
+| **Definition** | Tỷ số phần trăm giữa áp suất hơi nước thực tế và áp suất hơi nước bão hòa ở cùng nhiệt độ và áp suất khí quyển tại độ cao 2m. |
 | **Unit** | $\%$ (Phần trăm, miền giá trị vật lý $0\% - 100\%$) |
 | **Datatype** | `float64` |
-| **Transformation** | Nếu nguồn lưu dưới dạng tỷ lệ thập phân ($0.0 - 1.0$), nhân với 100 để quy về thang $\%$; ép kiểu `float64`. |
-| **Source Origin** | Nguồn ứng viên khí tượng bề mặt (chưa thẩm định; quyết định chọn nguồn chính thức deferred to #19). |
-| **Missingness/Availability** | Biến thời tiết chính; giá trị khuyết biểu diễn dạng `NaN`. |
+| **Transformation** | Open-Meteo trả về trực tiếp thang $\%$; ép kiểu `float64`; kiểm tra giới hạn vật lý $0\% \le \text{RH} \le 100\%$. |
+| **Source Origin** | Nguồn chính: Open-Meteo Historical Weather API (ERA5 Reanalysis) – phê duyệt tại Issue #19. |
+| **Missingness/Availability** | Biến thời tiết chính; profiling thực tế: **0.00% missing** (17,544/17,544 giờ đầy đủ). |
 
 #### 8. `wind_speed`
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `wind_speed` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ thẩm định tại Issue #19, ví dụ ứng viên: `wind_speed_10m`, `wind_speed`, `wspd`) |
+| **Source Field Name** | `wind_speed_10m` (Open-Meteo ERA5, với `&wind_speed_unit=ms`); `WND` (NOAA ISD - Fallback) |
 | **Definition** | Tốc độ chuyển động của luồng không khí theo phương nằm ngang đo tại độ cao chuẩn (10 mét). |
 | **Unit** | $\text{m/s}$ (Mét trên giây) |
 | **Datatype** | `float64` |
-| **Transformation** | Nếu nguồn đo bằng $\text{km/h}$, chuyển đổi: $v_{\text{m/s}} = v_{\text{km/h}} / 3.6$; nếu đo bằng dặm/giờ (mph), nhân $0.44704$; nếu đo bằng hải lý (knots), nhân $0.514444$. Ép kiểu `float64`. |
-| **Source Origin** | Nguồn ứng viên khí tượng bề mặt (chưa thẩm định; quyết định chọn nguồn chính thức deferred to #19). |
-| **Missingness/Availability** | Biến thời tiết chính; giá trị khuyết biểu diễn dạng `NaN`. |
+| **Transformation** | API được truy vấn kèm tham số `&wind_speed_unit=ms` để nhận trực tiếp $\text{m/s}$; ép kiểu `float64`; kiểm tra điều kiện không âm ($\ge 0\,\text{m/s}$). |
+| **Source Origin** | Nguồn chính: Open-Meteo Historical Weather API (ERA5 Reanalysis) – phê duyệt tại Issue #19. |
+| **Missingness/Availability** | Biến thời tiết chính; profiling thực tế: **0.00% missing** (17,544/17,544 giờ đầy đủ). |
 
 #### 9. `wind_direction`
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `wind_direction` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ thẩm định tại Issue #19, ví dụ ứng viên: `wind_direction_10m`, `wind_direction`, `wdir`) |
+| **Source Field Name** | `wind_direction_10m` (Open-Meteo ERA5) |
 | **Definition** | Hướng gió thổi tới, tính theo độ góc từ hướng Bắc thực theo chiều kim đồng hồ ($0^\circ - 360^\circ$, với $0^\circ = 360^\circ$ là hướng Bắc, $90^\circ$ là hướng Đông). |
 | **Unit** | Độ ($^\circ$, Góc độ $0^\circ - 360^\circ$) |
 | **Datatype** | `float64` |
-| **Transformation** | Kiểm tra quy ước góc của nguồn (chỉ xác thực khi kiểm tra payload tại Issue #19, không suy diễn định kiến). Ép kiểu `float64`. |
-| **Source Origin** | Nguồn ứng viên khí tượng bề mặt (chưa thẩm định; quyết định chọn nguồn chính thức deferred to #19). |
-| **Missingness/Availability** | Tùy chọn / Phụ thuộc nguồn; giá trị khuyết biểu diễn dạng `NaN`. Khi tốc độ gió bằng 0 (lặng gió), hướng gió có thể là không xác định (`NaN`). |
+| **Transformation** | Chuẩn hóa modulo 360 độ; ép kiểu `float64`. |
+| **Source Origin** | Nguồn chính: Open-Meteo Historical Weather API (ERA5 Reanalysis) – phê duyệt tại Issue #19. |
+| **Missingness/Availability** | Biến thời tiết; profiling thực tế: **0.00% missing** (17,544/17,544 giờ đầy đủ). |
 
 #### 10. `precipitation`
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `precipitation` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ thẩm định tại Issue #19, ví dụ ứng viên: `precipitation`, `rain`, `precip`) |
+| **Source Field Name** | `precipitation` (Open-Meteo ERA5) |
 | **Definition** | Tổng lượng nước (mưa lỏng hoặc tương đương nước) rơi xuống bề mặt đất tích lũy trong khoảng thời gian quan sát 1 giờ. |
 | **Unit** | $\text{mm}$ (Milimét) |
 | **Datatype** | `float64` |
-| **Transformation** | Nếu nguồn đo bằng inch, chuyển đổi $P_{\text{mm}} = P_{\text{inch}} \times 25.4$; nếu là lượng mưa tích lũy ngày, phân bổ theo giờ phải theo quy chuẩn xác thực. Ép kiểu `float64`. |
-| **Source Origin** | Nguồn ứng viên khí tượng bề mặt (chưa thẩm định; quyết định chọn nguồn chính thức deferred to #19). |
-| **Missingness/Availability** | Phụ thuộc nguồn; giá trị khuyết biểu diễn dạng `NaN`. **Lưu ý:** Không tự ý gán giá trị 0 khi nguồn khuyết số liệu mà chưa phân biệt được giữa "không có mưa" ($0.0\text{ mm}$) và "không có dữ liệu đo lường". |
+| **Transformation** | Ép kiểu `float64`; kiểm tra điều kiện không âm ($\ge 0.0\,\text{mm}$). |
+| **Source Origin** | Nguồn chính: Open-Meteo Historical Weather API (ERA5 Reanalysis) – phê duyệt tại Issue #19. |
+| **Missingness/Availability** | Biến thời tiết; profiling thực tế: **0.00% missing** (17,544/17,544 giờ đầy đủ). |
 
 #### 11. `surface_pressure`
 | Thuộc tính | Đặc tả chi tiết |
 |---|---|
 | **Canonical Field Name** | `surface_pressure` |
-| **Source Field Name** | *TBD / Phụ thuộc nguồn* (chưa xác thực; sẽ thẩm định tại Issue #19, ví dụ ứng viên: `surface_pressure`, `pressure`, `pres`) |
-| **Definition** | Áp suất khí quyển tác động lên bề mặt đất tại cao độ thực tế của trạm đo. |
+| **Source Field Name** | `surface_pressure` (Open-Meteo ERA5) |
+| **Definition** | Áp suất khí quyển tác động lên bề mặt đất tại cao độ thực tế của trạm đo/điểm lưới. |
 | **Unit** | $\text{hPa}$ (Hectopascal, tương đương $\text{mbar}$) |
 | **Datatype** | `float64` |
-| **Transformation** | Nếu nguồn dùng đơn vị Pascal ($\text{Pa}$), chuyển đổi $p_{\text{hPa}} = p_{\text{Pa}} / 100$; nếu dùng $\text{mmHg}$, nhân $1.33322$; nếu dùng $\text{inHg}$, nhân $33.8639$. Ép kiểu `float64`. |
-| **Source Origin** | Nguồn ứng viên khí tượng bề mặt (chưa thẩm định; quyết định chọn nguồn chính thức deferred to #19). |
-| **Missingness/Availability** | Phụ thuộc nguồn; giá trị khuyết biểu diễn dạng `NaN`. |
+| **Transformation** | Open-Meteo trả về trực tiếp đơn vị $\text{hPa}$; ép kiểu `float64`; kiểm tra dải áp suất bề mặt thực tế ($950 - 1050\,\text{hPa}$). |
+| **Source Origin** | Nguồn chính: Open-Meteo Historical Weather API (ERA5 Reanalysis) – phê duyệt tại Issue #19. |
+| **Missingness/Availability** | Biến thời tiết; profiling thực tế: **0.00% missing** (17,544/17,544 giờ đầy đủ). |
 
 ---
 
@@ -262,6 +262,7 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 2. **Cấm tuyệt đối điền số 0 ngầm định (No Silent Zero Imputation):**
    - Tuyệt đối không thay thế dữ liệu khuyết bằng số `0` hoặc `0.0`.
    - Trong khí tượng và môi trường, giá trị `0` mang ý nghĩa vật lý rõ rệt: nồng độ $\text{PM}_{2.5} = 0\,\mu\text{g/m}^3$ là môi trường chân không lý tưởng (hoàn toàn không khả thi tại Hà Nội); tốc độ gió $= 0\,\text{m/s}$ là lặng gió tuyệt đối; lượng mưa $= 0\,\text{mm}$ là trạng thái không mưa. Việc điền số 0 bừa bãi sẽ làm sai lệch nghiêm trọng phân phối và các ước lượng hồi quy.
+   - **Phân biệt giữa số 0 gán ép bừa bãi và số 0 quan trắc hợp lệ (Valid Observed Zero):** Nếu thiết bị quan trắc/trạm đo ghi nhận giá trị bằng 0 hợp lệ mà không có cờ báo lỗi từ trạm (QC invalid flag), giá trị 0 được giữ nguyên như một quan trắc thực tế, không tự ý biến thành `NaN`. Chỉ loại bỏ hoặc gán `NaN` đối với các giá trị âm ($< 0$) hoặc các giá trị được nguồn/QC xác định là lỗi/calibration.
 3. **Phân loại rõ ràng 3 trạng thái khuyết thiếu:**
    - **Biến không được nguồn cung cấp (Variable Unavailable from Source):** Trường dữ liệu không hề tồn tại trong cấu hình đầu ra của nhà cung cấp (ví dụ: trạm quan trắc không trang bị cảm biến $\text{PM}_{10}$).
    - **Dữ liệu quan trắc bị khuyết (Measurement Missing):** Cảm biến gặp sự cố gián đoạn nguồn điện, tắc nghẽn đường ống lấy mẫu, bảo trì định kỳ hoặc nghẽn mạng truyền tin.
@@ -274,40 +275,41 @@ Tuân thủ nghiêm ngặt yêu cầu quản trị dữ liệu học thuật, m�
 
 ## 6. Hiện Trạng Ánh Xạ Nguồn & Thẩm Định Tại Issue #19 (Source Mapping Status)
 
-> [!IMPORTANT]
-> **Toàn bộ ánh xạ trường nguồn hiện CHƯA ĐƯỢC XÁC THỰC (Unvalidated Source Mappings):**  
-> 1. **Tính độc lập nguồn tuyệt đối:** Canonical Data Schema được xây dựng hoàn toàn độc lập với bất kỳ nhà cung cấp cụ thể nào.  
-> 2. **Cổng thẩm định nguồn Issue #19:** Issue #19 là cổng kỹ thuật bắt buộc để tiến hành khảo sát hồ sơ dữ liệu (*Data Profiling*), kiểm chứng phạm vi địa giới Hà Nội, đo đạc độ bao phủ thời gian thực tế và ban hành quyết định phân định vai trò nguồn (Primary, Secondary, Fallback).  
-> 3. **Không định kiến nguồn:** Trước khi Issue #19 hoàn thành, toàn bộ các nhà cung cấp (OpenAQ, Open-Meteo, Kaggle, AirNow, PAM Air) đều chỉ là **nguồn ứng viên bình đẳng (candidate sources)**. Dự án tuyệt đối không tự ý quyết định hoặc coi bất kỳ nguồn nào là nguồn chính thức.  
-> 4. **Trạng thái TBD:** Toàn bộ tên trường tại nguồn (`Source Field Name`) trong tài liệu này được giữ ở trạng thái `TBD / Chưa xác thực` và việc kiểm chứng chính thức được **deferred to #19**.
+> [!NOTE]
+> **Toàn bộ ánh xạ trường nguồn ĐÃ ĐƯỢC XÁC THỰC THỰC NGHIỆM (Validated Source Mappings):**  
+> 1. **Cổng thẩm định nguồn Issue #19:** Issue #19 đã hoàn tất khảo sát hồ sơ dữ liệu (*Data Profiling*), kiểm chứng thực nghiệm tại Hà Nội và ban hành quyết định Cổng Nguồn Dữ liệu tại [`docs/source_profiling_decision.md`](source_profiling_decision.md).  
+> 2. **Phân định vai trò nguồn:**  
+>    - **Chất lượng không khí:** Primary = OpenAQ REST API v3 / S3 Archive (location_id=2178, trạm ĐSQ Hoa Kỳ tại Hà Nội, Met One BAM-1020); Fallback = AirNow US Department of State Historical CSV.  
+>    - **Khí tượng bề mặt:** Primary = Open-Meteo Historical Weather API (ERA5 Reanalysis, điểm lưới Hà Nội); Fallback = NOAA Integrated Surface Database (ISD, Trạm WMO 48820 - Sân bay Nội Bài).  
+> 3. **Ánh xạ trường chính thức:** Bảng dưới đây thể hiện ánh xạ đã được xác thực trực tiếp qua phản hồi API và cấu trúc tệp thực tế.
 
-### 6.1. Danh mục các nguồn ứng viên (Candidate Sources)
-Tại thời điểm Issue #2, các nhà cung cấp dữ liệu sau được xác định là nguồn ứng viên tiềm năng cần thẩm định khách quan tại Issue #19:
-1. **Tập dữ liệu Kaggle Hà Nội (CSV)**: Dữ liệu ô nhiễm và thời tiết tổng hợp.
-2. **OpenAQ REST API v3**: Dữ liệu quan trắc từ trạm đo mặt đất tại Hà Nội.
-3. **Open-Meteo Historical Weather API**: Dữ liệu khí tượng bề mặt từ mô hình tái phân tích ERA5.
-4. **AirNow (US Department of State)**: Dữ liệu lịch sử quan trắc trạm ngoại giao.
-5. **PAM Air Open Portal**: Dữ liệu mạng lưới cảm biến môi trường cộng đồng tại Việt Nam.
+### 6.1. Danh mục các nguồn ứng viên đã thẩm định (Candidate Sources Profiled)
+Tại Issue #19, 6 nhà cung cấp dữ liệu đã được thẩm định thực nghiệm:
+1. **OpenAQ REST API v3 / S3 Archive (location_id=2178)**: Nguồn chính chất lượng không khí (PM2.5, PM10).
+2. **Open-Meteo Historical Weather API (ERA5)**: Nguồn chính khí tượng bề mặt (6 biến Canonical).
+3. **AirNow (US Department of State)**: Nguồn dự phòng (Fallback source) chất lượng không khí.
+4. **NOAA ISD (WMO Station 48820 - Sân bay Nội Bài)**: Nguồn dự phòng (Fallback source) khí tượng bề mặt.
+5. **Tập dữ liệu Kaggle Hà Nội (CSV)**: Nguồn tham chiếu phân phối thống kê ngoài (Reference only).
+6. **PAM Air Portal**: Nguồn loại bỏ do bản quyền đóng và thiếu REST API mở (Unused).
 
-### 6.2. Trạng thái thẩm định ánh xạ trường (Field Mapping Status)
-Bảng theo dõi trạng thái thẩm định ánh xạ giữa các nguồn ứng viên và Canonical Schema:
+### 6.2. Bảng ánh xạ trường đã thẩm định (Validated Field Mapping Matrix)
 
-| Trường Canonical | Đơn vị chuẩn | Nguồn ứng viên ô nhiễm (Kaggle / OpenAQ / AirNow / PAM Air) | Nguồn ứng viên khí tượng (Open-Meteo / Khí tượng đi kèm) | Tình trạng thẩm định (Validation Status) |
+| Trường Canonical | Đơn vị chuẩn | Nguồn chính Ô nhiễm (OpenAQ location 2178) | Nguồn chính Khí tượng (Open-Meteo ERA5) | Tình trạng thẩm định (Validation Status) |
 |---|---|---|---|:---:|
-| `timestamp` | UTC+7 | Trường ngày giờ (TBD) | Trường ngày giờ (TBD) | **Chưa xác thực (Deferred to #19)** |
-| `station_id` | String | Mã trạm / Identifier (TBD) | Điểm lưới / Mã vị trí (TBD) | **Chưa xác thực (Deferred to #19)** |
-| `location` | String | Tên trạm / Địa danh (TBD) | Metadata vị trí (TBD) | **Chưa xác thực (Deferred to #19)** |
-| `pm25` | $\mu\text{g/m}^3$ | Tham số PM2.5 (TBD) | Không áp dụng | **Chưa xác thực (Deferred to #19)** |
-| `pm10` | $\mu\text{g/m}^3$ | Tham số PM10 (TBD) | Không áp dụng | **Chưa xác thực (Deferred to #19)** |
-| `temperature` | $^\circ\text{C}$ | Tùy chọn (nếu có cảm biến) | Tham số nhiệt độ 2m (TBD) | **Chưa xác thực (Deferred to #19)** |
-| `relative_humidity` | $\%$ | Tùy chọn (nếu có cảm biến) | Tham số độ ẩm 2m (TBD) | **Chưa xác thực (Deferred to #19)** |
-| `wind_speed` | $\text{m/s}$ | Tùy chọn (nếu có cảm biến) | Tham số tốc độ gió 10m (TBD) | **Chưa xác thực (Deferred to #19)** |
-| `wind_direction` | Độ ($^\circ$) | Tùy chọn (nếu có cảm biến) | Tham số hướng gió 10m (TBD) | **Chưa xác thực (Deferred to #19)** |
-| `precipitation` | $\text{mm}$ | Không khả dụng | Tham số lượng mưa tích lũy (TBD) | **Chưa xác thực (Deferred to #19)** |
-| `surface_pressure` | $\text{hPa}$ | Không khả dụng | Tham số áp suất bề mặt (TBD) | **Chưa xác thực (Deferred to #19)** |
+| `timestamp` | UTC+7 | `datetime` (S3) / `period.datetimeFrom.utc` (API) | `time` (với `&timezone=Asia/Ho_Chi_Minh`) | **Đã xác thực (Validated tại #19)** |
+| `station_id` | String | `location_id` (`2178` $\to$ `VN001_HANOI_US_EMBASSY`) | Tọa độ lưới `21.05448N, 105.89848E` | **Đã xác thực (Validated tại #19)** |
+| `location` | String | `location` (`"US Diplomatic Post: Hanoi"`) | Metadata vị trí lưới Hà Nội | **Đã xác thực (Validated tại #19)** |
+| `pm25` | $\mu\text{g/m}^3$ | `value` khi `parameter == "pm25"` (BAM-1020) | Không áp dụng | **Đã xác thực (Validated tại #19)** |
+| `pm10` | $\mu\text{g/m}^3$ | `value` khi `parameter == "pm10"` (Archive S3) | Không áp dụng | **Đã xác thực (Validated tại #19)** |
+| `temperature` | $^\circ\text{C}$ | Không có cảm biến | `temperature_2m` | **Đã xác thực (Validated tại #19)** |
+| `relative_humidity` | $\%$ | Không có cảm biến | `relative_humidity_2m` | **Đã xác thực (Validated tại #19)** |
+| `wind_speed` | $\text{m/s}$ | Không có cảm biến | `wind_speed_10m` (`&wind_speed_unit=ms`) | **Đã xác thực (Validated tại #19)** |
+| `wind_direction` | Độ ($^\circ$) | Không có cảm biến | `wind_direction_10m` | **Đã xác thực (Validated tại #19)** |
+| `precipitation` | $\text{mm}$ | Không có cảm biến | `precipitation` | **Đã xác thực (Validated tại #19)** |
+| `surface_pressure` | $\text{hPa}$ | Không có cảm biến | `surface_pressure` | **Đã xác thực (Validated tại #19)** |
 
 > [!NOTE]
-> Để đảm bảo liêm chính học thuật, **dự án không tự bịa đặt tên cột cụ thể của các nguồn khi chưa thực hiện profiling thực tế**. Quyết định chính thức về việc lựa chọn nguồn nào làm Nguồn chính (*Primary*), Nguồn phụ (*Secondary*), hoặc Nguồn dự phòng (*Fallback*) sẽ được ban hành chi tiết trong tài liệu `docs/source_profiling_decision.md` của **Issue #19**.
+> Chi tiết toàn văn khảo sát hồ sơ dữ liệu, bảng profiling metrics thực nghiệm và biên bản quyết định phân định vai trò nguồn được lưu trữ tại [`docs/source_profiling_decision.md`](source_profiling_decision.md) và thông số nguồn được quản lý tại [`data/raw/metadata.json`](../data/raw/metadata.json).
 
 ---
 
