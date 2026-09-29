@@ -1,0 +1,325 @@
+{
+  "schema_version": "1.2.0",
+  "project": "doctor-cato/air-pollution-analysis",
+  "issue": "#19 – Source Profiling & Decision Gate (Correction: Disqualification of Location 2178 & Verification of Hanoi Location 4946811)",
+  "profiling_timestamp_utc": "2026-09-28T16:47:26Z",
+  "last_updated_utc": "2026-09-29T12:16:22.378588+00:00",
+  "target_city": "Hanoi, Vietnam",
+  "temporal_coverage": {
+    "study_window_start": "2023-01-01T00:00:00+07:00",
+    "study_window_end": "2024-12-31T23:00:00+07:00",
+    "timezone": "Asia/Ho_Chi_Minh",
+    "utc_offset": "+07:00",
+    "total_expected_hours": 17544,
+    "breakdown": {
+      "2023_hours": 8760,
+      "2024_leap_year_hours": 8784
+    }
+  },
+  "geographic_validation": {
+    "hanoi_bounding_box": {
+      "latitude_min": 20.5,
+      "latitude_max": 21.6,
+      "longitude_min": 105.3,
+      "longitude_max": 106.1
+    },
+    "spatial_filtering_rules": {
+      "station_rule": "Raw payload is stored unchanged in data/raw/ (no manual transformation); a SHA-256 digest of each raw file is recorded in this metadata file for integrity verification. During normalization to interim/processed stages, records must match verified Hanoi station_id (OpenAQ: 4946811 - 556 Nguyễn Văn Cừ; AirNow: Site == 'Hanoi') and coordinates must fall strictly within Hanoi bounding box [20.50, 21.60]N, [105.30, 106.10]E. Location 2178 (Del Norte, Albuquerque, NM, USA: 35.1353N, -106.5847W) is strictly DISQUALIFIED and filtered out.",
+      "grid_rule": "Query coordinates set to Hanoi urban core (21.0285N, 105.8542E); OpenMeteoAdapter rejects any query coordinate outside the Hanoi bounding box at construction time, and to_canonical() fails loudly if the response payload omits coordinates. Matched ERA5 cell (21.05448N, 105.89848E) is within 1.71km of verified Hanoi station 4946811 (556 Nguyễn Văn Cừ: 21.0491N, 105.8831E).",
+      "airport_rule": "Station 48820 (Noi Bai Airport) is within Hanoi administrative boundary but ~22km north of urban core; flagged as Weather Fallback with microclimate caveat."
+    }
+  },
+  "data_quality_rules": {
+    "pm25_negative_rule": "Values < 0 µg/m³ are physically invalid and converted to NaN; observed values == 0.0 µg/m³ are retained if valid without station QC error flags; disguised missing markers (-999, -9999) are converted to NaN.",
+    "silent_zero_imputation": "STRICTLY PROHIBITED; missing values are explicitly preserved as NaN.",
+    "openaq_data_level": "Hourly aggregated data (/hours or S3 hourly archives), NOT raw instantaneous measurements."
+  },
+  "sources": {
+    "air_quality": {
+      "role": "primary",
+      "provider": "OpenAQ",
+      "network": "Hanoi Air Quality Monitoring Network (Provider ID: 67)",
+      "station_name": "556 Nguyễn Văn Cừ",
+      "location_id": 4946811,
+      "station_type": "Government Monitor (Northern Center for Environmental Monitoring - NCEM / VEA)",
+      "coordinates": {
+        "latitude": 21.0491,
+        "longitude": 105.8831
+      },
+      "timezone": "Asia/Bangkok",
+      "instrument": "Reference Grade Environmental Monitor (Government Monitor)",
+      "parameters_available": [
+        "pm25",
+        "pm10",
+        "no2",
+        "co",
+        "so2",
+        "o3"
+      ],
+      "sensors": {
+        "pm25": 13502150,
+        "pm10": 13502165,
+        "no2": 13502159,
+        "co": 13502158,
+        "so2": 13502161,
+        "o3": 13502160
+      },
+      "primary_parameter": "pm25",
+      "unit": "µg/m³",
+      "data_type": "sub_hourly_raw_and_hourly_aggregated",
+      "endpoints": {
+        "rest_api": "https://api.openaq.org/v3/locations/4946811",
+        "s3_public_archive": "https://openaq-data-archive.s3.amazonaws.com/records/csv.gz/locationid=4946811/"
+      },
+      "authentication": "X-API-Key required for REST API v3; None required for S3 public archive",
+      "license": "Open Database License (ODC-BY) v1.0",
+      "attribution": "Data provided by OpenAQ and Hanoi Air Quality Monitoring Network (VEA/CEM)",
+      "profiling_metrics": {
+        "verified_s3_files": 352,
+        "first_observed_utc": "2025-07-03T15:40:00Z",
+        "last_observed_utc": "2026-07-15T10:05:00Z",
+        "verified_files_2023": 0,
+        "verified_files_2024": 0,
+        "verified_files_2025": 180,
+        "verified_files_2026": 172,
+        "verified_rows_pm25_2023_2024": 0,
+        "completeness_2023_pm25_pct": 0.0,
+        "completeness_2024_pm25_pct": 0.0,
+        "min_timestamp_available": "2025-07-03T22:40:00+07:00",
+        "max_timestamp_available": "2026-07-15T17:05:00+07:00",
+        "latest_available_timestamp": "2026-07-15T17:05:00+07:00 (latest S3 archive file verified at profiling)",
+        "resolution": "sub-hourly telemetry (~5-10 min) / 1 hour aggregated",
+        "correction_notice": "Location 2178 (Del Norte, Albuquerque, NM, USA) was previously cited in error due to copying OpenAQ tutorial example ID. Location 2178 is disqualified and excluded from Hanoi analysis. Real Hanoi station is 4946811."
+      }
+    },
+    "air_quality_backup": {
+      "role": "fallback",
+      "provider": "AirNow (US Department of State)",
+      "station_name": "Site: Hanoi (US Embassy)",
+      "coordinates": {
+        "latitude": 21.0215,
+        "longitude": 105.8184
+      },
+      "instrument": "Met One BAM-1020 (US EPA FEM EQPM-0308-170)",
+      "format": "Historical CSV",
+      "temporal_coverage_public": "Documented: 2016-01-01 to 2023-12-31",
+      "min_timestamp": "Documented: 2016-01-01T00:00:00+07:00",
+      "max_timestamp": "Documented: 2023-12-31T23:00:00+07:00",
+      "latest_available_timestamp": "Documented: 2023-12-31T23:00:00+07:00 (public archive)",
+      "nominal_annual_rows": "Not verifiable directly (chưa có tệp mở 2023 trực tiếp không login)",
+      "disguised_missing_marker": "-999",
+      "license": "U.S. Public Domain",
+      "attribution": "US Department of State / AirNow",
+      "limitations": "Direct public downloads for year 2024 are restricted (requires organizational login via AirNow-Tech / State Dept); serves as primary historical ground truth for 2023."
+    },
+    "meteorology": {
+      "role": "primary",
+      "provider": "Open-Meteo",
+      "model": "ECMWF ERA5 Reanalysis",
+      "endpoint": "https://archive-api.open-meteo.com/v1/archive",
+      "query_parameters": {
+        "latitude": 21.0285,
+        "longitude": 105.8542,
+        "start_date": "2023-01-01",
+        "end_date": "2024-12-31",
+        "hourly": "temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,precipitation,surface_pressure",
+        "wind_speed_unit": "ms",
+        "timezone": "Asia/Ho_Chi_Minh"
+      },
+      "grid_resolution": "0.25° (~25km)",
+      "matched_grid": {
+        "latitude": 21.05448,
+        "longitude": 105.89848,
+        "elevation_m": 19.0,
+        "distance_to_station_km": 1.7
+      },
+      "authentication": "None required (free for non-commercial/academic use)",
+      "rate_limit": "10,000 requests/day",
+      "license": "Creative Commons Attribution 4.0 International (CC BY 4.0)",
+      "attribution": "Weather data by Open-Meteo.com under CC BY 4.0, containing modified Copernicus Climate Change Service information (ERA5)",
+      "profiling_metrics": {
+        "verified_rows": 17544,
+        "missing_rate_all_variables": "0.00%",
+        "min_timestamp": "2023-01-01T00:00:00+07:00",
+        "max_timestamp": "2024-12-31T23:00:00+07:00",
+        "latest_available_timestamp": "2026-09-24T06:00:00+07:00 (pure ECMWF ERA5 reanalysis with ~5-day assimilation lag)",
+        "resolution": "1 hour continuous"
+      }
+    },
+    "meteorology_backup": {
+      "role": "fallback",
+      "provider": "NOAA Integrated Surface Database (ISD) / WMO",
+      "station_name": "NOIBAI INTERNATIONAL, VM",
+      "wmo_id": "48820",
+      "wban_id": "99999",
+      "station_id": "48820099999",
+      "coordinates": {
+        "latitude": 21.221192,
+        "longitude": 105.807178,
+        "elevation_m": 11.88
+      },
+      "endpoint_template": "https://www.ncei.noaa.gov/data/global-hourly/access/{YYYY}/48820099999.csv",
+      "authentication": "None required",
+      "format": "METAR FM-15 CSV",
+      "license": "U.S. Public Domain",
+      "attribution": "NOAA National Centers for Environmental Information (NCEI) / WMO",
+      "profiling_metrics": {
+        "verified_rows_2023": 17178,
+        "verified_rows_2024": 16704,
+        "total_records_2023_2024": 33882,
+        "days_covered_2023": "365/365",
+        "days_covered_2024": "359/366",
+        "tmp_missing_rate": "0.00%",
+        "slp_missing_rate": "0.00%",
+        "min_timestamp": "2023-01-01T00:00:00+07:00",
+        "max_timestamp": "2024-12-31T23:30:00+07:00",
+        "latest_available_timestamp": "2025-12-31 (full annual file 2025 verified; 2026 not yet published)",
+        "resolution": "~30 minutes (requires resampling to 1-hour grid)",
+        "limitations": "Missing precipitation (AA1/AA2) in majority of records; SLP requires height adjustment for surface pressure; Station is ~22km north of urban core."
+      }
+    }
+  },
+  "unused_sources": {
+    "openaq_location_2178": {
+      "role": "disqualified_excluded",
+      "provider": "OpenAQ / AirNow (US EPA)",
+      "station_name": "Del Norte-2178",
+      "location_id": 2178,
+      "coordinates": {
+        "latitude": 35.1353,
+        "longitude": -106.584702
+      },
+      "city": "Albuquerque, New Mexico, USA",
+      "timezone": "America/Denver (UTC-07:00)",
+      "reason_for_disqualification": "Critical geographic misidentification. Erroneously cited from OpenAQ tutorial documentation example. Located in Albuquerque, New Mexico, USA (UTC-07:00), entirely outside Vietnam and Hanoi bounding box. All associated metrics (14,424 rows in 2023-2024) are retracted and strictly excluded from the Hanoi project."
+    },
+    "pam_air_portal": {
+      "role": "unused",
+      "provider": "D&L Technology Integration and Consulting JSC",
+      "coverage": "Multiple IoT sensor locations across Hanoi",
+      "sensor_type": "Low-cost optical particle counters",
+      "access_limitations": "Closed proprietary API (api.pamair.org requires partner token); no public bulk raw historical data download endpoint; GUI access only.",
+      "technical_limitations": "Susceptible to uncalibrated baseline drift and severe humidity over-reporting (RH > 90%) without reference calibration nodes.",
+      "license": "Proprietary / Closed commercial license."
+    },
+    "kaggle_community_datasets": {
+      "role": "reference_only",
+      "provider": "Independent Kaggle contributors",
+      "coverage": "Hanoi aggregated air quality and weather files",
+      "access_limitations": "Non-standardized multi-file community uploads; requires individual Kaggle account credentials for API download.",
+      "technical_limitations": "High data leakage risk due to opaque third-party preprocessing and imputation; lack of verifiable sensor hardware provenance (no FEM/FRM certification, no inlet height); apparent 0% missingness reflects artificial imputation rather than natural observations.",
+      "recommended_use": "External distribution check only; strictly prohibited as primary ingestion source."
+    }
+  },
+  "collection_pipeline_execution": {
+    "executed_issue": "#3 & #4 – Pipeline thu thập và chuẩn hóa dữ liệu chất lượng không khí & khí tượng bề mặt Hà Nội",
+    "status": "completed",
+    "execution_timestamp_utc": "2026-09-29T12:16:22.378604+00:00",
+    "requested_study_window": {
+      "start": "2025-07-03T00:00:00+07:00",
+      "end": "2026-07-15T23:00:00+07:00",
+      "derived_dynamically_from_air_quality": true,
+      "note": "Tham số truy vấn phạm vi phân tích khí tượng ERA5."
+    },
+    "disqualification_audit": {
+      "disqualified_location_id": 2178,
+      "reason": "Albuquerque, NM, USA (35.1353N, -106.5847W). 100% purged and excluded from Hanoi analysis."
+    },
+    "openaq_ingestion": {
+      "source_location_id": 4946811,
+      "canonical_station_id": "VN001_HANOI_556_NGUYEN_VAN_CU",
+      "station_name": "556 Nguyễn Văn Cừ",
+      "coordinates": {
+        "latitude": 21.0491,
+        "longitude": 105.8831
+      },
+      "raw_file": "data/raw/openaq_raw_4946811.parquet",
+      "raw_sha256": "4168735570d16f80df7136e93b8da96bbb03ed5631c57ca8ffea6f09d92ae60f",
+      "raw_records_total": 349463,
+      "filtered_out_records": 0,
+      "canonical_records": 8022,
+      "pm25_valid_observations": 7819,
+      "pm25_missing_observations": 203,
+      "pm25_missing_rate_pct": 2.53,
+      "actual_min_timestamp": "2025-07-03 22:00:00+07:00",
+      "actual_max_timestamp": "2026-07-15 17:00:00+07:00",
+      "actual_source_coverage": {
+        "actual_min_timestamp": "2025-07-03 22:00:00+07:00",
+        "actual_max_timestamp": "2026-07-15 17:00:00+07:00",
+        "coverage_derivation": "computed_directly_from_dataframe_timestamps",
+        "coverage_note": "Trạm 4946811 được OpenAQ tích hợp từ tháng 07/2025; không có dữ liệu 2023-2024 trên OpenAQ."
+      },
+      "interim_file": "data/interim/air_quality_canonical.parquet"
+    },
+    "open_meteo_ingestion": {
+      "source_model": "ECMWF ERA5 Reanalysis",
+      "source_role": "primary_weather_source",
+      "source_endpoint": "https://archive-api.open-meteo.com/v1/archive",
+      "request_url": "https://archive-api.open-meteo.com/v1/archive?latitude=21.0285&longitude=105.8542&start_date=2025-07-03&end_date=2026-07-15&hourly=temperature_2m%2Crelative_humidity_2m%2Cwind_speed_10m%2Cwind_direction_10m%2Cprecipitation%2Csurface_pressure&wind_speed_unit=ms&timezone=Asia%2FHo_Chi_Minh",
+      "license": "Creative Commons Attribution 4.0 International (CC BY 4.0)",
+      "attribution": "Weather data by Open-Meteo.com under CC BY 4.0, containing modified Copernicus Climate Change Service information (ERA5)",
+      "requested_query_window": {
+        "start_date": "2025-07-03",
+        "end_date": "2026-07-15",
+        "derived_dynamically": true,
+        "derivation_rule": "derived_from_air_quality_canonical_min_max_timestamps"
+      },
+      "raw_file": "data/raw/open_meteo_raw_2025-07-03_2026-07-15.json",
+      "raw_file_committed_to_git": false,
+      "raw_file_gitignore_rule": "data/raw/*.json",
+      "raw_sha256": "59bfececa2dc658c15898df082a19566fce7019048ec8236b55dc731f45bc79c",
+      "raw_preservation": "stored_unchanged_no_manual_transformation",
+      "canonical_records": 9072,
+      "missing_rate_all_variables": "0.00%",
+      "actual_min_timestamp": "2025-07-03 00:00:00+07:00",
+      "actual_max_timestamp": "2026-07-15 23:00:00+07:00",
+      "actual_source_coverage": {
+        "actual_min_timestamp": "2025-07-03 00:00:00+07:00",
+        "actual_max_timestamp": "2026-07-15 23:00:00+07:00",
+        "coverage_derivation": "computed_directly_from_dataframe_timestamps"
+      },
+      "data_quality_validation": {
+        "status": "passed",
+        "is_valid": true,
+        "warnings": [],
+        "timezone": "Asia/Ho_Chi_Minh",
+        "is_continuous_hourly": true,
+        "gap_count": 0,
+        "max_missing_pct": 0.0,
+        "physical_bounds_checked": [
+          "temperature",
+          "relative_humidity",
+          "wind_speed",
+          "wind_direction",
+          "precipitation",
+          "surface_pressure"
+        ],
+        "physical_bounds_violations_in_canonical_output": 0,
+        "values_nulled_by_cleaning": {
+          "disguised_missing": 0,
+          "out_of_bounds": 0,
+          "unparseable": 0
+        },
+        "validation_function_is_read_only": true
+      },
+      "interim_file": "data/interim/weather_canonical.parquet"
+    },
+    "airnow_dos_ingestion": {
+      "canonical_station_id": "VN002_HANOI_US_EMBASSY",
+      "station_name": "US Diplomatic Post: Hanoi",
+      "adapter_status": "implemented",
+      "ingestion_status": "not_executed_pending_raw_input",
+      "role": "historical_source_fallback",
+      "raw_input": "unavailable_in_current_execution",
+      "note": "AirNowDOSAdapter is implemented in src/data_collection.py. Ingestion is pending valid raw CSV from AirNow-Tech / State Dept due to access restrictions."
+    },
+    "temporal_integration": {
+      "status": "synchronized_100_percent",
+      "overlap_records": 8022,
+      "overlap_min_timestamp": "2025-07-03 22:00:00+07:00",
+      "overlap_max_timestamp": "2026-07-15 17:00:00+07:00",
+      "air_quality_coverage_pct": 100.0,
+      "row_explosion_detected": false
+    }
+  }
+}

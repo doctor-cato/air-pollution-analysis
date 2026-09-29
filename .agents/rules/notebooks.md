@@ -11,8 +11,9 @@ Notebooks are organized sequentially in `notebooks/` matching the project milest
 
 | Notebook | Focus & Contents | Upstream Input | Primary Output |
 |---|---|---|---|
-| `01_data_collection.ipynb` | API fetching & raw serialization | External APIs | `data/raw/*.json`, `metadata.json` |
-| `02_quality_audit_cleaning.ipynb` | 6 dimensions audit, physical rules, imputation | `data/raw/` | `data/processed/air_pollution_final.parquet`, `docs/cleaning_log.md` |
+| `00_environment_test.ipynb` | CI smoke test & environment verification | None | Execution verification output |
+| `01_data_collection.ipynb` | API fetching, dynamic sync & interim canonical serialization | External APIs (OpenAQ S3, Open-Meteo) | `data/raw/*.json`, `data/interim/*.parquet`, `data/raw/metadata.json` |
+| `02_quality_audit_cleaning.ipynb` | 6 dimensions audit, physical rules, imputation | `data/raw/`, `data/interim/` | `data/processed/air_pollution_final.parquet`, `docs/cleaning_log.md` |
 | `03_exploratory_data_analysis.ipynb` | 4-family stats, diurnal/seasonal EDA, 7 charts | `data/processed/` | `figures/FIG-01` to `FIG-07.png`, `reports/statistical_profile.csv` |
 | `04_statistical_inference.ipynb` | Non-parametric tests, effect sizes, Bootstrap CI | `data/processed/` | `reports/inference_results.md` |
 | `05_regression_modeling.ipynb` | OLS regression, LINE diagnostics, VIF, Cook's dist | `data/processed/` | Regression tables, diagnostic plots |

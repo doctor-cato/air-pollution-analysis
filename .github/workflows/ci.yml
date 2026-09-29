@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Dừng ngay khi một job thất bại -> fail rõ ràng, không che giấu lỗi.
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Python validation (unittest + syntax)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Cài dependencies từ requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Kiểm tra cú pháp Python (compileall)
+        run: python -m compileall -q src tests scripts
+
+      - name: Kiểm tra import sanity (không gọi network)
+        run: |
+          python -c "import src.data_collection"
+          python -c "import src.data_quality"
+
+      # Chỉ chạy unit test. KHÔNG chạy run_collection_pipeline() vì cần
+      # gọi OpenAQ S3 / Open-Meteo / AirNow qua mạng (không deterministic).
+      - name: Chạy unit tests
+        run: python -m unittest discover tests -v
+
+      - name: Kiểm tra khoảng trắng thừa trong diff (git diff --check)
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$GITHUB_SHA" 2>/dev/null || true
+          BASE="$(git merge-base HEAD origin/main 2>/dev/null || true)"
+          if [ -n "$BASE" ] && [ "$BASE" != "$(git rev-parse HEAD)" ]; then
+            git diff --check "$BASE" HEAD
+          else
+            echo "Không có commit cha so sánh được (đây là commit gốc hoặc push trực tiếp lên main) -> bỏ qua."
+          fi
+
+  notebook-smoke:
+    name: Notebook smoke test (00_environment_test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Cài dependencies từ requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      # 00_environment_test.ipynb là deterministic hoàn toàn: chỉ import thư viện,
+      # ghi/đọc Parquet tạm trong thư mục tạm, render Matplotlib. Không cần network,
+      # không phụ thuộc file trong data/raw/ (data/raw/*.json bị .gitignore loại bỏ).
+      #
+      # 01_data_collection.ipynb CỐ TÌNH KHÔNG chạy trong CI: nó gọi
+      # run_collection_pipeline() -> tải OpenAQ/Open-Meteo/AirNow từ Internet và
+      # phụ thuộc dữ liệu thô không được commit. Bắt buộc chạy thủ công local.
+      - name: Thực thi 00_environment_test.ipynb
+        env:
+          MPLBACKEND: Agg
+        run: |
+          python -m jupyter nbconvert \
+            --to notebook \
+            --execute \
+            --output-dir /tmp/nbci \
+            notebooks/00_environment_test.ipynb

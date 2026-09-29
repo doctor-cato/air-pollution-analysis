@@ -54,7 +54,7 @@
 1. **Target Formulation:**
    - Model transformed target $Y = \log(1 + \text{PM}_{2.5})$ (`np.log1p`) to linearize exponential atmospheric dispersion dynamics and stabilize residual variance.
 2. **Strict Chronological Split:**
-   - Train on the historical year (e.g. 2023), evaluate on the subsequent year (e.g. 2024). **Never use random k-fold or random train_test_split.**
+   - Partition train and test strictly chronologically (e.g. earlier 70–80% continuous partition for training, contiguous final 20–30% partition for testing, or historical training year vs evaluation period). **Never use random k-fold or random train_test_split.**
 3. **Mandatory Baseline:**
    - Always evaluate models side-by-side with a DummyRegressor predicting the training mean ($\hat{y} = \bar{y}_{\text{train}}$).
    - Report Test Set metrics: **MAE**, **RMSE**, and **$R^2$**.
@@ -78,8 +78,7 @@
 ## 4. Classification & Early Alert Modeling
 
 1. **Binary Target Definition:**
-   - Class 1 (Unhealthy / Alert): $\text{PM}_{2.5} \ge 50\,\mu\text{g/m}^3$ (QCVN 05:2023/BTNMT threshold).
-   - Class 0 (Acceptable / Normal): $\text{PM}_{2.5} < 50\,\mu\text{g/m}^3$.
+   - Class 1 (Unhealthy / Alert) vs. Class 0 (Acceptable / Normal): Defined using an explicitly documented regulatory or health threshold (e.g. QCVN 05:2023/BTNMT 24h average limit of $45\,\mu\text{g/Nm}^3$ effective 01/01/2026, transitional $50\,\mu\text{g/m}^3$, or WHO 2021 interim guidelines) applied on 24-hour aggregated values with proper unit/condition reconciliation, or an hourly advisory threshold explicitly documented in the modeling specification.
 2. **Class Imbalance & The Accuracy Trap:**
    - High pollution days comprise only $\approx 15 - 25\%$ of observations.
    - **Accuracy is forbidden as a solitary performance metric.** A trivial model predicting all zeros achieves $80\%$ accuracy but has a catastrophic $0\%$ Recall.
