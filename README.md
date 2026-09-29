@@ -34,14 +34,15 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 
 > [!IMPORTANT]
 > **Phân định rõ ràng giữa mã nguồn hiện có và kế hoạch tương lai:**  
-> Dự án đang ở giai đoạn **Milestone 1 (Thiết lập dự án, khảo sát nguồn & thu thập dữ liệu — Tuần 01–02)**. Đã hoàn tất phần thu thập và chuẩn hóa dữ liệu. Toàn bộ các phân tích thống kê, mô hình học máy và các giai đoạn kiểm toán/làm sạch phía sau vẫn là kế hoạch đặc tả trong [`docs/roadmap.md`](docs/roadmap.md) và **chưa được hiện thực hóa**.
+> Dự án **đã hoàn tất Milestone 1 (Thiết lập dự án, khảo sát nguồn & thu thập dữ liệu — Tuần 01–02)** và đang ở giai đoạn chuẩn bị **Milestone 2 (kiểm toán chất lượng & làm sạch)**. Toàn bộ các phân tích thống kê, mô hình học máy và các giai đoạn kiểm toán/làm sạch phía sau vẫn là kế hoạch đặc tả trong [`docs/roadmap.md`](docs/roadmap.md) và **chưa được hiện thực hóa**.
 
 ### 2.1. Hiện trạng Triển khai (Milestone 1)
 
 > [!IMPORTANT]
-> **Trạng thái Milestone 1 sau review:** **4/5 issue DONE, 1/5 issue IN PROGRESS.**
+> **Trạng thái Milestone 1 sau review:** **5/5 issue DONE — Milestone 1 đã đóng.**
 > - **Issue #1, #2, #19, #3:** Đã hoàn tất và nghiệm thu (**DONE**).
-> - **Issue #4:** Đã hiện thực hóa đầy đủ trên nhánh với 39/39 unit test đạt chuẩn; PR #26 đang mở chờ merge vào `main` (**IN PROGRESS**).
+> - **Issue #4:** Đã hiện thực hóa đầy đủ và **PR #26 đã merge vào `main`** (**DONE**).
+> - Bộ kiểm thử hiện có **71 unit test tất định, tất cả đều PASS** (M1 baseline khi nghiệm thu là 57 test; 14 test được bổ sung trong nhánh `chore/m1-cleanup` để phủ trực tiếp `OpenAQAdapter.to_canonical()`).
 > - Toàn bộ các phân tích thống kê nâng cao, mô hình học máy và pipeline tiền xử lý chống rò rỉ phía sau thuộc Milestone 2–6 và **chưa bắt đầu**.
 
 **Tuần 01 — Thiết lập dự án & Canonical Schema**
@@ -59,7 +60,7 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 - [x] Hiện thực hóa `AirNowDOSAdapter` (`VN002_HANOI_US_EMBASSY`, Met One BAM-1020) trong `src/data_collection.py` sẵn sàng cho dữ liệu lịch sử khi có tệp thô [Issue #3].
 - [x] Pipeline thu thập & chuẩn hóa 6 biến khí tượng từ Open-Meteo ERA5 Reanalysis, đồng bộ động dải thời gian với chuỗi quan trắc chất lượng không khí [Issue #4].
 - [x] Lưu payload thô dưới `data/raw/` khi pipeline chạy, kèm `metadata.json` ghi nhận xuất xứ, tham số truy vấn, mã băm SHA-256 và giấy phép (theo [chính sách dữ liệu thô ba tầng](docs/roadmap.md#32-cổng-quyết-định-nguồn-dữ-liệu-issue-19-as-source-selection-gate)) [Issue #3, #4].
-- [x] Bộ 39 unit tests tất định cho pipeline thu thập (`tests/test_data_collection.py`) và pipeline kiểm định tự động bằng GitHub Actions (`.github/workflows/ci.yml`).
+- [x] Bộ 71 unit tests tất định cho pipeline thu thập (`tests/test_data_collection.py`) và pipeline kiểm định tự động bằng GitHub Actions (`.github/workflows/ci.yml`).
 
 > [!NOTE]
 > **Về dữ liệu thô:** tệp thô tải từ API **không được Git-track** — đây là chính sách kho dữ liệu của repository, không phải thiếu sót. Tính toàn vẹn được kiểm chứng bằng mã băm SHA-256 ghi trong `data/raw/metadata.json`. Xem [Mục 3.2 của roadmap](docs/roadmap.md#32-cổng-quyết-định-nguồn-dữ-liệu-issue-19-as-source-selection-gate).
@@ -107,7 +108,7 @@ air-pollution-analysis/
 │   ├── __init__.py
 │   └── data_collection.py              # Adapter OpenAQ, Open-Meteo, AirNow và validation [Issue #3, #4]
 ├── tests/
-│   └── test_data_collection.py         # 39 unit tests kiểm thử pipeline thu thập và validation [Issue #4]
+│   └── test_data_collection.py         # 71 unit tests kiểm thử pipeline thu thập và validation [Issue #4]
 ├── figures/                            # Thư mục lưu biểu đồ xuất bản chất lượng cao (300 DPI)
 │   └── .gitkeep
 └── reports/                            # Báo cáo giữa kỳ và báo cáo tổng kết đồ án
@@ -153,11 +154,11 @@ air-pollution-analysis/
    ```
    Nếu lệnh chạy với mã thoát `0` và hiển thị thông báo `ALL ENVIRONMENT TESTS PASSED`, môi trường đã sẵn sàng.
 
-5. **Chạy bộ Unit Tests kiểm định toàn trình (39 tests tất định):**
+5. **Chạy bộ Unit Tests kiểm định toàn trình (71 tests tất định):**
    ```bash
    python -m unittest discover tests -v
    ```
-   Toàn bộ 39 unit tests trong `tests/test_data_collection.py` kiểm chứng adapter OpenAQ, Open-Meteo, AirNow, logic lọc địa lý Hà Nội, kiểm định chất lượng khí tượng `validate_weather_canonical()`, và cơ chế đồng bộ thời gian động. Các test này độc lập với mạng Internet và thực thi tất định trong CI.
+   Toàn bộ 71 unit tests trong `tests/test_data_collection.py` kiểm chứng adapter OpenAQ, Open-Meteo, AirNow, logic lọc địa lý Hà Nội, kiểm định chất lượng khí tượng `validate_weather_canonical()`, cơ chế đồng bộ thời gian động, và hợp đồng trực tiếp của `OpenAQAdapter.to_canonical()`. Các test này độc lập với mạng Internet và thực thi tất định trong CI.
 
 6. **Kiểm tra cú pháp và quy chuẩn diff:**
    ```bash
