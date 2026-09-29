@@ -3,7 +3,7 @@
   "project": "doctor-cato/air-pollution-analysis",
   "issue": "#19 – Source Profiling & Decision Gate (Correction: Disqualification of Location 2178 & Verification of Hanoi Location 4946811)",
   "profiling_timestamp_utc": "2026-09-28T16:47:26Z",
-  "last_updated_utc": "2026-09-29T08:18:15.916395+00:00",
+  "last_updated_utc": "2026-09-29T08:39:39.058537+00:00",
   "target_city": "Hanoi, Vietnam",
   "temporal_coverage": {
     "study_window_start": "2023-01-01T00:00:00+07:00",
@@ -214,10 +214,11 @@
   "collection_pipeline_execution": {
     "executed_issue": "#3 – Pipeline thu thập và chuẩn hóa dữ liệu chất lượng không khí",
     "status": "completed",
-    "execution_timestamp_utc": "2026-09-29T08:18:15.916401+00:00",
+    "execution_timestamp_utc": "2026-09-29T08:39:39.058543+00:00",
     "requested_study_window": {
       "start": "2023-01-01T00:00:00+07:00",
-      "end": "2024-12-31T23:00:00+07:00"
+      "end": "2024-12-31T23:00:00+07:00",
+      "note": "Tham số truy vấn phạm vi phân tích khí tượng ERA5."
     },
     "disqualification_audit": {
       "disqualified_location_id": 2178,
@@ -241,17 +242,41 @@
       "pm25_missing_rate_pct": 2.54,
       "actual_min_timestamp": "2025-07-03 22:00:00+07:00",
       "actual_max_timestamp": "2026-07-15 17:00:00+07:00",
+      "actual_source_coverage": {
+        "actual_min_timestamp": "2025-07-03 22:00:00+07:00",
+        "actual_max_timestamp": "2026-07-15 17:00:00+07:00",
+        "coverage_derivation": "computed_directly_from_dataframe_timestamps",
+        "coverage_note": "Trạm 4946811 được OpenAQ tích hợp từ tháng 07/2025; không có dữ liệu 2023-2024 trên OpenAQ."
+      },
       "interim_file": "data/interim/air_quality_canonical.parquet"
     },
     "open_meteo_ingestion": {
       "source_model": "ECMWF ERA5 Reanalysis",
+      "requested_query_window": {
+        "start_date": "2023-01-01",
+        "end_date": "2024-12-31"
+      },
       "raw_file": "data/raw/open_meteo_raw_2023_2024.json",
       "raw_sha256": "7f12b53c60c83b172f1bd1b0723aaee9d5e4c3d2e17e65765aa9e108cc59d8a4",
       "canonical_records": 17544,
       "missing_rate_all_variables": "0.00%",
       "actual_min_timestamp": "2023-01-01 00:00:00+07:00",
       "actual_max_timestamp": "2024-12-31 23:00:00+07:00",
+      "actual_source_coverage": {
+        "actual_min_timestamp": "2023-01-01 00:00:00+07:00",
+        "actual_max_timestamp": "2024-12-31 23:00:00+07:00",
+        "coverage_derivation": "computed_directly_from_dataframe_timestamps"
+      },
       "interim_file": "data/interim/weather_canonical.parquet"
+    },
+    "airnow_dos_ingestion": {
+      "canonical_station_id": "VN002_HANOI_US_EMBASSY",
+      "station_name": "US Diplomatic Post: Hanoi",
+      "adapter_status": "implemented",
+      "ingestion_status": "not_executed_pending_raw_input",
+      "role": "historical_source_fallback",
+      "raw_input": "unavailable_in_current_execution",
+      "note": "AirNowDOSAdapter is implemented in src/data_collection.py. Ingestion is pending valid raw CSV from AirNow-Tech / State Dept due to access restrictions."
     }
   }
 }

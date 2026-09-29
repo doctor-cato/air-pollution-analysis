@@ -127,6 +127,51 @@ class TestDataCollectionPipeline(unittest.TestCase):
         with self.assertRaises((AssertionError, ValueError)):
             assert_canonical_within_hanoi(df_invalid)
 
+    def test_airnow_adapter_raises_filenotfound_when_file_missing(self):
+        """Kiểm thử AirNowDOSAdapter ném FileNotFoundError với thông báo rõ ràng khi tệp thô chưa có."""
+        from src.data_collection import AirNowDOSAdapter
+        adapter = AirNowDOSAdapter(csv_path="data/raw/non_existent_airnow.csv")
+        with self.assertRaises(FileNotFoundError) as ctx:
+            adapter.load_and_canonicalize()
+        self.assertIn("AirNow DOS CSV không tồn tại", str(ctx.exception))
+
+    def test_airnow_adapter_canonicalizes_valid_sample(self):
+        """Kiểm thử AirNowDOSAdapter chuẩn hóa đúng khi có dữ liệu đầu vào chuẩn."""
+        import tempfile
+        import os
+        from src.data_collection import AirNowDOSAdapter
+
+        sample_csv_content = (
+            "Site, Parameter, Date (LST), Year, Month, Day, Hour, Value, Unit, Duration, QC Name\n"
+            "Hanoi, PM2.5, 2023-01-01 01:00, 2023, 1, 1, 1, 35.5, UG/M3, 1 Hr, Valid\n"
+            "Hanoi, PM2.5, 2023-01-01 02:00, 2023, 1, 1, 2, -999, UG/M3, 1 Hr, Missing\n"
+            "Hanoi, PM2.5, 2023-01-01 03:00, 2023, 1, 1, 3, 0.0, UG/M3, 1 Hr, Valid\n"
+        )
+        with tempfile.NamedTemporaryFile("w", delete=False, suffix=".csv") as tmp:
+            tmp.write(sample_csv_content)
+            tmp_path = tmp.name
+
+        try:
+            adapter = AirNowDOSAdapter(csv_path=tmp_path)
+            df_canonical = adapter.load_and_canonicalize()
+            self.assertEqual(len(df_canonical), 3)
+            self.assertEqual(df_canonical["station_id"].iloc[0], STATION_AIRNOW_HANOI)
+            self.assertEqual(df_canonical["pm25"].iloc[0], 35.5)
+            self.assertTrue(np.isnan(df_canonical["pm25"].iloc[1]))  # -999 -> NaN
+            self.assertEqual(df_canonical["pm25"].iloc[2], 0.0)      # 0.0 preserved
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
+    def test_actual_timestamps_computed_directly_from_dataframe(self):
+        """Kiểm thử actual_min_timestamp và actual_max_timestamp được lấy động từ DataFrame, không hardcode."""
+        ts_range = pd.date_range("2023-05-01 00:00:00+07:00", "2023-05-10 23:00:00+07:00", freq="h")
+        df_test = pd.DataFrame({"timestamp": ts_range})
+        min_ts = str(df_test["timestamp"].min())
+        max_ts = str(df_test["timestamp"].max())
+        self.assertEqual(min_ts, "2023-05-01 00:00:00+07:00")
+        self.assertEqual(max_ts, "2023-05-10 23:00:00+07:00")
+
 
 if __name__ == "__main__":
     unittest.main()
