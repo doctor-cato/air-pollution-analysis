@@ -1,15 +1,38 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "project": "doctor-cato/air-pollution-analysis",
   "issue": "#19 – Source Profiling & Decision Gate",
   "profiling_timestamp_utc": "2026-09-28T16:47:26Z",
+  "last_updated_utc": "2026-09-29T04:10:00Z",
   "target_city": "Hanoi, Vietnam",
   "temporal_coverage": {
-    "start_date": "2023-01-01",
-    "end_date": "2024-12-31",
+    "study_window_start": "2023-01-01T00:00:00+07:00",
+    "study_window_end": "2024-12-31T23:00:00+07:00",
     "timezone": "Asia/Ho_Chi_Minh",
     "utc_offset": "+07:00",
-    "total_hours": 17544
+    "total_expected_hours": 17544,
+    "breakdown": {
+      "2023_hours": 8760,
+      "2024_leap_year_hours": 8784
+    }
+  },
+  "geographic_validation": {
+    "hanoi_bounding_box": {
+      "latitude_min": 20.50,
+      "latitude_max": 21.60,
+      "longitude_min": 105.30,
+      "longitude_max": 106.10
+    },
+    "spatial_filtering_rules": {
+      "station_rule": "Records must match valid station_id (2178) and coordinates must fall strictly within Hanoi bounding box; out-of-bounds records are dropped.",
+      "grid_rule": "Query coordinates set to Hanoi urban core (21.0285N, 105.8542E); matched ERA5 cell (21.0545N, 105.8985E) is within 8.7km of station in urban Hanoi.",
+      "airport_rule": "Station 48820 (Noi Bai Airport) is within Hanoi administrative boundary but ~22km north of urban core; flagged as Weather Backup with microclimate caveat."
+    }
+  },
+  "data_quality_rules": {
+    "pm25_negative_rule": "Values < 0 µg/m³ are physically invalid and converted to NaN; observed values == 0.0 µg/m³ are retained if valid without station QC error flags; disguised missing markers (-999, -9999) are converted to NaN.",
+    "silent_zero_imputation": "STRICTLY PROHIBITED; missing values are explicitly preserved as NaN.",
+    "openaq_data_level": "Hourly aggregated data (/hours or S3 hourly archives), NOT raw instantaneous measurements."
   },
   "sources": {
     "air_quality": {
@@ -25,6 +48,7 @@
       "parameters_available": ["pm25", "pm10", "no2", "co", "so2", "o3", "no", "nox"],
       "primary_parameter": "pm25",
       "unit": "µg/m³",
+      "data_type": "hourly_aggregated_data",
       "endpoints": {
         "rest_api": "https://api.openaq.org/v3/sensors/{id}/hours",
         "s3_public_archive": "https://openaq-data-archive.s3.amazonaws.com/records/csv.gz/locationid=2178/"
@@ -33,13 +57,16 @@
       "license": "Open Database License (ODC-BY) v1.0",
       "attribution": "Data provided by OpenAQ and data originators (US Department of State / US EPA)",
       "profiling_metrics": {
-        "verified_rows_pm25": 14424,
-        "expected_rows": 17544,
+        "verified_rows_pm25_2023_2024": 14424,
+        "expected_rows_2023_2024": 17544,
         "completeness_pm25_pct": 82.2,
         "completeness_2023_pm25_pct": 69.1,
         "completeness_2024_pm25_pct": 95.3,
+        "missing_rate_2023_pct": 30.9,
+        "missing_rate_2024_pct": 4.7,
         "min_timestamp": "2023-01-01T00:00:00+07:00",
         "max_timestamp": "2024-12-31T23:00:00+07:00",
+        "latest_available_timestamp": "2026-09-21 (latest S3 archive file verified at profiling)",
         "resolution": "1 hour"
       }
     },
@@ -49,10 +76,15 @@
       "station_name": "Site: Hanoi (US Embassy)",
       "instrument": "Met One BAM-1020",
       "format": "Historical CSV",
-      "temporal_coverage": "2016-01-01 to 2023-12-31",
+      "temporal_coverage_public": "2016-01-01 to 2023-12-31",
+      "min_timestamp": "2016-01-01T00:00:00+07:00",
+      "max_timestamp": "2023-12-31T23:00:00+07:00",
+      "latest_available_timestamp": "2023-12-31T23:00:00+07:00 (public archive)",
+      "nominal_annual_rows": 8760,
       "disguised_missing_marker": "-999",
       "license": "U.S. Public Domain",
-      "attribution": "US Department of State / AirNow"
+      "attribution": "US Department of State / AirNow",
+      "limitations": "Direct public downloads for year 2024 are restricted (requires organizational login via AirNow-Tech / State Dept); serves as offline cross-validation for 2023."
     },
     "meteorology": {
       "role": "primary",
@@ -72,7 +104,8 @@
       "matched_grid": {
         "latitude": 21.05448,
         "longitude": 105.89848,
-        "elevation_m": 19.0
+        "elevation_m": 19.0,
+        "distance_to_station_km": 8.7
       },
       "authentication": "None required (free for non-commercial/academic use)",
       "rate_limit": "10,000 requests/day",
@@ -81,8 +114,9 @@
       "profiling_metrics": {
         "verified_rows": 17544,
         "missing_rate_all_variables": "0.00%",
-        "min_timestamp": "2023-01-01T00:00",
-        "max_timestamp": "2024-12-31T23:00",
+        "min_timestamp": "2023-01-01T00:00:00+07:00",
+        "max_timestamp": "2024-12-31T23:00:00+07:00",
+        "latest_available_timestamp": "2026-09-29T23:00:00+07:00 (continuous update)",
         "resolution": "1 hour continuous"
       }
     },
@@ -106,20 +140,36 @@
       "profiling_metrics": {
         "verified_rows_2023": 17178,
         "verified_rows_2024": 16704,
+        "total_records_2023_2024": 33882,
         "days_covered_2023": "365/365",
         "days_covered_2024": "359/366",
         "tmp_missing_rate": "0.00%",
-        "resolution": "~30 minutes (requires resampling to hourly)",
-        "limitations": "Missing precipitation (AA1/AA2) in majority of records; SLP requires height adjustment for surface pressure; Station is ~20km north of urban core."
+        "slp_missing_rate": "0.00%",
+        "min_timestamp": "2023-01-01T00:00:00+07:00",
+        "max_timestamp": "2024-12-31T23:30:00+07:00",
+        "latest_available_timestamp": "2025-12-31 (full annual file 2025 verified; 2026 not yet published)",
+        "resolution": "~30 minutes (requires resampling to 1-hour grid)",
+        "limitations": "Missing precipitation (AA1/AA2) in majority of records; SLP requires height adjustment for surface pressure; Station is ~22km north of urban core."
       }
     }
   },
   "unused_sources": {
     "pam_air_portal": {
-      "reason": "Closed proprietary data license, lack of open REST API, and uncalibrated low-cost optical sensor drift under high humidity (RH > 90%)."
+      "role": "unused",
+      "provider": "D&L Technology Integration and Consulting JSC",
+      "coverage": "Multiple IoT sensor locations across Hanoi",
+      "sensor_type": "Low-cost optical particle counters",
+      "access_limitations": "Closed proprietary API (api.pamair.org requires partner token); no public bulk raw historical data download endpoint; GUI access only.",
+      "technical_limitations": "Susceptible to uncalibrated baseline drift and severe humidity over-reporting (RH > 90%) without reference calibration nodes.",
+      "license": "Proprietary / Closed commercial license."
     },
     "kaggle_community_datasets": {
-      "reason": "Third-party preprocessed/imputed data posing severe data leakage risk; retained for external distribution reference only."
+      "role": "reference_only",
+      "provider": "Independent Kaggle contributors",
+      "coverage": "Hanoi aggregated air quality and weather files",
+      "access_limitations": "Non-standardized multi-file community uploads; requires individual Kaggle account credentials for API download.",
+      "technical_limitations": "High data leakage risk due to opaque third-party preprocessing and imputation; lack of verifiable sensor hardware provenance (no FEM/FRM certification, no inlet height); apparent 0% missingness reflects artificial imputation rather than natural observations.",
+      "recommended_use": "External distribution check only; strictly prohibited as primary ingestion source."
     }
   }
 }
