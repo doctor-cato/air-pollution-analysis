@@ -61,7 +61,9 @@ Quá trình thẩm định tuân thủ các nguyên tắc liêm chính học thu
 > - **Hệ quả kiến trúc nguồn:** Đối với dữ liệu lịch sử cửa sổ 2023, đồ án sử dụng **AirNow DOS Historical CSV** (Site: Hanoi, Đại sứ quán Hoa Kỳ, thiết bị Met One BAM-1020 chuẩn US EPA FEM) làm nguồn chuẩn lịch sử chính. Trạm OpenAQ `4946811` đóng vai trò nguồn chuẩn quy chuẩn quốc gia hiện hành và kiểm chuẩn đa thông số.
 
 > [!IMPORTANT]
-> Toàn bộ số liệu trong bảng dưới đây thu thập bằng script Python gọi API/tải file trực tiếp tại thời điểm profiling **`2026-09-28T16:47:26Z` đến `2026-09-29T07:15:00Z` (UTC)**. Mọi con số có thể **tái lập** bằng cách chạy lại script profiling trong `scratch/profile_sources*.py`, `scratch/profile_4946811.py`, và `scratch/check_latest_ts.py`.  
+> Toàn bộ số liệu trong bảng dưới đây thu thập bằng script Python gọi API/tải file trực tiếp tại thời điểm profiling **`2026-09-28T16:47:26Z` đến `2026-09-29T07:15:00Z` (UTC)**.
+>
+> **Cơ chế tái lập hiện hành:** các script profiling thời điểm đó nằm trong thư mục làm việc cục bộ `scratch/` và **không** được commit vào repository. Vì vậy con số trong bảng này được xác minh lại theo đường tái tạo chính thức của dự án: `python scripts/fetch_dataset.py` tải lại tập dữ liệu từ nguồn công khai rồi đối chiếu nội dung với `data/raw/metadata.json` (xem `README.md` §4 và `docs/roadmap.md` §3.2). Do bucket OpenAQ S3 là kho sống và Parquet không tái lập được theo byte, đối chiếu thực hiện trên **số bản ghi, dải thời gian và độ phủ giao thoa** thay vì mã băm byte.  
 > Đối với các nguồn không hỗ trợ API mở hoặc file công khai (Kaggle, PAM Air, AirNow), báo cáo nêu rõ căn cứ kỹ thuật và lý do không thể trích xuất tự động thay vì phỏng đoán.
 
 | Chỉ tiêu profiling | OpenAQ (S3 Archive, loc=4946811 - 556 Nguyễn Văn Cừ) | Open-Meteo ERA5 | NOAA ISD (Station 48820099999) | AirNow DOS Historical | Kaggle Hanoi Datasets | PAM Air Portal |

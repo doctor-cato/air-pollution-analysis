@@ -4,8 +4,8 @@
 
 ## Project Identity
 - **Domain:** Time-series urban air quality ($\text{PM}_{2.5}$) and meteorology in Hanoi, Vietnam (INFO3020 Data Science).
-- **Stage:** Post-Milestone 1 (Data Ingestion & Synchronization). Authoritative plan in [`docs/roadmap.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/roadmap.md).
-- **Architecture Notice:** Ingestion module (`src/data_collection.py`), unit tests (`tests/test_data_collection.py`), CI workflow, and collection notebook (`notebooks/01_data_collection.ipynb`) are implemented. Downstream modules (`src/cleaning.py`, `notebooks/02`–`06`, and `data/processed/`) are planned specifications and not yet implemented. Always inspect the filesystem before writing code.
+- **Stage:** Post-Milestone 1, entering Milestone 2 (Data Quality Audit). Authoritative plan in [`docs/roadmap.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/roadmap.md).
+- **Architecture Notice:** Implemented: ingestion module (`src/data_collection.py`), 6-dimension quality audit module (`src/data_quality.py`), unit tests (`tests/test_data_collection.py` + `tests/test_data_quality.py`), dataset acquisition script (`scripts/fetch_dataset.py`), CI workflow, and notebooks `notebooks/00`–`02`. Not yet implemented: `src/cleaning_pipeline.py`, `notebooks/03`–`06`, and `data/processed/`. Always inspect the filesystem before writing code.
 
 ## Package Manager & Toolchain
 - **Runtime:** Python 3.10+
