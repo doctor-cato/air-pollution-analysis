@@ -10,7 +10,7 @@
 
 ### 1.1. Các khối kiến thức INFO3020 cần thể hiện trong đồ án
 Đồ án là bức tranh thu nhỏ của toàn bộ chương trình học, bám sát **5 Chương – 15 Tuần** và hệ thống 17 GitHub Issues chuẩn mực:
-1. **Chương 1 (Nền tảng, Khảo sát nguồn & Thu thập):** Vòng đời CRISP-DM, cấu trúc repo chuẩn, quy tắc dữ liệu thô bất biến (`data/raw/`) [Issue #1]; xác lập câu hỏi nghiên cứu và chuẩn hóa lược đồ Canonical Schema trung lập nguồn [Issue #2]; khảo sát hồ sơ dữ liệu đa nguồn (Data Profiling), kiểm chứng phạm vi Hà Nội, xác định độ bao phủ thời gian thực tế và ban hành quyết định nguồn dữ liệu [Issue #19]; triển khai các adapter thu thập và chuẩn hóa dữ liệu ô nhiễm không khí [Issue #3] và dữ liệu khí tượng bề mặt [Issue #4] theo nguồn được duyệt; lưu trữ an toàn và xuất tối ưu sang định dạng Parquet (Week 1–2).
+1. **Chương 1 (Nền tảng, Khảo sát nguồn & Thu thập):** Vòng đời CRISP-DM, cấu trúc repo chuẩn, quy tắc dữ liệu thô ba tầng (`data/raw/`, Mục 3.2) [Issue #1]; xác lập câu hỏi nghiên cứu và chuẩn hóa lược đồ Canonical Schema trung lập nguồn [Issue #2]; khảo sát hồ sơ dữ liệu đa nguồn (Data Profiling), kiểm chứng phạm vi Hà Nội, xác định độ bao phủ thời gian thực tế và ban hành quyết định nguồn dữ liệu [Issue #19]; triển khai các adapter thu thập và chuẩn hóa dữ liệu ô nhiễm không khí [Issue #3] và dữ liệu khí tượng bề mặt [Issue #4] theo nguồn được duyệt; lưu trữ an toàn và xuất tối ưu sang định dạng Parquet (Week 1–2).
 2. **Chương 2 (Chất lượng, Làm sạch tất định & Tiền xử lý chống rò rỉ):** Xây dựng bộ kiểm toán 6 chiều chất lượng dữ liệu, bóc trần missing ngụy trang, khảo sát các giả thuyết cơ chế khuyết thiếu (MCAR/MAR/MNAR) kèm tính bất định nếu chưa đủ bằng chứng [Issue #5]; thực hiện làm sạch tất định (Deterministic Cleaning) trước khi chia tập: ràng buộc logic vật lý ($\text{PM}_{2.5} \le \text{PM}_{10}$), xử lý kẹt cảm biến, gắn nhãn điều kiện độ ẩm cao, reindex chuỗi thời gian liên tục theo từng trạm quan trắc và lập Cleaning Log [Issue #6]; tích hợp hai nguồn dữ liệu có kiểm soát số dòng ngăn chặn lỗi bùng nổ (Row Explosion), đóng băng tập dữ liệu sạch, phân chia Train/Test theo chuỗi thời gian tuyến tính, đóng gói Scikit-Learn Pipeline (`ColumnTransformer`) huấn luyện tiền xử lý strictly trên Train [Issue #7] (Week 3–5).
 3. **Chương 3 (EDA & Trực quan hóa giải thích):** Phân tích 4 họ thống kê mô tả (Location, Spread, Shape, Quantiles), nguyên tắc "Hình dạng phân phối quyết định chỉ số" (*Shape picks the statistic*), phân tích quy luật thời gian đa tầng (giờ, ngày trong tuần, tháng, mùa) dựa trên số liệu thực tế [Issue #8]; thiết kế và xuất bản bộ 7 biểu đồ ấn phẩm giải thích (FIG-01 đến FIG-07) theo nguyên tắc Edward Tufte (Data-Ink Ratio) và William Cleveland, tuân thủ nghiêm ngặt ngữ nghĩa quy chuẩn về chu kỳ lấy mẫu trung bình, tiêu đề dạng kết luận rút ra từ dữ liệu [Issue #9]; biên soạn Báo cáo Giữa kỳ theo cấu trúc kể chuyện **SCQA** và thuyết trình giữa kỳ [Issue #10] (Week 6–8).
 4. **Chương 4 (Suy luận & Mô hình hóa):** 
@@ -23,7 +23,7 @@
 
 ### 1.2. Phân loại yêu cầu & Kỹ thuật
 * **Bắt buộc theo chuẩn mực môn học:**
-  - Thư mục `data/raw/` chỉ đọc, bất biến; mọi biến đổi thực hiện bằng code và lưu ra `data/processed/`.
+  - Thư mục `data/raw/` được giữ nguyên trạng trong suốt pipeline: mọi biến đổi thực hiện bằng code và ghi kết quả ra `data/processed/`; tệp thô có mã băm SHA-256 để kiểm chứng toàn vẹn (Mục 3.2).
   - Có **Data Dictionary** (Từ điển dữ liệu chuẩn hóa Canonical Schema) [Issue #2] và **Cleaning Log** chi tiết [Issue #6].
   - Toàn bộ chuỗi Notebook chạy thông suốt từ đầu đến cuối sau khi bấm **Restart Kernel & Run All** [Issue #10, #17].
   - Kiểm tra giả định thống kê trước khi thực hiện test hoặc hồi quy (chẩn đoán 4 giả định LINE trên Residuals trước khi tin $R^2$) [Issue #12].
@@ -125,7 +125,14 @@ DANH MỤC NGUỒN ỨNG VIÊN (CANDIDATE SOURCES)
 [ ISSUE #3: AIR QUALITY ]   [ ISSUE #4: WEATHER ]
 Triển khai adapter theo     Triển khai adapter theo
 nguồn ô nhiễm được duyệt   nguồn khí tượng được duyệt
+         │                     │
+         │  thiết kế &         │  tiêu thụ chuỗi thời gian
+         │  hiện thực hóa      │  canonical từ #3
+         │  SONG SONG          │  để suy diễn dải
+         │                     │  truy vấn khí tượng
 ```
+
+> **Ghi chú về tính song song:** Sau khi #19 ban hành quyết định nguồn, phần việc *thiết kế và hiện thực hóa* của #3 và #4 có thể tiến hành **song song**. Tuy nhiên khi *thực thi pipeline*, #4 phải tiêu thụ chuỗi thời gian canonical do #3 sản xuất, nên #4 chạy sau #3. Cơ chế đồng bộ thời gian động đã được hiện thực hóa tại PR #25 — #4 **không** yêu cầu hiện thực hóa lại, chỉ tiêu thụ kết quả. #4 không sở hữu logic nạp ô nhiễm; #3 không phải hiện thực hóa logic khí tượng.
 
 1. **Khảo sát Nguồn Ứng viên (Candidate Sources):**
    - Trước Issue #19, toàn bộ các nhà cung cấp dữ liệu đều là nguồn ứng viên bình đẳng. Tuyệt đối không mặc định hoặc coi bất kỳ nhà cung cấp nào (Kaggle, OpenAQ, Open-Meteo, AirNow, PAM Air) là bắt buộc.
@@ -133,9 +140,13 @@ nguồn ô nhiễm được duyệt   nguồn khí tượng được duyệt
 2. **Quyết định Chiến lược Nguồn (Source Decision):**
    - Dựa trên ma trận so sánh đa tiêu chí (độ mới, độ đầy đủ, tính toàn vẹn phạm vi Hà Nội, tính minh bạch xuất xứ và giấy phép bản quyền), Issue #19 ban hành quyết định chính thức phân định vai trò: Primary (nguồn chính), Secondary (nguồn phụ), Reference (tham chiếu), Fallback (dự phòng), hoặc Unused (không dùng).
    - Quyết định tại Issue #19 là căn cứ kỹ thuật và pháp lý bắt buộc đối với Issue #3 (Pipeline thu thập chất lượng không khí) và Issue #4 (Pipeline thu thập khí tượng).
-3. **Tính toàn vẹn xuất xứ & Dữ liệu thô:**
-   - Toàn bộ thông tin xuất xứ (*provenance*), tham số truy vấn, ngày truy xuất và giấy phép bản quyền (ODC-BY, CC BY, Open Data,...) được ghi nhận đầy đủ vào `data/raw/metadata.json`.
-   - Dữ liệu thô tải về được lưu bất biến trong `data/raw/` ở chế độ chỉ đọc.
+3. **Tính toàn vẹn xuất xứ & Dữ liệu thô — Chính sách ba tầng:**
+   - Toàn bộ thông tin xuất xứ (*provenance*), tham số truy vấn, ngày truy xuất, mã băm SHA-256 và giấy phép bản quyền (ODC-BY, CC BY, Open Data,...) được ghi nhận đầy đủ vào `data/raw/metadata.json`.
+   - Yêu cầu về dữ liệu thô được tách thành **ba tầng kiểm chứng độc lập**, không suy diễn lẫn nhau:
+     - **Tầng A — Thu thập & lưu trữ khi chạy:** payload thô tải từ API phải được ghi dưới `data/raw/` trong quá trình pipeline thực thi.
+     - **Tầng B — Bảo toàn & truy vết xuất xứ:** nội dung tệp thô được giữ nguyên trạng (không chỉnh sửa, không chuyển đổi giá trị trước khi ghi) và có mã băm SHA-256 khớp tệp trên đĩa, đủ để kiểm chứng toàn vẹn độc lập.
+     - **Tầng C — Chính sách theo dõi phiên bản:** tệp thô tải từ API **không bắt buộc phải được Git-track**; `.gitignore` loại trừ `data/raw/*.json` và `data/raw/*.parquet` là hành vi đúng theo chính sách kho dữ liệu, và tệp thô có thể tái tạo lại từ nguồn.
+   - Tầng B là tiêu chuẩn kiểm chứng **thay thế** cho tuyên bố "bất biến". Repository không thực thi khoá chế độ chỉ đọc ở tầng hệ thống tập tin, nên các tài liệu và tiêu chí nghiệm thu **không** dùng cụm "dữ liệu thô bất biến / ở chế độ chỉ đọc" như một yêu cầu không kiểm chứng được. Định nghĩa đầy đủ: Issue #4 § "Chính sách dữ liệu thô ba tầng".
 
 ---
 
@@ -463,7 +474,7 @@ air-pollution-analysis/
 ├── README.md                           # Giới thiệu dự án, cách tái lập, bảng phân công, AI usage
 ├── requirements.txt                    # Danh sách thư viện và phiên bản cố định
 ├── data/
-│   ├── raw/                            # DỮ LIỆU GỐC BẤT BIẾN (Chỉ đọc, không sửa đổi thủ công)
+│   ├── raw/                            # DỮ LIỆU GỐC (giữ nguyên trạng, không sửa tay, không Git-track)
 │   │   ├── metadata.json               # Xuất xứ nguồn, query params, ngày tải, schema gốc, bản quyền
 │   │   └── .gitkeep
 │   ├── interim/                        # Dữ liệu trung gian sau làm sạch tất định
@@ -527,7 +538,7 @@ air-pollution-analysis/
 
 | Chủ đề INFO3020 | Nội dung áp dụng cụ thể trong Project | Issue phụ trách | Bắt buộc? |
 |---|---|:---:|:---:|
-| **W1: What is Data Science** | Vòng đời CRISP-DM, cấu trúc repo chuẩn, dữ liệu raw bất biến, câu hỏi nghiên cứu & Canonical Schema | #1, #2 | **Bắt buộc** |
+| **W1: What is Data Science** | Vòng đời CRISP-DM, cấu trúc repo chuẩn, quy tắc dữ liệu thô & provenance, câu hỏi nghiên cứu & Canonical Schema | #1, #2 | **Bắt buộc** |
 | **W2: Multi-source Collection** | Khảo sát nguồn ứng viên, profiling, kiểm chứng Hà Nội, quyết định nguồn #19; adapter thu thập ô nhiễm & khí tượng | #19, #3, #4 | **Bắt buộc** |
 | **W3: Data Quality & Processing** | Kiểm toán 6 chiều chất lượng, khảo sát giả định cơ chế MCAR/MAR/MNAR, missing ngụy trang | #5 | **Bắt buộc** |
 | **W4: Practical Cleaning** | Làm sạch tất định, logic $\text{PM}_{2.5} \le \text{PM}_{10}$, kẹt sensor, reindex theo trạm, Cleaning Log | #6 | **Bắt buộc** |
@@ -550,7 +561,7 @@ air-pollution-analysis/
 | Week | Giai đoạn & Mục tiêu | Tasks chính | Deliverables | Issue sở hữu | Definition of Done |
 |:---:|---|---|---|:---:|---|
 | **W01** | **Khởi động & Chuẩn hóa**<br>Thiết lập chuẩn dự án CRISP-DM | Khởi tạo repo GitHub, file cấu trúc, `.gitignore`, môi trường `requirements.txt`, xác lập RQ và Canonical Schema | Repo GitHub skeleton, `README.md`, `docs/data_dictionary.md` | #1, #2 | Clone repo về máy sạch chạy `pip install` thành công 100%; Canonical Schema chuẩn hóa 100% các biến |
-| **W02** | **Thẩm định & Thu thập**<br>Khảo sát nguồn và thu thập dữ liệu | Khảo sát hồ sơ đa nguồn, kiểm chứng Hà Nội & dải thời gian thực tế, ban hành quyết định nguồn; viết adapter thu thập ô nhiễm & khí tượng | `docs/source_profiling_decision.md`, script adapter, file raw data, `data/raw/metadata.json` | #19, #3, #4 | Quyết định nguồn hoàn tất trước khi thu thập; dữ liệu thô lưu bất biến kèm xuất xứ và giấy phép |
+| **W02** | **Thẩm định & Thu thập**<br>Khảo sát nguồn và thu thập dữ liệu | Khảo sát hồ sơ đa nguồn, kiểm chứng Hà Nội & dải thời gian thực tế, ban hành quyết định nguồn; viết adapter thu thập ô nhiễm & khí tượng | `docs/source_profiling_decision.md`, script adapter, file raw data, `data/raw/metadata.json` | #19, #3, #4 | Quyết định nguồn hoàn tất trước khi thu thập; payload thô lưu trong `data/raw/` kèm SHA-256, xuất xứ và giấy phép |
 | **W03** | **Kiểm toán Chất lượng**<br>Định lượng 6 chiều chất lượng | Viết hàm audit 6 chiều, bóc trần missing ngụy trang, khảo sát giả định cơ chế khuyết thiếu (MCAR/MAR/MNAR) | Notebook kiểm toán, báo cáo `docs/data_quality_audit.md` | #5 | Mọi chiều chất lượng đều có số liệu minh chứng định lượng; tính bất định cơ chế khuyết được ghi nhận rõ |
 | **W04** | **Làm sạch Tất định**<br>Xử lý lỗi trạm và reindex theo trạm | Lọc $\text{PM}_{2.5} > \text{PM}_{10}$, xử lý kẹt sensor, gắn cờ sương mù độ ẩm cao, reindex chuỗi liên tục theo từng trạm, lập Cleaning Log | Notebook cleaning, file `docs/cleaning_log.md`, dữ liệu `data/interim/` | #6 | Không còn giá trị âm vô lý; reindex độc lập theo trạm bảo toàn cấu trúc dữ liệu; không điền khuyết toàn cục |
 | **W05** | **Tích hợp & Pipeline**<br>Ghép nối an toàn và chống rò rỉ | Merge tránh nổ dòng, đóng băng dữ liệu, split thời gian tuyến tính, đóng gói Scikit-Learn Pipeline fit trên Train, xuất Parquet | File `air_pollution_final.parquet`, script `src/cleaning_pipeline.py` | #7 | Kiểm soát số dòng sau merge (`len <= len_air`); phân chia thời gian nghiêm ngặt; pipeline fit strictly trên Train |
@@ -644,7 +655,7 @@ Chi tiết luồng thực hiện:
    - File `requirements.txt` cố định phiên bản các thư viện tương thích Python 3.10+.
    - Git tag chính thức `midterm-submission` [Issue #10] và `final-defense-submission` [Issue #17].
 2. **Bộ dữ liệu & Hồ sơ Quản trị [Issue #3, #4, #6, #7, #19]:**
-   - Dữ liệu thô bất biến trong `data/raw/` kèm `metadata.json` ghi chép xuất xứ, tham số truy vấn và giấy phép bản quyền.
+   - Dữ liệu thô trong `data/raw/` được bảo toàn nguyên trạng kèm `metadata.json` ghi chép xuất xứ, tham số truy vấn, mã băm SHA-256 và giấy phép bản quyền; tệp thô không Git-track theo chính sách kho dữ liệu của repository (Mục 3.2).
    - Dữ liệu trung gian sau làm sạch tất định trong `data/interim/`.
    - Dữ liệu sạch hoàn chỉnh đóng băng lưu dạng Snappy Parquet `data/processed/air_pollution_final.parquet`.
    - `docs/data_dictionary.md` (Từ điển dữ liệu Canonical Schema) [Issue #2].
@@ -680,12 +691,93 @@ Chi tiết luồng thực hiện:
 
 ---
 
+## 13.G. SNAPSHOT TRẠNG THÁI TRIỂN KHAI (IMPLEMENTATION STATUS SNAPSHOT)
+
+> **Ngày chốt snapshot:** 2026-09-29 · **Phạm vi:** Milestone 1 (Issue #1, #2, #19, #3, #4).
+> Đây là ảnh chụp trạng thái tại thời điểm kiểm toán, **không phải** kế hoạch. Trạng thái
+> được đối chiếu với bằng chứng thực tế (mã nguồn, test, artifact dữ liệu, metadata,
+> notebook, CI, tài liệu), **không** dựa vào việc pull request đã được merge hay issue
+> đã được đóng.
+
+### G.1. Bản đồ phụ thuộc thực tế
+
+```text
+                   [ #19  SOURCE DECISION GATE ]
+                    profiling → Hanoi validation
+                    → temporal coverage → decision matrix
+                              │
+              ┌───────────────┴───────────────┐
+              ▼                               ▼
+   [ #3  AIR QUALITY ]              [ #4  WEATHER ]
+   OpenAQ 4946811 (AWS S3)          Open-Meteo ERA5 (PRIMARY)
+   AirNow DOS Hanoi                  NOAA ISD 48820 (FALLBACK, chưa kích hoạt)
+   nạp thô → canonical AQ           tiêu thụ timeline canonical của #3
+   làm sạch → kiểm định AQ          nạp thô → canonical WX
+   kiểm định địa lý Hà Nội          làm sạch → kiểm định WX + địa lý
+              │                               │
+              │        THIẾT KẾ & HIỆN THỰC HÓA SONG SONG
+              │        (thực thi pipeline: #3 chạy trước #4)
+              └───────────────┬───────────────┘
+                              ▼
+              [ #5  QUALITY AUDIT 6 CHIỀU ]
+              đọc data/interim/*.parquet — đo lường, không sửa dữ liệu
+                              ▼
+              [ #6  DETERMINISTIC CLEANING ]
+              cleaning log, giải quyết giá trị kẹt, reindex theo trạm
+                              ▼
+              [ #7  MERGE / DATASET FREEZE / SPLIT / PIPELINE ]
+              ghép AQ + WX → đóng băng → phân chia thời gian → Parquet
+                              ▼
+        [ #8 EDA ] → [ #9 FIGURES ] → [ #10 MIDTERM ]
+                              ▼
+        [ #11 INFERENCE ] → [ #12 OLS/LINE ] → [ #13 CLASSIFICATION ]
+                              ▼
+                    [ #14 → #15 → #16 → #17 ]
+```
+
+**Quy tắc phụ thuộc:**
+- `#3` và `#4` **có thể phát triển song song** sau `#19`; nhưng khi *thực thi*, `#4` phải
+  tiêu thụ chuỗi thời gian canonical từ `#3`. Cơ chế đồng bộ thời gian động đã hiện
+  thực hóa tại PR #25 — `#4` chỉ tiêu thụ, không hiện thực hóa lại.
+- `#5`, `#6`, `#7` **tiêu thụ artifact đã có** trong `data/interim/`. Không issue nào trong
+  chuỗi hậu-Milestone-1 yêu cầu thu thập hoặc chuẩn hóa lại dữ liệu.
+- `#7` là nơi **duy nhất** thực hiện phép ghép AQ + WX và tạo tập dữ liệu đặc trưng.
+
+### G.2. Trạng thái từng Issue của Milestone 1
+
+| Issue | Phạm vi | Hiện thực trạng | Bằng chứng | Trạng thái | Khoảng trống còn lại |
+|:---:|---|---|---|:---:|---|
+| #1 | Khởi tạo repo, môi trường, `.gitignore` | Cấu trúc CRISP-DM, `requirements.txt`, notebook `00_environment_test.ipynb` | Repo khởi tạo, CI cài đặt thành công | **DONE** | — |
+| #2 | Câu hỏi nghiên cứu + Canonical Schema | `docs/research_questions.md`, `docs/data_dictionary.md` | Từ điển định nghĩa 6 trường khí tượng + ranh giới vật lý tại §4.3 | **DONE** | — |
+| #19 | Cổng quyết định nguồn | `docs/source_profiling_decision.md`, `data/raw/metadata.json` | Ma trận đa tiêu chí §12.2; vai trò nguồn ghi trong metadata | **DONE** | Không có. Quyết định nguồn giữ nguyên, không bị đảo ngược |
+| #3 | Pipeline chất lượng không khí | `OpenAQAdapter` trong `src/data_collection.py` | 8.022 bản ghi canonical, tz `Asia/Ho_Chi_Minh`, mã băm SHA-256 trong metadata | **DONE** | Adapter AirNow DOS chưa thực thi (cần thông tin xác thực AirNow-Tech) |
+| #4 | Pipeline khí tượng + đồng bộ thời gian | `OpenMeteoAdapter`, `validate_weather_canonical` | 9.072 bản ghi/giờ, 0 trùng lặp, 0 khoảng trống, 0 khuyết thiếu; 39/39 unit test | **IN PROGRESS** | PR #26 chưa merge; #4 chưa đóng |
+| #5 | Kiểm toán chất lượng 6 chiều | Chưa có | Chưa có `docs/data_quality_audit.md`, chưa có `notebooks/02_quality_audit.ipynb` | **NOT STARTED** | — |
+| #6 | Làm sạch tất định, cleaning log | Chưa có | Chưa có `docs/cleaning_log.md` | **NOT STARTED** | — |
+| #7 | Ghép dữ liệu, đóng băng, split, pipeline | Chưa có | Chưa có `src/cleaning_pipeline.py`, chưa có `data/processed/air_pollution_final.parquet` | **NOT STARTED** | — |
+
+### G.3. Kết luận trạng thái Milestone 1
+
+> [!IMPORTANT]
+> **Milestone 1 chưa đóng hoàn toàn.** Trạng thái thực tế: **4/5 issue DONE, 1/5 IN PROGRESS.**
+>
+> - `#4` đã có hiện thực trên branch và test đầy đủ, nhưng PR #26 **đang mở, chưa merge**,
+>   nên tiêu chí "đã merge vào `main`" chưa thỏa. Không đóng issue trước khi PR được duyệt.
+> - Điều kiện hoàn tất của `#4` là: PR #26 được merge vào `main` **và** toàn bộ tiêu chí
+>   nghiệm thu AC4-1 → AC4-20 được tick. Sau khi AC được chuẩn hóa theo chính sách ba tầng
+>   (Mục 3.2), **không còn khoảng trống kỹ thuật nào** chặn #4 — khoảng trống còn lại thuần
+>   tuý thủ tục hợp nhất.
+> - Các số liệu thực nghiệm nêu trong báo cáo (#4) là **kết quả của một lần thực thi cụ thể**
+>   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
+
+---
+
 ## 14. LỘ TRÌNH THỰC HIỆN CHI TIẾT TỪNG TUẦN (WEEK 1 ĐẾN WEEK 15)
 
 ### Week 01 – Khởi động Dự án, Xác lập Nghiên cứu & Canonical Schema
 * **Phân loại tuần:** Học / Chuẩn bị & Kickoff.
 * **Mục tiêu tuần:** Thiết lập môi trường lập trình chuẩn mực, khởi tạo GitHub repository theo cấu trúc khuyến nghị CRISP-DM; xác lập câu hỏi nghiên cứu không thiên kiến và chuẩn hóa lược đồ Canonical Schema trung lập nguồn.
-* **Kiến thức INFO3020 áp dụng:** Slide W1 – Ba trụ cột Data Science, Vòng đời 6 bước CRISP-DM, 4 vai trò nhóm dữ liệu, Quy tắc dữ liệu thô bất biến (`data/raw/`), Quy ước nộp bài qua GitHub; Slide W2 – Data Dictionary & I/O.
+* **Kiến thức INFO3020 áp dụng:** Slide W1 – Ba trụ cột Data Science, Vòng đời 6 bước CRISP-DM, 4 vai trò nhóm dữ liệu, Quy tắc dữ liệu thô & provenance (`data/raw/`), Quy ước nộp bài qua GitHub; Slide W2 – Data Dictionary & I/O.
 * **Mã Issue sở hữu:** **#1, #2**.
 * **Tasks chi tiết:**
   1. Khởi tạo repository GitHub `air-pollution-analysis`, thiết lập khung cây thư mục chuẩn: `data/raw/`, `data/interim/`, `data/processed/`, `notebooks/`, `src/`, `figures/`, `reports/`, `docs/` [Issue #1].
@@ -711,12 +803,12 @@ Chi tiết luồng thực hiện:
   2. Kiểm chứng phạm vi địa lý: thiết lập bộ lọc không gian bảo đảm toàn bộ quan sát thuộc địa giới hành chính Hà Nội [Issue #19].
   3. Đo đạc mốc thời gian thực tế (min, max, latest timestamp có thể truy xuất); không áp đặt khung thời gian cứng [Issue #19].
   4. Lập ma trận so sánh đa tiêu chí và ban hành quyết định phân định vai trò nguồn (Primary, Secondary, Reference, Fallback, Unused) trong `docs/source_profiling_decision.md` [Issue #19].
-  5. Xây dựng adapter thu thập/chuẩn hóa dữ liệu chất lượng không khí trong `src/data_loader.py` theo nguồn ô nhiễm được duyệt, bảo toàn đơn vị quan trắc `(station_id, timestamp)` [Issue #3].
-  6. Xây dựng adapter thu thập/chuẩn hóa dữ liệu khí tượng bề mặt trong `src/data_loader.py` theo nguồn khí tượng được duyệt [Issue #4].
-  7. Lưu trữ toàn bộ dữ liệu thô nguyên bản vào `data/raw/` (chế độ chỉ đọc) và cập nhật metadata, xuất xứ, giấy phép vào `data/raw/metadata.json` [Issue #3, #4].
+  5. Xây dựng adapter thu thập/chuẩn hóa dữ liệu chất lượng không khí trong `src/data_collection.py` theo nguồn ô nhiễm được duyệt, bảo toàn đơn vị quan trắc `(station_id, timestamp)` [Issue #3].
+  6. Xây dựng adapter thu thập/chuẩn hóa dữ liệu khí tượng bề mặt trong `src/data_collection.py` theo nguồn khí tượng được duyệt [Issue #4].
+  7. Ghi payload thô nguyên bản vào `data/raw/` khi pipeline thực thi và cập nhật metadata, xuất xứ, mã băm SHA-256, giấy phép vào `data/raw/metadata.json` theo **Chính sách ba tầng** tại Mục 3.2 [Issue #3, #4].
   8. Kiểm thử quy trình nạp và ánh xạ Canonical Schema qua notebook `notebooks/01_data_collection.ipynb`.
 * **Deliverables:** Tài liệu `docs/source_profiling_decision.md`, module adapter trong `src/`, notebook `01_data_collection.ipynb`, tệp dữ liệu thô trong `data/raw/`, `data/raw/metadata.json`.
-* **Definition of Done:** Báo cáo quyết định nguồn hoàn thành và phê duyệt trước khi thu thập; dữ liệu thô lưu bất biến trong `data/raw/` kèm metadata xuất xứ; ánh xạ thành công sang Canonical Schema.
+* **Definition of Done:** Báo cáo quyết định nguồn hoàn thành và phê duyệt trước khi thu thập; payload thô được ghi dưới `data/raw/` khi pipeline chạy, giữ nguyên nội dung, có mã băm SHA-256 khớp tệp trên đĩa cùng metadata xuất xứ và giấy phép; ánh xạ thành công sang Canonical Schema.
 * **Dependencies:** Hoàn thành Week 01 (#1, #2).
 
 ---
@@ -956,7 +1048,7 @@ Chi tiết luồng thực hiện:
 * **Tasks chi tiết:**
   1. Kiểm toán kỹ thuật toàn diện repository: Rà soát cấu trúc cây thư mục chuẩn CRISP-DM, kiểm tra sự hiện diện đầy đủ của các tệp bắt buộc (`README.md`, `requirements.txt`, `LICENSE`, `.gitignore`, `data/raw/metadata.json`) [Issue #17].
   2. Kiểm tra tính toàn vẹn tài liệu và tính hợp lệ của toàn bộ liên kết nội bộ (`docs/data_dictionary.md`, `docs/source_profiling_decision.md`, `docs/cleaning_log.md`, `docs/datasheet.md`, `docs/model_card.md`, `docs/project_charter.md`, `docs/mentoring_feedback.md`, `docs/viva_qa_prep.md`) [Issue #17].
-  3. Xác thực hồ sơ xuất xứ dữ liệu trong `data/raw/metadata.json`, tính bất biến của `data/raw/`, tính hợp lệ của tệp Snappy Parquet trong `data/processed/`, và kiểm tra không có rò rỉ giữa Train và Test [Issue #17].
+  3. Xác thực hồ sơ xuất xứ dữ liệu trong `data/raw/metadata.json`, tính toàn vẹn của `data/raw/` (đối chiếu mã băm SHA-256), tính hợp lệ của tệp Snappy Parquet trong `data/processed/`, và kiểm tra không có rò rỉ giữa Train và Test [Issue #17].
   4. Thực thi kiểm chứng tự động toàn bộ chuỗi notebooks từ `00_environment_test.ipynb` đến `06_classification_alerts.ipynb` trong môi trường ảo sạch: Bảo đảm 100% các ô mã lệnh thực thi tuần tự, không phát sinh lỗi ngoại lệ unhandled exception [Issue #17].
   5. Chuẩn bị biểu mẫu biên bản đánh giá bảo vệ đồ án `reports/defense_minutes.md` [Issue #17].
   6. Tạo commit hoàn thiện và gắn git tag chính thức `final-defense-submission` trên nhánh chính [Issue #17].
@@ -965,7 +1057,7 @@ Chi tiết luồng thực hiện:
 * **Definition of Done (Tiêu chuẩn Kỹ thuật Khách quan):** 
   - Toàn bộ chuỗi notebook từ 00 đến 06 thực thi thông suốt từ đầu đến cuối không có lỗi unhandled exception.
   - Cấu trúc repository hợp lệ, không có liên kết hỏng trong tài liệu.
-  - Dữ liệu thô được bảo toàn bất biến; không có rò rỉ dữ liệu Train/Test.
+  - Dữ liệu thô được bảo toàn nguyên trạng và có mã băm SHA-256 trong metadata; không có rò rỉ dữ liệu Train/Test.
   - Git tag `final-defense-submission` được tạo thành công và đẩy lên GitHub repository.
 * **Dependencies:** Toàn bộ kết quả từ Week 01 đến Week 14 (#15, #16).
 

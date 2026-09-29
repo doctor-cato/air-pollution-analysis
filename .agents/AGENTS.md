@@ -11,12 +11,13 @@
 
 This repository is an **academic data-science project**, not an enterprise distributed-data system or a commercial cloud microservice.
 - **Goal:** Analyze multi-year temporal variations of urban fine particulate matter ($\text{PM}_{2.5}$), quantify meteorological drivers, and develop an interpretable early alert classification model following CRISP-DM methodology.
-- **Dataset:** 2-year hourly series (2023–2024) integrating OpenAQ BAM 1020 reference monitor (US Embassy Hanoi) with Open-Meteo ERA5 surface weather ($\approx 17,500$ rows, $\approx 5 - 20\text{ MB}$).
-- **Current State:** **Week 1 / Specification & Kickoff Stage**.
+- **Dataset:** Time series integrating OpenAQ NCEM/VEA station 4946811 (556 Nguyễn Văn Cừ, Hanoi; 07/2025–07/2026) with Open-Meteo ERA5 surface weather dynamically synchronized (8,022 air records, 9,072 weather records, 100% temporal overlap). AirNow DOS Hanoi serves as historical fallback.
+- **Current State:** **Post-Milestone 1 Stage**.
   - Authoritative requirements are in [`docs/roadmap.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/roadmap.md).
   - An interactive landing page lives on branch `gh-pages` (`index.html`, `styles.css`, `script.js`).
-  - Python scripts (`src/`), analysis notebooks (`notebooks/`), and processed data (`data/`) are planned specifications and **not yet written**.
-  - **Roadmap vs. Reality:** [`docs/roadmap.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/roadmap.md) defines requirements, not existing implementation. Never assume code or datasets exist without inspecting the filesystem.
+  - Implementation status: Data collection module (`src/data_collection.py`), 39 unit tests (`tests/test_data_collection.py`), CI workflow (`.github/workflows/ci.yml`), and collection notebook (`notebooks/01_data_collection.ipynb`) are implemented.
+  - Downstream modules (cleaning in `src/cleaning.py`, analysis notebooks `notebooks/02`–`06`, and processed data in `data/processed/`) are planned specifications and not yet implemented.
+  - **Roadmap vs. Reality:** Always inspect the filesystem to verify what exists versus what is planned.
 
 ---
 
@@ -71,9 +72,9 @@ Agents working in Antigravity must explicitly avoid these known failure modes:
 |---|---|
 | **Hallucinated Files/Modules** | Inspect directory tree before importing or referencing any file. |
 | **Treating Roadmap as Implemented** | Check file existence before assuming a feature or notebook is present. |
-| **Modifying Raw Data** | Treat `data/raw/` as read-only. Never edit raw CSV/JSON files or open them in Excel. |
+| **Modifying Raw Data** | Apply Three-tier Raw Data Policy (roadmap §3.2). Preserve raw payloads in `data/raw/` unchanged, track SHA-256 in `metadata.json`, never edit manually. |
 | **Row Explosion on Joins** | Check timestamp uniqueness and assert `len(df_merged) <= len(df_air)` on all joins. |
-| **Temporal Data Leakage** | Enforce chronological train/test splits (e.g. 2023 vs 2024). Random splitting is strictly prohibited. |
+| **Temporal Data Leakage** | Enforce chronological train/test splits (e.g. chronological split on study period). Random splitting is strictly prohibited. |
 | **Preprocessing Leakage** | Fit transformers (Scalers, Imputers) strictly on the training partition inside a `Pipeline`. |
 | **Unjustified Outlier Deletion** | Never delete extreme pollution episodes (winter inversions, fireworks) merely because they look high. |
 | **Silent Unit/Threshold Changes** | Maintain $\mu\text{g/m}^3$ and local time `Asia/Ho_Chi_Minh` (UTC+7). Document all thresholds. |

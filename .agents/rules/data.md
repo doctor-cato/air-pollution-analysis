@@ -5,9 +5,12 @@
 
 ---
 
-## 1. Raw Data Integrity (`data/raw/`)
+## 1. Raw Data Governance (`data/raw/`)
 
-1. **Strict Immutability:** Raw data downloaded from external APIs (OpenAQ, Open-Meteo) or downloaded CSV backups must remain completely unedited in `data/raw/`.
+1. **Three-Tier Raw Data Policy (Roadmap §3.2):**
+   - **Tier A (Runtime Ingestion Storage):** Raw API payloads and downloaded archives are stored intact in `data/raw/` (JSON/Parquet).
+   - **Tier B (Integrity Preservation & Hash Verification):** Raw payload files are never manually edited; cryptographic SHA-256 hashes are recorded in `data/raw/metadata.json` for independent integrity verification. All cleaning and transformations are executed deterministically in-memory by code and saved to `data/processed/` (or `data/interim/`).
+   - **Tier C (Version Control Hygiene):** Large raw payloads in `data/raw/` are excluded from Git via `.gitignore` (`data/raw/*.json`, `data/raw/*.parquet`) and can be reproduced independently via the data collection pipeline without repository bloat.
 2. **No Manual Tools:** Never open, edit, or re-save raw CSV/JSON files in spreadsheet applications (e.g. Microsoft Excel). Doing so corrupts Vietnamese UTF-8 encoding and alters datetime formatting silently.
 3. **Provenance & Metadata:** Every batch of raw ingested files must be accompanied by `data/raw/metadata.json` logging:
    - Source endpoint URL and query parameters.
@@ -82,7 +85,7 @@ Validate measurements against environmental physics before downstream modeling:
 | Metric | Physical Rule / Valid Range | Failure Action | Scientific Rationale |
 |---|---|---|---|
 | `pm25` vs `pm10` | $\text{PM}_{2.5} \le \text{PM}_{10} + 2.0\,\mu\text{g/m}^3$ | Set both to `NaN` | $\text{PM}_{2.5}$ is aerodynamically a subset of $\text{PM}_{10}$. Any inversion indicates severe optical/inlet malfunction. |
-| Negative values | $\text{PM}_{2.5} > 0$ and $\text{PM}_{10} > 0$ | Convert $\le 0$ to `NaN` | Negative concentrations are physically impossible. Zero concentrations over multiple hours in urban Hanoi indicate sensor cutoff. |
+| Negative values | $\text{PM}_{2.5} \ge 0$ and $\text{PM}_{10} \ge 0$ | Convert $< 0$ to `NaN`; retain valid observed $0.0$ unless flagged by QC | Negative concentrations are physically impossible. Valid $0.0$ readings without sensor QC fault flags are retained as real observations. |
 | Stuck sensor | Identical float for $> 6$ consecutive hours | Convert series to `NaN` | Hardware frozen or sensor locked at baseline. |
 | Optical fog noise | If $\text{RH} > 90\%$ and $\text{PM}_{2.5}$ spikes | Add boolean flag `is_high_humidity_fog = 1` | Optical sensors misclassify microscopic water droplets as particulate matter in high fog. Do not delete, but flag. |
 | Relative humidity | $0\% \le \text{RH} \le 100\%$ | Drop or nullify invalid points | Physical atmospheric limit. |

@@ -2,7 +2,26 @@
 
 > **Đề tài:** Phân tích mức độ ô nhiễm không khí theo thời gian (*Time-Series Air Pollution Analysis*)  
 > **Căn cứ tài liệu:** Toàn bộ slide bài giảng và tóm tắt chuyên đề từ **Week 1 đến Week 12**, Đề cương 15 tuần của ThS. Phạm Ngọc Đông – Khoa CNTT & Truyền thông, Trường Đại học CMC.  
-> **Nơi lưu trữ:** `C:\Users\Admin\Documents\code_workspace\khdl\ROADMAP_INFO3020_Air_Pollution.md`
+> **Nơi lưu trữ:** `docs/ROADMAP_INFO3020_Air_Pollution.md`
+
+> [!WARNING]
+> **Tài liệu tham chiếu gốc — ĐÃ BỊ THAY THẾ MỘT PHẦN.** Đây là bản chép nguyên văn đề cương
+> 15 tuần do giảng viên phát. Kể từ Issue #19 và Issue #3, một số nội dung dưới đây **không
+> còn là yêu cầu kỹ thuật** của repository. Bản roadmap làm việc chính thức là
+> [`docs/roadmap.md`](roadmap.md).
+>
+> **Các nội dung bị thay thế — dùng bản trong `docs/roadmap.md` thay thế:**
+> | Nội dung trong tài liệu này | Quyết định hiện hành |
+> |---|---|
+> | Mục tiêu tuần thu thập trong "2 năm (2023–2024)", tệp `openaq_raw_2023_2024.json`, `weather_raw_2023_2024.json` | **Không còn yêu cầu.** Issue #3 và #19 cấm áp đặt khung thời gian lịch sử cố định; dải thời gian được suy diễn động từ độ phủ thực tế của nguồn. Xem `docs/roadmap.md` Mục 3.2. |
+> | "Gọi API OpenAQ v3" trực tiếp | Issue #19 phê duyệt nguồn chính là **AWS S3 public bucket (OpenAQ `locationid=4946811`)**; AirNow DOS Hà Nội là nguồn tham chiếu. Xem `docs/source_profiling_decision.md` §12.2. |
+> | "Dữ liệu thô bất biến / chế độ chỉ đọc" | Được thay bằng **Chính sách dữ liệu thô ba tầng** (Tầng A lưu trữ khi chạy, Tầng B bảo toàn + SHA-256, Tầng C không bắt buộc Git-track). Xem `docs/roadmap.md` Mục 3.2 và Issue #4. |
+> | "giải thích đầy đủ 100% các cột thu thập" | Tiêu chuẩn kiểm chứng được là mọi trường Canonical Schema đều có định nghĩa, đơn vị và nguồn trong `docs/data_dictionary.md`; không dùng tỷ lệ phần trăm tuyệt đối. |
+>
+> Các phần về kiến thức INFO3020, kỹ thuật học và mốc nộp bài trong tài liệu này **vẫn có hiệu lực**.
+
+---
+
 
 ---
 

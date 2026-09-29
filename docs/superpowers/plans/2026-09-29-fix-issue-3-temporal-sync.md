@@ -16,7 +16,7 @@
 
 ## Global Constraints
 
-- Chế độ dữ liệu thô: `data/raw/` là chỉ đọc, lưu tệp raw JSON/Parquet nguyên bản không sửa đổi trực tiếp.
+- Chế độ dữ liệu thô: Áp dụng Chính sách dữ liệu thô ba tầng (Mục 3.2 Roadmap), lưu tệp raw JSON/Parquet nguyên bản không sửa đổi thủ công, kiểm toán qua SHA-256 trong metadata.json.
 - Múi giờ chuẩn: `Asia/Ho_Chi_Minh` (UTC+7) trên toàn bộ các chuỗi thời gian.
 - Khóa quan trắc chuẩn: `(station_id, timestamp)` duy nhất, không duplicate.
 - Liêm chính học thuật: Tuyệt đối không tạo dữ liệu giả lập (no synthetic/mock data).

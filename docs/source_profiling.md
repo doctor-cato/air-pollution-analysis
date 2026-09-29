@@ -5,7 +5,7 @@
 
 Vui lòng tham khảo tệp [`docs/source_profiling_decision.md`](source_profiling_decision.md) để xem đầy đủ:
 1. Mục tiêu (Objective)
-2. Danh mục nguồn ứng viên (Candidate Sources: Kaggle, OpenAQ v3, Open-Meteo ERA5, AirNow DOS CSV, PAM Air)
+2. Danh mục nguồn ứng viên (Candidate Sources: OpenAQ S3/v3, Open-Meteo ERA5, AirNow DOS CSV, NOAA ISD 48820, Kaggle, PAM Air)
 3. Phương pháp khảo sát (Profiling Methodology)
 4. Độ bao phủ địa lý & Metadata trạm (Geographic Coverage)
 5. Độ bao phủ thời gian thực tế & Tần suất (Temporal Coverage)

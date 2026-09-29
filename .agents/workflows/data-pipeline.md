@@ -7,10 +7,10 @@
 ## 1. End-to-End Pipeline Sequence
 
 ```text
-Source (OpenAQ REST API v3 + Open-Meteo ERA5 Reanalysis)
+Source (OpenAQ S3 / API + Open-Meteo ERA5 Reanalysis)
        │
        ▼
-Raw data (Immutable JSON/CSV files in data/raw/ + metadata.json)
+Raw data (Preserved JSON files in data/raw/ + metadata.json per Three-tier policy)
        │
        ▼
 Schema validation (Check required columns, datatypes, and timestamps)
@@ -38,7 +38,7 @@ Analysis (Downstream EDA, Statistical Inference, OLS Regression, Classification)
 
 ## 2. Core Operational Rules
 
-1. **Never Overwrite Raw Data:** Raw API payloads stored in `data/raw/` are strictly read-only. Every transformation must be executed via code and saved to `data/processed/`.
+1. **Three-Tier Raw Data Governance:** Raw API payloads stored in `data/raw/` are preserved without manual edits (Three-tier policy, roadmap §3.2) and verified via SHA-256 hashes recorded in `metadata.json`. Every transformation must be executed via deterministic code and saved to `data/processed/` (or `data/interim/`).
 2. **Never Assume a Merge is Correct:** Always verify row counts before and after joining air and weather datasets to prevent Row Explosion bugs.
 3. **Traceability:** Every cleaning decision, threshold, and row count change must be logged in [`docs/cleaning_log.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/cleaning_log.md).
 
@@ -55,8 +55,8 @@ At every transition along the pipeline, validate these 9 criteria:
 | **3. Units** | Standard units ($\mu\text{g/m}^3, ^\circ\text{C}, \text{m/s}, \text{hPa}, \%$) | Cross-reference `docs/data_dictionary.md` |
 | **4. Nulls** | Missing rates and mechanisms | Categorize into MCAR (random), MAR (storm), MNAR (extreme episode) |
 | **5. Duplicates** | Zero duplicate station hours | `assert df['timestamp'].is_unique` |
-| **6. Value Ranges** | Environmental physical bounds | `assert (df['pm25'] <= df['pm10'] + 2.0).all()`, `assert (df['pm25'] > 0).all()` |
-| **7. Temporal Coverage** | Full 2-year hourly continuity | Reindex against continuous hourly grid `pd.date_range(start, end, freq='h')` |
+| **6. Value Ranges** | Environmental physical bounds | `assert (df['pm25'] <= df['pm10'] + 2.0).all()`, `assert (df['pm25'] >= 0).all()` |
+| **7. Temporal Coverage** | Continuous hourly grid over study period | Reindex against continuous hourly grid `pd.date_range(start, end, freq='h')` |
 | **8. Join Coverage** | Matching time intersections | `assert not df_merged['temperature'].isna().all()` |
 | **9. Row Counts** | No Row Explosion on merges | `assert len(df_merged) <= len(df_air)` |
 
