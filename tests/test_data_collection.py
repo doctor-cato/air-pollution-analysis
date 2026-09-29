@@ -15,13 +15,17 @@ Kiểm thử (Sử dụng unittest chuẩn thư viện Python):
 
 import datetime
 import json
+import tempfile
 import unittest
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
 from src.data_collection import (
     HANOI_BBOX,
     CANONICAL_TIMEZONE,
+    LOCATION_OPENAQ_HANOI,
     STATION_OPENAQ_HANOI,
     STATION_AIRNOW_HANOI,
     STATION_WEATHER_ERA5,
@@ -41,6 +45,7 @@ from src.data_collection import (
     validate_open_meteo_hourly_units,
     validate_weather_canonical,
     resolve_station_metadata,
+    OpenAQAdapter,
     OpenMeteoAdapter,
 )
 
@@ -907,6 +912,286 @@ def _mock_weather_payload(n_hours: int = 3, hourly_units=None, **overrides) -> d
         }[canonical_col]
         payload["hourly"][provider_field] = values
     return payload
+
+
+class TestOpenAQAdapterToCanonical(unittest.TestCase):
+    """
+    Kiểm thử TRỰC TIẾP hợp đồng (contract) của `OpenAQAdapter.to_canonical()`.
+
+    Mọi fixture là dữ liệu TỔNG HỢP trong bộ nhớ, dựng theo đúng schema raw OpenAQ
+    (`location_id, sensors_id, location, datetime, lat, lon, parameter, units, value`).
+    KHÔNG có bất kỳ lời gọi mạng nào, KHÔNG đọc/ghi data/raw, và TẤT ĐỊNH hoàn toàn
+    (cùng đầu vào -> cùng đầu ra).
+    """
+
+    STATION_LAT = 21.0491
+    STATION_LON = 105.8831
+    ALBUQUERQUE_LAT = 35.1353
+    ALBUQUERQUE_LON = -106.584702
+
+    def _adapter(self, tmp_dir):
+        return OpenAQAdapter(raw_dir=Path(tmp_dir), interim_dir=Path(tmp_dir))
+
+    def _raw_frame(self, datetimes, parameters, values, lats=None, lons=None):
+        """Dựng DataFrame raw OpenAQ tối thiểu theo schema provider thực tế."""
+        n = len(datetimes)
+        return pd.DataFrame({
+            "location_id": [4946811] * n,
+            "sensors_id": ["sensor-synthetic-001"] * n,
+            "location": [LOCATION_OPENAQ_HANOI] * n,
+            "datetime": datetimes,
+            "lat": lats if lats is not None else [self.STATION_LAT] * n,
+            "lon": lons if lons is not None else [self.STATION_LON] * n,
+            "parameter": parameters,
+            "units": ["µg/m³"] * n,
+            "value": values,
+        })
+
+    def test_to_canonical_returns_exact_canonical_schema(self):
+        """Đầu ra đúng 5 cột canonical theo đúng thứ tự và index sạch."""
+        df_raw = self._raw_frame(
+            datetimes=["2025-07-04T22:00:00+07:00"],
+            parameters=["pm25"],
+            values=[30.0],
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            df_out = self._adapter(tmp_dir).to_canonical(df_raw)
+
+        self.assertEqual(
+            list(df_out.columns),
+            ["timestamp", "station_id", "location", "pm25", "pm10"],
+        )
+        self.assertTrue(df_out.index.equals(pd.RangeIndex(len(df_out))))
+        self.assertEqual(len(df_out), 1)
+        self.assertIsNone(df_out.index.name)
+
+    def test_to_canonical_maps_station_identity_to_canonical_constants(self):
+        """station_id / location được phân giải đúng theo quy chuẩn trạm Hà Nội."""
+        df_raw = self._raw_frame(
+            datetimes=["2025-07-04T22:00:00+07:00"],
+            parameters=["pm25"],
+            values=[30.0],
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            df_out = self._adapter(tmp_dir).to_canonical(df_raw)
+
+        self.assertEqual(df_out["station_id"].unique().tolist(), [STATION_OPENAQ_HANOI])
+        self.assertEqual(df_out["location"].unique().tolist(), [LOCATION_OPENAQ_HANOI])
+
+    def test_to_canonical_produces_tz_aware_hanoi_hourly_timestamps(self):
+        """Timestamp đầu ra phải tz-aware Asia/Ho_Chi_Minh và đã floor về giờ."""
+        df_raw = self._raw_frame(
+            datetimes=["2025-07-04T22:37:41+07:00"],
+            parameters=["pm25"],
+            values=[30.0],
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            df_out = self._adapter(tmp_dir).to_canonical(df_raw)
+
+        ts = df_out["timestamp"].iloc[0]
+        self.assertEqual(str(ts.tz), CANONICAL_TIMEZONE)
+        self.assertEqual(ts.minute, 0)
+        self.assertEqual(ts.second, 0)
+        self.assertEqual(ts, pd.Timestamp("2025-07-04 22:00:00+07:00"))
+
+    def test_to_canonical_converts_utc_input_and_rolls_over_date_boundary(self):
+        """
+        Đầu vào UTC phải được quy đổi sang Asia/Ho_Chi_Minh TRƯỚC khi floor về giờ,
+        nên một mốc UTC tối khuya vẫn sinh ra giờ 00:00 của ngày hôm sau (lịch Hà Nội).
+        """
+        df_raw = self._raw_frame(
+            datetimes=["2025-07-04T16:40:00Z", "2025-07-04T17:10:00Z"],
+            parameters=["pm25", "pm25"],
+            values=[10.0, 20.0],
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            df_out = self._adapter(tmp_dir).to_canonical(df_raw)
+
+        timestamps = df_out["timestamp"].tolist()
+        self.assertEqual(
+            timestamps,
+            [
+                pd.Timestamp("2025-07-04 23:00:00+07:00"),
+                pd.Timestamp("2025-07-05 00:00:00+07:00"),
+            ],
+        )
+
+    def test_to_canonical_aggregates_subhourly_telemetry_to_hourly_mean(self):
+        """Telemetry dưới giờ được tổng hợp thành trung bình theo giờ cho từng thông số."""
+        df_raw = self._raw_frame(
+            datetimes=[
+                "2025-07-04T22:10:00+07:00",
+                "2025-07-04T22:40:00+07:00",
+                "2025-07-04T22:50:00+07:00",
+            ],
+            parameters=["pm25", "pm25", "pm25"],
+            values=[30.0, 40.0, 50.0],
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            df_out = self._adapter(tmp_dir).to_canonical(df_raw)
+
+        self.assertEqual(len(df_out), 1)
+        self.assertAlmostEqual(float(df_out["pm25"].iloc[0]), 40.0, places=6)
+
+    def test_to_canonical_separates_pm25_and_pm10_into_distinct_columns(self):
+        """pm25 và pm10 là hai cột độc lập, không trộn lẫn giá trị."""
+        df_raw = self._raw_frame(
+            datetimes=["2025-07-04T22:00:00+07:00"] * 2,
+            parameters=["pm25", "pm10"],
+            values=[12.5, 88.0],
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            df_out = self._adapter(tmp_dir).to_canonical(df_raw)
+
+        self.assertAlmostEqual(float(df_out["pm25"].iloc[0]), 12.5, places=6)
+        self.assertAlmostEqual(float(df_out["pm10"].iloc[0]), 88.0, places=6)
+
+    def test_to_canonical_keeps_non_pm_parameters_out_of_canonical_output(self):
+        """Thông số ngoài pm25/pm10 (o3, co, no2, so2) bị loại, không sinh cột mới."""
+        df_raw = self._raw_frame(
+            datetimes=["2025-07-04T22:00:00+07:00"] * 4,
+            parameters=["o3", "co", "no2", "pm25"],
+            values=[1.0, 2.0, 3.0, 33.0],
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            df_out = self._adapter(tmp_dir).to_canonical(df_raw)
+
+        self.assertEqual(list(df_out.columns), ["timestamp", "station_id", "location", "pm25", "pm10"])
+        self.assertAlmostEqual(float(df_out["pm25"].iloc[0]), 33.0, places=6)
+        self.assertTrue(np.isnan(float(df_out["pm10"].iloc[0])))
+
+    def test_to_canonical_emits_all_nan_column_when_a_pollutant_is_absent(self):
+        """Thiếu hoàn toàn một thông số -> cột tương ứng phải tồn tại và toàn NaN (không fill 0)."""
+        df_raw = self._raw_frame(
+            datetimes=["2025-07-04T22:00:00+07:00", "2025-07-04T23:00:00+07:00"],
+            parameters=["pm25", "pm25"],
+            values=[30.0, 31.0],
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            df_out = self._adapter(tmp_dir).to_canonical(df_raw)
+
+        self.assertIn("pm10", df_out.columns)
+        self.assertTrue(df_out["pm10"].isna().all())
+        self.assertEqual(len(df_out), 2)
+
+    def test_to_canonical_nulls_sentinels_and_negative_values_but_preserves_zero(self):
+        """-999/-9999/giá trị âm -> NaN; giá trị đo 0.0 hợp lệ phải được giữ nguyên."""
+        df_raw = self._raw_frame(
+            datetimes=[
+                "2025-07-04T22:00:00+07:00",
+                "2025-07-04T23:00:00+07:00",
+                "2025-07-05T00:00:00+07:00",
+            ],
+            parameters=["pm25", "pm25", "pm25"],
+            values=[-999.0, -9999.0, 0.0],
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            df_out = self._adapter(tmp_dir).to_canonical(df_raw)
+
+        by_hour = dict(zip(df_out["timestamp"], df_out["pm25"]))
+        self.assertTrue(np.isnan(by_hour[pd.Timestamp("2025-07-04 22:00:00+07:00")]))
+        self.assertTrue(np.isnan(by_hour[pd.Timestamp("2025-07-04 23:00:00+07:00")]))
+        self.assertEqual(float(by_hour[pd.Timestamp("2025-07-05 00:00:00+07:00")]), 0.0)
+
+    def test_to_canonical_drops_records_outside_hanoi_bounding_box(self):
+        """Bản ghi ngoài Bounding Box Hà Nội bị lọc TRƯỚC khi canonicalize."""
+        df_raw = self._raw_frame(
+            datetimes=["2025-07-04T22:00:00+07:00", "2025-07-04T22:00:00+07:00"],
+            parameters=["pm25", "pm25"],
+            values=[10.0, 999.0],
+            lats=[self.STATION_LAT, self.ALBUQUERQUE_LAT],
+            lons=[self.STATION_LON, self.ALBUQUERQUE_LON],
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            df_out = self._adapter(tmp_dir).to_canonical(df_raw)
+
+        self.assertEqual(len(df_out), 1)
+        self.assertAlmostEqual(float(df_out["pm25"].iloc[0]), 10.0, places=6)
+
+    def test_to_canonical_fails_loud_when_every_record_is_out_of_bounds(self):
+        """Không còn bản ghi nào trong bbox -> ValueError, KHÔNG trả về DataFrame rỗng."""
+        df_raw = self._raw_frame(
+            datetimes=["2025-07-04T22:00:00+07:00"],
+            parameters=["pm25"],
+            values=[10.0],
+            lats=[self.ALBUQUERQUE_LAT],
+            lons=[self.ALBUQUERQUE_LON],
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with self.assertRaises(ValueError):
+                self._adapter(tmp_dir).to_canonical(df_raw)
+
+    def test_to_canonical_sorts_chronologically_regardless_of_input_order(self):
+        """Đầu ra luôn tăng dần theo thời gian bất kể thứ tự dòng thô."""
+        df_raw = self._raw_frame(
+            datetimes=[
+                "2025-07-05T01:00:00+07:00",
+                "2025-07-04T23:00:00+07:00",
+                "2025-07-04T22:00:00+07:00",
+            ],
+            parameters=["pm25", "pm25", "pm25"],
+            values=[33.0, 32.0, 31.0],
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            df_out = self._adapter(tmp_dir).to_canonical(df_raw)
+
+        self.assertTrue(df_out["timestamp"].is_monotonic_increasing)
+        self.assertEqual(
+            df_out["timestamp"].tolist(),
+            [
+                pd.Timestamp("2025-07-04 22:00:00+07:00"),
+                pd.Timestamp("2025-07-04 23:00:00+07:00"),
+                pd.Timestamp("2025-07-05 01:00:00+07:00"),
+            ],
+        )
+
+    def test_to_canonical_is_deterministic_across_repeated_runs(self):
+        """Cùng đầu vào -> cùng đầu ra tuyệt đối (không phụ thuộc thời gian chạy)."""
+        df_raw = self._raw_frame(
+            datetimes=[
+                "2025-07-04T22:10:00+07:00",
+                "2025-07-04T22:40:00+07:00",
+                "2025-07-04T23:05:00+07:00",
+            ],
+            parameters=["pm25", "pm25", "pm10"],
+            values=[30.0, 40.0, 77.0],
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            adapter = self._adapter(tmp_dir)
+            first = adapter.to_canonical(df_raw)
+            second = adapter.to_canonical(df_raw)
+
+        pd.testing.assert_frame_equal(first, second)
+
+    def test_to_canonical_does_not_mutate_the_input_dataframe(self):
+        """Adapter phải tôn trọng nguyên trạng DataFrame thô (hợp đồng bất biến)."""
+        df_raw = self._raw_frame(
+            datetimes=[
+                "2025-07-04T22:10:00+07:00",
+                "2025-07-04T22:40:00+07:00",
+            ],
+            parameters=["pm25", "pm10"],
+            values=[30.0, 60.0],
+        )
+        before = df_raw.copy(deep=True)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            self._adapter(tmp_dir).to_canonical(df_raw)
+
+        pd.testing.assert_frame_equal(df_raw, before)
 
 
 if __name__ == "__main__":
