@@ -147,6 +147,7 @@ nguồn ô nhiễm được duyệt   nguồn khí tượng được duyệt
      - **Tầng B — Bảo toàn & truy vết xuất xứ:** nội dung tệp thô được giữ nguyên trạng (không chỉnh sửa, không chuyển đổi giá trị trước khi ghi) và có mã băm SHA-256 khớp tệp trên đĩa, đủ để kiểm chứng toàn vẹn độc lập.
      - **Tầng C — Chính sách theo dõi phiên bản:** tệp thô tải từ API **không bắt buộc phải được Git-track**; `.gitignore` loại trừ `data/raw/*.json` và `data/raw/*.parquet` là hành vi đúng theo chính sách kho dữ liệu, và tệp thô có thể tái tạo lại từ nguồn.
    - Tầng B là tiêu chuẩn kiểm chứng **thay thế** cho tuyên bố "bất biến". Repository không thực thi khoá chế độ chỉ đọc ở tầng hệ thống tập tin, nên các tài liệu và tiêu chí nghiệm thu **không** dùng cụm "dữ liệu thô bất biến / ở chế độ chỉ đọc" như một yêu cầu không kiểm chứng được. Định nghĩa đầy đủ: Issue #4 § "Chính sách dữ liệu thô ba tầng".
+   - **Cơ chế tái tạo thực thi (bổ sung cho Tầng C):** `python scripts/fetch_dataset.py` tải lại tập dữ liệu từ hai nguồn công khai — OpenAQ S3 public archive (ODC-BY v1.0) và Open-Meteo ERA5 (CC BY 4.0), **không cần API key** — rồi tự đối chiếu nội dung với `data/raw/metadata.json`. Cờ `--skip-fetch` dùng để kiểm chứng dữ liệu đang có sẵn trên đĩa mà không gọi mạng. Chi tiết về giới hạn tái lập byte (kho S3 là kho sống; Parquet không tái lập được theo byte) tại `README.md` §4.
 
 ---
 

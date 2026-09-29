@@ -30,10 +30,12 @@ jobs:
           python -m pip install -r requirements.txt
 
       - name: Kiểm tra cú pháp Python (compileall)
-        run: python -m compileall -q src tests
+        run: python -m compileall -q src tests scripts
 
       - name: Kiểm tra import sanity (không gọi network)
-        run: python -c "import src.data_collection"
+        run: |
+          python -c "import src.data_collection"
+          python -c "import src.data_quality"
 
       # Chỉ chạy unit test. KHÔNG chạy run_collection_pipeline() vì cần
       # gọi OpenAQ S3 / Open-Meteo / AirNow qua mạng (không deterministic).

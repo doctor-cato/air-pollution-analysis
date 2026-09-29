@@ -96,7 +96,7 @@ Kết quả kiểm toán từng cột thông qua hàm `audit_dataframe(df)` và 
 ### 5.2. Khuyết thiếu theo thời gian (Temporal Dimension)
 - **Chu kỳ ngày đêm (Diurnal Missing Pattern):**
   - Tỷ lệ thiếu $\text{PM}_{2.5}$ tập trung cao nhất vào ban đêm và rạng sáng: Khung giờ $00:00 - 04:00$ đạt từ **$3.80\%$ đến $4.79\%$** (đỉnh cao nhất tại $01:00$ với 16 giờ khuyết).
-  - Tỷ lệ thiếu thấp nhất vào khung trưa và chiều: Khung giờ $10:00 - 17:00$ dao động từ **$0.60\%$ đến $1.51\%$** (thấp nhất tại $11:00$ với chỉ 2 giờ khuyết, tương đương $0.60\%$).
+  - Tỷ lệ thiếu thấp nhất vào khung trưa và chiều: Khung giờ $10:00 - 17:00$ dao động từ **$0.60\%$ đến $1.80\%$** (thấp nhất tại $11:00$ với chỉ 2 giờ khuyết, tương đương $0.60\%$).
 - **Phân bố theo tháng:**
   - Tháng 07/2025: $\text{PM}_{2.5}$ đạt $0.0\%$ missing, trong khi $\text{PM}_{10}$ khuyết 111 giờ ($17.87\%$) do cảm biến $\text{PM}_{10}$ hiệu chỉnh đầu chu kỳ.
   - Tháng 08/2025: $\text{PM}_{2.5}$ khuyết 41 giờ ($5.58\%$), xuất hiện đợt mất tín hiệu 23 giờ liên tục ngày 19/08/2025.
