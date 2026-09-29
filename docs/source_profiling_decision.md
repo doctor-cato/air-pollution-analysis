@@ -432,9 +432,12 @@ Căn cứ vào các kết quả thẩm định và ma trận so sánh đa tiêu 
 
 ## 13. Hạn Chế & Bất Định Kỹ Thuật Chưa Giải Quyết (Limitations & Uncertainties)
 
-1. **Đặc thù bao phủ thời gian của OpenAQ tại Hà Nội:** Trạm chuẩn quốc gia 4946811 mới được OpenAQ tích hợp lưu trữ từ tháng 7/2025 (352 tệp S3). Do không có dữ liệu 2023–2024 trên OpenAQ, nghiên cứu lịch sử năm 2023 được bảo đảm bằng nguồn AirNow DOS CSV (trạm BAM-1020 của ĐSQ Hoa Kỳ), trong khi trạm 4946811 phục vụ giám sát hiện hành và kiểm chuẩn chéo đa thông số.
-   - *Trạng thái triển khai AirNowDOSAdapter (Issue #3 / PR #24):* Class `AirNowDOSAdapter` đã được cài đặt hoàn chỉnh và kiểm thử đơn vị tự động trong `src/data_collection.py`. Do yêu cầu quyền truy cập tổ chức AirNow-Tech / State Dept để tải dữ liệu lịch sử thô, pipeline ghi nhận trạng thái nạp thực tế là `adapter: implemented`, `ingestion_status: not_executed_pending_raw_input`, `role: historical_source_fallback`, `raw_input: unavailable_in_current_execution`. Đồ án tuân thủ nghiêm ngặt liêm chính học thuật: tuyệt đối không tạo dữ liệu giả lập (no synthetic/mock data).
-   - *Phân định thời gian thực nghiệm:* Phân biệt rành mạch giữa `requested_study_window` (cửa sổ phân tích yêu cầu, ví dụ: 2023-2024) và `actual_source_coverage` (thời gian thực tế của từng nguồn được tính toán trực tiếp từ `min()` và `max()` timestamp của DataFrame sau chuẩn hóa).
+1. **Đặc thù bao phủ thời gian của OpenAQ tại Hà Nội & Cơ chế Đồng bộ Động Khí tượng:**
+   - Trạm chuẩn quốc gia 4946811 (556 Nguyễn Văn Cừ) là nguồn dữ liệu chất lượng không khí vận hành hiện hành (*current operational source*), được OpenAQ tích hợp lưu trữ từ tháng 7/2025 (352 tệp S3 thô, bao phủ từ `2025-07-03` đến `2026-07-15`).
+   - Do trạm 4946811 không có dữ liệu giai đoạn 2023–2024 trên OpenAQ, việc cố định cửa sổ khí tượng Open-Meteo vào 2023–2024 trước đây dẫn tới xung đột thời gian (tập dữ liệu không giao thoa / *temporal disjointness*).
+   - **Giải pháp đồng bộ động (Dynamic Temporal Synchronization):** Phạm vi thời gian thực tế của chuỗi quan trắc OpenAQ 4946811 được dùng làm nguồn chân lý (*source of truth*) để dẫn xuất động cửa sổ truy vấn khí tượng Open-Meteo ERA5 (`query_start = df_air['timestamp'].min().strftime('%Y-%m-%d')`, `query_end = df_air['timestamp'].max().strftime('%Y-%m-%d')`). Cơ chế này bảo đảm tập dữ liệu ô nhiễm và khí tượng có tập giao thoa thời gian không rỗng (100% bản ghi chất lượng không khí khớp 1:1 với dữ liệu thời tiết), sẵn sàng cho bước tích hợp đa nguồn tại Issue #7.
+   - *Trạng thái triển khai AirNowDOSAdapter (Issue #3 / PR #24):* Class `AirNowDOSAdapter` đã được cài đặt hoàn chỉnh và kiểm thử đơn vị tự động trong `src/data_collection.py`. Do yêu cầu quyền truy cập tổ chức AirNow-Tech / State Dept để tải dữ liệu lịch sử thô, pipeline ghi nhận trạng thái nạp thực tế là `adapter: implemented`, `ingestion_status: not_executed_pending_raw_input`, `role: historical_source_fallback`, `raw_input: unavailable_in_current_execution`. AirNow đóng vai trò nguồn dự phòng lịch sử ngoại tuyến khi có tệp thô. Đồ án tuân thủ nghiêm ngặt liêm chính học thuật: tuyệt đối không tạo dữ liệu giả lập (no synthetic/mock data).
+   - *Phân định thời gian thực nghiệm:* Phân biệt rành mạch giữa `requested_study_window` (cửa sổ truy vấn yêu cầu hoặc cửa sổ nghiên cứu mặc định) và `actual_source_coverage` (thời gian thực tế của từng nguồn được tính toán trực tiếp từ `min()` và `max()` timestamp của DataFrame sau chuẩn hóa).
 2. **Tần suất đo telemetry dưới giờ của trạm 4946811:** Tệp S3 chứa các bản ghi chu kỳ 5–10 phút (~220 dòng/ngày/thông số), đòi hỏi adapter phải tổng hợp trung bình theo giờ (*hourly aggregation*) có kiểm soát số lượng điểm đo tối thiểu trong mỗi giờ.
 3. **Đại diện không gian đơn trạm:** Cả hai trạm (556 Nguyễn Văn Cừ ở Long Biên và ĐSQ Hoa Kỳ ở Ba Đình) đều thuộc vùng nội đô Hà Nội, chưa phản ánh toàn diện các khu vực ngoại thành hoặc khu công nghiệp ven đô. Hạn chế này cần nêu rõ trong Datasheet for Dataset tại Issue #14.
 4. **Độ phân giải không gian của ERA5:** Điểm lưới ERA5 ($21.0545^\circ\text{N}, 105.8985^\circ\text{E}$) cách trạm OpenAQ 4946811 ($21.0491^\circ\text{N}, 105.8831^\circ\text{E}$) chỉ **1.7 km** về phía Đông Bắc – độ khớp không gian rất cao và tối ưu cho nghiên cứu tương quan.
@@ -445,7 +448,7 @@ Căn cứ vào các kết quả thẩm định và ma trận so sánh đa tiêu 
 
 ## 14. Yêu Cầu Bàn Giao Kỹ Thuật Cho Issue #3 & Issue #4 (Handoff Requirements)
 
-Quyết định tại Issue #19 chuyển giao các yêu cầu đặc tả kỹ thuật bắt buộc cho hai issue tiếp theo:
+Quyết định tại Issue #19 chuyển giao các yêu cầu đặc tả kỹ thuật bắt buộc cho các bước tiếp theo:
 
 ### 14.1. Handoff cho Issue #3 (Pipeline Thu thập & Chuẩn hóa Dữ liệu Ô nhiễm)
 
@@ -453,7 +456,7 @@ Quyết định tại Issue #19 chuyển giao các yêu cầu đặc tả kỹ t
 - **Endpoint REST API OpenAQ (cho real-time):** `https://api.openaq.org/v3/locations/4946811` — cần `X-API-Key`.
 - **Trạm quan trắc hợp chuẩn:**
   - Trạm chuẩn quốc gia hiện hành: `location_id = 4946811` (`"556 Nguyễn Văn Cừ"`, Long Biên, Hà Nội).
-  - Trạm chuẩn lịch sử 2023: AirNow DOS CSV (`Site == "Hanoi"`, US Embassy BAM-1020).
+  - Trạm chuẩn lịch sử 2023: AirNow DOS CSV (`Site == "Hanoi"`, US Embassy BAM-1020, trạng thái fallback ngoại tuyến pending raw input).
 - **Tuyệt đối loại bỏ trạm:** `location_id = 2178` (Del Norte, Albuquerque, NM, Hoa Kỳ).
 - **Thông số:** Lọc `parameter == 'pm25'` (Sensor 13502150) và `parameter == 'pm10'` (Sensor 13502165) cùng các khí NO2, CO, SO2, O3.
 - **Yêu cầu adapter:**
@@ -467,15 +470,16 @@ Quyết định tại Issue #19 chuyển giao các yêu cầu đặc tả kỹ t
 
 - **Endpoint mục tiêu:** `https://archive-api.open-meteo.com/v1/archive`.
 - **Tọa độ truy vấn:** `latitude=21.0285&longitude=105.8542`.
-- **Dải thời gian:** `start_date=2023-01-01` đến `end_date=2024-12-31`.
+- **Đồng bộ hóa thời gian động (Dynamic Temporal Synchronization):**
+  - Khi không có cửa sổ chỉ định từ caller, `start_date` và `end_date` được suy diễn tự động từ timestamp tối thiểu và tối đa của tập dữ liệu chất lượng không khí canonical thực tế (`df_air['timestamp'].min()` và `max()`).
+  - Hỗ trợ cửa sổ truyền vào rõ ràng (`study_window_start`, `study_window_end`) khi người dùng cần chạy thực nghiệm trên một dải thời gian cố định.
 - **Tham số biến số:**
   `hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,precipitation,surface_pressure`.
 - **Tham số kỹ thuật:**
   `&wind_speed_unit=ms&timezone=Asia%2FHo_Chi_Minh`.
 - **Yêu cầu adapter:**
-  - Tải toàn bộ khối 2 năm trong một hoặc hai batch request.
-  - **Kiểm đếm row bắt buộc:** Assert `len(df) == 17,544` (365 ngày × 24h + 366 ngày × 24h = 8,760 + 8,784 = **17,544** – xác nhận từ API call thực tế).
+  - Đặt tên file thô theo dải ngày thực tế: `open_meteo_raw_{start_date}_{end_date}.json` để tránh va chạm cache (cache collision).
   - Assert 0 missing values trên tất cả 6 biến trước khi lưu.
-  - Lưu tệp thô bất biến vào `data/raw/open_meteo_raw_2023_2024.json` (chế độ chỉ đọc).
-  - Cập nhật `data/raw/metadata.json` với thông tin truy vấn và giấy phép CC BY 4.0.
+  - Lưu tệp thô bất biến vào `data/raw/` (chế độ chỉ đọc).
+  - Cập nhật `data/raw/metadata.json` ghi nhận rành mạch cả `requested_query_window` và `actual_source_coverage`.
 
