@@ -25,7 +25,8 @@
 
 ## Key Conventions & Non-Negotiables
 - **Data Integrity:** Apply Three-tier Raw Data Policy (roadmap §3.2); preserve payloads in `data/raw/` without manual edits, track SHA-256 in `data/raw/metadata.json`, keep raw payloads untracked via `.gitignore`. Store clean outputs as Snappy Parquet (`.parquet`).
-- **Deterministic Cleaning vs. Data-Dependent Preprocessing:** Never impute, scale, or compute global statistics before the chronological split. Deterministic cleaning (`src/cleaning.py`) is bounded by `assert_no_imputation()`: observed measurements may only decrease, never increase.
+- **Deterministic Cleaning vs. Data-Dependent Preprocessing:** Never impute, scale, or compute global statistics before the chronological split. Deterministic cleaning (`src/cleaning.py`) is bounded by `assert_no_imputation()`, which compares **cell by cell** on the `(station_id, timestamp)` key: a cell that was `NaN` before must still be `NaN`, and a cell that held a value must keep that exact value or become `NaN`. Observed measurements may only disappear, never appear or change.
+- **Diagnostic flags are not imputations:** `pm25_was_missing` (station reporting gap), `pm25_was_stuck` (sensor frozen), and `is_high_humidity_fog` (optical fog) are separate flags. Issue #7 must read all three before deciding whether imputation is admissible.
 - **Time-Series Safety:** Enforce chronological sort, unique timestamps, and check row counts to prevent Row Explosion on joins.
 - **Strict Leakage Prevention:** Temporal train/test splits only. Fit transformers strictly on Train partitions.
 - **Statistical Testing:** Mandatory trio: Test statistic + $p$-value + Effect Size ($r_{rb}$) + 95% Bootstrap CI.

@@ -45,8 +45,13 @@ mốc thời gian** nhằm sinh cờ chẩn đoán và không được giữ l�
 | Ngưỡng sương mù độ ẩm cao | `RH > 90.0%` | Issue #6, `.agents/rules/data.md` §4 |
 
 **Quy ước đếm của chuỗi liên tục:** ngưỡng được đếm bằng **số quan sát liên tiếp** trên lưới 1 giờ,
-đúng theo cùng quy ước với hàm `audit_prolonged_zeros()` của Issue #5. Vì vậy
+đúng theo `.agents/rules/data.md` §3.5 / §4 (kẹt cảm biến và khối khuyết lớn là chuỗi **dài hơn 6 giờ**). Vì vậy
 “kẹt cảm biến > 6 giờ” và “khối khuyết lớn > 6 giờ” đều được hiện thực hoá bằng điều kiện **chuỗi có ít nhất 7 quan sát liên tiếp**.
+
+> **Lưu ý về khác biệt 1 quan sát so với Issue #5:** `audit_prolonged_zeros()` của Issue #5
+> dùng điều kiện `>= 6` nên một chuỗi 6 quan sát đã bị nó gọi là “kéo dài”, còn Issue #6 dùng
+> `> 6` (tức ≥ 7) theo đúng câu chữ của `data.md`. Hai con số này **không so sánh trực tiếp
+> được**; khi đối chiếu với số liệu Issue #5 phải tính lại theo cùng quy ước.
 
 ---
 
@@ -59,7 +64,7 @@ mốc thời gian** nhằm sinh cờ chẩn đoán và không được giữ l�
 | Chỉ số | Trước làm sạch | Sau làm sạch |
 |---|---|---|
 | Số dòng | 8.022 | 9.044 |
-| Số cột | 5 | 7 |
+| Số cột | 5 | 8 |
 | Mốc thời gian nhỏ nhất | `2025-07-03 22:00:00+07:00` | `2025-07-03 22:00:00+07:00` |
 | Mốc thời gian lớn nhất | `2026-07-15 17:00:00+07:00` | `2026-07-15 17:00:00+07:00` |
 | Múi giờ | `Asia/Ho_Chi_Minh` | `Asia/Ho_Chi_Minh` |
@@ -133,9 +138,11 @@ mốc thời gian** nhằm sinh cờ chẩn đoán và không được giữ l�
 | Hàm thực thi | `normalize_disguised_missing()` |
 | `columns_checked` | `["pm25", "pm10"]` |
 | `by_column.pm25.rows_converted_to_nan` | `0` |
+| `by_column.pm25.unparseable_values_to_nan` | `0` |
 | `by_column.pm25.numeric_disguised_codes` | `[-999, -9999]` |
 | `by_column.pm25.string_disguised_markers` | `["N/A", "n/a", "NA", "null", "NULL", "None", "none", "nan", "NaN", "", " "]` |
 | `by_column.pm10.rows_converted_to_nan` | `0` |
+| `by_column.pm10.unparseable_values_to_nan` | `0` |
 | `by_column.pm10.numeric_disguised_codes` | `[-999, -9999]` |
 | `by_column.pm10.string_disguised_markers` | `["N/A", "n/a", "NA", "null", "NULL", "None", "none", "nan", "NaN", "", " "]` |
 | `total_cells_converted` | `0` |
@@ -165,8 +172,8 @@ mốc thời gian** nhằm sinh cờ chẩn đoán và không được giữ l�
 | Chỉ số | Giá trị |
 |---|---|
 | Hàm thực thi | `enforce_pm_subset_constraint()` |
-| `rule` | `pm25 <= pm10 + epsilon` |
-| `epsilon_ug_m3` | `2` |
+| `rule` | `pm25 <= pm10 (nghiêm ngặt, mọi nghịch đảo)` |
+| `reporting_epsilon_ug_m3` | `2` |
 | `action_on_violation` | `chuyển CẢ pm25 và pm10 thành NaN` |
 | `skipped` | `Không` |
 | `pairs_evaluated` | `7.696` |
@@ -177,7 +184,7 @@ mốc thời gian** nhằm sinh cờ chẩn đoán và không được giữ l�
 | `rows_nullified` | `324` |
 | `rows_nullified_pct_of_pairs` | `4.21` |
 
-- `epsilon_rationale`: Độ không đảm bảo đo lường thiết bị (BAM-1020 / cảm biến quang học, chuẩn US EPA & QCVN) theo .agents/rules/data.md §4 và bàn giao Handoff 1 của Issue #5.
+- `epsilon_rationale`: Mốc phân loại bằng chứng, KHÔNG phải ngưỡng hành động: dùng để tách nghịch đảo vượt sai số đo (BAM-1020 / cảm biến quang học, chuẩn US EPA & QCVN, theo .agents/rules/data.md §4 và bàn giao Handoff 1 của Issue #5) khỏi nghịch đảo nhẹ. Xem docs/cleaning_log.md §3.4.
 
 #### Bước 7 — Reindex lưới thời gian liên tục 1 giờ theo từng trạm
 
@@ -211,6 +218,7 @@ mốc thời gian** nhằm sinh cờ chẩn đoán và không được giữ l�
 |---|---|
 | Hàm thực thi | `flag_stuck_values()` |
 | `threshold_hours` | `6` |
+| `flag_name` | `pm25_was_stuck` |
 | `by_column.pm25.rows_nullified` | `0` |
 | `by_column.pm25.longest_observed_constant_run_hours` | `1` |
 | `by_column.pm25.longest_nullified_run_hours` | `0` |
@@ -224,13 +232,14 @@ mốc thời gian** nhằm sinh cờ chẩn đoán và không được giữ l�
 | `by_column.pm10.missing_runs_excluded` | `177` |
 | `by_column.pm10.nullified_pct` | `0` |
 | `total_rows_nullified` | `0` |
+| `rows_flagged` | `0` |
 
-- `rule`: Chuỗi quan sát không đổi giá trị trên dài hơn 6 giờ liên tiếp (tức ≥ 7 quan sát giống hệt) → chuyển thành NaN.
+- `rule`: Chuỗi quan sát không đổi giá trị trên dài hơn 6 giờ liên tiếp (tức ≥ 7 quan sát giống hệt) → gắn cờ `pm25_was_stuck` và chuyển thành NaN.
 - `excluded_columns_rationale`: Không áp dụng cho precipitation/wind_speed: chuỗi 0.0 dài của chúng là hiện tượng khí tượng tự nhiên, đã được Issue #5 đo và kết luận rõ ràng.
 
 #### Bước 9 — Gắn cờ pm25_was_missing cho khối khuyết > 6 giờ
 
-**Căn cứ logic:** Chỉ báo chẩn đoán để Issue #7 không nội suy mù và không xóa dòng.
+**Căn cứ logic:** Chỉ báo chẩn đoán để Issue #7 không nội suy mù và không xóa dòng. Dùng cùng cờ `pm25_was_stuck` để phân biệt khối khuyết do trạm ngừng phát với giờ bị cảm biến kẹt.
 
 | Chỉ số | Giá trị |
 |---|---|
@@ -246,6 +255,7 @@ mốc thời gian** nhằm sinh cờ chẩn đoán và không được giữ l�
 | `flagged_pct` | `14.2525` |
 | `longest_missing_block_hours` | `630` |
 | `longest_flagged_block_hours` | `630` |
+| `rows_also_flagged_as_stuck` | `0` |
 
 - `flag_definition`: 1 = giờ này không có quan sát hợp lệ và nằm trong một khối khuyết liên tục dài hơn 6 giờ; 0 = ngược lại.
 
@@ -365,21 +375,27 @@ khó giải thích về mặt khoa học. Bản ghi chỉ có một kênh duy nh
 | Hàm thực thi | `normalize_disguised_missing()` |
 | `columns_checked` | `["temperature", "relative_humidity", "wind_speed", "wind_direction", "precipitation", "surface_pressure"]` |
 | `by_column.temperature.rows_converted_to_nan` | `0` |
+| `by_column.temperature.unparseable_values_to_nan` | `0` |
 | `by_column.temperature.numeric_disguised_codes` | `[-999, -9999]` |
 | `by_column.temperature.string_disguised_markers` | `["N/A", "n/a", "NA", "null", "NULL", "None", "none", "nan", "NaN", "", " "]` |
 | `by_column.relative_humidity.rows_converted_to_nan` | `0` |
+| `by_column.relative_humidity.unparseable_values_to_nan` | `0` |
 | `by_column.relative_humidity.numeric_disguised_codes` | `[-999, -9999]` |
 | `by_column.relative_humidity.string_disguised_markers` | `["N/A", "n/a", "NA", "null", "NULL", "None", "none", "nan", "NaN", "", " "]` |
 | `by_column.wind_speed.rows_converted_to_nan` | `0` |
+| `by_column.wind_speed.unparseable_values_to_nan` | `0` |
 | `by_column.wind_speed.numeric_disguised_codes` | `[-999, -9999]` |
 | `by_column.wind_speed.string_disguised_markers` | `["N/A", "n/a", "NA", "null", "NULL", "None", "none", "nan", "NaN", "", " "]` |
 | `by_column.wind_direction.rows_converted_to_nan` | `0` |
+| `by_column.wind_direction.unparseable_values_to_nan` | `0` |
 | `by_column.wind_direction.numeric_disguised_codes` | `[-999, -9999]` |
 | `by_column.wind_direction.string_disguised_markers` | `["N/A", "n/a", "NA", "null", "NULL", "None", "none", "nan", "NaN", "", " "]` |
 | `by_column.precipitation.rows_converted_to_nan` | `0` |
+| `by_column.precipitation.unparseable_values_to_nan` | `0` |
 | `by_column.precipitation.numeric_disguised_codes` | `[-999, -9999]` |
 | `by_column.precipitation.string_disguised_markers` | `["N/A", "n/a", "NA", "null", "NULL", "None", "none", "nan", "NaN", "", " "]` |
 | `by_column.surface_pressure.rows_converted_to_nan` | `0` |
+| `by_column.surface_pressure.unparseable_values_to_nan` | `0` |
 | `by_column.surface_pressure.numeric_disguised_codes` | `[-999, -9999]` |
 | `by_column.surface_pressure.string_disguised_markers` | `["N/A", "n/a", "NA", "null", "NULL", "None", "none", "nan", "NaN", "", " "]` |
 | `total_cells_converted` | `0` |
@@ -463,7 +479,7 @@ khó giải thích về mặt khoa học. Bản ghi chỉ có một kênh duy nh
 |---|---|---|
 | `timezone_is_canonical` | observed=Asia/Ho_Chi_Minh; expected=Asia/Ho_Chi_Minh | **PASS** |
 | `no_duplicate_observations` | duplicates=0 | **PASS** |
-| `continuous_hourly_grid_per_station` | is_monotonic_increasing=Có; irregular_intervals_total=0; per_station.VN001_HANOI_556_NGUYEN_VAN_CU.rows=9.044; per_station.VN001_HANOI_556_NGUYEN_VAN_CU.irregular_intervals=0; per_station.VN001_HANOI_556_NGUYEN_VAN_CU.first=2025-07-03 22:00:00+07:00; per_station.VN001_HANOI_556_NGUYEN_VAN_CU.last=2026-07-15 17:00:00+07:00; per_station.VN001_HANOI_556_NGUYEN_VAN_CU.is_monotonic_increasing=Có | **PASS** |
+| `continuous_hourly_grid_per_station` | is_monotonic_increasing=Có; global_series_is_monotonic=Có; irregular_intervals_total=0; per_station.VN001_HANOI_556_NGUYEN_VAN_CU.rows=9.044; per_station.VN001_HANOI_556_NGUYEN_VAN_CU.irregular_intervals=0; per_station.VN001_HANOI_556_NGUYEN_VAN_CU.first=2025-07-03 22:00:00+07:00; per_station.VN001_HANOI_556_NGUYEN_VAN_CU.last=2026-07-15 17:00:00+07:00; per_station.VN001_HANOI_556_NGUYEN_VAN_CU.is_monotonic_increasing=Có | **PASS** |
 | `no_negative_values` | negatives_by_column.pm25=0; negatives_by_column.pm10=0 | **PASS** |
 | `pm_subset_constraint` | evaluated_pairs=7.372; violations_pm25_gt_pm10_plus_1e_3=0 | **PASS** |
 
@@ -474,7 +490,7 @@ assert (df['pm25'] < 0).sum() == 0
 pairs = df.dropna(subset=['pm25', 'pm10'])
 assert (pairs['pm25'] > pairs['pm10'] + 1e-3).sum() == 0
 assert df.groupby('station_id')['timestamp'].apply(lambda s: s.is_monotonic_increasing).all()
-assert (df.groupby('station_id')['timestamp'].diff().dropna() == pd.Timedelta(hours=1)).all()
+assert (df.groupby('station_id')['timestamp'].diff().dropna() == np.timedelta64(1, 'h')).all()
 ```
 
 ### 5.2. Tập Khí Tượng Bề Mặt
@@ -485,9 +501,9 @@ assert (df.groupby('station_id')['timestamp'].diff().dropna() == pd.Timedelta(ho
 |---|---|---|
 | `timezone_is_canonical` | observed=Asia/Ho_Chi_Minh; expected=Asia/Ho_Chi_Minh | **PASS** |
 | `no_duplicate_observations` | duplicates=0 | **PASS** |
-| `continuous_hourly_grid_per_station` | is_monotonic_increasing=Có; irregular_intervals_total=0 | **PASS** |
+| `continuous_hourly_grid_per_station` | is_monotonic_increasing=Có; global_series_is_monotonic=Có; irregular_intervals_total=0 | **PASS** |
 | `no_negative_values` | negatives_by_column.temperature=0; negatives_by_column.relative_humidity=0; negatives_by_column.wind_speed=0; negatives_by_column.wind_direction=0; negatives_by_column.precipitation=0; negatives_by_column.surface_pressure=0 | **PASS** |
-| `pm_subset_constraint` | skipped=Có; reason=Không có đủ cột pm25/pm10 trong tập dữ liệu này. | **PASS** |
+| `pm_subset_constraint` | skipped=Có; reason=Không có đủ cột pm25/pm10 trong tập dữ liệu này. | **N/A** |
 
 ---
 
@@ -496,10 +512,16 @@ assert (df.groupby('station_id')['timestamp'].diff().dropna() == pd.Timedelta(ho
 | Cột | Nguồn sinh | Ngữ nghĩa | Giá trị 1 |
 |---|---|---|---|
 | `pm25_was_missing` | `flag_prolonged_missing()` | Giờ không có quan sát hợp lệ nằm trong khối khuyết liên tục > 6 giờ | 1.289 hàng |
+| `pm25_was_stuck` | `flag_stuck_values()` | Giá trị bị xoá vì cảm biến kẹt (chuỗi không đổi > 6 giờ) — KHÁC với trạm ngừng phát | 0 hàng |
 | `is_high_humidity_fog` | `attach_high_humidity_flag()` | Giờ có độ ẩm tương đối > 90.0% (nghi vấn sương mù quang học) | 2.834 hàng |
 
-> Cả hai cột cờ đều là **chỉ báo chẩn đoán**, tuyệt đối không phải phép điền khuyết và không làm thay
+> Cả ba cột cờ đều là **chỉ báo chẩn đoán**, tuyệt đối không phải phép điền khuyết và không làm thay
 > đổi bất kỳ giá trị quan sát nào. Bản ghi ở giờ `is_high_humidity_fog = 1` **không** bị xóa.
+
+> **Vì sao cần tách `pm25_was_stuck` khỏi `pm25_was_missing`:** cả hai đều khiến `pm25` bằng
+> `NaN` nhưng nguyên nhân vật lý khác nhau. `pm25_was_missing` = trạm không phát tín hiệu;
+> `pm25_was_stuck` = thiết bị có tín hiệu nhưng phần cứng đóng băng. Nếu gộp chung, Issue #7 sẽ
+> không phân biệt được sự cố trạm với lỗi thiết bị khi quyết định có điền khuyết hay không.
 
 ---
 
@@ -536,7 +558,7 @@ nghịch đảo khí động học, hoặc khoảng trống thời gian thật).
 | Khoảng trống thời gian từ reindex (NaN cố ý) | `rows_inserted` | 1.022 |
 | Cờ chẩn đoán pm25_was_missing (không xóa giá trị) | `rows_flagged` | 1.289 |
 
-> **Kiểm chứng đỉnh nồng độ:** đỉnh PM2.5 lớn nhất trước làm sạch là 252.6436 µg/m³ (tại `2026-06-05 16:00:00+07:00`, trạm `VN001_HANOI_556_NGUYEN_VAN_CU`), kèm PM10 đo được là 174.7982 µg/m³ — tức vượt PM10 77.8455 µg/m³. Bản ghi này **vi phạm ràng buộc khí động học PM2.5 ≤ PM10** nên đã chuyển `NaN`. Đỉnh biến mất là hệ quả của bằng chứng vật lý, **không phải** quy tắc cắt bỏ cực trị.
+> **Kiểm chứng đỉnh nồng độ:** đỉnh PM2.5 lớn nhất trước làm sạch là 252.6436 µg/m³ (tại `2026-06-05 16:00:00+07:00`, trạm `VN001_HANOI_556_NGUYEN_VAN_CU`), kèm PM10 đo được là 174.7982 µg/m³ — tức vượt PM10 77.8454 µg/m³. Bản ghi này **vi phạm ràng buộc khí động học PM2.5 ≤ PM10** nên đã chuyển `NaN`. Đỉnh biến mất là hệ quả của bằng chứng vật lý, **không phải** quy tắc cắt bỏ cực trị.
 
 ---
 

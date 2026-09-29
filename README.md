@@ -128,7 +128,7 @@ air-pollution-analysis/
 ├── tests/
 │   ├── test_data_collection.py         # 57 unit tests kiểm thử pipeline thu thập và validation [Issue #3, #4]
 │   ├── test_data_quality.py            # 14 unit tests cho bộ kiểm toán 6 chiều [Issue #5]
-│   ├── test_cleaning.py                # 77 unit tests cho lớp làm sạch tất định [Issue #6]
+│   ├── test_cleaning.py                # 104 unit tests cho lớp làm sạch tất định [Issue #6]
 │   └── test_fetch_dataset.py           # 9 unit tests cho cơ chế thu thập & kiểm chứng tập dữ liệu
 ├── figures/                            # Thư mục lưu biểu đồ xuất bản chất lượng cao (300 DPI)
 │   └── .gitkeep
@@ -192,11 +192,11 @@ air-pollution-analysis/
    >
    > **Giới hạn cần biết:** bucket OpenAQ S3 là **kho sống** — nhà cung cấp tiếp tục nạp dữ liệu mới, nên một lần tải ở thời điểm sau có thể nhiều dòng hơn bản đã kiểm toán. Ngoài ra, định dạng Parquet **không tái lập được theo byte** giữa các máy (khối nén và metadata nội bộ phụ thuộc phiên bản thư viện), nên SHA-256 kiểm chứng được *tính toàn vẹn của tệp đã lưu* chứ không dựng lại được *tập dữ liệu*. Vì vậy `scripts/fetch_dataset.py` kiểm chứng bằng **so khớp nội dung** (số bản ghi, dải thời gian, độ phủ giao thoa) thay vì so khớp byte.
 
-6. **Chạy bộ Unit Tests kiểm định toàn trình (164 tests tất định):**
+6. **Chạy bộ Unit Tests kiểm định toàn trình (184 tests tất định):**
    ```bash
    python -m unittest discover tests -v
    ```
-   Bộ gồm **57** unit tests trong `tests/test_data_collection.py` (kiểm chứng adapter OpenAQ, Open-Meteo, AirNow, logic lọc địa lý Hà Nội, kiểm định chất lượng khí tượng `validate_weather_canonical()`, cơ chế đồng bộ thời gian động), **14** unit tests trong `tests/test_data_quality.py` (bộ kiểm toán chất lượng 6 chiều), **84** unit tests trong `tests/test_cleaning.py` (làm sạch tất định: chuẩn hóa múi giờ, khử trùng lặp, ràng buộc khí động học, reindex đa trạm, kẹt cảm biến, cờ chẩn đoán, tính tất định và bảo toàn giá trị cực trị) và **9** unit tests trong `tests/test_fetch_dataset.py` (cơ chế thu thập & kiểm chứng tập dữ liệu) — **tổng cộng 164 test**. Tất cả độc lập với mạng Internet và thực thi tất định trong CI.
+   Bộ gồm **57** unit tests trong `tests/test_data_collection.py` (kiểm chứng adapter OpenAQ, Open-Meteo, AirNow, logic lọc địa lý Hà Nội, kiểm định chất lượng khí tượng `validate_weather_canonical()`, cơ chế đồng bộ thời gian động), **14** unit tests trong `tests/test_data_quality.py` (bộ kiểm toán chất lượng 6 chiều), **104** unit tests trong `tests/test_cleaning.py` (làm sạch tất định: chuẩn hóa múi giờ, khử trùng lặp, ràng buộc khí động học, reindex đa trạm, kẹt cảm biến, cờ chẩn đoán, tính tất định, bảo toàn giá trị cực trị, và 20 test hồi quy cho các lỗi tìm ra khi review đối kháng) và **9** unit tests trong `tests/test_fetch_dataset.py` (cơ chế thu thập & kiểm chứng tập dữ liệu) — **tổng cộng 184 test**. Tất cả độc lập với mạng Internet và thực thi tất định trong CI.
 
 7. **Kiểm tra cú pháp và quy chuẩn diff:**
    ```bash
@@ -224,7 +224,7 @@ air-pollution-analysis/
 git clone
   → pip install -r requirements.txt                (bước 2–3)
   → python scripts/fetch_dataset.py                (bước 5, cần mạng, có đối chiếu metadata)
-  → python -m unittest discover tests              (bước 6, 164 test, offline)
+  → python -m unittest discover tests              (bước 6, 184 test, offline)
   → jupyter nbconvert --execute notebooks/01_data_collection.ipynb
   → jupyter nbconvert --execute notebooks/02_quality_audit.ipynb
   → jupyter nbconvert --execute notebooks/03_data_cleaning.ipynb  (sinh docs/cleaning_log.md)

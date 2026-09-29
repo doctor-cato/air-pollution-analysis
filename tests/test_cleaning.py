@@ -31,6 +31,7 @@ from src.cleaning import (
     PM25_MISSING_FLAG,
     PM_AERODYNAMIC_EPSILON_UG_M3,
     PROLONGED_MISSING_THRESHOLD_HOURS,
+    STUCK_SENSOR_FLAG,
     STUCK_VALUE_THRESHOLD_HOURS,
     assert_no_imputation,
     attach_high_humidity_flag,
@@ -887,6 +888,323 @@ class TestCleaningLogRendering(unittest.TestCase):
         self.assertIn("`air_quality_canonical.parquet`", log)
         self.assertNotIn(str(self.tmp), log)
         self.assertNotIn("C:\\", log)
+
+
+class TestAdversarialReviewRegressions(unittest.TestCase):
+    """
+    Hồi quy cho các lỗi tìm ra khi review đối kháng diff Issue #6.
+
+    Mỗi test ở đây FAIL trên bản gốc và PASS sau khi sửa — chúng là bằng chứng,
+    không phải phần trang trí.
+    """
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def _air(self, n=10, **overrides):
+        ts = pd.date_range("2025-01-01", periods=n, freq="h", tz=CANONICAL_TIMEZONE)
+        df = pd.DataFrame(
+            {
+                "timestamp": ts,
+                "station_id": "A",
+                "location": "HN",
+                "pm25": np.linspace(10.0, 30.0, n),
+                "pm10": np.linspace(15.0, 40.0, n),
+            }
+        )
+        for key, value in overrides.items():
+            df[key] = value
+        return df
+
+    def _weather(self, n=10):
+        ts = pd.date_range("2025-01-01", periods=n, freq="h", tz=CANONICAL_TIMEZONE)
+        return pd.DataFrame(
+            {
+                "timestamp": ts,
+                "temperature": np.linspace(20.0, 25.0, n),
+                "relative_humidity": np.linspace(70.0, 95.0, n),
+                "wind_speed": 3.0,
+                "wind_direction": 100.0,
+                "precipitation": 0.0,
+                "surface_pressure": 1010.0,
+            }
+        )
+
+    # --- BLOCKER: cam nhan "khong dien khuyet" phai la that, khong phai hinh thuc
+
+    def test_no_imputation_guard_catches_value_fabrication(self):
+        """Bản cũ chỉ đếm ô; bịa 1 giá trị + xoá 1 giá trị thì lọt qua."""
+        before = self._air(4)
+        after = self._air(4)
+        after["pm25"] = [999.0, np.nan, np.nan, 10.0]
+        with self.assertRaises(AssertionError):
+            assert_no_imputation(before, after, ["pm25"])
+
+    def test_no_imputation_guard_catches_a_changed_observation(self):
+        before = self._air(4)
+        after = before.copy()
+        after.loc[1, "pm25"] = 999.0
+        with self.assertRaises(AssertionError):
+            assert_no_imputation(before, after, ["pm25"])
+
+    def test_no_imputation_guard_allows_the_legit_direction(self):
+        """Giá trị được giữ nguyên hoặc chuyển NaN thì hợp lệ."""
+        before = self._air(4)
+        after = before.copy()
+        after.loc[0:1, "pm25"] = np.nan
+        assert_no_imputation(before, after, ["pm25"])
+
+    def test_pipelines_compare_against_their_real_input(self):
+        """
+        Bản gốc gọi `assert_no_imputation(df, df, ...)`. Test này chứng minh cả
+        hai pipeline bây giờ thực sự so với input: nếu `clean_air_quality` tự so
+        sánh với chính nó, hàm này sẽ không bao giờ ném lỗi.
+        """
+        import inspect
+
+        for func in (clean_air_quality, clean_weather):
+            source = inspect.getsource(func)
+            self.assertNotIn(
+                "assert_no_imputation(df_air, df_air", source,
+                f"{func.__name__} vẫn tự so sánh với chính nó",
+            )
+            self.assertNotIn(
+                "assert_no_imputation(df_weather, df_weather", source,
+                f"{func.__name__} vẫn tự so sánh với chính nó",
+            )
+            self.assertIn("assert_no_imputation", source)
+
+    # --- BLOCKER: cot chuoi lai giet pipeline truoc khi quy tac kip chay
+
+    def test_string_columns_do_not_kill_the_pipeline(self):
+        """
+        `pm25 = "abc"` từng làm `_snapshot` ném ValueError khi gọi `float(max())`,
+        khiến quy tắc missing ngụy trang không bao giờ chạy được qua pipeline.
+        """
+        air = self._air(3)
+        air["pm25"] = ["10", "abc", "30"]
+        air["pm10"] = ["20", "20", "40"]
+        out, report = clean_air_quality(air, self._weather(3))
+        self.assertIn("timestamp", out.columns)
+        # Chuỗi rác đã thành NaN, giá trị hợp lệ được giữ.
+        self.assertTrue(pd.isna(out["pm25"].iloc[1]))
+        self.assertEqual(float(out["pm25"].iloc[0]), 10.0)
+        self.assertEqual(len(report["steps"]), 10)
+
+    # --- MAJOR: validator phai chay dung voi luoi da tram
+
+    def test_validator_accepts_a_correct_multi_station_grid(self):
+        """
+        Bản cũ AND điều kiện đơn điệu TOÀN CỤC với số khoảng cách lệch, nên lưới
+        đa trạm hoàn hảo vẫn bị báo FAIL.
+        """
+        frames = []
+        for station in ("A", "B"):
+            part = self._air(10)
+            part["station_id"] = station
+            frames.append(part)
+        multi = pd.concat(frames, ignore_index=True).sort_values(
+            ["station_id", "timestamp"], kind="mergesort"
+        ).reset_index(drop=True)
+        result = validate_cleaned_dataset(multi)
+        grid = result["continuous_hourly_grid_per_station"]
+        self.assertEqual(grid["irregular_intervals_total"], 0)
+        self.assertTrue(grid["passed"], "lưới đa trạm đúng vẫn bị báo FAIL")
+        self.assertTrue(result["all_passed"])
+
+    def test_validator_still_catches_a_broken_single_series_grid(self):
+        broken = self._air(10)
+        broken.loc[5, "timestamp"] = broken.loc[5, "timestamp"] + pd.Timedelta(hours=3)
+        broken = broken.sort_values("timestamp", kind="mergesort").reset_index(drop=True)
+        result = validate_cleaned_dataset(broken)
+        self.assertFalse(result["continuous_hourly_grid_per_station"]["passed"])
+
+    def test_reindex_refuses_rows_with_a_null_station_id(self):
+        """
+        `groupby` bỏ qua khoá NaN: quan sát thiếu `station_id` sẽ bị loại rồi thay
+        bằng hàng đệm mang ID của trạm khác — tức dữ liệu bị bịa.
+        """
+        df = self._air(4)
+        df.loc[1, "station_id"] = np.nan
+        with self.assertRaises(ValueError) as ctx:
+            reindex_hourly_grid(df)
+        self.assertIn("station_id", str(ctx.exception))
+
+    def test_reindex_does_not_fabricate_metadata_for_existing_rows(self):
+        """Bản gốc điền `location` cho MỌI hàng, kể cả hàng gốc bị NaN."""
+        # Bỏ giờ 02:00 để reindex thật sự tạo ra một hàng mới, rồi đặt `location`
+        # của một quan sát CÓ THẬT thành NaN.
+        df = self._air(4).drop(index=[2]).reset_index(drop=True)
+        df.loc[df.index[0], "location"] = np.nan
+        out, _ = reindex_hourly_grid(df)
+        self.assertEqual(len(out), 4, "phải chèn đúng 1 hàng cho khoảng trống")
+
+        # Quan sát thật có `location` NaN → phải giữ NaN, KHÔNG bị bịa.
+        original = out[out["timestamp"] == df["timestamp"].iloc[0]]
+        self.assertTrue(
+            pd.isna(original["location"].iloc[0]),
+            "location NaN của quan sát thật bị bịa thành giá trị",
+        )
+        # Hàng reindex TẠO RA (không phải quan sát nào) thì được điền hằng trạm.
+        inserted = out[out["pm25"].isna()]
+        self.assertEqual(len(inserted), 1)
+        self.assertEqual(inserted["location"].iloc[0], "HN")
+
+    def test_reindex_refuses_to_silently_delete_observations(self):
+        """Cửa sổ hẹp hơn dữ liệu từng làm `reindex` âm thầm xoá bản ghi."""
+        df = self._air(5)
+        narrow = (
+            df["timestamp"].iloc[1],
+            df["timestamp"].iloc[3],
+        )
+        with self.assertRaises(ValueError) as ctx:
+            reindex_hourly_grid(df, window=narrow)
+        self.assertIn("không xoá quan sát", str(ctx.exception))
+
+    def test_reindex_guards_against_padding_a_station_into_nonsense(self):
+        """Trạm sống 1 giờ cùng trạm sống 1 năm: đệm chung sẽ phình bảng."""
+        short = self._air(2)
+        short["station_id"] = "SHORT"
+        long_station = self._air(900)
+        long_station["station_id"] = "LONG"
+        multi = pd.concat([short, long_station], ignore_index=True)
+        with self.assertRaises(ValueError) as ctx:
+            reindex_hourly_grid(multi, max_pad_hours=48)
+        self.assertIn("max_pad_hours", str(ctx.exception))
+
+    # --- MAJOR: tra cuu do am phai dung khí tuong DA LAM SACH
+
+    def test_pipeline_tolerates_duplicated_weather_hours(self):
+        """
+        Thứ tự cũ gọi `clean_air_quality` trước `clean_weather`, nên ghép với khí
+        tượng thô và ném lỗi "trùng mốc thời gian" — ngay trong Issue #6.
+        """
+        weather = self._weather(10)
+        weather = pd.concat([weather, weather.iloc[[3]]], ignore_index=True)
+        air_path = self.tmp / "air.parquet"
+        wx_path = self.tmp / "wx.parquet"
+        self._air(10).to_parquet(air_path, index=False)
+        weather.to_parquet(wx_path, index=False)
+        report = run_deterministic_cleaning(
+            air_path, wx_path, save=False, project_root=self.tmp
+        )
+        self.assertTrue(report["air_quality"]["validation"]["all_passed"])
+        self.assertTrue(report["weather"]["validation"]["all_passed"])
+
+    def test_pipeline_tolerates_naive_weather_timestamps(self):
+        weather = self._weather(10)
+        weather["timestamp"] = weather["timestamp"].dt.tz_localize(None)
+        air_path = self.tmp / "air.parquet"
+        wx_path = self.tmp / "wx.parquet"
+        self._air(10).to_parquet(air_path, index=False)
+        weather.to_parquet(wx_path, index=False)
+        report = run_deterministic_cleaning(
+            air_path, wx_path, save=False, project_root=self.tmp
+        )
+        self.assertTrue(report["air_quality"]["validation"]["all_passed"])
+
+    # --- MAJOR: phan biet cam bien ket voi tram ngung phat
+
+    def test_stuck_sensor_is_flagged_separately_from_station_outage(self):
+        """
+        Bản gốc để cả giờ cảm biến kẹt cũng mang `pm25_was_missing=1`, khiến Issue #7
+        tưởng đó là sự cố trạm. Nay phải có cờ riêng.
+        """
+        air = self._air(24)
+        air.loc[2:12, "pm25"] = 42.0
+        air.loc[2:12, "pm10"] = 50.0
+        air.loc[15:25, "pm25"] = np.nan
+        air.loc[15:25, "pm10"] = np.nan
+        out, _ = clean_air_quality(air, self._weather(26))
+
+        self.assertIn(STUCK_SENSOR_FLAG, out.columns)
+        stuck = out[STUCK_SENSOR_FLAG].astype(bool)
+        missing = out[PM25_MISSING_FLAG].astype(bool)
+        self.assertGreater(int(stuck.sum()), 0, "cảm biến kẹt phải được gắn cờ")
+        self.assertGreater(int(missing.sum()), 0, "khối khuyết phải được gắn cờ")
+        # Giờ cảm biến kẹt cũng nằm trong khối khuyết nên mang cả hai cờ — đó là
+        # hệ quả đúng, không phải lỗi. Điểm cần chứng minh là hai cờ TÁCH ĐƯỢC:
+        # có giờ chỉ do trạm ngừng phát, không bị cảm biến kẹt.
+        self.assertGreater(int((missing & ~stuck).sum()), 0, "thiếu nhóm outage-only")
+        self.assertEqual(int((stuck & ~missing).sum()), 0)
+
+    # --- MINOR: dem chuoi bi sai, va bien toan rac khong duoc bao cao
+
+    def test_two_separate_stuck_runs_are_counted_as_two(self):
+        """Sau khi mask, hai chuỗi kẹt dính vào chuỗi NaN ở giữa và bị đếm là một."""
+        air = self._air(20)
+        air["pm25"] = (
+            [42.0] * 8 + [np.nan] * 3 + [42.0] * 8 + [1.0]
+        )
+        air["pm10"] = 50.0
+        _, report = clean_air_quality(air, self._weather(20))
+        stuck = next(
+            s for s in report["steps"] if s["name"] == "flag_stuck_values"
+        )
+        self.assertEqual(stuck["stats"]["by_column"]["pm25"]["nullified_runs"], 2)
+
+    def test_unparseable_strings_are_not_silently_swallowed(self):
+        """`pd.to_numeric(errors='coerce')` nuốt rác không báo, nên số liệu lệch."""
+        dirty = pd.DataFrame({"pm25": ["abc", "1.5", "  ", None]})
+        out, stats = normalize_disguised_missing(dirty, columns=["pm25"])
+        self.assertEqual(out["pm25"].isna().sum(), 3)
+        self.assertEqual(stats["by_column"]["pm25"]["rows_converted_to_nan"], 3)
+        self.assertEqual(stats["by_column"]["pm25"]["unparseable_values_to_nan"], 1)
+
+    # --- NIT: trinh bay trung thuc
+
+    def test_cleaning_log_marks_skipped_checks_as_na(self):
+        self.tmp.mkdir(parents=True, exist_ok=True)
+        air_path = self.tmp / "air.parquet"
+        wx_path = self.tmp / "wx.parquet"
+        self._air(10).to_parquet(air_path, index=False)
+        self._weather(10).to_parquet(wx_path, index=False)
+        log = render_cleaning_log(
+            run_deterministic_cleaning(air_path, wx_path, save=False, project_root=self.tmp)
+        )
+        weather_block = log.split("### 5.2.", 1)[1].split("## 6.", 1)[0]
+        self.assertIn("| `pm_subset_constraint`", weather_block)
+        self.assertIn("**N/A**", weather_block)
+        self.assertNotIn("| `pm_subset_constraint` | skipped=Có | **PASS** |", weather_block)
+
+    def test_cleaning_log_does_not_overclaim_issue5_consistency(self):
+        """Claim "nhất quán với audit_prolonged_zeros" là sai lệch 1 quan sát."""
+        self.tmp.mkdir(parents=True, exist_ok=True)
+        air_path = self.tmp / "air.parquet"
+        wx_path = self.tmp / "wx.parquet"
+        self._air(10).to_parquet(air_path, index=False)
+        self._weather(10).to_parquet(wx_path, index=False)
+        log = render_cleaning_log(
+            run_deterministic_cleaning(air_path, wx_path, save=False, project_root=self.tmp)
+        )
+        self.assertNotIn("đúng theo cùng quy ước với hàm `audit_prolonged_zeros()`", log)
+        self.assertIn("khác biệt 1 quan sát so với Issue #5", log)
+
+    def test_cleaning_log_publishes_no_deprecated_timedelta_snippet(self):
+        self.tmp.mkdir(parents=True, exist_ok=True)
+        air_path = self.tmp / "air.parquet"
+        wx_path = self.tmp / "wx.parquet"
+        self._air(10).to_parquet(air_path, index=False)
+        self._weather(10).to_parquet(wx_path, index=False)
+        log = render_cleaning_log(
+            run_deterministic_cleaning(air_path, wx_path, save=False, project_root=self.tmp)
+        )
+        self.assertNotIn("pd.Timedelta(hours=1)", log)
+        self.assertIn("np.timedelta64(1, 'h')", log)
+
+    def test_epsilon_is_labelled_as_reporting_tier_not_action_threshold(self):
+        """`epsilon` không tham gia quyết định hành động — đừng gọi nó là ngưỡng."""
+        self.tmp.mkdir(parents=True, exist_ok=True)
+        air_path = self.tmp / "air.parquet"
+        wx_path = self.tmp / "wx.parquet"
+        self._air(10).to_parquet(air_path, index=False)
+        self._weather(10).to_parquet(wx_path, index=False)
+        log = render_cleaning_log(
+            run_deterministic_cleaning(air_path, wx_path, save=False, project_root=self.tmp)
+        )
+        self.assertNotIn("`epsilon_ug_m3`", log)
+        self.assertIn("`reporting_epsilon_ug_m3`", log)
 
 
 if __name__ == "__main__":
