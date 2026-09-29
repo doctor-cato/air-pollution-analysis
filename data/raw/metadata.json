@@ -1,9 +1,9 @@
 {
-  "schema_version": "1.1.0",
+  "schema_version": "1.2.0",
   "project": "doctor-cato/air-pollution-analysis",
   "issue": "#19 – Source Profiling & Decision Gate",
   "profiling_timestamp_utc": "2026-09-28T16:47:26Z",
-  "last_updated_utc": "2026-09-29T05:07:00Z",
+  "last_updated_utc": "2026-09-29T06:13:01.324373+00:00",
   "target_city": "Hanoi, Vietnam",
   "temporal_coverage": {
     "study_window_start": "2023-01-01T00:00:00+07:00",
@@ -18,10 +18,10 @@
   },
   "geographic_validation": {
     "hanoi_bounding_box": {
-      "latitude_min": 20.50,
-      "latitude_max": 21.60,
-      "longitude_min": 105.30,
-      "longitude_max": 106.10
+      "latitude_min": 20.5,
+      "latitude_max": 21.6,
+      "longitude_min": 105.3,
+      "longitude_max": 106.1
     },
     "spatial_filtering_rules": {
       "station_rule": "Raw payload is preserved immutably in data/raw/. During normalization to interim/processed stages, records must match valid station_id (2178) and coordinates must fall strictly within Hanoi bounding box; out-of-bounds records are filtered.",
@@ -45,7 +45,16 @@
         "longitude": 105.8184
       },
       "instrument": "Met One BAM-1020 (US EPA FEM EQPM-0308-170)",
-      "parameters_available": ["pm25", "pm10", "no2", "co", "so2", "o3", "no", "nox"],
+      "parameters_available": [
+        "pm25",
+        "pm10",
+        "no2",
+        "co",
+        "so2",
+        "o3",
+        "no",
+        "nox"
+      ],
       "primary_parameter": "pm25",
       "unit": "µg/m³",
       "data_type": "hourly_aggregated_data",
@@ -170,6 +179,39 @@
       "access_limitations": "Non-standardized multi-file community uploads; requires individual Kaggle account credentials for API download.",
       "technical_limitations": "High data leakage risk due to opaque third-party preprocessing and imputation; lack of verifiable sensor hardware provenance (no FEM/FRM certification, no inlet height); apparent 0% missingness reflects artificial imputation rather than natural observations.",
       "recommended_use": "External distribution check only; strictly prohibited as primary ingestion source."
+    }
+  },
+  "collection_pipeline_execution": {
+    "executed_issue": "#3 – Pipeline thu thập và chuẩn hóa dữ liệu chất lượng không khí",
+    "status": "completed",
+    "execution_timestamp_utc": "2026-09-29T06:13:01.324383+00:00",
+    "study_window": {
+      "start": "2023-01-01T00:00:00+07:00",
+      "end": "2024-12-31T23:00:00+07:00"
+    },
+    "openaq_ingestion": {
+      "source_location_id": 2178,
+      "raw_file": "data/raw/openaq_raw_2023_2024.parquet",
+      "raw_sha256": "7286cb3da40488e27903a0daf314a538cf4a94163b27886e5c0d193b5783612a",
+      "raw_records_total": 116906,
+      "canonical_records": 15501,
+      "pm25_valid_observations": 14400,
+      "pm25_missing_observations": 1101,
+      "pm25_missing_rate_pct": 7.1,
+      "min_timestamp": "2023-01-01T15:00:00+07:00",
+      "max_timestamp": "2025-01-01T14:00:00+07:00",
+      "interim_file": "data/interim/air_quality_canonical.parquet"
+    },
+    "open_meteo_ingestion": {
+      "source_model": "ECMWF ERA5 Reanalysis",
+      "raw_file": "data/raw/open_meteo_raw_2023_2024.json",
+      "raw_sha256": "7f12b53c60c83b172f1bd1b0723aaee9d5e4c3d2e17e65765aa9e108cc59d8a4",
+      "raw_records_total": 17544,
+      "canonical_records": 17544,
+      "missing_rate_all_variables": "0.00%",
+      "min_timestamp": "2023-01-01T00:00:00+07:00",
+      "max_timestamp": "2024-12-31T23:00:00+07:00",
+      "interim_file": "data/interim/weather_canonical.parquet"
     }
   }
 }
