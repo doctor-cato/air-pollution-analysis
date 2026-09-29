@@ -65,6 +65,19 @@ WEATHER_PHYSICAL_BOUNDS = {
     "surface_pressure": {"min": 950.0, "max": 1050.0, "unit": "hPa"},
 }
 
+# Đơn vị chuẩn BẮT BUỘC của 6 biến khí tượng canonical (Issue #4 AC4-11).
+# Key = tên biến canonical, value = (tên trường tại nhà cung cấp, đơn vị kỳ vọng).
+# Đơn vị phải được đối chiếu với trường `hourly_units` trong payload GỐC của
+# Open-Meteo — không được giả định là đúng chỉ vì request đã yêu cầu.
+WEATHER_EXPECTED_UNITS: Dict[str, Tuple[str, str]] = {
+    "temperature": ("temperature_2m", "°C"),
+    "relative_humidity": ("relative_humidity_2m", "%"),
+    "wind_speed": ("wind_speed_10m", "m/s"),
+    "wind_direction": ("wind_direction_10m", "°"),
+    "precipitation": ("precipitation", "mm"),
+    "surface_pressure": ("surface_pressure", "hPa"),
+}
+
 # Ngưỡng tỷ lệ khuyết thiếu khí tượng mà pipeline thực thi phải đạt.
 # Issue #19 (docs/source_profiling_decision.md §14.2) yêu cầu kiểm định dữ liệu 6 biến
 # khí tượng không có giá trị khuyết thiếu trước khi lưu. Đây là ngưỡng tường minh của
@@ -346,6 +359,97 @@ def validate_canonical_uniqueness(
         )
 
 
+def resolve_canonical_timezone_key(tz: Any) -> Optional[str]:
+    """
+    Trả về khóa timezone IANA (ví dụ "Asia/Ho_Chi_Minh") nếu `tz` là một named
+    zone của hệ đơn vị thời gian; trả về None nếu `tz` chỉ là fixed offset
+    (ví dụ UTC+07:00, pytz.FixedOffset, datetime.timezone, tzutc) hoặc rỗng.
+
+    Mục đích: phân biệt timezone IANA `Asia/Ho_Chi_Minh` với fixed offset
+    `+07:00` — cả hai có cùng offset UTC nhưng chỉ một cái là múi giờ canonical
+    của dự án. Việc chỉ so sánh offset (như `utcoffset() == 7h`) là KHÔNG ĐỦ.
+
+    Hỗ trợ cả hai backend của pandas: `zoneinfo.ZoneInfo` (thuộc tính `.key`)
+    và `pytz` (thuộc tính `.zone`).
+    """
+    if tz is None:
+        return None
+    for attr in ("key", "zone"):
+        value = getattr(tz, attr, None)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def validate_open_meteo_hourly_units(raw_data: Dict[str, Any]) -> Dict[str, str]:
+    """
+    AC4-11: đối chiếu `hourly_units` trong payload GỐC của Open-Meteo với đơn vị
+    chuẩn của 6 biến khí tượng canonical (°C, %, m/s, °, mm, hPa).
+
+    Không được chỉ dựa vào việc request đã yêu cầu đúng đơn vị: hàm này CHỈ ĐỌC
+    trường `hourly_units` thực tế trong response. Hàm CHỈ ĐỌC (không sửa payload).
+
+    Validation failure (ném ValueError) khi:
+      - payload không có trường `hourly_units`;
+      - một trong 6 biến không có khai báo đơn vị;
+      - đơn vị khai báo khác đơn vị chuẩn của biến đó.
+    Không tự ý quy đổi đơn vị và không chấp nhận im lặng đơn vị lạ.
+
+    Trả về: dict {tên biến canonical: đơn vị đã kiểm định}.
+    """
+    hourly_units = (raw_data or {}).get("hourly_units")
+    if not isinstance(hourly_units, dict) or not hourly_units:
+        raise ValueError(
+            "Payload Open-Meteo không có trường 'hourly_units' hợp lệ. Không thể kiểm chứng "
+            "đơn vị của 6 biến khí tượng (AC4-11) — dừng pipeline thay vì giả định đơn vị đúng."
+        )
+
+    missing_units: List[str] = []
+    mismatched_units: Dict[str, Dict[str, str]] = {}
+    validated: Dict[str, str] = {}
+
+    for var_name, (provider_field, expected_unit) in WEATHER_EXPECTED_UNITS.items():
+        if provider_field not in hourly_units:
+            missing_units.append(provider_field)
+            continue
+        actual_unit = hourly_units[provider_field]
+        # So sánh chuỗi sau khi strip: provider có thể trả về unit kèm khoảng trắng.
+        if not isinstance(actual_unit, str) or actual_unit.strip() != expected_unit:
+            mismatched_units[var_name] = {
+                "provider_field": provider_field,
+                "expected": expected_unit,
+                "actual": str(actual_unit),
+            }
+            continue
+        validated[var_name] = expected_unit
+
+    if missing_units or mismatched_units:
+        problems: List[str] = []
+        if missing_units:
+            problems.append(f"thiếu khai báo đơn vị cho: {sorted(missing_units)}")
+        for var_name, info in mismatched_units.items():
+            problems.append(
+                f"biến '{var_name}' ({info['provider_field']}) có đơn vị "
+                f"'{info['actual']}', mong đợi '{info['expected']}'"
+            )
+        raise ValueError(
+            "Kiểm định đơn vị khí tượng thất bại (AC4-11 — đối chiếu trường 'hourly_units' "
+            f"của payload Open-Meteo): " + "; ".join(problems) + "."
+        )
+
+    return validated
+
+
+def is_canonical_timezone(tz: Any) -> bool:
+    """
+    True CHỈ khi `tz` là đúng timezone IANA `Asia/Ho_Chi_Minh`.
+
+    Fixed offset `+07:00` (dù cho đúng UTC+7) và mọi timezone khác đều trả về
+    False — xem `resolve_canonical_timezone_key()`.
+    """
+    return resolve_canonical_timezone_key(tz) == CANONICAL_TIMEZONE
+
+
 def validate_weather_canonical(
     df: pd.DataFrame,
     bounds: Optional[Dict[str, Dict[str, Any]]] = None,
@@ -359,8 +463,8 @@ def validate_weather_canonical(
     Phân biệt rõ ba mức kết quả:
       1. VALIDATION FAILURE (ném ValueError/TypeError):
          - thiếu cột canonical hoặc sai kiểu dữ liệu;
-         - `timestamp` không phải datetime tz-aware, hoặc sai múi giờ
-           (bắt buộc đúng `Asia/Ho_Chi_Minh` theo convention dự án);
+         - `timestamp` không phải datetime tz-aware, hoặc không phải đúng timezone
+           IANA `Asia/Ho_Chi_Minh` (fixed offset `+07:00` bị từ chối dù cùng UTC+7);
          - `timestamp` trùng lặp hoặc không tăng đơn điệu;
          - giá trị vượt giới hạn vật lý;
          - tỷ lệ khuyết thiếu vượt ngưỡng `max_missing_pct`.
@@ -378,21 +482,29 @@ def validate_weather_canonical(
     if missing_cols:
         raise ValueError(f"Canonical Weather DataFrame thiếu cột bắt buộc: {missing_cols}")
 
-    # Kiểm tra timezone: bắt buộc datetime64 tz-aware với múi giờ canonical
-    # Asia/Ho_Chi_Minh (UTC+7). Chấp nhận cả named zone lẫn fixed offset +07:00
-    # vì cả hai biểu diễn cùng một múi giờ; nhưng tz-naive hoặc sai offset là vi phạm.
+    # Kiểm tra timezone: bắt buộc datetime64 tz-aware với ĐÚNG timezone IANA
+    # `Asia/Ho_Chi_Minh`. Không chấp nhận fixed offset `+07:00` dù cho cùng
+    # UTC+7, và không chấp nhận timezone khác; tz-naive cũng bị từ chối.
     ts_dtype = df["timestamp"].dtype
     if not isinstance(ts_dtype, pd.DatetimeTZDtype):
         raise ValueError(
             "Cột 'timestamp' trong Weather Canonical phải có kiểu datetime64 tz-aware "
             f"(Asia/Ho_Chi_Minh), hiện tại là {ts_dtype}!"
         )
+    if not is_canonical_timezone(ts_dtype.tz):
+        tz_key = resolve_canonical_timezone_key(ts_dtype.tz)
+        observed = tz_key if tz_key is not None else f"fixed offset {ts_dtype.tz}"
+        raise ValueError(
+            f"Cột 'timestamp' phải dùng đúng timezone canonical '{CANONICAL_TIMEZONE}' "
+            f"(timezone IANA), hiện tại là {observed} ({ts_dtype.tz}). Fixed offset +07:00 "
+            "KHÔNG được chấp nhận dù có cùng độ lệch UTC."
+        )
     sample_offset = df["timestamp"].iloc[0].utcoffset() if not df.empty else None
     expected_offset = timedelta(hours=CANONICAL_UTC_OFFSET_HOURS)
     if sample_offset is not None and sample_offset != expected_offset:
         raise ValueError(
-            f"Cột 'timestamp' phải dùng múi giờ {CANONICAL_TIMEZONE} (UTC+7) theo convention "
-            f"dự án, hiện tại là {ts_dtype.tz} (offset {sample_offset})!"
+            f"Cột 'timestamp' dùng timezone canonical '{CANONICAL_TIMEZONE}' nhưng offset tại "
+            f"bản ghi đầu tiên là {sample_offset}, mong đợi {expected_offset}!"
         )
 
     # Kiểm tra kiểu dữ liệu float64 cho 6 biến khí tượng
@@ -865,6 +977,7 @@ class OpenMeteoAdapter:
         Chuẩn hóa payload Open-Meteo sang Canonical Schema:
         - timestamp: datetime64[ns, Asia/Ho_Chi_Minh]
         - 6 biến khí tượng kiểu float64 theo docs/data_dictionary.md.
+        - Kiểm định `hourly_units` của raw response (AC4-11) trước khi chuẩn hóa.
         - Làm sạch mã ngụy trang và bảo toàn số 0 hợp lệ.
         - Kiểm tra tính duy nhất, vị trí điểm lưới, và kiểm định chất lượng toàn diện.
         """
@@ -872,14 +985,17 @@ class OpenMeteoAdapter:
         if not hourly or "time" not in hourly:
             raise ValueError("Payload Open-Meteo không chứa cấu trúc 'hourly.time' hợp lệ!")
 
+        # AC4-11: đối chiếu `hourly_units` thực tế trong raw response TRƯỚC khi
+        # chuẩn hóa. Không được giả định đơn vị đúng chỉ vì request đã yêu cầu.
+        validated_units = validate_open_meteo_hourly_units(raw_data)
+        logger.debug(
+            "Đơn vị khí tượng đã kiểm định từ 'hourly_units': "
+            + ", ".join(f"{var}={unit}" for var, unit in validated_units.items())
+        )
+
         # Ánh xạ biến canonical -> tên trường tại nhà cung cấp (theo docs/data_dictionary.md §4.3)
         provider_fields = {
-            "temperature": "temperature_2m",
-            "relative_humidity": "relative_humidity_2m",
-            "wind_speed": "wind_speed_10m",
-            "wind_direction": "wind_direction_10m",
-            "precipitation": "precipitation",
-            "surface_pressure": "surface_pressure",
+            var: field for var, (field, _unit) in WEATHER_EXPECTED_UNITS.items()
         }
         raw_by_var = {var: list(hourly.get(field, [])) for var, field in provider_fields.items()}
         n_hours = len(hourly["time"])

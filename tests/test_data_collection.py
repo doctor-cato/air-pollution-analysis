@@ -8,8 +8,13 @@ Kiểm thử (Sử dụng unittest chuẩn thư viện Python):
 4. Bảo toàn giá trị đo 0.0 hợp lệ (không biến thành NaN).
 5. Ánh xạ station_id và cơ chế từ chối location_id 2178 đã bị disqualified.
 6. Assertion kiểm định 100% bản ghi canonical nằm trong Bounding Box Hà Nội.
+7. AC4-11: đối chiếu `hourly_units` của raw Open-Meteo response với đơn vị chuẩn.
+8. AC4-12: timestamp bắt buộc đúng timezone IANA `Asia/Ho_Chi_Minh`
+   (fixed offset +07:00 bị từ chối).
 """
 
+import datetime
+import json
 import unittest
 import numpy as np
 import pandas as pd
@@ -21,19 +26,29 @@ from src.data_collection import (
     STATION_AIRNOW_HANOI,
     STATION_WEATHER_ERA5,
     WEATHER_CANONICAL_COLUMNS,
+    WEATHER_EXPECTED_UNITS,
     WEATHER_PHYSICAL_BOUNDS,
     WEATHER_QUERY_COORDS,
     clean_air_quality_values,
     clean_weather_values,
     filter_hanoi_bounds,
     assert_canonical_within_hanoi,
+    is_canonical_timezone,
     is_sentinel_code,
+    resolve_canonical_timezone_key,
     summarize_weather_cleaning,
     validate_canonical_uniqueness,
+    validate_open_meteo_hourly_units,
     validate_weather_canonical,
     resolve_station_metadata,
     OpenMeteoAdapter,
 )
+
+# `hourly_units` chuẩn của Open-Meteo cho 6 biến khí tượng canonical.
+# Dùng cho fixture payload; KHÔNG phải dữ liệu quan trắc thực tế.
+EXPECTED_HOURLY_UNITS = {
+    provider_field: unit for provider_field, unit in WEATHER_EXPECTED_UNITS.values()
+}
 
 
 class TestDataCollectionPipeline(unittest.TestCase):
@@ -198,6 +213,7 @@ class TestDataCollectionPipeline(unittest.TestCase):
             mock_ctx.read.return_value = json.dumps({
                 "latitude": 21.0545,
                 "longitude": 105.8985,
+                "hourly_units": dict(EXPECTED_HOURLY_UNITS),
                 "hourly": {
                     "time": ["2025-07-03T00:00"],
                     "temperature_2m": [28.5],
@@ -256,6 +272,7 @@ class TestDataCollectionPipeline(unittest.TestCase):
         mock_raw = {
             "latitude": 21.0545,
             "longitude": 105.8985,
+            "hourly_units": dict(EXPECTED_HOURLY_UNITS),
             "hourly": {
                 "time": ["2025-07-03T00:00", "2025-07-03T01:00"],
                 "temperature_2m": [25.5, 24.8],
@@ -282,7 +299,7 @@ class TestDataCollectionPipeline(unittest.TestCase):
 
     def test_weather_validation_passes_valid_data(self):
         """Kiểm thử validate_weather_canonical thành công đối với chuỗi giờ chuẩn."""
-        ts_range = pd.date_range("2025-07-03 00:00:00+07:00", periods=24, freq="h")
+        ts_range = pd.date_range("2025-07-03 00:00:00", periods=24, freq="h", tz=CANONICAL_TIMEZONE)
         df_valid = pd.DataFrame({
             "timestamp": ts_range,
             "temperature": np.linspace(24.0, 32.0, 24),
@@ -301,7 +318,7 @@ class TestDataCollectionPipeline(unittest.TestCase):
 
     def test_weather_validation_detects_physical_bounds_violations(self):
         """Kiểm thử phát hiện vi phạm giới hạn vật lý khí tượng và ném lỗi ValueError."""
-        ts_range = pd.date_range("2025-07-03 00:00:00+07:00", periods=3, freq="h")
+        ts_range = pd.date_range("2025-07-03 00:00:00", periods=3, freq="h", tz=CANONICAL_TIMEZONE)
 
         # Nhiệt độ phi lý (65°C tại Hà Nội)
         df_invalid_temp = pd.DataFrame({
@@ -319,7 +336,7 @@ class TestDataCollectionPipeline(unittest.TestCase):
 
     def test_weather_validation_detects_duplicate_timestamps(self):
         """Kiểm thử validate_weather_canonical phát hiện trùng lặp timestamp."""
-        ts = pd.Timestamp("2025-07-03 10:00:00+07:00")
+        ts = pd.Timestamp("2025-07-03 10:00:00", tz=CANONICAL_TIMEZONE)
         df_dup = pd.DataFrame({
             "timestamp": [ts, ts],
             "temperature": [25.0, 26.0],
@@ -336,9 +353,9 @@ class TestDataCollectionPipeline(unittest.TestCase):
     def test_weather_validation_detects_temporal_gap(self):
         """Kiểm thử phát hiện khoảng gián đoạn thời gian (> 1 giờ) trong chuỗi khí tượng."""
         ts = [
-            pd.Timestamp("2025-07-03 00:00:00+07:00"),
-            pd.Timestamp("2025-07-03 01:00:00+07:00"),
-            pd.Timestamp("2025-07-03 04:00:00+07:00"),  # Nhảy cóc 3 giờ
+            pd.Timestamp("2025-07-03 00:00:00", tz=CANONICAL_TIMEZONE),
+            pd.Timestamp("2025-07-03 01:00:00", tz=CANONICAL_TIMEZONE),
+            pd.Timestamp("2025-07-03 04:00:00", tz=CANONICAL_TIMEZONE),  # Nhảy cóc 3 giờ
         ]
         df_gap = pd.DataFrame({
             "timestamp": ts,
@@ -382,6 +399,7 @@ class TestDataCollectionPipeline(unittest.TestCase):
         mock_raw_out = {
             "latitude": 35.1353,  # Albuquerque, NM
             "longitude": -106.5847,
+            "hourly_units": dict(EXPECTED_HOURLY_UNITS),
             "hourly": {
                 "time": ["2025-07-03T00:00"],
                 "temperature_2m": [25.0],
@@ -429,6 +447,7 @@ class TestDataCollectionPipeline(unittest.TestCase):
     def test_open_meteo_to_canonical_fails_loud_when_response_has_no_coordinates(self):
         """AC3: thiếu tọa độ trong payload phải raise, không được thay bằng hằng số nội bộ."""
         mock_raw_no_coords = {
+            "hourly_units": dict(EXPECTED_HOURLY_UNITS),
             "hourly": {
                 "time": ["2025-07-03T00:00"],
                 "temperature_2m": [25.0],
@@ -601,8 +620,8 @@ class TestDataCollectionPipeline(unittest.TestCase):
     def test_weather_validation_detects_non_monotonic_timestamps(self):
         """AC8/AC10: timestamp không tăng đơn điệu phải raise, không tự sắp xếp lại."""
         ts = [
-            pd.Timestamp("2025-07-03 01:00:00+07:00"),
-            pd.Timestamp("2025-07-03 00:00:00+07:00"),
+            pd.Timestamp("2025-07-03 01:00:00", tz=CANONICAL_TIMEZONE),
+            pd.Timestamp("2025-07-03 00:00:00", tz=CANONICAL_TIMEZONE),
         ]
         df_unsorted = pd.DataFrame({
             "timestamp": ts,
@@ -622,7 +641,7 @@ class TestDataCollectionPipeline(unittest.TestCase):
 
     def test_weather_validation_fails_when_missing_exceeds_threshold(self):
         """AC8/AC10: tỷ lệ khuyết thiếu vượt ngưỡng phải raise thay vì im lặng."""
-        ts_range = pd.date_range("2025-07-03 00:00:00+07:00", periods=4, freq="h")
+        ts_range = pd.date_range("2025-07-03 00:00:00", periods=4, freq="h", tz=CANONICAL_TIMEZONE)
         df_missing = pd.DataFrame({
             "timestamp": ts_range,
             "temperature": [25.0, np.nan, 26.0, 27.0],
@@ -643,9 +662,9 @@ class TestDataCollectionPipeline(unittest.TestCase):
     def test_weather_validation_reports_gap_as_warning_not_silent_pass(self):
         """AC10: gián đoạn là WARNING, nhưng `is_valid` phải phản ánh trung thực."""
         ts = [
-            pd.Timestamp("2025-07-03 00:00:00+07:00"),
-            pd.Timestamp("2025-07-03 01:00:00+07:00"),
-            pd.Timestamp("2025-07-03 04:00:00+07:00"),
+            pd.Timestamp("2025-07-03 00:00:00", tz=CANONICAL_TIMEZONE),
+            pd.Timestamp("2025-07-03 01:00:00", tz=CANONICAL_TIMEZONE),
+            pd.Timestamp("2025-07-03 04:00:00", tz=CANONICAL_TIMEZONE),
         ]
         df_gap = pd.DataFrame({
             "timestamp": ts,
@@ -671,12 +690,202 @@ class TestDataCollectionPipeline(unittest.TestCase):
         pd.testing.assert_frame_equal(df, snapshot)
         self.assertEqual(list(df.columns), WEATHER_CANONICAL_COLUMNS)
 
+    # ------------------------------------------------------------------
+    # AC11 – đơn vị: đối chiếu `hourly_units` của raw Open-Meteo response
+    # ------------------------------------------------------------------
 
-def _mock_weather_payload(n_hours: int = 3, **overrides) -> dict:
+    def test_expected_units_constant_maps_all_six_canonical_variables(self):
+        """AC11: bảng đơn vị chuẩn phải phủ đúng 6 biến canonical + tên trường provider."""
+        self.assertEqual(
+            WEATHER_EXPECTED_UNITS,
+            {
+                "temperature": ("temperature_2m", "°C"),
+                "relative_humidity": ("relative_humidity_2m", "%"),
+                "wind_speed": ("wind_speed_10m", "m/s"),
+                "wind_direction": ("wind_direction_10m", "°"),
+                "precipitation": ("precipitation", "mm"),
+                "surface_pressure": ("surface_pressure", "hPa"),
+            },
+        )
+
+    def test_hourly_units_helper_accepts_complete_correct_units(self):
+        """AC11: payload có đủ 6 đơn vị đúng -> validation pass, trả về đơn vị đã kiểm định."""
+        validated = validate_open_meteo_hourly_units(_mock_weather_payload())
+        self.assertEqual(
+            validated,
+            {var: unit for var, (_field, unit) in WEATHER_EXPECTED_UNITS.items()},
+        )
+
+    def test_hourly_units_helper_rejects_missing_hourly_units_block(self):
+        """AC11: thiếu hẳn trường `hourly_units` phải fail loud, không giả định đơn vị đúng."""
+        payload = _mock_weather_payload()
+        del payload["hourly_units"]
+        with self.assertRaises(ValueError) as ctx:
+            validate_open_meteo_hourly_units(payload)
+        self.assertIn("hourly_units", str(ctx.exception))
+
+    def test_hourly_units_helper_rejects_missing_single_variable_unit(self):
+        """AC11: thiếu unit của một biến phải fail và nêu rõ biến/trường bị thiếu."""
+        units = dict(EXPECTED_HOURLY_UNITS)
+        del units["surface_pressure"]
+        with self.assertRaises(ValueError) as ctx:
+            validate_open_meteo_hourly_units(_mock_weather_payload(hourly_units=units))
+        message = str(ctx.exception)
+        self.assertIn("thiếu khai báo đơn vị", message)
+        self.assertIn("surface_pressure", message)
+
+    def test_hourly_units_helper_rejects_wrong_unit_value(self):
+        """AC11: unit sai (ví dụ °F thay vì °C) phải fail và nêu rõ expected vs actual."""
+        units = dict(EXPECTED_HOURLY_UNITS)
+        units["temperature_2m"] = "°F"
+        with self.assertRaises(ValueError) as ctx:
+            validate_open_meteo_hourly_units(_mock_weather_payload(hourly_units=units))
+        message = str(ctx.exception)
+        self.assertIn("temperature", message)
+        self.assertIn("°F", message)
+        self.assertIn("°C", message)
+
+    def test_hourly_units_helper_rejects_unknown_unit_without_silent_conversion(self):
+        """AC11: unit lạ (ví dụ km/h cho wind_speed) không được âm thầm quy đổi hay chấp nhận."""
+        units = dict(EXPECTED_HOURLY_UNITS)
+        units["wind_speed_10m"] = "km/h"
+        with self.assertRaises(ValueError) as ctx:
+            validate_open_meteo_hourly_units(_mock_weather_payload(hourly_units=units))
+        self.assertIn("km/h", str(ctx.exception))
+
+    def test_hourly_units_helper_is_read_only(self):
+        """AC11: hàm kiểm định đơn vị không được sửa payload gốc."""
+        payload = _mock_weather_payload()
+        snapshot = json.loads(json.dumps(payload))
+        validate_open_meteo_hourly_units(payload)
+        self.assertEqual(payload, snapshot)
+
+    def test_to_canonical_passes_with_correct_hourly_units(self):
+        """AC11: pipeline canonicalization chạy được khi raw response khai báo đủ đơn vị chuẩn."""
+        df = OpenMeteoAdapter().to_canonical(_mock_weather_payload(), validate=True)
+        self.assertEqual(list(df.columns), WEATHER_CANONICAL_COLUMNS)
+        self.assertEqual(str(df["timestamp"].dt.tz), CANONICAL_TIMEZONE)
+
+    def test_to_canonical_fails_when_hourly_units_missing(self):
+        """AC11: to_canonical phải chặn payload không có `hourly_units` (fail loud end-to-end)."""
+        payload = _mock_weather_payload()
+        del payload["hourly_units"]
+        with self.assertRaises(ValueError) as ctx:
+            OpenMeteoAdapter().to_canonical(payload, validate=False)
+        self.assertIn("hourly_units", str(ctx.exception))
+
+    def test_to_canonical_fails_when_single_unit_is_wrong(self):
+        """AC11: một unit sai trong raw response phải làm to_canonical raise, nêu rõ biến."""
+        payload = _mock_weather_payload()
+        payload["hourly_units"]["precipitation"] = "inch"
+        with self.assertRaises(ValueError) as ctx:
+            OpenMeteoAdapter().to_canonical(payload, validate=False)
+        message = str(ctx.exception)
+        self.assertIn("precipitation", message)
+        self.assertIn("inch", message)
+        self.assertIn("mm", message)
+
+    def test_to_canonical_fails_when_single_unit_is_absent(self):
+        """AC11: một unit bị thiếu trong raw response phải làm to_canonical raise."""
+        payload = _mock_weather_payload()
+        del payload["hourly_units"]["relative_humidity_2m"]
+        with self.assertRaises(ValueError) as ctx:
+            OpenMeteoAdapter().to_canonical(payload, validate=False)
+        message = str(ctx.exception)
+        self.assertIn("thiếu khai báo đơn vị", message)
+        self.assertIn("relative_humidity_2m", message)
+
+    # ------------------------------------------------------------------
+    # AC12 – timezone: đúng identity IANA `Asia/Ho_Chi_Minh`
+    # ------------------------------------------------------------------
+
+    def _valid_weather_frame(self, timestamps) -> pd.DataFrame:
+        """Frame khí tượng hợp lệ về mặt schema, chỉ khác nhau ở cách biểu diễn timestamp."""
+        return pd.DataFrame(
+            {
+                "timestamp": timestamps,
+                "temperature": [25.0] * len(timestamps),
+                "relative_humidity": [80.0] * len(timestamps),
+                "wind_speed": [2.0] * len(timestamps),
+                "wind_direction": [100.0] * len(timestamps),
+                "precipitation": [0.0] * len(timestamps),
+                "surface_pressure": [1005.0] * len(timestamps),
+            }
+        )
+
+    def test_validation_accepts_canonical_iana_timezone(self):
+        """AC12: timezone IANA `Asia/Ho_Chi_Minh` phải pass."""
+        ts = pd.date_range("2025-07-03 00:00:00", periods=3, freq="h", tz=CANONICAL_TIMEZONE)
+        report = validate_weather_canonical(self._valid_weather_frame(ts))
+        self.assertTrue(report["is_valid"])
+        self.assertEqual(report["timezone"], CANONICAL_TIMEZONE)
+        self.assertEqual(report["utc_offset_hours"], 7.0)
+
+    def test_validation_rejects_fixed_offset_0700_timezone(self):
+        """AC12: fixed offset `+07:00` phải bị từ chối dù có cùng độ lệch UTC+7."""
+        ts = pd.date_range(
+            "2025-07-03 00:00:00", periods=3, freq="h", tz=datetime.timezone(datetime.timedelta(hours=7))
+        )
+        # Offset thực tế đúng +7 -> chứng minh đây là fixed offset, không phải sai lệch múi giờ.
+        self.assertEqual(ts[0].utcoffset(), datetime.timedelta(hours=7))
+        with self.assertRaises(ValueError) as ctx:
+            validate_weather_canonical(self._valid_weather_frame(ts))
+        self.assertIn(CANONICAL_TIMEZONE, str(ctx.exception))
+        self.assertIn("fixed offset", str(ctx.exception))
+
+    def test_validation_rejects_utc_offset_alias_timezone(self):
+        """AC12: timezone alias khác tên nhưng cùng offset (Etc/GMT-7) cũng phải bị từ chối."""
+        ts = pd.date_range("2025-07-03 00:00:00", periods=3, freq="h", tz="Etc/GMT-7")
+        with self.assertRaises(ValueError) as ctx:
+            validate_weather_canonical(self._valid_weather_frame(ts))
+        self.assertIn(CANONICAL_TIMEZONE, str(ctx.exception))
+
+    def test_validation_rejects_other_iana_timezone_with_same_offset(self):
+        """AC12: timezone IANA khác nhưng cùng UTC+7 (Asia/Singapore) phải bị từ chối."""
+        ts = pd.date_range("2025-07-03 00:00:00", periods=3, freq="h", tz="Asia/Singapore")
+        with self.assertRaises(ValueError) as ctx:
+            validate_weather_canonical(self._valid_weather_frame(ts))
+        self.assertIn(CANONICAL_TIMEZONE, str(ctx.exception))
+
+    def test_validation_rejects_naive_timestamp_via_timezone_layer(self):
+        """AC12: timestamp naive không có timezone phải bị từ chối ở lớp kiểm định."""
+        ts = pd.date_range("2025-07-03 00:00:00", periods=3, freq="h")
+        with self.assertRaises(ValueError) as ctx:
+            validate_weather_canonical(self._valid_weather_frame(ts))
+        self.assertIn("tz-aware", str(ctx.exception))
+
+    def test_canonical_timezone_key_helper_distinguishes_named_zone_from_fixed_offset(self):
+        """AC12: helper phải trả về khóa IANA cho named zone và None cho fixed offset."""
+        named = pd.date_range("2025-07-03", periods=1, tz=CANONICAL_TIMEZONE).dtype.tz
+        fixed = pd.date_range(
+            "2025-07-03", periods=1, tz=datetime.timezone(datetime.timedelta(hours=7))
+        ).dtype.tz
+
+        self.assertEqual(resolve_canonical_timezone_key(named), CANONICAL_TIMEZONE)
+        self.assertIsNone(resolve_canonical_timezone_key(fixed))
+        self.assertIsNone(resolve_canonical_timezone_key(None))
+
+        self.assertTrue(is_canonical_timezone(named))
+        self.assertFalse(is_canonical_timezone(fixed))
+
+    def test_to_canonical_normalizes_fixed_offset_input_to_canonical_zone(self):
+        """
+        AC12: payload có mốc giờ ghi kèm offset `+07:00` vẫn được chuẩn hóa về
+        đúng timezone IANA canonical (tz_convert), và output pass validation.
+        """
+        payload = _mock_weather_payload(n_hours=2)
+        payload["hourly"]["time"] = ["2025-07-03T00:00:00+07:00", "2025-07-03T01:00:00+07:00"]
+        df = OpenMeteoAdapter().to_canonical(payload, validate=True)
+        self.assertEqual(str(df["timestamp"].dt.tz), CANONICAL_TIMEZONE)
+        self.assertTrue(is_canonical_timezone(df["timestamp"].dtype.tz))
+
+
+def _mock_weather_payload(n_hours: int = 3, hourly_units=None, **overrides) -> dict:
     """Payload Open-Meteo tối giản, deterministic, dùng cho unit test (không gọi mạng)."""
     payload = {
         "latitude": 21.05448,
         "longitude": 105.898476,
+        "hourly_units": dict(EXPECTED_HOURLY_UNITS) if hourly_units is None else hourly_units,
         "hourly": {
             "time": [f"2025-07-03T{h:02d}:00" for h in range(n_hours)],
             "temperature_2m": [25.0] * n_hours,
