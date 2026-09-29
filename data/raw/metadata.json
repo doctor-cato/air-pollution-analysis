@@ -14,6 +14,25 @@
     "breakdown": {
       "2023_hours": 8760,
       "2024_leap_year_hours": 8784
+    },
+    "semantics": "initial_project_target_not_actual_coverage",
+    "semantics_note": "study_window_start / study_window_end mô tả KHUNG THỜI GIAN MỤC TIÊU ban đầu của dự án (Issue #1/#2), KHÔNG phải độ phủ thực tế của dữ liệu đã thu thập. Độ phủ vận hành thực tế được tính trực tiếp từ dữ liệu và nằm tại collection_pipeline_execution.openaq_ingestion.actual_source_coverage và collection_pipeline_execution.open_meteo_ingestion.actual_source_coverage.",
+    "actual_source_coverage": {
+      "openaq": {
+        "actual_min_timestamp": "2025-07-03 22:00:00+07:00",
+        "actual_max_timestamp": "2026-07-15 17:00:00+07:00",
+        "coverage_derivation": "computed_directly_from_dataframe_timestamps"
+      },
+      "open_meteo": {
+        "actual_min_timestamp": "2025-07-03 00:00:00+07:00",
+        "actual_max_timestamp": "2026-07-15 23:00:00+07:00",
+        "coverage_derivation": "computed_directly_from_dataframe_timestamps"
+      },
+      "temporal_integration_overlap": {
+        "overlap_min_timestamp": "2025-07-03 22:00:00+07:00",
+        "overlap_max_timestamp": "2026-07-15 17:00:00+07:00"
+      },
+      "note": "Trạm OpenAQ 4946811 chỉ được tích hợp từ 07/2025 nên không có dữ liệu cho khung mục tiêu 2023–2024. Việc mở rộng về 2023–2024 phụ thuộc nguồn lịch sử (AirNow DOS) và thuộc phạm vi M2 — KHÔNG được tự tạo hoặc nội suy dữ liệu."
     }
   },
   "geographic_validation": {
@@ -214,7 +233,12 @@
   "collection_pipeline_execution": {
     "executed_issue": "#3 & #4 – Pipeline thu thập và chuẩn hóa dữ liệu chất lượng không khí & khí tượng bề mặt Hà Nội",
     "status": "completed",
-    "execution_timestamp_utc": "2026-09-29T12:16:22.378604+00:00",
+    "runtime_log": {
+      "file": "data/raw/pipeline_execution_runtime.json",
+      "tracked_in_git": false,
+      "gitignore_rule": "data/raw/*.json",
+      "note": "Wall-clock execution state (execution_timestamp_utc, execution_time_seconds) is written here instead of this tracked provenance file, so re-running the notebook does not dirty the git working tree when the dataset and provenance are unchanged."
+    },
     "requested_study_window": {
       "start": "2025-07-03T00:00:00+07:00",
       "end": "2026-07-15T23:00:00+07:00",
@@ -321,5 +345,6 @@
       "air_quality_coverage_pct": 100.0,
       "row_explosion_detected": false
     }
-  }
+  },
+  "last_updated_utc_semantics": "Static provenance field: last manual review date of this metadata document. NOT rewritten by run_collection_pipeline(); per-run wall-clock state is written to data/raw/pipeline_execution_runtime.json (untracked)."
 }

@@ -751,7 +751,7 @@ Chi tiết luồng thực hiện:
 | #2 | Câu hỏi nghiên cứu + Canonical Schema | `docs/research_questions.md`, `docs/data_dictionary.md` | Từ điển định nghĩa 6 trường khí tượng + ranh giới vật lý tại §4.3 | **DONE** | — |
 | #19 | Cổng quyết định nguồn | `docs/source_profiling_decision.md`, `data/raw/metadata.json` | Ma trận đa tiêu chí §12.2; vai trò nguồn ghi trong metadata | **DONE** | Không có. Quyết định nguồn giữ nguyên, không bị đảo ngược |
 | #3 | Pipeline chất lượng không khí | `OpenAQAdapter` trong `src/data_collection.py` | 8.022 bản ghi canonical, tz `Asia/Ho_Chi_Minh`, mã băm SHA-256 trong metadata | **DONE** | Adapter AirNow DOS chưa thực thi (cần thông tin xác thực AirNow-Tech) |
-| #4 | Pipeline khí tượng + đồng bộ thời gian | `OpenMeteoAdapter`, `validate_weather_canonical` | 9.072 bản ghi/giờ, 0 trùng lặp, 0 khoảng trống, 0 khuyết thiếu; 39/39 unit test | **IN PROGRESS** | PR #26 chưa merge; #4 chưa đóng |
+| #4 | Pipeline khí tượng + đồng bộ thời gian | `OpenMeteoAdapter`, `validate_weather_canonical` | 9.072 bản ghi/giờ, 0 trùng lặp, 0 khoảng trống, 0 khuyết thiếu; PR #26 đã merge vào `main` | **DONE** | — |
 | #5 | Kiểm toán chất lượng 6 chiều | Chưa có | Chưa có `docs/data_quality_audit.md`, chưa có `notebooks/02_quality_audit.ipynb` | **NOT STARTED** | — |
 | #6 | Làm sạch tất định, cleaning log | Chưa có | Chưa có `docs/cleaning_log.md` | **NOT STARTED** | — |
 | #7 | Ghép dữ liệu, đóng băng, split, pipeline | Chưa có | Chưa có `src/cleaning_pipeline.py`, chưa có `data/processed/air_pollution_final.parquet` | **NOT STARTED** | — |
@@ -759,16 +759,19 @@ Chi tiết luồng thực hiện:
 ### G.3. Kết luận trạng thái Milestone 1
 
 > [!IMPORTANT]
-> **Milestone 1 chưa đóng hoàn toàn.** Trạng thái thực tế: **4/5 issue DONE, 1/5 IN PROGRESS.**
+> **Milestone 1 đã đóng hoàn toàn.** Trạng thái thực tế: **5/5 issue DONE.**
 >
-> - `#4` đã có hiện thực trên branch và test đầy đủ, nhưng PR #26 **đang mở, chưa merge**,
->   nên tiêu chí "đã merge vào `main`" chưa thỏa. Không đóng issue trước khi PR được duyệt.
-> - Điều kiện hoàn tất của `#4` là: PR #26 được merge vào `main` **và** toàn bộ tiêu chí
->   nghiệm thu AC4-1 → AC4-20 được tick. Sau khi AC được chuẩn hóa theo chính sách ba tầng
->   (Mục 3.2), **không còn khoảng trống kỹ thuật nào** chặn #4 — khoảng trống còn lại thuần
->   tuý thủ tục hợp nhất.
+> - `#4` đã hoàn tất: PR #26 **đã merge vào `main`**, toàn bộ tiêu chí nghiệm thu
+>   AC4-1 → AC4-20 đã được tick sau khi AC được chuẩn hóa theo chính sách ba tầng (Mục 3.2).
 > - Các số liệu thực nghiệm nêu trong báo cáo (#4) là **kết quả của một lần thực thi cụ thể**
 >   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
+> - Bộ kiểm thử hiện gồm **71 unit test tất định, tất cả PASS** (M1 baseline khi nghiệm thu:
+>   57 test; 14 test bổ sung trong nhánh `chore/m1-cleanup` phủ trực tiếp `OpenAQAdapter.to_canonical()`).
+> - **Lưu ý về ngữ nghĩa thời gian:** `data/raw/metadata.json` → `temporal_coverage` mô tả
+>   **khung thời gian mục tiêu ban đầu** của dự án (2023-01-01 → 2024-12-31), **không phải**
+>   độ phủ thực tế. Độ phủ vận hành thực tế (2025-07-03 → 2026-07-15) nằm tại
+>   `collection_pipeline_execution.*.actual_source_coverage`. Trạm OpenAQ 4946811 chỉ
+>   được tích hợp từ 07/2025; việc phủ 2023–2024 phụ thuộc nguồn lịch sử và thuộc M2.
 
 ---
 
