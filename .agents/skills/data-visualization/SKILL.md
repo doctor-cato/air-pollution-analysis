@@ -21,7 +21,7 @@ Design, construct, and export publication-ready explanatory graphics that commun
 ## Procedure
 
 ### 1. The 7 Authoritative Project Figures
-Implement the 7 designated explanatory charts defined in [`docs/roadmap.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/roadmap.md):
+Implement the 7 designated explanatory charts defined in [`docs/roadmap.md`](../../../docs/roadmap.md):
 
 | Figure ID | Chart Type | X-Axis | Y-Axis | Core Analytical Insight |
 |---|---|---|---|---|

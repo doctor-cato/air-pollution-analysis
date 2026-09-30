@@ -40,7 +40,7 @@ Analysis (Downstream EDA, Statistical Inference, OLS Regression, Classification)
 
 1. **Three-Tier Raw Data Governance:** Raw API payloads stored in `data/raw/` are preserved without manual edits (Three-tier policy, roadmap §3.2) and verified via SHA-256 hashes recorded in `metadata.json`. Every transformation must be executed via deterministic code and saved to `data/processed/` (or `data/interim/`).
 2. **Never Assume a Merge is Correct:** Always verify row counts before and after joining air and weather datasets to prevent Row Explosion bugs.
-3. **Traceability:** Every cleaning decision, threshold, and row count change must be logged in [`docs/cleaning_log.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/cleaning_log.md).
+3. **Traceability:** Every cleaning decision, threshold, and row count change must be logged in [`docs/cleaning_log.md`](../../docs/cleaning_log.md).
 
 ---
 
@@ -69,13 +69,13 @@ At every transition along the pipeline, validate these 9 criteria:
 - Save raw responses to `data/raw/`. Create `data/raw/metadata.json` recording source URLs, query parameters, retrieval dates, and schema versions.
 
 ### Phase 2: Quality Audit
-- Load data using [`data-quality`](file:///C:/Users/Admin/Documents/code_workspace/khdl/.agents/skills/data-quality/SKILL.md) skill.
+- Load data using [`data-quality`](../skills/data-quality/SKILL.md) skill.
 - Score across the 6 quality dimensions and uncover disguised missing markers (`"-999"`, `"N/A"`).
 
 ### Phase 3: Cleaning & Time-Series Reindexing
 - Apply physical rules: flag $\text{PM}_{2.5} > \text{PM}_{10}$ as `NaN`, remove negative values, detect stuck sensor series ($> 6$h identical float).
 - Add boolean flags: `is_high_humidity_fog` when $\text{RH} > 90\%$ and `pm25` spikes.
-- Reindex to a complete hourly time grid using [`time-series-analysis`](file:///C:/Users/Admin/Documents/code_workspace/khdl/.agents/skills/time-series-analysis/SKILL.md). Interpolate small gaps ($\le 2$h); flag large gaps ($> 6$h) with `pm25_was_missing = 1`.
+- Reindex to a complete hourly time grid using [`time-series-analysis`](../skills/time-series-analysis/SKILL.md). Interpolate small gaps ($\le 2$h); flag large gaps ($> 6$h) with `pm25_was_missing = 1`.
 
 ### Phase 4: Integration
 - Join `df_air` and `df_weather` on `timestamp` (UTC+7).
@@ -84,4 +84,4 @@ At every transition along the pipeline, validate these 9 criteria:
 ### Phase 5: Pipeline Transformation & Storage
 - Construct Scikit-Learn `Pipeline` with `ColumnTransformer`. Fit transformers strictly on the training partition.
 - Export clean dataset to `data/processed/air_pollution_final.parquet` with Snappy compression.
-- Update [`docs/cleaning_log.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/cleaning_log.md).
+- Update [`docs/cleaning_log.md`](../../docs/cleaning_log.md).
