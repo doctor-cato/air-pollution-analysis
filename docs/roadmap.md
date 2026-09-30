@@ -889,6 +889,9 @@ Ba quyết định dưới đây được chốt trên dữ liệu thực nghi�
 
 **Quyết định 1 — Điểm cắt Train/Test = `2026-01-15 00:00:00+07:00`.**
 
+> **Đây là lựa chọn phương pháp luận phù hợp với dữ liệu hiện có, KHÔNG phải tối ưu
+> tuyệt đối.** Xem *Hạn chế đã biết* ngay dưới bảng so sánh.
+
 Căn cứ: **temporal representativeness + event coverage**, theo đúng task 3 của tuần này. Dữ liệu chỉ có **một chu kỳ mùa** (07/2025–07/2026) nên mọi tỷ lệ chia theo số dòng đều hỏng:
 
 | Điểm cắt | Train/Test | `train_gio>100` | `test_gio>100` | Tỉ lệ trong Test | $p90_{test}/p90_{train}$ |
@@ -901,12 +904,35 @@ Căn cứ: **temporal representativeness + event coverage**, theo đúng task 3 
 
 Cột cuối là **tỷ lệ p90 Test/Train** — đo trực tiếp *temporal representativeness*: càng gần `1.00` càng giống. Với 80/20, Test có 6 giờ vượt 100 µg/m³ trong 1818 giờ → mô hình đoán "không cảnh báo" cho mọi giờ vẫn đạt ~99,7% accuracy. Đó là **Accuracy Trap** mà `.agents/rules/analysis.md` cấm, và làm Recall / PR-AUC ở Issue #11–#13 mất hết ý nghĩa.
 
-> [!WARNING]
-> **`2026-01-01` thắng trên cả hai tiêu chí mà Issue #7 nêu** (event coverage 181 > 99, và $p90$ ratio 0,97 > 0,80). Nó bị loại vì một lý do **không** thuộc ba tiêu chí đó: `2026-01-15` cắt **giữa** chuỗi sự kiện nặng (2025-11 → 2026-01 chiếm 335 trong 487 giờ >100 toàn dữ liệu), nên ranh giới không trùng đúng biên nghiệm vụ và cả hai tập đều chứa regime nặng lẫn regime nền.
+> [!IMPORTANT]
+> **Đã chốt: giữ `2026-01-15`. Không đổi sang `2026-01-01`.**
 >
-> **Cái giá phải trả:** tỷ lệ nhãn nặng ở Test (2,27%) thấp hơn Train (6,30%) khoảng 2,8 lần — tức có **dịch chuyển tỷ lệ lớp** giữa hai tập. Đây là **lựa chọn có cân nhắc, không phải kết luận bắt buộc từ dữ liệu**.
+> **Lý do — tính đại diện theo thời gian.** Mốc `2026-01-15` cắt **giữa mùa đông**, nên **cả Train lẫn Test đều chứa giai đoạn mùa đông**. Điều này quyết định vì tập dữ liệu hiện chỉ có **đúng một chu kỳ mùa** (07/2025–07/2026): nếu Test chỉ chứa một mùa mà Train chưa từng trải qua, mọi kết quả ở Issue #11–#13 sẽ đo trên phép dịch phân phối chứ không phải trên cùng một thế giới khí quyển.
 >
-> **Câu hỏi mở cho Issues #11–#13:** trước khi huấn luyện mô hình, cần chốt lại mốc cắt dựa trên **tỷ lệ nhãn nặng** và **độ dịch phân phối Train↔Test**, không chỉ trên event coverage. Việc đổi mốc cắt không thực hiện trong PR của Issue #7 vì nó thay đổi một quyết định đã ghi ở đây — vượt ra ngoài phạm vi sửa lỗi.
+> **Đây là lựa chọn phương pháp luận phù hợp với dữ liệu hiện có — KHÔNG phải tối ưu tuyệt đối.** Nó **không** phải mốc cắt điểm cao nhất trên mọi tiêu chí, và không nên được mô tả như vậy.
+>
+> **Hạn chế đã biết, ghi lại để Issues #11–#13 cân nhắc:**
+>
+> | Hạn chế | Số liệu |
+> |---|---|
+> | Mốc `2026-01-01` có event coverage cao hơn | `test_gio>100` 181 so với 99 |
+> | Mốc `2026-01-01` có $p90$ ratio gần 1 hơn | 0,97 so với 0,80 |
+> | Tỷ lệ nhãn nặng ở Test thấp hơn Train khoảng **2,8 lần** | Test 2,27% so với Train 6,30% |
+>
+> Hệ quả cụ thể: **có dịch chuyển tỷ lệ lớp giữa Train và Test**. Khi đánh giá mô hình ở Issue #11–#13, Recall và PR-AUC phải được diễn giải cẩn thận với sự dịch chuyển này; nếu cần, có thể báo cáo thêm chỉ số trên một tập con Test đã cân bằng nhãn. Việc chốt lại mốc cắt **không thuộc phạm vi Issue #7** và chỉ nên xem xét khi có thêm một chu kỳ mùa nữa trong dữ liệu.
+
+**Vì sao giữ CẢ HAI phép kiểm tra số dòng (`<=` và `==`).**
+
+Issue #7 §Yêu cầu kỹ thuật và AC1 chỉ định `assert len(df_merged) <= len(df_air)`. Phép này được **giữ nguyên** để không lệch khỏi tiêu chí nghiệm thu. Nhưng với `how="left"` + khoá unique hai phía + `validate="1:1"`, `<=` là **điều kiện cần mà không phân biệt được** — nó luôn đúng và không bắt được lỗi nào. Vì vậy `merge_air_weather()` kiểm tra **cả hai**:
+
+| Phép | Vai trò | Bắt được gì |
+|---|---|---|
+| `len(df_merged) <= len(df_air)` | **Giữ nguyên theo AC1** | Điều kiện cần: không được sinh thêm dòng |
+| `len(df_merged) == len(df_air)` | **Bất biến thật của pipeline** | Không được **mất** dòng ô nhiễm nào |
+
+**Cơ sở của bất biến `==`.** Theo định nghĩa của Issue #7, phép ghép là `merge(how="left")` theo khoá quan sát: **mọi dòng của bảng ô nhiễm đều được giữ lại**. Nếu một giờ không có bản ghi khí tượng tương ứng thì dòng ô nhiễm đó vẫn còn, chỉ mang `NaN` ở các cột khí tượng — đó chính là hành vi được `SimpleImputer` xử lý sau đó, chứ không phải lý do để xoá dòng. Pipeline này **không được phép loại bỏ air row trong bất kỳ trường hợp hợp lệ nào**, nên `==` là bất biến đúng.
+
+**Nếu trong tương lai pipeline được phép loại air row** (ví dụ thêm bước loại quan sát không đạt kiểm định chất lượng trước khi freeze), thì bất biến trở thành `len(df_merged) <= len(df_air)` và phép `==` **phải được nới lỏng** — kèm ghi chú lý do trong mã. Đó là lý do hai phép cùng tồn tại thay vì một phép bị xoá: phép `==` gắn với *định nghĩa hiện tại* của pipeline, và sẽ tự báo động nếu định nghĩa đó đổi.
 
 Cắt giữa mùa đông là cách để **cả hai** tập đều chứa regime ô nhiễm:
 
