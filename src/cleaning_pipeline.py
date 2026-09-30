@@ -37,11 +37,14 @@ from sklearn.preprocessing import RobustScaler
 
 # Reuse từ Issue #5 – không duplicate logic
 try:
-    from data_quality import audit_dataframe, audit_six_dimensions
+    from src.data_quality import audit_dataframe, audit_six_dimensions
 except ImportError:
     # Fallback khi chạy standalone (không có data_quality)
-    audit_dataframe = None
-    audit_six_dimensions = None
+    try:
+        from data_quality import audit_dataframe, audit_six_dimensions
+    except ImportError:
+        audit_dataframe = None
+        audit_six_dimensions = None
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +53,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 NUMERIC_FEATURES: List[str] = [
-    "pm25",
     "pm10",
     "temperature",
     "relative_humidity",
@@ -595,8 +597,8 @@ def validate_no_leakage(
 
     Validation:
     1. Pipeline đã được fit (có thuộc tính named_steps).
-    2. Imputer đã fit trên Train (statistics_ có giá trị).
-    3. Scaler đã fit trên Train (center_, scale_ có giá trị).
+    2. Imputer đã fit trên Train (statistics_ khớp với median của Train).
+    3. Scaler đã fit trên Train (center_ khớp với median của Train).
     4. KHÔNG có bước nào fit trên Test.
 
     Parameters
@@ -641,9 +643,32 @@ def validate_no_leakage(
     if not hasattr(scaler, "center_") or not hasattr(scaler, "scale_"):
         raise AssertionError("Scaler chưa được fit!")
 
+    # So sánh imputer.statistics_ với median của Train
+    train_median = X_train.median()
+    for i, col in enumerate(X_train.columns):
+        if col in train_median.index:
+            expected = train_median[col]
+            actual = imputer.statistics_[i]
+            if not np.isclose(expected, actual, equal_nan=True):
+                raise AssertionError(
+                    f"Imputer statistics cho '{col}' không khớp với Train median: "
+                    f"expected {expected}, got {actual}. Pipeline có thể đã fit trên Test!"
+                )
+
+    # So sánh scaler.center_ với median của Train
+    for i, col in enumerate(X_train.columns):
+        if col in train_median.index:
+            expected = train_median[col]
+            actual = scaler.center_[i]
+            if not np.isclose(expected, actual, equal_nan=True):
+                raise AssertionError(
+                    f"Scaler center cho '{col}' không khớp với Train median: "
+                    f"expected {expected}, got {actual}. Pipeline có thể đã fit trên Test!"
+                )
+
     logger.info("✓ No leakage: pipeline fitted on Train only")
-    logger.info("  - Imputer statistics: %d values", len(imputer.statistics_))
-    logger.info("  - Scaler center: %d values", len(scaler.center_))
+    logger.info("  - Imputer statistics: %d values (khớp Train median)", len(imputer.statistics_))
+    logger.info("  - Scaler center: %d values (khớp Train median)", len(scaler.center_))
 
 
 def freeze_dataset_with_audit(
