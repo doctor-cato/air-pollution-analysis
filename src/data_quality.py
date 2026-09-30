@@ -349,21 +349,81 @@ def audit_six_dimensions(
         (1 - total_missing_cells / total_cells) * 100, 4
     ) if total_cells > 0 else 0.0
 
+    # Độ bao phủ lưới 1 giờ liên tục.
+    #
+    # PHẢI TÍNH THEO TỪNG TRẠM RỒI MỚI CỘNG. Bản gốc lấy `expected_grid` từ
+    # `min_ts → max_ts` của CẢ DataFrame nhưng trừ `len(df)` — tức trộn "chiều
+    # dài lưới của toàn khung" với "số dòng của mọi trạm cộng lại". Hai đại lượng
+    # khác nhau nên kết quả sai, và sai theo hướng nguy hiểm: với ≥2 trạm đều
+    # đủ dữ liệu thì `expected - rows` **âm** (2 trạm × 8h = 16 dòng trong khi
+    # `expected_grid` chỉ dài 8 → -8, tức -100%). Tệ hơn, một trạm mất hàng thật
+    # vẫn ra số âm nên **khoảng trống bị giấu hoàn toàn**.
+    #
+    # Mẫu số là **cửa sổ triển khai dùng chung** = `min_ts → max_ts` của toàn khung,
+    # nhân với số trạm. Cách này bắt được cả ba loại thiếu hút, và không bao giờ
+    # ra số âm:
+    #   - khoảng trống nội bộ giữa các giờ của một trạm;
+    #   - trạm thiếu hẳn ở một khoảng thời gian;
+    #   - trạm bị cắt cụt ở hai mép coverage (chỉ báo đầu/cuối).
+    #
+    # Với mỗi trạm, "thực tế" là số mốc thời gian **duy nhất** — dùng `nunique`
+    # chứ không phải `len`, vì trùng khóa là lỗi khác, không phải giờ có quan sát.
     temporal_grid_completeness = {}
     if has_timestamp and total_rows > 1:
-        min_ts = df["timestamp"].min()
-        max_ts = df["timestamp"].max()
-        expected_grid = pd.date_range(min_ts, max_ts, freq="h")
-        expected_hours = len(expected_grid)
-        unrecorded_hours = expected_hours - total_rows
-        unrecorded_pct = round((unrecorded_hours / expected_hours * 100), 4) if expected_hours > 0 else 0.0
-        temporal_grid_completeness = {
-            "expected_continuous_hours": expected_hours,
-            "actual_recorded_hours": total_rows,
-            "unrecorded_hours_gaps": unrecorded_hours,
-            "unrecorded_hours_pct": unrecorded_pct,
-            "grid_frequency": "1 hour ('h')",
-        }
+        if "station_id" in df.columns:
+            groups = [(str(k), v) for k, v in df.groupby("station_id", sort=True)]
+        else:
+            groups = [("(khong co cot station_id)", df)]
+
+        # Cửa sổ triển khai dùng chung: bỏ qua trạm toàn-NaT.
+        valid_spans = []
+        for station_key, sub in groups:
+            s_min = sub["timestamp"].min()
+            s_max = sub["timestamp"].max()
+            if pd.isna(s_min) or pd.isna(s_max):
+                continue
+            valid_spans.append((station_key, sub, s_min, s_max))
+
+        if valid_spans:
+            shared_hours = len(pd.date_range(
+                min(s[2] for s in valid_spans),
+                max(s[3] for s in valid_spans),
+                freq="h",
+            ))
+
+            per_station: Dict[str, Dict[str, Any]] = {}
+            actual_total = 0
+            for station_key, sub, s_min, s_max in valid_spans:
+                own_hours = len(pd.date_range(s_min, s_max, freq="h"))
+                s_actual = int(sub["timestamp"].nunique())
+                per_station[station_key] = {
+                    "window_start": s_min.isoformat(),
+                    "window_end": s_max.isoformat(),
+                    "actual_recorded_hours": s_actual,
+                    # Khoảng trống bên trong cửa sổ quan sát của riêng trạm.
+                    "internal_gap_hours": own_hours - s_actual,
+                    # Thiếu so với cửa sổ triển khai chung (gồm mép bị cắt cụt).
+                    "missing_vs_shared_window_hours": shared_hours - s_actual,
+                }
+                actual_total += s_actual
+
+            expected_total = shared_hours * len(valid_spans)
+            unrecorded_hours = expected_total - actual_total
+            unrecorded_pct = (
+                round((unrecorded_hours / expected_total * 100), 4)
+                if expected_total > 0 else 0.0
+            )
+            temporal_grid_completeness = {
+                "expected_continuous_hours": expected_total,
+                "actual_recorded_hours": actual_total,
+                "unrecorded_hours_gaps": unrecorded_hours,
+                "unrecorded_hours_pct": unrecorded_pct,
+                "grid_frequency": "1 hour ('h')",
+                "stations_evaluated": len(valid_spans),
+                "shared_window_hours": shared_hours,
+                "aggregation": "per_station_then_summed",
+                "per_station": per_station,
+            }
 
     completeness_dim = {
         "overall_cell_completeness_pct": overall_cell_completeness_pct,

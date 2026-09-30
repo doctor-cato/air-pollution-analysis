@@ -527,5 +527,130 @@ class TestRunQualityAuditPipeline(unittest.TestCase):
         self.assertEqual(results, {})
 
 
+class TestTemporalGridMultiStation(unittest.TestCase):
+    """Review #34: `temporal_grid_completeness` trộn hai đại lượng khác nhau.
+
+    Bản gốc lấy `expected_grid` từ `min_ts → max_ts` của CẢ DataFrame nhưng trừ
+    `len(df)` — tức chiều dài lưới *toàn khung* trừ số dòng của *mọi trạm*. Với
+    nhiều trạm, kết quả sai theo hướng nguy hiểm:
+
+    - 2 trạm × 8 giờ đều đầy đủ → `8 - 16 = -8`, tức **-100%**. Số âm.
+    - Trạm B mất thật 3 giờ → vẫn ra số âm, tức **khoảng trống bị giấu hoàn toàn**.
+
+    Nay tính theo từng trạm rồi cộng, với mẫu số là cửa sổ triển khai dùng chung
+    (`min → max` toàn khung) × số trạm. Bắt được cả ba loại thiếu hút:
+    khoảng trống nội bộ, trạm vắng mặt, và coverage bị cắt cụt ở hai mép.
+    """
+
+    TZ = "Asia/Ho_Chi_Minh"
+
+    def _frame(self, station, hours, start="2025-01-01 00:00"):
+        ts = pd.date_range(start, periods=hours, freq="h", tz=self.TZ)
+        return pd.DataFrame({
+            "timestamp": ts,
+            "station_id": [station] * hours,
+            "location": ["Hanoi"] * hours,
+            "pm25": np.full(hours, 10.0),
+            "pm10": np.full(hours, 12.0),
+        })
+
+    def _grid(self, df):
+        return (audit_six_dimensions(df)["dimensions"]["completeness"]
+                ["temporal_grid_completeness"])
+
+    def test_two_complete_stations_report_zero_gaps_not_a_negative(self):
+        """Bản gốc: unrecorded = -8, pct = -100.0. Nay phải là 0."""
+        df = pd.concat([self._frame("A", 8), self._frame("B", 8)],
+                       ignore_index=True)
+        grid = self._grid(df)
+        self.assertEqual(grid["unrecorded_hours_gaps"], 0)
+        self.assertEqual(grid["unrecorded_hours_pct"], 0.0)
+        self.assertEqual(grid["expected_continuous_hours"], 16,
+                         "8 giờ chung × 2 trạm")
+        self.assertEqual(grid["actual_recorded_hours"], 16)
+        self.assertEqual(grid["stations_evaluated"], 2)
+        self.assertEqual(grid["per_station"]["A"]["missing_vs_shared_window_hours"], 0)
+        self.assertEqual(grid["per_station"]["B"]["missing_vs_shared_window_hours"], 0)
+
+    def test_the_gap_count_is_never_negative(self):
+        """Bất biến chung cho mọi số trạm — đây là lỗi gốc."""
+        for n_stations in (1, 2, 3, 5):
+            df = pd.concat(
+                [self._frame("ST%d" % k, 8) for k in range(n_stations)],
+                ignore_index=True)
+            grid = self._grid(df)
+            self.assertGreaterEqual(
+                grid["unrecorded_hours_gaps"], 0,
+                "%d tram day du phai ra so khong am" % n_stations)
+            self.assertGreaterEqual(grid["unrecorded_hours_pct"], 0.0)
+            self.assertEqual(grid["unrecorded_hours_gaps"], 0)
+
+    def test_a_station_missing_hours_is_no_longer_hidden(self):
+        """Trạm B chỉ quan sát 5/8 giờ đầu — bản gốc báo số âm, tức giấu mất 3 giờ."""
+        df = pd.concat([self._frame("A", 8), self._frame("B", 5)],
+                       ignore_index=True)
+        grid = self._grid(df)
+        self.assertEqual(grid["unrecorded_hours_gaps"], 3)
+        self.assertEqual(grid["per_station"]["A"]["missing_vs_shared_window_hours"], 0)
+        self.assertEqual(grid["per_station"]["B"]["missing_vs_shared_window_hours"], 3)
+
+    def test_an_internal_gap_inside_one_station_is_counted(self):
+        """Khoảng trống nằm GIỮA cửa sổ của riêng trạm B."""
+        b = self._frame("B", 8).drop(index=[3, 4, 5])
+        df = pd.concat([self._frame("A", 8), b], ignore_index=True)
+        grid = self._grid(df)
+        self.assertEqual(grid["unrecorded_hours_gaps"], 3)
+        self.assertEqual(grid["per_station"]["B"]["internal_gap_hours"], 3)
+        self.assertEqual(grid["per_station"]["A"]["internal_gap_hours"], 0)
+
+    def test_stations_with_disjoint_windows_surface_the_coverage_shortfall(self):
+        """A quan sát 00–07, B quan sát 10–17: cả hai tự chúng đềy đủ, nhưng trong
+        cửa sổ triển khai chung thì thiếu 20 giờ — phải được phản ánh."""
+        df = pd.concat(
+            [self._frame("A", 8), self._frame("B", 8, start="2025-01-01 10:00")],
+            ignore_index=True)
+        grid = self._grid(df)
+        self.assertEqual(grid["shared_window_hours"], 18)
+        self.assertEqual(grid["expected_continuous_hours"], 36)
+        self.assertEqual(grid["actual_recorded_hours"], 16)
+        self.assertEqual(grid["unrecorded_hours_gaps"], 20)
+        # Cả hai vẫn "đầy đủ" trong cửa sổ riêng — hai sự thật khác nhau.
+        self.assertEqual(grid["per_station"]["A"]["internal_gap_hours"], 0)
+        self.assertEqual(grid["per_station"]["B"]["internal_gap_hours"], 0)
+        self.assertEqual(grid["per_station"]["A"]["missing_vs_shared_window_hours"], 10)
+
+    def test_single_station_behaviour_is_unchanged(self):
+        """Đối chiếu hành vi một trạm so với trước khi sửa."""
+        df = self._frame("A", 8)
+        grid = self._grid(df)
+        self.assertEqual(grid["expected_continuous_hours"], 8)
+        self.assertEqual(grid["actual_recorded_hours"], 8)
+        self.assertEqual(grid["unrecorded_hours_gaps"], 0)
+        self.assertEqual(grid["stations_evaluated"], 1)
+
+    def test_single_station_internal_gap(self):
+        df = self._frame("A", 8).drop(index=[3, 4, 5]).reset_index(drop=True)
+        grid = self._grid(df)
+        self.assertEqual(grid["expected_continuous_hours"], 8)
+        self.assertEqual(grid["unrecorded_hours_gaps"], 3)
+        self.assertEqual(grid["unrecorded_hours_pct"], 37.5)
+
+    def test_dataset_without_station_column_still_works(self):
+        df = self._frame("A", 8).drop(columns=["station_id"])
+        grid = self._grid(df)
+        self.assertEqual(grid["stations_evaluated"], 1)
+        self.assertEqual(grid["unrecorded_hours_gaps"], 0)
+        self.assertIn("(khong co cot station_id)", grid["per_station"])
+
+    def test_per_station_windows_are_reported_for_transparency(self):
+        df = pd.concat([self._frame("A", 8), self._frame("B", 5)],
+                       ignore_index=True)
+        grid = self._grid(df)
+        b = grid["per_station"]["B"]
+        self.assertTrue(b["window_start"].startswith("2025-01-01T00:00"))
+        self.assertTrue(b["window_end"].startswith("2025-01-01T04:00"))
+        self.assertEqual(grid["aggregation"], "per_station_then_summed")
+
+
 if __name__ == "__main__":
     unittest.main()

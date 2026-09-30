@@ -136,13 +136,19 @@ class TestLeakageGuard(unittest.TestCase):
         pipeline = self._pipeline()
         pipeline.fit(self.X_test)  # SAI: fit trên Test
         with self.assertRaises(AssertionError) as ctx:
-            cp.validate_no_leakage(pipeline, X_train=self.X_train, X_test=self.X_test)
+            cp.validate_no_leakage(
+                pipeline, X_train=self.X_train, X_test=self.X_test,
+                verify_chronology=False,
+            )
         self.assertIn("leakage", str(ctx.exception).lower())
 
     def test_guard_accepts_a_pipeline_fitted_on_train(self):
         pipeline = self._pipeline()
         pipeline.fit(self.X_train)  # ĐÚNG
-        cp.validate_no_leakage(pipeline, X_train=self.X_train, X_test=self.X_test)
+        cp.validate_no_leakage(
+            pipeline, X_train=self.X_train, X_test=self.X_test,
+            verify_chronology=False,
+        )
 
     def test_guard_rejects_untrained_pipeline(self):
         with self.assertRaises(AssertionError):
@@ -156,7 +162,10 @@ class TestLeakageGuard(unittest.TestCase):
         pipeline = self._pipeline()
         pipeline.fit(self.X_train)
         with self.assertRaises(AssertionError) as ctx:
-            cp.validate_no_leakage(pipeline, X_train=self.X_train, X_test=same)
+            cp.validate_no_leakage(
+                pipeline, X_train=self.X_train, X_test=same,
+                verify_chronology=False,
+            )
         self.assertIn("phân biệt", str(ctx.exception))
 
     def test_guard_compares_only_the_columns_the_pipeline_learned(self):
@@ -179,7 +188,10 @@ class TestLeakageGuard(unittest.TestCase):
         pipeline = self._pipeline()
         pipeline.fit(wide_train)
         # Không ném lỗi, và không ném ValueError sai lệch kích thước.
-        cp.validate_no_leakage(pipeline, X_train=wide_train, X_test=wide_test)
+        cp.validate_no_leakage(
+            pipeline, X_train=wide_train, X_test=wide_test,
+            verify_chronology=False,
+        )
 
     def test_guard_reports_a_missing_column_clearly(self):
         pipeline = self._pipeline()
@@ -187,7 +199,8 @@ class TestLeakageGuard(unittest.TestCase):
         without_column = self.X_test.drop(columns=["pm10"])
         with self.assertRaises(AssertionError) as ctx:
             cp.validate_no_leakage(
-                pipeline, X_train=self.X_train, X_test=without_column
+                pipeline, X_train=self.X_train, X_test=without_column,
+                verify_chronology=False,
             )
         self.assertIn("pm10", str(ctx.exception))
 

@@ -909,6 +909,7 @@ def validate_no_leakage(
     X_test: pd.DataFrame,
     timestamps: Optional[pd.Series] = None,
     test_timestamps: Optional[pd.Series] = None,
+    verify_chronology: bool = True,
     atol: float = 1e-9,
 ) -> None:
     """
@@ -939,21 +940,30 @@ def validate_no_leakage(
     X_train, X_test : pd.DataFrame
         Features của Train (dùng để fit) và Test (chỉ dùng để transform).
     timestamps, test_timestamps : pd.Series | None
-        Cột thời gian tương ứng. **Nên truyền cả hai** — khi đó hàm kiểm tra
-        không có chồng lấn thời gian giữa hai tập, tức là bắt được phép chia
-        ngẫu nhiên.
+        Cột thời gian tương ứng. **Bắt buộc phải truyền CẢ HAI** (trừ khi đã đặt
+        `verify_chronology=False`) — khi đó hàm kiểm tra không có chồng lấn thời
+        gian giữa hai tập, tức là bắt được phép chia ngẫu nhiên.
 
-        Bỏ truyền thì lớp kiểm chứng thứ tự thời gian **bị tắt** và hàm chỉ in
-        một `logging.WARNING**; đó là lựa chọn của người gọi, không phải hành
-        vi mặc định an toàn. Trừ cả hai hoặc chỉ truyền một sẽ ném
-        `AssertionError` — truyền nửa vời là lỗi ghi nhầm, không phải ý định.
+        Thiếu hoặc chỉ truyền một sẽ ném `AssertionError`. Bản trung gian của
+        PR này chỉ `logger.warning`; review chỉ ra rằng như vậy guard vẫn **có
+        thể** in ra "✓ No leakage" khi chưa hề kiểm tra thứ tự thời gian. Đúng
+        lý do tồn tại của hàm là để chứng nhận "không rò rỉ", nên thiếu kiểm thì
+        phải là **lỗi**, không phải cảnh báo.
+    verify_chronology : bool, default True
+        Đặt `False` **chỉ** khi thực sự chỉ muốn kiểm rò rỉ tham số (ví dụ unit
+        test cố ý dựng một pipeline fit sai tập). Khi đó hàm vẫn `logger.warning`
+        nói rõ lớp thứ tự thời gian đang bị tắt. Lối tắt này **phải được gõ ra
+        tay** — không thể xảy ra do quên.
+    atol : float
+        Sai số cho phép khi so sánh float.
 
-        .. warning::
-           Đo lại trên dữ liệu thật: một ``train_test_split`` ngẫu nhiên với
-           đúng ``X_train``/``X_test`` nhưng **không** truyền timestamp là
-           **không bị bắt**. Các lớp 2–3 vẫn phát hiện được *scaler fit sai
-           tập*, nhưng không phát hiện được *chính cái phép chia*. Vì vậy lớp 1
-           là lớp duy nhất chống được random split — hãy luôn bật nó.
+    .. warning::
+       Đo lại trên dữ liệu thật: một ``train_test_split`` ngẫu nhiên với đúng
+       ``X_train``/``X_test`` là **không bị bắt** nếu không có lớp thứ tự thời
+       gian. Các lớc 2–3 vẫn phát hiện được *scaler fit sai tập*, nhưng không
+       phát hiện được *chính cái phép chia*. Vì vậy lớp 1 là lớp duy nhất chống
+       được random split — đừng bao giờ tắt nó ở bất kỳ đâu liên quan tới dữ
+       liệu thật.
     atol : float
         Sai số cho phép khi so sánh float.
 
@@ -976,26 +986,41 @@ def validate_no_leakage(
 
     # --- Lớp 1: thứ tự thời gian ---------------------------------------------
     #
-    # Lớp này là **tùy chọn** (vì `chronological_split()` đã tự kiểm), nhưng
-    # việc nó tùy chọn chính là một lỗ hổng âm thầm: một `train_test_split`
-    # ngẫu nhiên — vi phạm cam biên #1 của dự án — vẫn in ra "✓ No leakage"
-    # nếu người gọi quên truyền `timestamps`. Đo lại: `train_test_split`
-    # ngẫu nhiên với đúng X_train/X_test nhưng KHÔNG truyền timestamp là
-    # **không bị bắt**. Vì vậy bỏ truyền phải nói to, không được im lặng.
-    if (timestamps is None) != (test_timestamps is None):
-        raise AssertionError(
-            "Truyền `timestamps` nhưng không truyền `test_timestamps` (hoặc "
-            "ngược lại). Lớp kiểm chứng thứ tự thời gian cần CẢ HAI, hoặc "
-            "KHÔNG truyền cả hai nếu muốn bỏ qua lớp này."
-        )
-    if timestamps is None or test_timestamps is None:
+    # Lớp này là lớp DUY NHẤT chống được random split: các lớp 2–3 chỉ so tham
+    # số đã học, mà một `train_test_split` ngẫu nhiên vẫn học đúng trên "Train"
+    # của nó. Đo lại trên dữ liệu thật: random split với đúng X_train/X_test mà
+    # không truyền timestamp là **không bị bắt**.
+    #
+    # Vì vậy KHÔNG được im lặng bỏ qua. Nếu thiếu timestamp mà vẫn chạy tiếp và
+    # in ra dấu tick, guard đang chứng nhận "không rò rỉ" cho một phép chia mà nó
+    # chưa từng nhìn — tức chứng nhận sai. Bản trung gian của PR này chỉ
+    # `logger.warning`; review yêu cầu phải là LỖI. Nay ném `AssertionError`.
+    #
+    # `verify_chronology=False` là lối thoát **phải gõ tay**: dành cho unit test
+    # chỉ muốn kiểm rò rỉ tham số, và vẫn cảnh báo để lần đọc kế tiếp thấy ngay.
+    if not verify_chronology:
         logger.warning(
-            "validate_no_leakage(): KHÔNG truyền timestamps/test_timestamps → "
-            "LỚP KIỂM CHỨNG THỨ TỰ THỜI GIAN ĐANG BỊ TẮT. Một phép chia ngẫu "
-            "nhiên sẽ KHÔNG bị phát hiện. Hãy truyền cả hai nếu cần chứng minh "
-            "train.max() < test.min()."
+            "validate_no_leakage(verify_chronology=False): LỚP KIỂM CHỨNG THỨ TỰ "
+            "THỜI GIAN ĐANG BỊ TẮT THEO YÊU CẦU. Một phép chia ngẫu nhiên sẽ KHÔNG "
+            "bị phát hiện. Chỉ dùng lối tắt này cho unit test rò rỉ tham số — "
+            "KHÔNG dùng với dữ liệu thật."
         )
     else:
+        if timestamps is None or test_timestamps is None:
+            missing = (
+                "cả `timestamps` và `test_timestamps`"
+                if timestamps is None and test_timestamps is None
+                else "`test_timestamps`" if timestamps is not None
+                else "`timestamps`"
+            )
+            raise AssertionError(
+                f"Thiếu {missing}. Lớp kiểm chứng thứ tự thời gian là BẮT BUỘC: "
+                "nó là lớp duy nhất bắt được random split, và `validate_no_leakage` "
+                "không thể chứng nhận \"không rò rỉ\" khi chưa kiểm tra "
+                "train.max() < test.min(). Hãy truyền cả hai; nếu thực sự chỉ muốn "
+                "kiểm rò rỉ tham số thì đặt `verify_chronology=False` một cách tường "
+                "minh."
+            )
         tr = pd.to_datetime(pd.Series(timestamps))
         te = pd.to_datetime(pd.Series(test_timestamps))
         if tr.isna().any() or te.isna().any():

@@ -77,14 +77,38 @@ class B1RandomSplitIsDetected(unittest.TestCase):
             )
         self.assertIn("thời gian", str(ctx.exception).lower())
 
-    def test_guard_warns_when_the_chronology_layer_is_disabled(self):
-        """Bỏ truyền timestamp KHÔNG được im lặng.
+    def test_guard_refuses_to_certify_without_the_chronology_layer(self):
+        """Bỏ truyền timestamp KHÔNG được im lặng — phải NÉM LỖI.
 
         Đo lại trên dữ liệu thật: random split + đúng X_train/X_test nhưng
-        không truyền timestamp là **không bị bắt** — vì các lớp 2–3 chỉ so
+        không truyền timestamp là **không bị bắt** — vì các lớc 2–3 chỉ so
         tham số học, mà split ngẫu nhiên vẫn học đúng trên "Train" của nó.
-        Lớp 1 là lớp DUY NHẤT chống được random split, nên việc tắt nó phải
-        nói to chứ không được để người gọi tin là đã kiểm chứng.
+        Lớp 1 là lớp DUY NHẤT chống được random split.
+
+        Bản đầu tiên của PR này chỉ `logger.warning`. Reviewer nêu đúng điểm đó:
+        như vậy guard vẫn **có thể** in ra dấu tick "không rò rỉ" cho một phép
+        chia mà nó chưa từng nhìn — tức chứng nhận sai. Nay ném `AssertionError`.
+        """
+        from sklearn.model_selection import train_test_split
+
+        merged = cp.merge_air_weather(self.air, self.wx)
+        feats = ["pm10", "temperature"]
+        X = merged[feats]
+        X_tr, X_te = train_test_split(X, test_size=0.3, random_state=42)
+
+        pipeline = cp.build_preprocessing_pipeline(feats, [])
+        pipeline.fit(X_tr)
+        with self.assertRaises(AssertionError) as ctx:
+            cp.validate_no_leakage(pipeline, X_train=X_tr, X_test=X_te)
+        message = str(ctx.exception)
+        self.assertIn("BẮT BUỘC", message)
+        self.assertIn("random split", message)
+
+    def test_explicit_opt_out_still_warns_loudly(self):
+        """Lối thoát `verify_chronology=False` phải được gõ tay, và vẫn cảnh báo.
+
+        Tồn tại cho unit test chỉ kiểm rò rỉ tham số. Mất dấu vết việc lớp 1
+        đang tắt thì lần đọc kế tiếp sẽ tưởng guard đã kiểm tra thứ tự thời gian.
         """
         from sklearn.model_selection import train_test_split
 
@@ -96,9 +120,12 @@ class B1RandomSplitIsDetected(unittest.TestCase):
         pipeline = cp.build_preprocessing_pipeline(feats, [])
         pipeline.fit(X_tr)
         with self.assertLogs("src.cleaning_pipeline", level="WARNING") as logs:
-            cp.validate_no_leakage(pipeline, X_train=X_tr, X_test=X_te)
+            cp.validate_no_leakage(
+                pipeline, X_train=X_tr, X_test=X_te, verify_chronology=False
+            )
         self.assertTrue(
-            any("THỨ TỰ THỜI GIAN" in m for m in logs.output),
+            any("THỨ TỜ THỜI GIAN" in m or "THỨ TỰ THỜI GIAN" in m
+                for m in logs.output),
             f"phải cảnh báo lớp thứ tự thời gian đang bị tắt; thấy: {logs.output}",
         )
 
@@ -143,7 +170,8 @@ class B2ScalerIsVerified(unittest.TestCase):
         num.named_steps["scaler"].fit(self.X_test)     # rò rỉ ở scaler
         with self.assertRaises(AssertionError) as ctx:
             cp.validate_no_leakage(
-                pipeline, X_train=self.X_train, X_test=self.X_test
+                pipeline, X_train=self.X_train, X_test=self.X_test,
+                verify_chronology=False,
             )
         self.assertIn("scaler", str(ctx.exception).lower())
 
@@ -151,7 +179,10 @@ class B2ScalerIsVerified(unittest.TestCase):
         pipeline = cp.build_preprocessing_pipeline(self.feats, [])
         pipeline.fit(self.X_test)
         with self.assertRaises(AssertionError):
-            cp.validate_no_leakage(pipeline, X_train=self.X_train, X_test=self.X_test)
+            cp.validate_no_leakage(
+                pipeline, X_train=self.X_train, X_test=self.X_test,
+                verify_chronology=False,
+            )
 
 
 class B3EveryTransformerIsChecked(unittest.TestCase):
@@ -180,7 +211,8 @@ class B3EveryTransformerIsChecked(unittest.TestCase):
         pre.named_transformers_["cyc"].fit(X_test)
 
         with self.assertRaises(AssertionError):
-            cp.validate_no_leakage(pipeline, X_train=X_train, X_test=X_test)
+            cp.validate_no_leakage(pipeline, X_train=X_train, X_test=X_test,
+                                   verify_chronology=False)
 
     def test_guard_covers_a_second_branch_over_a_different_column_set(self):
         """
@@ -212,7 +244,8 @@ class B3EveryTransformerIsChecked(unittest.TestCase):
         # Rò rỉ: nhánh `cyc` học trên Test.
         pre.named_transformers_["cyc"].fit(X_test)
         with self.assertRaises(AssertionError):
-            cp.validate_no_leakage(pipeline, X_train=X_train, X_test=X_test)
+            cp.validate_no_leakage(pipeline, X_train=X_train, X_test=X_test,
+                                   verify_chronology=False)
 
 
 class B4ArgumentOrderCannotBeSwapped(unittest.TestCase):
