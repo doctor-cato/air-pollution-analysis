@@ -19,6 +19,7 @@ Kiểm thử tự động các tiêu chí nghiệm thu bắt buộc của Issue 
 import shutil
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 import numpy as np
@@ -172,15 +173,23 @@ class TestSortAndDeduplicate(unittest.TestCase):
         self.assertEqual(len(out), 4)
 
     def test_dedup_keeps_first_deterministically(self):
+        # PHẢI có khoá quan sát TRÙNG THẬT, nếu không `drop_duplicate_observations`
+        # không xóa gì và assertion nào cũng đúng một cách vô nghĩa. Bản cũ dùng
+        # `HOURS_10[:2]` — hai mốc thời gian KHÁC NHAU, nên 0 khóa trùng và test
+        # pass với cả `keep="last"`.
         df = pd.DataFrame({
-            "timestamp": HOURS_10[:2],
-            "station_id": ["STATION_A", "STATION_A"],
-            "location": ["Hanoi", "Hanoi"],
-            "pm25": [11.0, 99.0],
-            "pm10": [np.nan, np.nan],
+            "timestamp": [HOURS_10[0], HOURS_10[0], HOURS_10[1]],
+            "station_id": ["STATION_A", "STATION_A", "STATION_A"],
+            "location": ["Hanoi", "Hanoi", "Hanoi"],
+            "pm25": [11.0, 99.0, 22.0],
+            "pm10": [np.nan, np.nan, np.nan],
         })
-        out, _ = drop_duplicate_observations(df)
-        self.assertEqual(out["pm25"].iloc[0], 11.0)
+        out, stats = drop_duplicate_observations(df)
+        self.assertEqual(stats["duplicate_rows_removed"], 1,
+                         "fixture phải thực sự có khóa quan sát trùng")
+        self.assertEqual(len(out), 2)
+        self.assertEqual(out["pm25"].iloc[0], 11.0,
+                         "phải giữ bản ghi ĐẦU TIÊN, không phải bản ghi sau")
 
 
 class TestDisguisedMissing(unittest.TestCase):
@@ -460,11 +469,33 @@ class TestStuckSensorDetection(unittest.TestCase):
         self.assertEqual(stats["by_column"]["pm25"]["rows_nullified"], 8)
 
     def test_temporal_gap_breaks_the_stuck_run(self):
-        # 4 quan sát giống hệt nhưng bị ngắt bởi khoảng trống 3 giờ → không kẹt cảm biến.
-        df = make_hourly_station_frame([0, 1, 4, 5], [42.0] * 4)
+        # 6 quan sát giống hệt, khoảng trống 3 giờ, rồi 6 quan sát giống hệt nữa.
+        #
+        # Con số phải là 6+6 chứ không phải 4: ngưỡng là "chuỗi dài hơn 6
+        # quan sát" (`run_length > 6`). Với 4+4, CẢ HAI nhánh đều cho
+        # `rows_nullified == 0` — xóa bỏ nhánh nhận diện khoảng trống thời gian
+        # khỏi `_break_mask()` thì test vẫn xanh, tức nó không kiểm chứng điều
+        # tên mình. Với 6+6: nếu khoảng trống KHÔNG ngắt chuỗi thì 12 quan sát
+        # liên tiếp thành một chuỗi 12 > 6 và BỊ gắn cờ. Chỉ khi khoảng trống
+        # thật sự ngắt chuỗi thì mỗi nhánh dài đúng 6, không vượt ngưỡng.
+        offsets = [0, 1, 2, 3, 4, 5, 9, 10, 11, 12, 13, 14]
+        df = make_hourly_station_frame(offsets, [42.0] * 12)
         out, stats = flag_stuck_values(df)
-        self.assertEqual(stats["by_column"]["pm25"]["rows_nullified"], 0)
+        self.assertEqual(stats["by_column"]["pm25"]["rows_nullified"], 0,
+                         "hai chuỗi 6 quan sát phải được tách bởi khoảng trống thời gian")
         self.assertEqual(int(out["pm25"].isna().sum()), 0)
+
+    def test_without_the_gap_this_fixture_would_be_flagged(self):
+        """Bổ trợ cho test trên: chứng minh fixture THẬT SỰ nhạy cảm.
+
+        Cùng dữ liệu nhưng lấp khoảng trống thời gian thành chuỗi liên tục
+        12 quan sát. Nếu chuỗi này KHÔNG bị gắn cờ thì ngưỡng đang hỏng và mọi
+        kết luận "khoảng trống thời gian ngắt chuỗi" ở test trên là vô nghĩa.
+        """
+        df = make_hourly_station_frame(list(range(12)), [42.0] * 12)
+        _, stats = flag_stuck_values(df)
+        self.assertEqual(stats["by_column"]["pm25"]["rows_nullified"], 12,
+                         "chuỗi liên tục 12 quan sát phải bị gắn cờ kẹt")
 
     def test_runs_are_never_joined_across_stations(self):
         a = make_air_frame([42.0] * 4, station="STATION_A", start="2025-01-01 00:00")
@@ -955,6 +986,19 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
         after.loc[0:1, "pm25"] = np.nan
         assert_no_imputation(before, after, ["pm25"])
 
+    def test_no_imputation_guard_catches_a_changed_observation_key(self):
+        """Đổi khoá quan sát giữa hai vế = không thể đối chiếu ô nào là ô nào.
+
+        Không có test nào chạm nhánh này. Nếu hàm im lặng trả về, hai frame
+        khác nhau về cấu trúc sẽ bị coi là "không có phép điền khuyết" — đúng
+        mệnh đề tautology mà `assert_no_imputation()` sinh ra để chặn.
+        """
+        before = self._air(4)
+        after = before.drop(columns=["station_id"])
+        with self.assertRaises(AssertionError) as ctx:
+            assert_no_imputation(before, after, ["pm25"])
+        self.assertIn("khóa", str(ctx.exception).lower())
+
     def test_pipelines_compare_against_their_real_input(self):
         """
         Bản gốc gọi `assert_no_imputation(df, df, ...)`. Test này chứng minh cả
@@ -974,6 +1018,40 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
                 f"{func.__name__} vẫn tự so sánh với chính nó",
             )
             self.assertIn("assert_no_imputation", source)
+
+    def test_air_pipeline_raises_when_a_cleaning_step_fabricates_a_value(self):
+        """BẰNG CHỨNG HÀNH VI, không phải grep mã nguồn.
+
+        Test `test_pipelines_compare_against_their_real_input` ở trên là một
+        phép tìm chuỗi trong `inspect.getsource()`: chèn lại một tautology thật
+        sự — `assert_no_imputation(df_air.copy(), df_air.copy(), ...)` — vẫn lọt
+        qua, vì chuỗi đó không chứa đúng mẫu bị cấm. Test này thay thế bằng
+        cách thật sự làm một bước làm sạch bịa giá trị, rồi đòi pipeline ném lỗi.
+        """
+        import src.cleaning as cleaning_module
+
+        air = make_air_frame([10.0, 20.0, 30.0, 40.0], pm10=[12.0, 22.0, 32.0, 42.0])
+        weather = make_weather_frame([50.0, 55.0, 60.0, 65.0])
+
+        real = cleaning_module.enforce_air_quality_physical_rules
+
+        def fabricating(df, columns=cleaning_module.AIR_MEASUREMENT_COLUMNS):
+            out, stats = real(df, columns)
+            # Bịa một giá trị ở ô ĐÃ có quan sát: 10.0 -> 11.5. Giá trị này phải
+            # sống sót qua mọi bước còn lại, nếu không guard sẽ không có cơ hội
+            # thấy nó — nên nó CỐ Ý vẫn thỏa PM2.5 <= PM10 (11.5 <= 12.0).
+            out = out.copy()
+            out.loc[0, "pm25"] = 11.5
+            return out, stats
+
+        with unittest.mock.patch.object(
+            cleaning_module, "enforce_air_quality_physical_rules", fabricating
+        ):
+            with self.assertRaises(AssertionError) as ctx:
+                clean_air_quality(air, weather)
+
+        self.assertIn("pm25", str(ctx.exception))
+        self.assertIn("khuyết", str(ctx.exception).lower())
 
     # --- BLOCKER: cot chuoi lai giet pipeline truoc khi quy tac kip chay
 
@@ -1015,7 +1093,9 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
 
     def test_validator_still_catches_a_broken_single_series_grid(self):
         broken = self._air(10)
-        broken.loc[5, "timestamp"] = broken.loc[5, "timestamp"] + pd.Timedelta(hours=3)
+        # `np.timedelta64 + pd.Timedelta` quy nạch đơn vị "generic" của numpy —
+        # DeprecationWarning và sẽ ném lỗi. Dùng `pd.DateOffset` thay thế.
+        broken.loc[5, "timestamp"] = broken.loc[5, "timestamp"] + pd.DateOffset(hours=3)
         broken = broken.sort_values("timestamp", kind="mergesort").reset_index(drop=True)
         result = validate_cleaned_dataset(broken)
         self.assertFalse(result["continuous_hourly_grid_per_station"]["passed"])
@@ -1241,6 +1321,87 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
         )
         self.assertNotIn("`epsilon_ug_m3`", log)
         self.assertIn("`reporting_epsilon_ug_m3`", log)
+
+    def test_failing_validation_blocks_the_write_to_data_interim(self):
+        """CỔNG CHẶN CUỐI trước khi Issue #7 đọc artifact.
+
+        `run_deterministic_cleaning()` cố ý ÉP kết quả `validate_cleaned_dataset()`
+        rồi ném lỗi trước khi ghi xuống `data/interim/`. Không có test nào chạm
+        nhánh này, nên xoá hẳn cổng chặn vẫn giữ toàn bộ suite xanh — trong khi
+        đó chính là ranh giới "dữ liệu hỏng không được truyền sang #7".
+
+        Test: làm hỏng MỘT tiêu chí kiểm chứng, rồi đòi (a) ném lỗi và
+        (b) file trên đĩa phải Y NGUYÊN so với trước khi chạy.
+        """
+        import src.cleaning as cleaning_module
+
+        self.tmp.mkdir(parents=True, exist_ok=True)
+        air_path = self.tmp / "air.parquet"
+        wx_path = self.tmp / "wx.parquet"
+        good_air = self._air(10)
+        good_air.to_parquet(air_path, index=False)
+        self._weather(10).to_parquet(wx_path, index=False)
+        baseline = air_path.read_bytes()
+
+        real_validator = cleaning_module.validate_cleaned_dataset
+
+        def failing(df):
+            result = real_validator(df)
+            # Giả lập một tiêu chí nghiệm thu FAIL sau khi làm sạch.
+            result["no_negative_values"] = {
+                "passed": False,
+                "negatives_by_column": {"pm25": 3},
+            }
+            result["all_passed"] = False
+            return result
+
+        with unittest.mock.patch.object(
+            cleaning_module, "validate_cleaned_dataset", failing
+        ):
+            with self.assertRaises(AssertionError) as ctx:
+                run_deterministic_cleaning(air_path, wx_path, project_root=self.tmp)
+
+        message = str(ctx.exception)
+        self.assertIn("no_negative_values", message)
+        self.assertIn("data/interim", message)
+        self.assertEqual(
+            air_path.read_bytes(), baseline,
+            "artifact trên đĩa phải giữ nguyên khi tiêu chí kiểm chứng FAIL",
+        )
+
+
+class TestValidatorCatchesNegativeConcentrations(unittest.TestCase):
+    """`no_negative_values` trong `validate_cleaned_dataset()` chưa có test nào.
+
+    Không một test nào đưa giá trị âm vào validator. Một validator âm thầm
+    chấp nhận nồng độ âm sẽ lọt qua toàn bộ suite — và đó đúng là loại lỗi mà
+    cổng chặn ở `run_deterministic_cleaning()` sinh ra để bắt.
+    """
+
+    def _air(self, n):
+        return make_air_frame(list(np.arange(10.0, 10.0 + n)), pm10=[x + 2 for x in np.arange(10.0, 10.0 + n)])
+
+    def test_validator_flags_negative_pm25(self):
+        df = self._air(5)
+        df.loc[2, "pm25"] = -1.0
+        result = validate_cleaned_dataset(df)
+        check = result["no_negative_values"]
+        self.assertFalse(check["passed"])
+        self.assertEqual(check["negatives_by_column"]["pm25"], 1)
+        self.assertFalse(result["all_passed"])
+
+    def test_validator_flags_negative_pm10(self):
+        df = self._air(5)
+        df.loc[1, "pm10"] = -0.5
+        result = validate_cleaned_dataset(df)
+        check = result["no_negative_values"]
+        self.assertFalse(check["passed"])
+        self.assertEqual(check["negatives_by_column"]["pm10"], 1)
+
+    def test_validator_passes_when_every_measurement_is_non_negative(self):
+        result = validate_cleaned_dataset(self._air(5))
+        self.assertTrue(result["no_negative_values"]["passed"])
+        self.assertTrue(result["all_passed"])
 
 
 if __name__ == "__main__":

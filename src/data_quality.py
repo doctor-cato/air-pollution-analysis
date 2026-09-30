@@ -387,8 +387,18 @@ def audit_six_dimensions(
             }
 
     # Ràng buộc khí động học: PM2.5 <= PM10 (kiểm tra cả vi phạm nghiệm ngặt và ngưỡng dung sai sai số đo)
+    #
+    # CHỈ chạy khi cả hai cột là kiểu SỐ. Bản gốc không có kiểm tra này, nên một
+    # `pm25` kiểu chuỗi (chính là vi phạm mà chiều Validity phải BÁO CÁO) làm
+    # `>` ném `TypeError` và hàm sập trước khi kịp trả báo cáo — tức là bộ kiểm
+    # toán không đo lỗi, mà chết vì lỗi. `dropna` cũng không giúp: `"NaN"` là
+    # chuỗi hợp lệ trong pandas, không phải giá trị thiếu.
     aerodynamic_inversion = None
-    if "pm25" in df.columns and "pm10" in df.columns:
+    pm_cols_numeric = all(
+        col in df.columns and pd.api.types.is_numeric_dtype(df[col])
+        for col in ("pm25", "pm10")
+    )
+    if pm_cols_numeric:
         valid_both = df.dropna(subset=["pm25", "pm10"])
         strict_inv = int((valid_both["pm25"] > valid_both["pm10"]).sum())
         strict_inv_pct = round((strict_inv / len(valid_both) * 100), 4) if len(valid_both) > 0 else 0.0
@@ -421,7 +431,10 @@ def audit_six_dimensions(
 
     # Cảnh báo độ ẩm cao (RH > 90%): có thể gây nhiễu tán xạ quang học
     high_humidity_fog = None
-    if "relative_humidity" in df.columns:
+    # Cùng lý do như `pm_cols_numeric`: so sánh `>` trên cột chuỗi sẽ ném
+    # `TypeError` thay vì báo cáo vi phạm schema.
+    if ("relative_humidity" in df.columns
+            and pd.api.types.is_numeric_dtype(df["relative_humidity"])):
         rh_s = df["relative_humidity"].dropna()
         fog_count = int((rh_s > 90.0).sum())
         fog_pct = round((fog_count / len(rh_s) * 100), 4) if len(rh_s) > 0 else 0.0

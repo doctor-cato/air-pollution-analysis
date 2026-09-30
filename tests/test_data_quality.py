@@ -15,6 +15,8 @@ Kiểm thử tự động 10 tiêu chí bắt buộc theo đặc tả của đ�
 """
 
 import unittest
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -25,7 +27,7 @@ from src.data_quality import (
     audit_prolonged_zeros,
     audit_six_dimensions,
     analyze_missingness_patterns,
-    ATMOSPHERIC_BOUNDS,
+    run_quality_audit_pipeline,
 )
 
 
@@ -267,6 +269,262 @@ class TestDataQualityFramework(unittest.TestCase):
         self.assertEqual(aero["tolerance_inversion_count"], 1)
         self.assertEqual(round(aero["tolerance_inversion_pct"], 2), 33.33)
         self.assertIn("documentation_rationale", aero)
+
+
+class TestAuditSixDimensionUntestedBlocks(unittest.TestCase):
+    """Ba khối của báo cáo 6 chiều chưa có assertion nào.
+
+    Sản phẩm bàn giao của Issue #5 là BÁO CÁO 6 CHIỀU. Nếu ba khối dưới đây
+    hỏng mà không ai biết thì báo cáo vẫn "hoàn thành" về mặt hình thức.
+    """
+
+    def setUp(self):
+        self.ts = pd.date_range("2025-01-01 00:00:00+07:00", periods=8, freq="h")
+        self.df = pd.DataFrame({
+            "timestamp": self.ts,
+            "station_id": ["STATION_A"] * 8,
+            "location": ["Hanoi"] * 8,
+            "pm25": [10.0, 20.0, np.nan, 40.0, 50.0, 60.0, 70.0, 80.0],
+            "pm10": [15.0, 25.0, 35.0, 45.0, 55.0, 65.0, 75.0, 85.0],
+        })
+
+    def test_temporal_grid_completeness_counts_the_gaps(self):
+        """8 quan sát nhưng lưới 1 giờ giữa min và max chỉ dài 8 — 0 khoảng trống."""
+        dims = audit_six_dimensions(self.df)
+        grid = dims["dimensions"]["completeness"]["temporal_grid_completeness"]
+        self.assertEqual(grid["expected_continuous_hours"], 8)
+        self.assertEqual(grid["actual_recorded_hours"], 8)
+        self.assertEqual(grid["unrecorded_hours_gaps"], 0)
+        self.assertEqual(grid["unrecorded_hours_pct"], 0.0)
+
+    def test_temporal_grid_completeness_detects_a_real_gap(self):
+        """Bỏ 3 giờ giữa chuỗi -> phải báo đúng 3 giờ trống."""
+        gapped = self.df.drop(index=[3, 4, 5]).reset_index(drop=True)
+        dims = audit_six_dimensions(gapped)
+        grid = dims["dimensions"]["completeness"]["temporal_grid_completeness"]
+        self.assertEqual(grid["expected_continuous_hours"], 8)
+        self.assertEqual(grid["actual_recorded_hours"], 5)
+        self.assertEqual(grid["unrecorded_hours_gaps"], 3)
+        self.assertEqual(grid["unrecorded_hours_pct"], 37.5)
+
+    def test_high_humidity_fog_evidence_is_reported(self):
+        """Chiều Accuracy phải chứa bằng chứng sương mù quang học (RH > 90%)."""
+        df = self.df.assign(relative_humidity=[50.0, 95.0, 91.0, 90.0, 100.0,
+                                              80.0, 70.0, 60.0])
+        dims = audit_six_dimensions(df)
+        fog = dims["dimensions"]["accuracy"]["high_humidity_fog_evidence"]
+        # > 90 (không phải >= 90): 95, 91, 100 -> 3 giờ
+        self.assertEqual(fog["high_humidity_hours"], 3)
+        self.assertEqual(fog["threshold"], "> 90%")
+        self.assertIn("Issue #6", fog["audit_note"])
+
+    def test_high_humidity_fog_evidence_is_none_without_humidity(self):
+        dims = audit_six_dimensions(self.df)
+        self.assertIsNone(dims["dimensions"]["accuracy"]["high_humidity_fog_evidence"])
+
+    def test_validity_dimension_reports_every_column(self):
+        """Chiều Validity phải phủ đủ mọi cột và đánh dấu đúng kiểu."""
+        dims = audit_six_dimensions(self.df)
+        validity = dims["dimensions"]["validity"]
+        self.assertTrue(validity["all_columns_conformant"])
+        self.assertEqual(set(validity["column_validity"]), set(self.df.columns))
+        self.assertIn("datetime64", validity["column_validity"]["timestamp"]["actual_dtype"])
+        self.assertTrue(validity["column_validity"]["station_id"]["is_schema_conformant"])
+        self.assertTrue(validity["column_validity"]["pm25"]["is_schema_conformant"])
+
+    def test_validity_dimension_rejects_a_string_measurement_column(self):
+        """Cột đo kiểu chuỗi là vi phạm schema — phải BÁO CÁO, không được sập.
+
+        Bản gốc ném `TypeError: '>' not supported between 'str' and 'float'` tại
+        phép so khí động học trước khi tới khối Validity. Tức là bộ kiểm toán
+        chết vì đúng cái lỗi mà nó được giao để tìm — và không trả báo cáo nào.
+        Nay nó bỏ qua phép so trên cột không phải số VÀ vẫn đánh dấu vi phạm.
+        """
+        df = self.df.copy()
+        df["pm25"] = df["pm25"].astype(str)
+        dims = audit_six_dimensions(df)          # không được ném lỗi
+        validity = dims["dimensions"]["validity"]
+        self.assertFalse(validity["column_validity"]["pm25"]["is_schema_conformant"])
+        self.assertFalse(validity["all_columns_conformant"])
+        # Phép so khí động học không thể chạy -> None, KHÔNG phải 0 (0 là khẳng
+        # định sai sự thật: "không có nghịch đảo nào" khác "không đo được").
+        self.assertIsNone(dims["dimensions"]["accuracy"]["aerodynamic_subset_inversion"])
+
+    def test_string_humidity_column_does_not_crash_the_audit(self):
+        df = self.df.copy()
+        df["relative_humidity"] = ["50.0", "95.0", "80.0", "70.0",
+                                   "60.0", "99.0", "55.0", "65.0"]
+        dims = audit_six_dimensions(df)
+        self.assertIsNone(dims["dimensions"]["accuracy"]["high_humidity_fog_evidence"])
+        self.assertFalse(
+            dims["dimensions"]["validity"]["column_validity"]["relative_humidity"]["is_schema_conformant"]
+        )
+
+    def test_completeness_missing_by_variable_is_reported(self):
+        dims = audit_six_dimensions(self.df)
+        by_var = dims["dimensions"]["completeness"]["missing_by_variable"]
+        self.assertEqual(by_var["pm25"]["missing_count"], 1)
+        self.assertEqual(by_var["pm25"]["missing_pct"], 12.5)
+        self.assertEqual(by_var["pm10"]["missing_count"], 0)
+
+
+class TestMissingnessPatternUntestedBlocks(unittest.TestCase):
+    """`missing_blocks` và `co_missing_analysis` chưa có assertion nào."""
+
+    def setUp(self):
+        # Chuỗi: 2 giá trị, 1 khối trống 1h, 2 giá trị, 1 khối trống 3h, 2 giá trị.
+        self.df = pd.DataFrame({
+            "timestamp": pd.date_range("2025-01-01 00:00:00+07:00", periods=11, freq="h"),
+            "station_id": ["STATION_A"] * 11,
+            "pm25": [10.0, 11.0, np.nan, 12.0, 13.0, np.nan, np.nan, np.nan, 14.0, 15.0, 16.0],
+            "pm10": [20.0, 21.0, np.nan, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 29.0],
+        })
+
+    def test_missing_blocks_are_segmented(self):
+        out = analyze_missingness_patterns(self.df, target_col="pm25")
+        blocks = out["missing_blocks"]
+        self.assertEqual(blocks["total_blocks"], 2)
+        self.assertEqual(blocks["isolated_1h_drops"], 1)
+        self.assertEqual(blocks["multi_hour_outages"], 1)
+        self.assertEqual(blocks["longest_block_hours"], 3)
+        self.assertEqual(blocks["block_length_distribution"], {1: 1, 3: 1})
+
+    def test_missing_blocks_on_a_fully_observed_column(self):
+        out = analyze_missingness_patterns(self.df, target_col="pm10")
+        blocks = out["missing_blocks"]
+        self.assertEqual(blocks["total_blocks"], 1)
+        self.assertEqual(blocks["longest_block_hours"], 1)
+
+    def test_co_missing_analysis_separates_both_channels(self):
+        out = analyze_missingness_patterns(self.df, target_col="pm25")
+        co = out["co_missing_analysis"]
+        # pm25 NaN ở 4 hàng (index 2, 5, 6, 7); chỉ index 2 có pm10 cũng NaN.
+        self.assertEqual(co["both_pm25_and_pm10_missing"], 1)
+        self.assertEqual(co["pm25_missing_pm10_observed"], 3)
+        self.assertEqual(co["pm10_missing_pm25_observed"], 0)
+        self.assertIsNotNone(co["pm10_median_during_pm25_missing"])
+        self.assertGreater(co["pm10_mean_overall"], 0.0)
+
+    def test_missing_target_column_raises(self):
+        with self.assertRaises(KeyError):
+            analyze_missingness_patterns(self.df, target_col="pm999")
+
+    def test_rubin_diagnosis_declares_uncertainty(self):
+        """AC #5 bắt buộc phải GHI NHẬN bất định, không gán nhãn võ đoán."""
+        out = analyze_missingness_patterns(self.df, target_col="pm25")
+        rubin = out["rubin_diagnosis"]
+        for key in ("mcar_diagnostic_hypothesis", "mar_diagnostic_hypothesis",
+                    "mnar_diagnostic_hypothesis", "uncertainty_declaration"):
+            self.assertIn(key, rubin)
+        self.assertIn("TUYÊN BỐ BẤT ĐỊNH", rubin["uncertainty_declaration"])
+
+
+class TestProlongedZeroThresholdBoundary(unittest.TestCase):
+    """Ngưỡng `>= 6` của #5 chỉ phân biệt được với chuỗi ĐÚNG 6 quan sát.
+
+    Fixture cũ dùng chuỗi 7 và chuỗi 4, nên `>= 6` và `> 6` cho cùng kết quả.
+    """
+
+    def _streak(self, length):
+        ts = pd.date_range("2025-01-01 00:00:00+07:00", periods=length + 1, freq="h")
+        values = [0.0] * length + [5.0]     # chuỗi 0.0 dài `length`, rồi ngắt
+        return pd.DataFrame({
+            "timestamp": ts,
+            "station_id": ["STATION_A"] * (length + 1),
+            "pm25": values,
+        })
+
+    def test_exactly_six_hours_counts_as_prolonged(self):
+        result = audit_prolonged_zeros(self._streak(6), target_cols=["pm25"])
+        self.assertEqual(result["pm25"]["longest_zero_streak_hours"], 6)
+        self.assertEqual(result["pm25"]["prolonged_zero_streaks_count"], 1,
+                         "chuỗi đúng 6 giờ phải được tính là kéo dài (ngưỡng >= 6)")
+
+    def test_five_hours_is_not_prolonged(self):
+        result = audit_prolonged_zeros(self._streak(5), target_cols=["pm25"])
+        self.assertEqual(result["pm25"]["longest_zero_streak_hours"], 5)
+        self.assertEqual(result["pm25"]["prolonged_zero_streaks_count"], 0,
+                         "chuỗi 5 giờ chưa đạt ngưỡng >= 6")
+
+    def test_threshold_is_configurable(self):
+        result = audit_prolonged_zeros(self._streak(5), target_cols=["pm25"],
+                                       threshold_hours=5)
+        self.assertEqual(result["pm25"]["prolonged_zero_streaks_count"], 1)
+
+
+class TestAuditMissingRepresentations(unittest.TestCase):
+    """`audit_missing_representations()` được import nhưng KHÔNG test nào gọi."""
+
+    def test_reports_nan_and_disguised_string_markers(self):
+        df = pd.DataFrame({
+            "pm25": [1.0, np.nan, "N/A", "null"],
+            "pm10": [1.0, 2.0, 3.0, 4.0],
+        })
+        report = audit_missing_representations(df)
+        self.assertEqual(report["pm25"]["np_nan"], 1)
+        self.assertEqual(report["pm25"]["str_'N/A'"], 1)
+        self.assertEqual(report["pm25"]["str_'null'"], 1)
+        # pm10 sạch -> dict rỗng, KHÔNG khai báo có marker nào tồn tại.
+        self.assertEqual(report["pm10"], {})
+
+    def test_absent_markers_are_not_reported(self):
+        """Không khai báo hình thái khuyết thiếu không tồn tại — trung thực."""
+        df = pd.DataFrame({"pm25": [1.0, 2.0], "pm10": [1.0, np.nan]})
+        report = audit_missing_representations(df)
+        self.assertEqual(report["pm25"], {})
+        self.assertEqual(report["pm10"], {"np_nan": 1})
+
+    def test_rejects_none(self):
+        with self.assertRaises(ValueError):
+            audit_missing_representations(None)
+
+
+class TestRunQualityAuditPipeline(unittest.TestCase):
+    """Điểm vào chính của Issue #5 có 0 test tham chiếu."""
+
+    def test_pipeline_returns_both_datasets_with_all_sections(self):
+        import tempfile
+        from pathlib import Path
+
+        from src.data_quality import run_quality_audit_pipeline
+
+        ts = pd.date_range("2025-01-01 00:00:00+07:00", periods=8, freq="h")
+        air = pd.DataFrame({
+            "timestamp": ts, "station_id": ["A"] * 8, "location": ["Hanoi"] * 8,
+            "pm25": [10.0, 20.0, np.nan, 40.0, 50.0, 60.0, 70.0, 80.0],
+            "pm10": [15.0, 25.0, 35.0, 45.0, 55.0, 65.0, 75.0, 85.0],
+        })
+        wx = pd.DataFrame({
+            "timestamp": ts,
+            "temperature": np.arange(20.0, 28.0),
+            "relative_humidity": np.full(8, 80.0),
+            "wind_speed": np.arange(1.0, 9.0),
+            "wind_direction": np.arange(10.0, 18.0),
+            "precipitation": np.zeros(8),
+            "surface_pressure": np.full(8, 1010.0),
+        })
+        with tempfile.TemporaryDirectory() as tmp:
+            air_path = Path(tmp) / "air.parquet"
+            wx_path = Path(tmp) / "wx.parquet"
+            air.to_parquet(air_path, index=False)
+            wx.to_parquet(wx_path, index=False)
+            results = run_quality_audit_pipeline(air_path, wx_path)
+
+        self.assertEqual(set(results), {"air_quality", "weather"})
+        for section in ("summary_table", "six_dimensions", "prolonged_zeros",
+                        "uniqueness", "missing_representations"):
+            self.assertIn(section, results["air_quality"])
+        self.assertIn("missingness_patterns", results["air_quality"])
+        for section in ("summary_table", "six_dimensions", "prolonged_zeros",
+                        "uniqueness", "missing_representations"):
+            self.assertIn(section, results["weather"])
+
+    def test_missing_files_are_skipped_not_fatal(self):
+        from src.data_quality import run_quality_audit_pipeline
+        results = run_quality_audit_pipeline(
+            Path("does/not/exist_air.parquet"), Path("does/not/exist_wx.parquet")
+        )
+        self.assertEqual(results, {})
 
 
 if __name__ == "__main__":

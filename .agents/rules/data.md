@@ -105,7 +105,8 @@ Validate measurements against environmental physics before downstream modeling:
 
 | Metric | Physical Rule / Valid Range | Failure Action | Scientific Rationale |
 |---|---|---|---|
-| `pm25` vs `pm10` | $\text{PM}_{2.5} \le \text{PM}_{10} + 2.0\,\mu\text{g/m}^3$ | Set both to `NaN` | $\text{PM}_{2.5}$ is aerodynamically a subset of $\text{PM}_{10}$. Any inversion indicates severe optical/inlet malfunction. |
+| `pm25` vs `pm10` | $\text{PM}_{2.5} \le \text{PM}_{10}$ (**strict**, no tolerance) | Set both to `NaN` | $\text{PM}_{2.5}$ is aerodynamically a subset of $\text{PM}_{10}$. Any inversion indicates severe optical/inlet malfunction. |
+| `pm25` vs `pm10` (classification only) | $\epsilon = 2.0\,\mu\text{g/m}^3$ measurement-uncertainty tier | **No action — reporting tier only** | Splits inversions into "beyond instrument uncertainty" vs "within tolerance" for the audit report. $\epsilon$ is **not** an action threshold. See `docs/cleaning_log.md` §3.4. |
 | Negative values | $\text{PM}_{2.5} \ge 0$ and $\text{PM}_{10} \ge 0$ | Convert $< 0$ to `NaN`; retain valid observed $0.0$ unless flagged by QC | Negative concentrations are physically impossible. Valid $0.0$ readings without sensor QC fault flags are retained as real observations. |
 | Stuck sensor | Identical float for $> 6$ consecutive hours | Convert series to `NaN` | Hardware frozen or sensor locked at baseline. |
 | Optical fog noise | If $\text{RH} > 90\%$ and $\text{PM}_{2.5}$ spikes | Add boolean flag `is_high_humidity_fog = 1` | Optical sensors misclassify microscopic water droplets as particulate matter in high fog. Do not delete, but flag. |
@@ -118,7 +119,34 @@ Validate measurements against environmental physics before downstream modeling:
 
 ## 5. Missingness Mechanisms (Rubin's Taxonomy)
 
-Every missing observation must be audited under the 3 mechanisms:
-- **MCAR (Missing Completely at Random):** Periodic 1-hour packet loss due to cell transmission glitches. Safe for local interpolation ($\le 2$h).
-- **MAR (Missing at Random):** Station power cut during torrential rains. Dependent on observable variables (`precipitation > 50 mm`). Impute with weather-stratified medians.
-- **MNAR (Missing Not at Random):** Sensor saturation cutoff during an extreme hazardous pollution episode ($\text{PM}_{2.5} > 500\,\mu\text{g/m}^3$). **Never drop these rows without explicit bias analysis**, as doing so creates survivorship bias.
+Every missing observation must be **described** under the 3 mechanisms. Rubin's
+taxonomy is a *descriptive* framework here, **not** a licence to fill gaps.
+
+- **MCAR (Missing Completely at Random):** Periodic 1-hour packet loss due to cell
+  transmission glitches. Described as a diagnostic hypothesis; observable patterns
+  (e.g. a diurnal gradient) already contradict *pure* MCAR.
+- **MAR (Missing at Random):** Station power cut during torrential rains. Dependent
+  on observable variables (`precipitation > 50 mm`).
+- **MNAR (Missing Not at Random):** Sensor saturation cutoff during an extreme
+  hazardous pollution episode ($\text{PM}_{2.5} > 500\,\mu\text{g/m}^3$). **Never
+  drop these rows without explicit bias analysis**, as doing so creates survivorship bias.
+
+> 🚫 **No imputation under this section — for any mechanism.** A previous revision of
+> this file said MCAR gaps were *"safe for local interpolation ($\le 2$h)"* and MAR
+> gaps should be *"imputed with weather-stratified medians"*. **Both statements are
+> withdrawn and must not be implemented.** They directly contradict §3.5, which is a
+> binding invariant enforced cell-by-cell by
+> `src/cleaning.py::assert_no_imputation()`: a cell that was `NaN` before cleaning
+> must still be `NaN` after, and an observed cell may only keep its exact value or
+> become `NaN`. Observed measurements may disappear; they may never appear, change,
+> or be replaced by a statistical estimate. Any code written from the withdrawn rule
+> is rejected by that assert.
+>
+> Statistical imputation, if ever authorised for a future milestone, is
+> **data-dependent preprocessing** and therefore belongs to Issue #7 *after* the
+> chronological split, fitted strictly on the Train partition — see §2 and Issue #6
+> scope. It is out of scope for the audit (#5) and deterministic cleaning (#6).
+>
+> *History:* §3.5 was tightened to RETAIN-don't-impute; this section (§5) was
+> originally written against the earlier, looser rule and had not been reconciled.
+> Corrected 2026-09-30 during the Milestone 2 audit.

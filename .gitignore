@@ -23,6 +23,13 @@ ENV/
 *.pem
 *.key
 
+# ── Test runner caches ────────────────────────────────────────
+.pytest_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+
 # ── Raw data (immutable, fetched via API – do NOT commit) ────
 data/raw/*.json
 data/raw/*.csv

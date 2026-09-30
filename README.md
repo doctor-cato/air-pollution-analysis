@@ -39,16 +39,19 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 ### 2.1. Hiện trạng Triển khai (Milestone 1–2)
 
 > [!IMPORTANT]
-> **Trạng thái hiện tại sau review:** **Issue #1–#6 đều DONE** (kể cả #4, PR #26 và #5, PR #27 đã merge vào `main`).
-> **Issue #7 (tiền xử lý chống rò rỉ) đã triển khai** (`src/cleaning_pipeline.py`, `notebooks/03_transformation_pipeline.ipynb`, `tests/test_cleaning_pipeline.py`, `tests/test_cleaning_pipeline_guards.py`) — thuộc nhánh `feat/issue-6-deterministic-cleaning`, **chưa merge vào `main`**.
+> **Trạng thái hiện tại sau review:** **Issue #1–#7 đều DONE và đã merge vào `main`.**
 > - **Issue #1, #2, #19, #3:** Đã hoàn tất và nghiệm thu (**DONE**).
 > - **Issue #4:** PR #26 đã merge vào `main` (**DONE**).
 > - **Issue #5:** Bộ kiểm toán chất lượng 6 chiều đã hoàn thành và merge qua PR #27 (`src/data_quality.py`, `docs/data_quality_audit.md`, `notebooks/02_quality_audit.ipynb`) (**DONE**).
 > - **Issue #6:** Làm sạch tất định đã triển khai (`src/cleaning.py`, `docs/cleaning_log.md`, `notebooks/03_data_cleaning.ipynb`) (**DONE**).
-> - **Issue #7:** Pipeline chống rò rỉ đã triển khai và kiểm chứng bằng `validate_no_leakage()` — so **mọi** tham số đã học với giá trị refit trên Train, kiểm tra `train.max() < test.min()`, và từ chối target trong feature (**DONE trên nhánh, chưa merge**).
+> - **Issue #7:** Tiền xử lý chống rò rỉ đã triển khai và kiểm chứng bằng `validate_no_leakage()` — so **mọi** tham số đã học với giá trị refit trên Train, kiểm tra `train.max() < test.min()`, và từ chối target trong feature (`src/cleaning_pipeline.py`, `notebooks/03_transformation_pipeline.ipynb`, `tests/test_cleaning_pipeline.py`, `tests/test_cleaning_pipeline_guards.py`).
+> - **Lưu ý về lịch sử merge:** #6 và #7 được triển khai cùng nhau trên nhánh `feat/issue-6-deterministic-cleaning` và merge bằng **một** PR #32 (2026-09-30). Việc tách thành hai issue là đánh số bàn giao, không phải hai thay đổi độc lập: `clean_air_quality()` phụ thuộc bảng khí tượng **đã** làm sạch, nên #6 không thể tách khỏi #7 mà không viết lại kiến trúc.
 > - **Mô hình học máy và phân tích thống kê nâng cao (Issues #11–#13) vẫn chưa bắt đầu** — notebook `04`–`06` chưa tồn tại.
 > - **Tổng số unit test: 259** (`test_data_collection` 57, `test_data_quality` 14, `test_cleaning` 107, `test_cleaning_pipeline` 38, `test_cleaning_pipeline_guards` 34, `test_fetch_dataset` 9). Chạy: `python -m unittest discover tests`.
-> - **Mutation score của `src/cleaning_pipeline.py`: 21/21 = 100%** — mỗi biến thể (xoá guard, cho target lọt vào feature, cho `transform_with_pipeline()` refit trên chính Test) đều làm ít nhất một test đỏ. Baseline trước khi sửa là 21/47 = 44,7%.
+> - **Guard chống rò rỉ đã được kiểm chứng bằng 34 test hồi quy** trong `tests/test_cleaning_pipeline_guards.py`, mỗi test được viết để **FAIL trên bản gốc** (xoá guard, cho target lọt vào feature, cho `transform_with_pipeline()` refit trên chính Test, thêm nhánh `ColumnTransformer` thứ hai, đảo thứ tự đối số).
+>
+>   > [!NOTE]
+>   > **Về con số "mutation score 21/21 = 100%":** đây là kết quả đếm **thủ công** trong một vòng review đối kháng của Issue #7, **không** phải báo cáo sinh tự động bởi công cụ mutation testing nào. Repo **không** có `mutmut`/`cosic-ray` trong `requirements.txt`, không có file cấu hình mutation, không có bước CI nào chạy nó, và không lưu artifact báo cáo. Vì vậy con số này **không tái lập được** từ repository và không nên được trích dẫn như bằng chứng kiểm định máy móc. Bằng chứng tái lập được là 34 test hồi quy nêu trên — chạy `python -m unittest tests.test_cleaning_pipeline_guards -v` là thấy ngay.
 
 **Tuần 01 — Thiết lập dự án & Canonical Schema**
 - [x] Thiết lập khung cây thư mục chuẩn mực theo vòng đời CRISP-DM [Issue #1].
@@ -106,6 +109,7 @@ air-pollution-analysis/
 │   ├── interim/                        # Dữ liệu trung gian canonical Parquet (sau nạp, chuẩn hóa và làm sạch tất định)
 │   │   └── .gitkeep
 │   └── processed/                      # Dữ liệu sạch hoàn chỉnh đóng băng lưu Parquet
+│       ├── air_pollution_final.parquet  # 9.044 dòng × 18 cột — artifact đóng băng của Issue #7 (gitignored)
 │       └── .gitkeep
 ├── docs/
 │   ├── roadmap.md                      # Lộ trình và đặc tả yêu cầu chi tiết 15 tuần (Authoritative Plan)
@@ -121,7 +125,8 @@ air-pollution-analysis/
 │   ├── 00_environment_test.ipynb       # Notebook kiểm thử môi trường và nạp thư viện [Issue #1]
 │   ├── 01_data_collection.ipynb        # Thực thi pipeline thu thập & kiểm định dữ liệu [Issue #3, #4]
 │   ├── 02_quality_audit.ipynb          # Trình bày kết quả kiểm toán 6 chiều [Issue #5]
-│   └── 03_data_cleaning.ipynb          # Thực thi làm sạch tất định & sinh Cleaning Log [Issue #6]
+│   ├── 03_data_cleaning.ipynb         # Thực thi làm sạch tất định & sinh Cleaning Log [Issue #6]
+│   └── 03_transformation_pipeline.ipynb # Merge → freeze → split → fit chống rò rỉ [Issue #7]
 ├── scripts/
 │   └── fetch_dataset.py                # Tải & kiểm chứng tập dữ liệu từ nguồn công khai (không cần API key)
 ├── src/
@@ -250,7 +255,7 @@ git clone
 - **Bảo toàn dữ liệu thô theo chính sách ba tầng (`data/raw/`):** Tệp thô tải từ API được ghi nguyên trạng dưới `data/raw/` trong quá trình pipeline thực thi (không sửa đổi thủ công, không chuyển đổi giá trị trước khi lưu). Mã băm SHA-256 của từng tệp được lưu trong `data/raw/metadata.json` để kiểm chứng toàn vẹn độc lập. Tệp thô không commit vào Git theo chính sách kho dữ liệu (`.gitignore`: `data/raw/*.json`, `data/raw/*.parquet`) và có thể tái tạo từ nguồn qua pipeline (xem [Mục 3.2 của roadmap](docs/roadmap.md#32-cổng-quyết-định-nguồn-dữ-liệu-issue-19-as-source-selection-gate)).
 - **Ngăn chặn rò rỉ dữ liệu chuỗi thời gian (*Temporal Leakage*):** Phân chia tập huấn luyện/kiểm tra phải thực hiện nghiêm ngặt theo trình tự thời gian ($T_{\text{train}} < T_{\text{test}}$). Điểm cắt phải được luận giải từ đặc tính thực nghiệm của tập dữ liệu đã đóng băng (độ bao phủ, kích thước mẫu, tính liên tục, tính đại diện theo mùa), **không** đặt trước một tỷ lệ hay năm cố định. Tuyệt đối không sử dụng phép chia ngẫu nhiên.
 - **Tính tiền định (*Determinism*):** Tất cả các phép biến đổi ngẫu nhiên, mô hình hóa đều phải cố định hạt giống số ngẫu nhiên (`random_state=42`). Mọi notebook phải thực thi tuần tự, trơn tru qua thao tác **Restart Kernel & Run All**.
-- **Không đưa công nghệ quá mức cần thiết (*No Over-Engineering*):** Với quy mô dữ liệu quan trắc thực tế hiện tại (chuỗi khí tượng 9.072 mốc giờ, chuỗi chất lượng không khí 8.022 bản ghi, tập giao thoa thời gian 8.022 mốc giờ; tổng dung lượng dưới $20\text{ MB}$), dự án sử dụng định dạng cột nén Snappy **Parquet** và thư viện **Pandas**. Tuyệt đối không sử dụng Apache Spark hay Deep Learning phức tạp làm mất đi tính minh bạch và khả năng giải trình thống kê.
+- **Không đưa công nghệ quá mức cần thiết (*No Over-Engineering*):** Với quy mô dữ liệu quan trắc thực tế hiện tại (chuỗi khí tượng 9.072 mốc giờ, chuỗi chất lượng không khí 9.044 giờ lưới sau làm sạch tất định — 8.022 bản ghi quan sát thô trước #6, từ đó reindex chèn thêm 1.022 giờ trống; tập giao thoa thời gian 9.044 mốc giờ với độ phủ khí tượng 100%; tổng dung lượng dưới $20\text{ MB}$), dự án sử dụng định dạng cột nén Snappy **Parquet** và thư viện **Pandas**. Tuyệt đối không sử dụng Apache Spark hay Deep Learning phức tạp làm mất đi tính minh bạch và khả năng giải trình thống kê.
 
 ---
 

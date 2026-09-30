@@ -336,6 +336,66 @@ class TestCyclicalFeatures(unittest.TestCase):
             total = feats[f"{prefix}_sin"] ** 2 + feats[f"{prefix}_cos"] ** 2
             np.testing.assert_allclose(total.to_numpy(), 1.0, atol=1e-12)
 
+    def test_hour_period_is_exactly_24(self):
+        """Chốt CHU KỲ GIỜ = 24, không phải 12 hay 6.
+
+        Cả ba test cũ ở trên đều bất biến với ước số: ‖(sin,cos)‖ = 1 và
+        sin²+cos² = 1 đúng với mọi chu kỳ, và "nửa đêm là gốc sin" chỉ kiểm tra
+        giờ 0. Đổi `24` thành `12` khiến CẢ BA vẫn xanh — nghĩa là nhánh này
+        chưa từng được kiểm chứng. Test này chốt giá trị thật tại các mốc chia
+        đều: 6h→+1, 12h→0, 18h→−1.
+        """
+        by_hour = {}
+        for hour in (0, 6, 12, 18):
+            df = pd.DataFrame(
+                {"timestamp": [pd.Timestamp(f"2025-01-01 {hour:02d}:00", tz=TZ)]}
+            )
+            feats = cp.add_cyclical_time_features(df)
+            by_hour[hour] = (float(feats["hour_sin"].iloc[0]),
+                             float(feats["hour_cos"].iloc[0]))
+        self.assertAlmostEqual(by_hour[0][0], 0.0, places=12)
+        self.assertAlmostEqual(by_hour[6][0], 1.0, places=12)   # sin(2π·6/24)=sin(π/2)
+        self.assertAlmostEqual(by_hour[12][0], 0.0, places=12)  # sin(π)
+        self.assertAlmostEqual(by_hour[18][0], -1.0, places=12)  # sin(3π/2)
+        self.assertAlmostEqual(by_hour[6][1], 0.0, places=12)
+        self.assertAlmostEqual(by_hour[18][1], 0.0, places=12)
+
+    def test_month_period_is_exactly_12(self):
+        """Chốt CHU KỲ THÁNG = 12. Tương tự: tháng 3 và tháng 9 phải đối xứng."""
+        by_month = {}
+        for month in (3, 6, 9, 12):
+            df = pd.DataFrame(
+                {"timestamp": [pd.Timestamp(f"2025-{month:02d}-15 00:00", tz=TZ)]}
+            )
+            feats = cp.add_cyclical_time_features(df)
+            by_month[month] = float(feats["month_sin"].iloc[0])
+        self.assertAlmostEqual(by_month[3], 1.0, places=12)    # sin(2π·3/12)=sin(π/2)
+        self.assertAlmostEqual(by_month[6], 0.0, places=12)    # sin(π)
+        self.assertAlmostEqual(by_month[9], -1.0, places=12)   # sin(3π/2)
+        # Tháng 12 phải trùng tháng 0: sin(2π) = 0, khác hẳn tháng 6 (cũng 0
+        # ở sin nhưng đối xứng qua cos) — và khác sin(2π·1/12) = 0,5 của tháng 1.
+        self.assertAlmostEqual(by_month[12], 0.0, places=12)
+
+    def test_last_hour_of_a_day_is_adjacent_to_the_first(self):
+        """Đây là LÝ DO của mã hoá sin/cos: 23:00 và 00:00 phải lân cận.
+
+        Với biến tuyến tính `hour`, 23:00 là giá trị cực đại và 00:00 là cực
+        tiểu — hai đầu đối lập của trục, dù chúng là hai giờ liền nhau. Với
+        sin/cos, khoảng cách giữa chúng nhỏ. Test này bảo vệ tính chất đó
+        thay vì chỉ bảo vệ công thức.
+        """
+        df = pd.DataFrame({"timestamp": [
+            pd.Timestamp("2025-01-01 23:00", tz=TZ),
+            pd.Timestamp("2025-01-02 00:00", tz=TZ),
+        ]})
+        feats = cp.add_cyclical_time_features(df)
+        # Khoảng cách L2 trong không gian (sin, cos) phải nhỏ — 2·sin(π/24).
+        gap = np.hypot(
+            float(feats["hour_sin"].iloc[0]) - float(feats["hour_sin"].iloc[1]),
+            float(feats["hour_cos"].iloc[0]) - float(feats["hour_cos"].iloc[1]),
+        )
+        self.assertLess(gap, 0.3, "23:00 và 00:00 phải lân cận trong không gian sin/cos")
+
     def test_input_frame_is_not_mutated(self):
         df = _frame(6)
         before = df.copy()

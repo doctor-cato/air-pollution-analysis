@@ -256,7 +256,12 @@ def chronological_split(
         )
 
     if not ts.is_monotonic_increasing:
-        first_bad = int(np.argmax(ts.diff().to_numpy() < 0)) + 1
+        # `Series.diff()` trên datetime tz-aware trả về `timedelta64[ns]`, và
+        # so sánh nó với `np.timedelta64(1, "h")` quy nạch đơn vị "generic" —
+        # numpy đã DeprecationWarning và sẽ ném lỗi. Ép sang so sánh theo
+        # `Timedelta` của pandas để không phụ thuộc vào đường chuyển đổi đó.
+        deltas = pd.Series(ts).diff()
+        first_bad = int(np.argmax((deltas < pd.Timedelta(0)).to_numpy())) + 1
         raise AssertionError(
             f"Cột thời gian '{timestamp_col}' không tăng dần (hàng {first_bad} đi "
             "lùi). chronological_split() không tự sort lại để không che giấu việc "
@@ -934,8 +939,21 @@ def validate_no_leakage(
     X_train, X_test : pd.DataFrame
         Features của Train (dùng để fit) và Test (chỉ dùng để transform).
     timestamps, test_timestamps : pd.Series | None
-        Cột thời gian tương ứng. Nếu truyền, hàm kiểm tra không có chồng lấn thời
-        gian giữa hai tập. Không truyền thì bỏ qua lớp kiểm chứng này.
+        Cột thời gian tương ứng. **Nên truyền cả hai** — khi đó hàm kiểm tra
+        không có chồng lấn thời gian giữa hai tập, tức là bắt được phép chia
+        ngẫu nhiên.
+
+        Bỏ truyền thì lớp kiểm chứng thứ tự thời gian **bị tắt** và hàm chỉ in
+        một `logging.WARNING**; đó là lựa chọn của người gọi, không phải hành
+        vi mặc định an toàn. Trừ cả hai hoặc chỉ truyền một sẽ ném
+        `AssertionError` — truyền nửa vời là lỗi ghi nhầm, không phải ý định.
+
+        .. warning::
+           Đo lại trên dữ liệu thật: một ``train_test_split`` ngẫu nhiên với
+           đúng ``X_train``/``X_test`` nhưng **không** truyền timestamp là
+           **không bị bắt**. Các lớp 2–3 vẫn phát hiện được *scaler fit sai
+           tập*, nhưng không phát hiện được *chính cái phép chia*. Vì vậy lớp 1
+           là lớp duy nhất chống được random split — hãy luôn bật nó.
     atol : float
         Sai số cho phép khi so sánh float.
 
@@ -957,7 +975,27 @@ def validate_no_leakage(
         )
 
     # --- Lớp 1: thứ tự thời gian ---------------------------------------------
-    if timestamps is not None and test_timestamps is not None:
+    #
+    # Lớp này là **tùy chọn** (vì `chronological_split()` đã tự kiểm), nhưng
+    # việc nó tùy chọn chính là một lỗ hổng âm thầm: một `train_test_split`
+    # ngẫu nhiên — vi phạm cam biên #1 của dự án — vẫn in ra "✓ No leakage"
+    # nếu người gọi quên truyền `timestamps`. Đo lại: `train_test_split`
+    # ngẫu nhiên với đúng X_train/X_test nhưng KHÔNG truyền timestamp là
+    # **không bị bắt**. Vì vậy bỏ truyền phải nói to, không được im lặng.
+    if (timestamps is None) != (test_timestamps is None):
+        raise AssertionError(
+            "Truyền `timestamps` nhưng không truyền `test_timestamps` (hoặc "
+            "ngược lại). Lớp kiểm chứng thứ tự thời gian cần CẢ HAI, hoặc "
+            "KHÔNG truyền cả hai nếu muốn bỏ qua lớp này."
+        )
+    if timestamps is None or test_timestamps is None:
+        logger.warning(
+            "validate_no_leakage(): KHÔNG truyền timestamps/test_timestamps → "
+            "LỚP KIỂM CHỨNG THỨ TỰ THỜI GIAN ĐANG BỊ TẮT. Một phép chia ngẫu "
+            "nhiên sẽ KHÔNG bị phát hiện. Hãy truyền cả hai nếu cần chứng minh "
+            "train.max() < test.min()."
+        )
+    else:
         tr = pd.to_datetime(pd.Series(timestamps))
         te = pd.to_datetime(pd.Series(test_timestamps))
         if tr.isna().any() or te.isna().any():

@@ -917,9 +917,45 @@ Cột cuối là **tỷ lệ p90 Test/Train** — đo trực tiếp *temporal re
 > |---|---|
 > | Mốc `2026-01-01` có event coverage cao hơn | `test_gio>100` 181 so với 99 |
 > | Mốc `2026-01-01` có $p90$ ratio gần 1 hơn | 0,97 so với 0,80 |
-> | Tỷ lệ nhãn nặng ở Test thấp hơn Train khoảng **2,8 lần** | Test 2,27% so với Train 6,30% |
+> | Tỷ lệ nhãn nặng ở Test thấp hơn Train ~**2,24 lần** (so sánh cùng mẫu số — chỉ tính dòng **có nhãn**) | Test `99/3.216` = 3,08% so với Train `295/4.279` = 6,89% |
+> | Tỷ lệ nhãn nặng thấp hơn ~**2,77 lần** (nếu tính trên **toàn bộ** dòng, kể cả dòng không có nhãn) | Test `99/4.362` = 2,27% so với Train `295/4.682` = 6,30% |
+> | **1.146 / 4.362 dòng Test (26,3%) KHÔNG có nhãn** `pm25` | xem bảng "Đuôi dữ liệu rỗng" bên dưới |
 >
-> Hệ quả cụ thể: **có dịch chuyển tỷ lệ lớp giữa Train và Test**. Khi đánh giá mô hình ở Issue #11–#13, Recall và PR-AUC phải được diễn giải cẩn thận với sự dịch chuyển này; nếu cần, có thể báo cáo thêm chỉ số trên một tập con Test đã cân bằng nhãn. Việc chốt lại mốc cắt **không thuộc phạm vi Issue #7** và chỉ nên xem xét khi có thêm một chu kỳ mùa nữa trong dữ liệu.
+> **Hệ quả cụ thể: có dịch chuyển tỷ lệ lớp giữa Train và Test.** Khi đánh giá mô hình ở Issue #11–#13, Recall và PR-AUC phải được diễn giải cẩn thận với sự dịch chuyển này; nếu cần, có thể báo cáo thêm chỉ số trên một tập con Test đã cân bằng nhãn. Việc chốt lại mốc cắt **không thuộc phạm vi Issue #7** và chỉ nên xem xét khi có thêm một chu kỳ mùa nữa trong dữ liệu.
+>
+> > [!WARNING]
+> > **Đọc đúng mẫu số của hai con số trên — đây là bẫy đo lường, không phải hai kết quả khác nhau.**
+> >
+> > Con số **2,8×** từng xuất hiện trong Issue #7 và notebook mục 5 là **đúng về phép tính** (`6,30% / 2,27% = 2,77`) nhưng **sai về mẫu số**: nó chia cho 1.146 dòng không có nhãn ở Test. Một tỷ lệ không nên chia cho các dòng mà nó không đo được — ở đây điều đó **hạ thấp** tỷ lệ nhãn nặng của Test.
+> >
+> > Nói rõ hơn: **cả 99 giờ vượt 100 µg/m³ đều nằm trong tập con có nhãn**; không giờ nào nào nằm trong đuôi rỗng. Vì vậy mẫu số `3.216` (dòng có nhãn) là mẫu số đúng của cả hai tập. Lưu ý Train cũng có 403 dòng không nhãn, nên **cả hai vế** đều phải dùng mẫu số "dòng có nhãn" — Train `295/4.279`, Test `99/3.216` → **2,24×**.
+> >
+> > Quy tắc cho Issues #11–#13: **mọi chỉ số tỷ lệ phải nêu mẫu số, và dùng cùng một mẫu số cho cả Train lẫn Test.** Con số để dùng cho dịch chuyển tỷ lệ lớp là **3,08% so với 6,89% (2,24×)**. Nếu vẫn trích 2,27% / 6,30%, phải kèm câu "trong đó 1.146 dòng Test không có nhãn".
+> >
+> > **Mốc cắt `2026-01-15` không thay đổi.** Đây chỉ là sửa cách trình bày mẫu số, không phải đổi phương pháp luận.
+
+**Đuôi dữ liệu rỗng của tập Test — hạn chế thứ hai của mốc `2026-01-15`.**
+
+Nguyên nhân của 1.146 dòng Test không có nhãn là **nguồn quan trắc ngừng gửi**, không phải lỗi làm sạch: `reindex_hourly_grid()` đã chèn đủ lưới giờ, nhưng các giờ đó không có quan sát nào ở cả hai kênh.
+
+| Tháng | Dòng trong Test | `pm25` = NaN | Tỷ lệ NaN |
+|---|---|---|---|
+| 2026-01 | 408 | 37 | 9,07% |
+| 2026-02 | 672 | 21 | 3,12% |
+| 2026-03 | 744 | 8 | 1,08% |
+| 2026-04 | 720 | 17 | 2,36% |
+| 2026-05 | 744 | 141 | 18,95% |
+| **2026-06** | 720 | **569** | **79,03%** |
+| **2026-07** | 354 | **353** | **99,72%** |
+
+Từ `2026-06-01` trở đi: **1.074 dòng / 922 NaN (85,8%)** — chiếm **24,6%** của tập Test.
+
+> [!CAUTION]
+> > **Cả `2026-06` lẫn `2026-07` đều là đuôi gần như rỗng — trước đây chỉ `2026-07` được nêu.**
+> >
+> > Tháng 6 mất 79% nhãn, tức **xấp xỉ 2/3 giờ của tháng 6 không dùng được cho đánh giá**. Nếu chỉ nói "tháng 7 gần như rỗng" thì người đọc tưởng chỉ mất 15 ngày cuối; thực tế mất **6 tuần**. Đây là lý do mọi chỉ số ở Issue #11–#13 phải báo kèm **số dòng thực sự dùng được**, không chỉ tổng số dòng Test.
+> >
+> > Gợi ý xử lý cho M3 (không thuộc phạm vi Issue #7): báo cáo chỉ số trên tập Test **có nhãn** (`n = 3.216`) làm kết quả chính, và công bố riêng độ phủ theo tháng làm phụ lục minh bạch. Không được âm thầm lọc bỏ đuôi rỗng rồi báo "Test có 4.362 dòng".
 
 **Vì sao giữ CẢ HAI phép kiểm tra số dòng (`<=` và `==`).**
 

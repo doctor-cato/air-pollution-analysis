@@ -43,6 +43,7 @@ NGUYÊN TẮC BẤT BIẾN
 from __future__ import annotations
 
 import logging
+import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -315,7 +316,19 @@ def normalize_timestamps(
     out = df.copy()
     before_tz = getattr(out[TIMESTAMP_COLUMN].dtype, "tz", None)
 
-    parsed = pd.to_datetime(out[TIMESTAMP_COLUMN], errors="coerce")
+    # pandas tới phiên bản này cảnh báo `FutureWarning` mỗi lần gọi
+    # `to_datetime` trên một cột chứa nhiều UTC offset lẫn lộn, vì hành vi mặc
+    # định sẽ đổi thành ném lỗi. Ở đây phép gọi đó là CỐ Ý: nó là bước dò
+    # mixed-offset, và nhánh `mixed_offsets` bên dưới xử lý đúng bằng cách
+    # phân tích lại với `utc=True`. Vì vậy chỉ dập đúng cảnh báo này, không
+    # dập chung `FutureWarning` — mọi cảnh báo khác vẫn phải lộ ra.
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=".*parsing datetimes with mixed time zones.*",
+            category=FutureWarning,
+        )
+        parsed = pd.to_datetime(out[TIMESTAMP_COLUMN], errors="coerce")
     unparseable = int(parsed.isna().sum())
     if unparseable > 0:
         raise ValueError(
