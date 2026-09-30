@@ -37,11 +37,37 @@ jobs:
           python -c "import src.data_collection"
           python -c "import src.data_quality"
           python -c "import src.cleaning"
+          python -c "import src.cleaning_pipeline"
 
       # Chỉ chạy unit test. KHÔNG chạy run_collection_pipeline() vì cần
       # gọi OpenAQ S3 / Open-Meteo / AirNow qua mạng (không deterministic).
       - name: Chạy unit tests
         run: python -m unittest discover tests -v
+
+      - name: Kiểm tra mọi notebook là JSON hợp lệ (không cần execute)
+        # Rẻ hơn nhiều so với execute nhưng bắt được lỗi nghiêm trọng nhất từng
+        # gặp: 03_transformation_pipeline.ipynb từng có hai chuỗi JSON nối vào
+        # nhau khiến Jupyter KHÔNG MỞ ĐƯỢC file — và nó sống sót tới khi bị
+        # review thủ công vì `notebook-smoke` chỉ chạy notebook 00.
+        run: |
+          python - <<'PY'
+          import pathlib, sys
+          import nbformat
+
+          broken = []
+          for path in sorted(pathlib.Path("notebooks").glob("*.ipynb")):
+              try:
+                  nbformat.read(path, as_version=4)
+              except Exception as exc:
+                  broken.append(f"{path}: {type(exc).__name__}: {exc}")
+              else:
+                  print(f"OK  {path}")
+          if broken:
+              print("\nNotebook KHÔNG đọc được:", file=sys.stderr)
+              for line in broken:
+                  print(f"  {line}", file=sys.stderr)
+              sys.exit(1)
+          PY
 
       - name: Kiểm tra khoảng trắng thừa trong diff (git diff --check)
         run: |
