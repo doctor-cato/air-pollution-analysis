@@ -574,13 +574,58 @@ class TestIntegrationWithIssueSixOutput(unittest.TestCase):
             điền median cho đúng những hàng đó, nên mô hình học được quy tắc
             `flag == 1 => pm25 == median` và đúng 100%. Đây là rò rỉ target theo
             cấu trúc — không guard nào trong #7 bắt được, phải loại ở danh sách.
-          - `is_high_humidity_fog` là điều kiện khí quyển nên vẫn hợp lệ.
+
+        `is_high_humidity_fog` từng được coi là feature hợp lệ với lập luận "sương
+        mù quang học là điều kiện khí quyển". Đo trên dữ liệu thật thì lập luận đó
+        không đứng vững, nên nay nó bị loại — xem test kế bên.
         """
         features = cp.freeze_dataset(self.cleaned).feature_columns
         self.assertNotIn("pm25", features)
         for flag in cp.TARGET_DERIVED_FLAGS:
             self.assertNotIn(flag, features)
-        self.assertIn("is_high_humidity_fog", features)
+
+    def test_high_humidity_fog_flag_is_excluded_as_a_non_predictive_feature(self):
+        """`is_high_humidity_fog` bị loại khỏi feature vì **không dự báo được**.
+
+        Số đo trên `data/interim/air_quality_canonical.parquet` (9.044 hàng):
+
+          - `corr(pm25, RH) = -0,0365` — gần như không quan hệ.
+          - PM2.5 trung bình ở nhóm có cờ = **41,65**, nhóm không cờ = **44,75** —
+            nhóm ẩm cao có PM2.5 **THẤP hơn**, đúng chiều ngược với giả thuyết
+            sương mù làm cảm biến đọc **cao** hơn.
+          - Quét ngưỡng RH 80/85/90/95 đều ra cùng kết luận → **không phải** lỗi
+            chọn ngưỡng.
+          - Cờ vẫn bắt đúng nhóm ẩm cao (RH trung bình 94,99% so với 74,06%), nên
+            nó là một *cờ độ ẩm* đúng, chỉ là không phải *chỉ báo sương mù quang
+            học* trên bộ dữ liệu này.
+
+        Cờ **vẫn được giữ trong dataset** như tài liệu chẩn đoán; chỉ không được
+        dùng làm feature.
+        """
+        self.assertIn("is_high_humidity_fog", cp.NON_PREDICTIVE_FLAGS)
+        self.assertNotIn(
+            "is_high_humidity_fog", cp.DIAGNOSTIC_FEATURES,
+            "cờ không dự báo được target thì không được nằm trong DIAGNOSTIC_FEATURES",
+        )
+
+        frame = self.cleaned
+        if "is_high_humidity_fog" not in frame.columns:
+            frame = frame.assign(is_high_humidity_fog=0)
+        features = cp.freeze_dataset(frame).feature_columns
+        self.assertNotIn(
+            "is_high_humidity_fog", features,
+            "cờ đo được là không dự báo được thì không được làm feature",
+        )
+
+    def test_non_predictive_flag_is_still_kept_in_the_dataset(self):
+        """Loại khỏi feature KHÔNG đồng nghĩa xoá khỏi dataset."""
+        frame = self.cleaned.assign(is_high_humidity_fog=1)
+        info = cp.freeze_dataset(frame)
+        self.assertNotIn("is_high_humidity_fog", info.feature_columns)
+        self.assertIn(
+            "is_high_humidity_fog", frame.columns,
+            "cờ chẩn đoán phải còn trong dataset để Issue #6/#8 còn dùng",
+        )
 
 
 class TestLog1PDiagnostic(unittest.TestCase):

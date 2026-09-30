@@ -938,6 +938,34 @@ Cột cuối là **tỷ lệ p90 Test/Train** — đo trực tiếp *temporal re
 
 Nguyên nhân của 1.146 dòng Test không có nhãn là **nguồn quan trắc ngừng gửi**, không phải lỗi làm sạch: `reindex_hourly_grid()` đã chèn đủ lưới giờ, nhưng các giờ đó không có quan sát nào ở cả hai kênh.
 
+> [!IMPORTANT]
+> **Đây là MỘT sự cố duy nhất, không phải rơi rải rác — và cách đo đúng là đo theo khoảng liên tục, không theo tháng.**
+>
+> Bảng theo tháng bên dưới đúng về số học nhưng **sai về hình dạng sự cố**: nó làm một sự cố liên tục trông như nhiều sự cố nhỏ rải rác. Với dữ liệu chỉ **một trạm**, cách đúng là đo độ dài chuỗi `NaN` liên tục.
+>
+> | Độ dài | Từ | Đến | Ghi chú |
+> |---|---|---|---|
+> | **630 giờ** | `2026-06-19 11:00` | `2026-07-15 16:00` | **một sự cố duy nhất**, trải hết tháng 6 và tháng 7 |
+> | 52 giờ | `2025-12-14 10:00` | `2025-12-16 13:00` | sự cố thứ hai, nằm trong **Train** |
+> | 37 giờ | `2025-11-30 00:00` | `2025-12-01 12:00` | sự cố thứ ba, nằm trong **Train** |
+> | 24 giờ | `2025-09-30 09:00` | `2025-10-01 08:00` | sự cố thứ tư, nằm trong **Train** |
+>
+> Trong 630 giờ đó: **630/630 dòng có `pm25_was_missing = 1`**, và `pm10` cũng `NaN` đủ 630 giờ — nghĩa là **cả hai kênh cùng mất**, đúng dấu hiệu trạm ngừng phát chứ không phải lỗi riêng kênh PM2.5.
+>
+> Con số `630` đã có sẵn trong `docs/cleaning_log.md` (`longest_missing_block_hours`, bước 9). Việc còn thiếu là **nối nó với tập Test** — trước đây nó nằm trong bảng đặc tả mà không ai đọc tới, còn phần Test thì chỉ được mô tả bằng tỉ lệ theo tháng.
+
+**Hệ quả trực tiếp lên tập Test:**
+
+| | Train | Test |
+|---|---|---|
+| Dòng | 4.682 | 4.362 |
+| Dòng **có** nhãn `pm25` | 4.279 | 3.216 |
+| **Độ phủ nhãn** | **91,4%** | **73,7%** |
+
+Test mất **17,7 điểm phần trăm** độ phủ so với Train, và toàn bộ phần mất nằm ở một sự cố duy nhất. Vì vậy Recall / PR-AUC ở Issue #13 sẽ phản ánh **cả dropout lẫn phân phối khí quyển** — hai thứ trộn làm một, không tách được nếu không công bố độ phủ.
+
+**Phân rã theo tháng** (vẫn giữ để đối chiếu, nhưng đọc cùng bảng "sự cố" ở trên):
+
 | Tháng | Dòng trong Test | `pm25` = NaN | Tỷ lệ NaN |
 |---|---|---|---|
 | 2026-01 | 408 | 37 | 9,07% |
@@ -955,7 +983,9 @@ Từ `2026-06-01` trở đi: **1.074 dòng / 922 NaN (85,8%)** — chiếm **24,
 > >
 > > Tháng 6 mất 79% nhãn, tức **xấp xỉ 2/3 giờ của tháng 6 không dùng được cho đánh giá**. Nếu chỉ nói "tháng 7 gần như rỗng" thì người đọc tưởng chỉ mất 15 ngày cuối; thực tế mất **6 tuần**. Đây là lý do mọi chỉ số ở Issue #11–#13 phải báo kèm **số dòng thực sự dùng được**, không chỉ tổng số dòng Test.
 > >
-> > Gợi ý xử lý cho M3 (không thuộc phạm vi Issue #7): báo cáo chỉ số trên tập Test **có nhãn** (`n = 3.216`) làm kết quả chính, và công bố riêng độ phủ theo tháng làm phụ lục minh bạch. Không được âm thầm lọc bỏ đuôi rỗng rồi báo "Test có 4.362 dòng".
+> > **Một sự cố liên tục 630 giờ là hình dạng xấu hơn nhiều so với nhiều sự cố rải rác** cùng tổng thiếu hụt: nó có nghĩa là **không có quan sát nào** trong gần 4 tuần cuối, nên phép kiểm định ở khoảng thời gian đó không có mẫu đối chứng nào — mọi so sánh với giai đoạn đó đều là ngoại suy ngoài phạm vi quan sát, không phải so sánh trong phạm vi.
+> >
+> > Gợi ý xử lý cho M3 (không thuộc phạm vi Issue #7): báo cáo chỉ số trên tập Test **có nhãn** (`n = 3.216`) làm kết quả chính, công bố riêng **độ phủ nhãn Train 91,4% vs Test 73,7%** và **bảng sự cố liên tục** như phụ lục minh bạch. Không được âm thầm lọc bỏ đuôi rỗng rồi báo "Test có 4.362 dòng".
 
 **Vì sao giữ CẢ HAI phép kiểm tra số dòng (`<=` và `==`).**
 

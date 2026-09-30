@@ -88,14 +88,16 @@ CYCLICAL_FEATURES: List[str] = [
     "month_cos",
 ]
 
-# Cờ chẩn đoán do Issue #5/#6 sinh ra, ĐƯỢC dùng làm feature.
-#   - `pm25_was_stuck`      : cảm biến kẹt (hiện là hằng số 0 trên tập Hà Nội,
-#                            nên không mang thông tin phân biệt nhưng vô hại)
-#   - `is_high_humidity_fog`: sương mù quang học — cảm biến đọc sai, đây là
-#                            điều kiện khí quyển nên hợp lệ làm dự báo
+# Cờ chẩn đoán do Issue #5/#6 sinh ra.
+#
+#   - `pm25_was_stuck`: cảm biến kẹt. Trên tập Hà Nội cờ này là **hằng số 0**
+#     (`nunique = 1`, `sum = 0`) — không có phương sai nên không thể mang thông
+#     tin phân biệt. Vẫn giữ trong danh sách feature vì nó vô hại về số học
+#     (scaler tự đặt `scale_ = 1` cho hằng số), nhưng **không được diễn giải** là
+#     biến có tác động. Nếu sau này cảm biến thật sự kẹt thì cờ sẽ biến thiên
+#     và trở lại có ích — đó là lý do giữ.
 DIAGNOSTIC_FEATURES: List[str] = [
     "pm25_was_stuck",
-    "is_high_humidity_fog",
 ]
 
 # Cờ chẩn đoán **KHÔNG** được dùng làm feature vì là hàm xác định của target.
@@ -116,6 +118,36 @@ DIAGNOSTIC_FEATURES: List[str] = [
 # kiểm chứng. Cờ vẫn được GIỮ trong dataset như tài liệu chẩn đoán.
 TARGET_DERIVED_FLAGS: List[str] = [
     "pm25_was_missing",
+]
+
+
+# Cờ chẩn đoán **KHÔNG** được dùng làm feature vì **không mang tín hiệu dự báo**,
+# khác với `TARGET_DERIVED_FLAGS` vốn rò rỉ. Hai lý do phải tách bạch, không
+# gộp chung, vì cách xử lý khác nhau.
+#
+# `is_high_humidity_fog` được Issue #6 gắn cho giờ có RH > 90%. Trên tập Hà Nội:
+#
+#   - Cờ bắt đúng nhóm ẩm cao: RH trung bình nhóm có cờ = 94,99% so với 74,06%
+#     nhóm không cờ. Vậy nó là một **cờ độ ẩm** đúng đắn.
+#   - Nhưng nó **không dự báo được PM2.5**: `corr(pm25, RH) = -0,0365`, và PM2.5
+#     trung bình ở nhóm có cờ (41,65) **thấp hơn** nhóm không cờ (44,75).
+#     `corr(is_high_humidity_fog, pm25) = -0,0519` trên các dòng có nhãn.
+#   - Quét toàn bộ ngưỡng RH (80/85/90/95) đều cho cùng kết luận: nhóm ẩm cao luôn
+#     có PM2.5 **thấp hơn**. Nên đây **không phải** lỗi chọn ngưỡng — ở bộ dữ liệu
+#     này RH đơn thuần không liên quan đến PM2.5.
+#
+# Bản gốc ghi chú "đây là điều kiện khí quyển nên hợp lệ làm dự báo". Số đo trên
+# chính bộ dữ liệu dự án **phủ nhận** lập luận đó, nên giữ cờ làm feature là nuôi
+# một cột không tín hiệu kèm lý do không có cơ sở, và làm nhiễu diễn giải hệ số ở
+# Issue #12–#13.
+#
+# Cờ vẫn được **GIỮ NGUYÊN trong dataset** như tài liệu chẩn đoán, và
+# `SimpleImputer` trong pipeline không cần đụng tới vì nó không còn là feature.
+# Nếu sau này chứng minh được quan hệ vật lý (ví dụ thêm biến tầm nhìn, hoặc tách
+# riêng tập sương mù thật), thì đưa lại vào feature — quyết định này dựa trên
+# đo đạc, không dựa trên giả định.
+NON_PREDICTIVE_FLAGS: List[str] = [
+    "is_high_humidity_fog",
 ]
 
 
@@ -773,7 +805,13 @@ def freeze_dataset(
     DatasetFreezeInfo
     """
     if feature_columns is None:
-        excluded = {timestamp_col, station_col, TARGET_CANDIDATE, *TARGET_DERIVED_FLAGS}
+        excluded = {
+            timestamp_col,
+            station_col,
+            TARGET_CANDIDATE,
+            *TARGET_DERIVED_FLAGS,
+            *NON_PREDICTIVE_FLAGS,
+        }
         feature_columns = [
             c
             for c in df.columns
@@ -794,6 +832,15 @@ def freeze_dataset(
                 "freeze_dataset: loại %s khỏi feature mặc định vì là hàm xác định "
                 "của target — dùng làm feature là rò rỉ mà guard nào cũng không bắt.",
                 TARGET_DERIVED_FLAGS,
+            )
+        if any(c in df.columns for c in NON_PREDICTIVE_FLAGS):
+            logger.info(
+                "freeze_dataset: loại %s khỏi feature mặc định vì đo đạc trên dữ "
+                "liệu thật cho thấy không dự báo được target (corr với pm25 ~ -0,05; "
+                "nhóm có cờ có pm25 THẤP hơn nhóm không cờ) — xem "
+                "NON_PREDICTIVE_FLAGS. Cờ vẫn được giữ trong dataset như tài liệu "
+                "chẩn đoán.",
+                NON_PREDICTIVE_FLAGS,
             )
 
     info = DatasetFreezeInfo(

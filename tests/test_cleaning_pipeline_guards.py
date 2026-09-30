@@ -367,8 +367,37 @@ class B7TargetDerivedFlagIsNotAFeature(unittest.TestCase):
         self.assertNotIn("pm25_was_missing", cp.DIAGNOSTIC_FEATURES)
 
     def test_allowed_diagnostic_features_exclude_only_the_target_derived_one(self):
-        self.assertIn("is_high_humidity_fog", cp.DIAGNOSTIC_FEATURES)
+        """`DIAGNOSTIC_FEATURES` giờ chỉ còn `pm25_was_stuck`.
+
+        `is_high_humidity_fog` đã bị chuyển sang `NON_PREDICTIVE_FLAGS` sau khi
+        đo trên dữ liệu thật phủ nhận lập luận "sương mù quang học là điều kiện khí
+        quyển nên hợp lệ làm dự báo": `corr(pm25, RH) = -0,0365`, và PM2.5 trung
+        bình nhóm có cờ (41,65) **thấp hơn** nhóm không cờ (44,75). Quét cả ngưỡng
+        RH 80/85/90/95 đều không đảo chiều, nên không phải lỗi chọn ngưỡng.
+        """
         self.assertIn("pm25_was_stuck", cp.DIAGNOSTIC_FEATURES)
+        self.assertNotIn(
+            "is_high_humidity_fog", cp.DIAGNOSTIC_FEATURES,
+            "cờ không dự báo được target không được là feature",
+        )
+        self.assertIn("is_high_humidity_fog", cp.NON_PREDICTIVE_FLAGS)
+
+    def test_the_two_flag_groups_stay_disjoint(self):
+        """Hai nhóm loại trừ phải tách bạch — lý do rất khác nhau.
+
+        `TARGET_DERIVED_FLAGS` = rò rỉ target theo cấu trúc (dùng làm feature thì
+        mô hình học được quy tắc `flag == 1 => target == median` và hỏng).
+        `NON_PREDICTIVE_FLAGS` = cờ chạy được nhưng không mang tín hiệu dự báo.
+        Gộp chung sẽ khiến người đọc tưởng mọi cờ bị loại đều vì rò rỉ, và che mất
+        lý do thực sự.
+        """
+        self.assertEqual(
+            set(cp.TARGET_DERIVED_FLAGS) & set(cp.NON_PREDICTIVE_FLAGS), set()
+        )
+        self.assertNotIn(
+            "pm25_was_missing", cp.NON_PREDICTIVE_FLAGS,
+            "pm25_was_missing rò rỉ target, không phải chỉ thiếu tín hiệu",
+        )
 
     def test_the_leak_is_actually_deterministic(self):
         """Chứng minh cơ chế: mọi hàng flag=1 có target = median sau khi impute."""
