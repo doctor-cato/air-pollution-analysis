@@ -55,19 +55,35 @@
      full_idx = pd.date_range(start=df['timestamp'].min(), end=df['timestamp'].max(), freq='h')
      df = df.set_index('timestamp').reindex(full_idx).rename_axis('timestamp').reset_index()
      ```
-5. **Controlled Missing Value Imputation:**
-   - **Small Gaps ($\le 2$ consecutive hours):** Time-weighted linear interpolation:
+5. **Missing Value Policy — RETAIN, do not impute (binding invariant):**
+   - **Mọi khuyết đều được giữ nguyên là `NaN`.** Dự án này cấm tạo ra giá trị quan
+     sát bằng bất kỳ phép nội suy hay thay thế nào. Lý do không phải thẩm mỹ:
+     `src/cleaning.py` chốt bằng `assert_no_imputation()`, hàm so **từng ô** trên
+     khoá `(station_id, timestamp)` và chấp nhận đúng hai kết quả — ô `NaN` trước
+     phải còn `NaN`, ô có giá trị phải giữ nguyên giá trị đó hoặc trở thành `NaN`.
+     Bất kỳ phép điền nào cũng làm assert đỏ.
+   - **Cờ chẩn đoán thay cho việc điền:**
      ```python
-     df['pm25'] = df['pm25'].interpolate(method='time', limit=2)
+     df['pm25_was_missing'] = df['pm25'].isna().astype(int)   # khối khuyết > 6 giờ
+     df['is_high_humidity_fog'] = ...                        # sương mù quang học
      ```
-   - **Medium Gaps ($3 - 6$ consecutive hours):** Group-wise median by hour of day for that specific calendar month.
-   - **Large Gaps ($> 6$ consecutive hours):** **NEVER interpolate blindly.** Retain `NaN` and generate a missing indicator flag:
-     ```python
-     df['pm25_was_missing'] = df['pm25'].isna().astype(int)
-     ```
+   - **Cờ chẩn đoán là dữ liệu quan sát, KHÔNG phải giá trị đã được thay thế.**
+     Chúng đi cùng dataset để giải thích *tại sao* ô đó trống.
+   - **Không được đưa cờ phái sinh từ target vào feature.** `pm25_was_missing` bằng
+     `pm25.isna()`, mà `SimpleImputer(strategy="median")` ở #7 lại điền median cho
+     đúng những hàng đó — nên mọi hàng `flag == 1` có target bằng đúng median
+     (đo trên dữ liệu thật: 100% ở cả Train và Test). Đó là rò rỉ target theo cấu
+     trúc, và `validate_no_leakage()` **không** bắt được vì imputer vẫn học đúng trên
+     Train. Xem `TARGET_DERIVED_FLAGS` trong `src/cleaning_pipeline.py`.
+   - *Lịch sử:* bản sửa đổi trước đây của mục này cho phép
+     `interpolate(method='time', limit=2)` cho khuyết ≤ 2 giờ. Quy tắc đó **đã bị
+     thay thế** và không còn hiệu lực — nó mâu thuẫn trực tiếp với
+     `assert_no_imputation()`. Không viết mã theo quy tắc cũ.
 6. **Row Explosion Prevention (Critical Join Rule):**
    - **Never assume a merge is correct merely because the code executes.** Always inspect granularity, matching timezones, and key intersection.
    - When merging air quality data (`df_air`) with meteorological data (`df_weather`), ensure both datasets share unique `timestamp` keys.
+   - Reject column-name collisions outside the join key **before** merging — pandas
+     silently renames them to `_x`/`_y`, destroying the original name.
    - Always verify row counts before and after joining:
      ```python
      n_air = len(df_air)
@@ -75,6 +91,11 @@
      assert len(df_merged) == n_air, f"Row Explosion detected! Before: {n_air}, After: {len(df_merged)}"
      assert not df_merged['temperature'].isna().all(), "Joined weather columns are entirely NaN! Check timezone or timestamp format mismatch."
      ```
+   - Use `==`, not `<=`. With `how="left"` + unique keys + `validate="1:1"`,
+     `len(merged) <= len(air)` is a tautology that can never fire. The all-NaN
+     assertion is the check that actually catches a timezone/window mismatch.
+   - `src/cleaning_pipeline.py::merge_air_weather()` enforces all three; use it
+     rather than re-deriving the merge by hand.
 
 ---
 

@@ -24,12 +24,16 @@ KHÔNG LÀM (thuộc #5/#6):
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from sklearn.base import clone
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
@@ -58,8 +62,16 @@ except ImportError as exc:  # pragma: no cover - chỉ xảy ra khi thiếu Issu
 # Constants – feature groups (không hard-code dataset-specific values)
 # ---------------------------------------------------------------------------
 
+TARGET_CANDIDATE: str = "pm25"
+
+# Ứng viên feature SỐ. KHÔNG chứa `TARGET_CANDIDATE`.
+#
+# Lý do: bản gốc liệt kê cả `pm25`, nên `build_preprocessing_pipeline()` gọi
+# không tham số sẽ đưa chính target vào `X`. Bài toán dự báo biến thành bài toán
+# đọc lại câu trả lời — R² = 1.0 một cách vô nghĩa, và sai lệch này KHÔNG bị
+# `validate_no_leakage()` phát hiện vì imputer vẫn học đúng trên Train.
+# `build_preprocessing_pipeline()` giờ raise nếu target lọt vào danh sách.
 NUMERIC_FEATURES: List[str] = [
-    "pm25",
     "pm10",
     "temperature",
     "relative_humidity",
@@ -76,7 +88,35 @@ CYCLICAL_FEATURES: List[str] = [
     "month_cos",
 ]
 
-TARGET_CANDIDATE: str = "pm25"
+# Cờ chẩn đoán do Issue #5/#6 sinh ra, ĐƯỢC dùng làm feature.
+#   - `pm25_was_stuck`      : cảm biến kẹt (hiện là hằng số 0 trên tập Hà Nội,
+#                            nên không mang thông tin phân biệt nhưng vô hại)
+#   - `is_high_humidity_fog`: sương mù quang học — cảm biến đọc sai, đây là
+#                            điều kiện khí quyển nên hợp lệ làm dự báo
+DIAGNOSTIC_FEATURES: List[str] = [
+    "pm25_was_stuck",
+    "is_high_humidity_fog",
+]
+
+# Cờ chẩn đoán **KHÔNG** được dùng làm feature vì là hàm xác định của target.
+#
+# `pm25_was_missing` = `pm25.isna()` với ngưỡng khối khuyết > 6 giờ.
+# `SimpleImputer(strategy="median")` lại điền median cho ĐÚNG những hàng đó. Hệ
+# quả: mọi hàng `flag == 1` có target bằng đúng median của tập học — đo trên dữ
+# liệu thật (cut 2026-01-15, median Train 37,83) là 256/256 hàng ở Train và
+# 1.033/1.033 hàng ở Test, tức 100% ở cả hai. Mô hình học được quy tắc
+# `flag == 1 => pm25 == median` và đúng 100%, đó là rò rỉ target theo cấu trúc chứ
+# không phải tín hiệu vật lý.
+#
+# Lưu ý khi đọc con số: tổng số hàng `pm25` bị NaN là 1.549, nhưng cờ chỉ bắt
+# 1.289 khối dài — 260 khối ngắn cũng được impute nhưng không lộ qua cờ.
+#
+# `validate_no_leakage()` VỀ BẢN CHẤT KHÔNG THỂ bắt lỗi này: imputer vẫn học
+# đúng trên Train. Vì vậy phải loại ở mức danh sách feature, không phải ở mức
+# kiểm chứng. Cờ vẫn được GIỮ trong dataset như tài liệu chẩn đoán.
+TARGET_DERIVED_FLAGS: List[str] = [
+    "pm25_was_missing",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -108,9 +148,28 @@ def add_cyclical_time_features(
     -------
     pd.DataFrame
         DataFrame gốc + 4 cột mới: hour_sin, hour_cos, month_sin, month_cos.
+
+    Raises
+    ------
+    ValueError
+        Nếu cột thời gian có NaT hoặc không parse được. Nhánh `cyc` của
+        ColumnTransformer là `passthrough` — không có imputer — nên NaN ở đây đi
+        thẳng vào ma trận, và `RobustScaler` phía sau sẽ âm thầm biến nó thành 0.
     """
     result = df.copy()
     ts = pd.to_datetime(result[timestamp_col])
+
+    # NaT -> hour/month là NaN -> sin/cos là NaN -> nhánh `cyc` passthrough không
+    # lọc -> RobustScaler đổi NaN thành 0. Hàng đó biến thành "nửa đêm" giả, đúng
+    # cái loại rò rỉ âm thầm mà #7 sinh ra để chặn. Phải chặn ngay tại nguồn.
+    if ts.isna().any():
+        n_nat = int(ts.isna().sum())
+        raise ValueError(
+            f"Cột thời gian '{timestamp_col}' có {n_nat} giá trị NaT hoặc không "
+            "parse được. add_cyclical_time_features() sẽ tạo ra NaN ở cả 4 cột "
+            "chu kỳ, mà nhánh `cyc` là passthrough nên không có imputer để bắt. "
+            "Hãy xử lý timestamp trước khi gọi hàm này."
+        )
 
     hour = ts.dt.hour
     month = ts.dt.month
@@ -128,6 +187,21 @@ def add_cyclical_time_features(
 # ---------------------------------------------------------------------------
 
 
+def sort_by_time(
+    df: pd.DataFrame,
+    timestamp_col: str = "timestamp",
+) -> pd.DataFrame:
+    """
+    Trả về bản sao đã sắp xếp tăng dần theo cột thời gian.
+
+    `chronological_split()` **không** tự sort lại: sort tại chỗ sẽ che giấu
+    việc người gọi truyền vào dữ liệu chưa chuẩn hoá, và một tập dữ liệu bị
+    đảo thứ tự dòng là dấu hiệu đường ống ingestion có vấn đề. Gọi hàm này
+    tường minh trước `chronological_split()` nếu thật sự cần.
+    """
+    return df.sort_values(timestamp_col, kind="stable").reset_index(drop=True)
+
+
 def chronological_split(
     df: pd.DataFrame,
     split_timestamp: pd.Timestamp,
@@ -139,12 +213,20 @@ def chronological_split(
     TUYỆT ĐỐI không dùng random split. Train = dữ liệu trước split_timestamp,
     Test = dữ liệu từ split_timestamp trở đi.
 
+    Hàm **từ chối** dữ liệu không sử dụng được thay vì tự sửa:
+
+      - `NaT` trong cột thời gian — `ts < split` xử lý NaT là `False`, nên hàng đó
+        rơi vào Test và mang theo NaT, biến mất khỏi mọi kiểm tra mà không ai biết
+        mất bao nhiêu dòng. Tệ hơn: `train.max()` vẫn đúng nên assert rò rỉ thời
+        gian vẫn xanh.
+      - Thứ tự dòng không tăng dần — điều kiện không rò rỉ vẫn đạt (vì split theo
+        mốc thời gian chứ không theo vị trí) nhưng thứ tự dòng trong output sai,
+        mọi phép kiểm tra giả định "theo thời gian" phía sau sẽ sai lệch âm thầm.
+
     Parameters
     ----------
     df : pd.DataFrame
-        DataFrame đã được sắp xếp theo thời gian. Hàm **không** tự sort lại
-        (xem `sort_by_time()`); nếu đưa vào dữ liệu chưa sort, thứ tự dòng trong
-        `train`/`test` sẽ sai dù điều kiện không rò rỉ vẫn đạt.
+        DataFrame đã được sắp xếp theo thời gian (xem `sort_by_time()`).
     split_timestamp : pd.Timestamp
         Mốc cắt. Train: ts < split; Test: ts >= split.
     timestamp_col : str
@@ -157,11 +239,29 @@ def chronological_split(
     Raises
     ------
     AssertionError
-        Nếu train.max >= test.min (rò rỉ thời gian).
+        Nếu train.max >= test.min (rò rỉ thời gian), hoặc dữ liệu chứa NaT,
+        hoặc thứ tự dòng không tăng dần theo thời gian.
     ValueError
         Nếu split_timestamp nằm ngoài dải thời gian của dữ liệu.
     """
     ts = pd.to_datetime(df[timestamp_col])
+
+    if ts.isna().any():
+        n_nat = int(ts.isna().sum())
+        raise AssertionError(
+            f"Cột thời gian '{timestamp_col}' có {n_nat} giá trị NaT. "
+            "chronological_split() KHÔNG âm thầm bỏ hàng — NaT sẽ rơi vào Test "
+            "và làm mất dòng mà không có dấu vết. Hãy xử lý ở #6 hoặc bỏ các hàng "
+            "đó một cách tường minh trước khi split."
+        )
+
+    if not ts.is_monotonic_increasing:
+        first_bad = int(np.argmax(ts.diff().to_numpy() < 0)) + 1
+        raise AssertionError(
+            f"Cột thời gian '{timestamp_col}' không tăng dần (hàng {first_bad} đi "
+            "lùi). chronological_split() không tự sort lại để không che giấu việc "
+            "dữ liệu chưa chuẩn hoá. Gọi sort_by_time(df) trước nếu cần."
+        )
 
     if split_timestamp <= ts.min() or split_timestamp > ts.max():
         raise ValueError(
@@ -176,6 +276,11 @@ def chronological_split(
     assert train[timestamp_col].max() < test[timestamp_col].min(), (
         f"Temporal leakage: train.max ({train[timestamp_col].max()}) "
         f">= test.min ({test[timestamp_col].min()})"
+    )
+
+    # Không mất dòng: hai tập phải phủ đúng toàn bộ input.
+    assert len(train) + len(test) == len(df), (
+        f"Split làm mất dòng: {len(train)} + {len(test)} != {len(df)}"
     )
 
     logger.info(
@@ -219,12 +324,29 @@ def build_preprocessing_pipeline(
     sklearn.pipeline.Pipeline
         Pipeline chưa fit. Gọi .fit(X_train) rồi .transform(X_train/X_test).
     """
-    num_feats = numeric_features if numeric_features is not None else NUMERIC_FEATURES
-    cyc_feats = cyclical_features if cyclical_features is not None else CYCLICAL_FEATURES
+    num_feats = list(numeric_features if numeric_features is not None else NUMERIC_FEATURES)
+    cyc_feats = list(cyclical_features if cyclical_features is not None else CYCLICAL_FEATURES)
+
+    # Target vào feature = bài toán đọc lại đáp án. Chặn ở đây, không đợi tới test.
+    if TARGET_CANDIDATE in num_feats:
+        raise ValueError(
+            f"Target '{TARGET_CANDIDATE}' không được đưa vào feature. "
+            "Đưa target vào X biến bài toán dự báo thành bài toán đọc lại câu "
+            "trả lời, khiến mọi chỉ số ở Issue #11-#13 mất ý nghĩa."
+        )
+    if TARGET_CANDIDATE in cyc_feats:
+        raise ValueError(f"Target '{TARGET_CANDIDATE}' không được đưa vào cyclical features.")
+
+    dup_num = sorted({c for c in num_feats if num_feats.count(c) > 1})
+    if dup_num:
+        raise ValueError(f"Cột số bị lặp trong danh sách feature: {dup_num}")
 
     numeric_transformer = Pipeline(
         steps=[
-            ("imputer", SimpleImputer(strategy="median")),
+            # keep_empty_features=True: cột toàn NaN phải được giữ lại (giá trị
+            # 0 sau impute) chứ không âm thầm biến mất khỏi ma trận — mất cột
+            # làm lệch mọi `coef_`/`feature_importances_` đọc theo vị trí.
+            ("imputer", SimpleImputer(strategy="median", keep_empty_features=True)),
             ("scaler", RobustScaler()),
         ]
     )
@@ -318,28 +440,51 @@ def evaluate_log1p_transform(
     -------
     dict
         {
+            "n_observations": int,
+            "n_negative": int,
             "original_skew": float,
             "log1p_skew": float,
             "original_kurtosis": float,
             "log1p_kurtosis": float,
-            "log1p_values": np.ndarray,  # đã transform, để kiểm tra phân phối
+            "log1p_values": pd.Series,  # giữ index để đối chiếu với y_train
         }
+
+    Raises
+    ------
+    ValueError
+        Nếu target có giá trị âm. `log1p` không xác định ở đó và `np.log1p`
+        âm thầm trả NaN — biểu đồ phân phối sau đó vẽ ra rỗng mà không ai biết
+        vì sao. Với PM2.5 đơn vị µg/m³ thế này không xảy ra, nhưng hàm không được
+        giả định điều đó về dữ liệu tương lai.
     """
-    y = y_train.dropna()
+    y = pd.Series(y_train).dropna()
+
+    if y.empty:
+        raise ValueError("y_train rỗng sau khi dropna — không đánh giá được.")
+
+    n_negative = int((y < 0).sum())
+    if n_negative:
+        raise ValueError(
+            f"y_train có {n_negative} giá trị âm (min={float(y.min()):.4f}). "
+            "log1p không xác định ở đó. PM2.5 đơn vị µg/m³ phải >= 0 — hãy kiểm "
+            "tra lại đơn vị hoặc nguồn dữ liệu trước khi dùng log1p."
+        )
 
     original_skew = float(y.skew())
     log1p_values = np.log1p(y)
-    log1p_skew = float(pd.Series(log1p_values).skew())
+    log1p_skew = float(log1p_values.skew())
 
     original_kurtosis = float(y.kurtosis())
-    log1p_kurtosis = float(pd.Series(log1p_values).kurtosis())
+    log1p_kurtosis = float(log1p_values.kurtosis())
 
     result = {
+        "n_observations": int(len(y)),
+        "n_negative": n_negative,
         "original_skew": original_skew,
         "log1p_skew": log1p_skew,
         "original_kurtosis": original_kurtosis,
         "log1p_kurtosis": log1p_kurtosis,
-        "log1p_values": log1p_values.values,
+        "log1p_values": log1p_values,
     }
 
     logger.info(
@@ -385,16 +530,28 @@ def merge_air_weather(
 
     Raises
     ------
-    AssertionError
-        Nếu len(df_merged) > len(df_air) – Row Explosion.
     ValueError
-        Nếu khóa không unique trên một trong hai bảng.
+        Nếu khóa không unique trên một trong hai bảng, nếu hai bảng có cột trùng
+        tên ngoài khóa, hoặc nếu KHÔNG cột khí tượng nào khớp được (toàn NaN).
+    AssertionError
+        Nếu len(df_merged) != len(df_air) – Row Explosion.
     """
     if on is None:
         if "station_id" in df_air.columns and "station_id" in df_weather.columns:
             on = ["station_id", "timestamp"]
         else:
             on = ["timestamp"]
+
+    # Cột trùng tên ngoài khóa sẽ bị pandas đổi thành `_x`/`_y`, mất tên gốc —
+    # ví dụ `pm25_was_missing` biến mất khỏi output, mọi tra cứu tên gốc phía
+    # sau sẽ KeyError hoặc âm thầm lấy nhầm cột bên khí tượng.
+    collide = sorted((set(df_air.columns) & set(df_weather.columns)) - set(on))
+    if collide:
+        raise ValueError(
+            f"Hai bảng có cột trùng tên ngoài khóa ghép {on}: {collide}. "
+            "pandas sẽ tách thành hậu tố _x/_y và mất tên gốc. Hãy đổi tên cột "
+            "trước khi ghép, hoặc truyền `on` rõ ràng."
+        )
 
     # Kiểm tra uniqueness của khóa trên mỗi bảng
     for name, df in [("air", df_air), ("weather", df_weather)]:
@@ -407,11 +564,49 @@ def merge_air_weather(
 
     df_merged = df_air.merge(df_weather, on=on, how="left", validate=validate)
 
-    # Chống Row Explosion
+    # Chống Row Explosion — HAI phép, cả hai đều đúng, khác sức bắt:
+    #
+    # (1) `<=` là điều kiện cần mà Issue #7 §Yêu cầu kỹ thuật chỉ định, nên
+    #     giữ nguyên để không lệch khỏi đặc tả. Nhưng với `how="left"` + khoá
+    #     unique hai phía + `validate="1:1"`, nó **luôn đúng** và không bắt được
+    #     gì: row explosion bị chặn sớm hơn bởi kiểm tra khoá unique ở trên.
+    # (2) `==` là phép thật sự phân biệt được. `merge(how="left")` phải giữ đúng
+    #     số dòng của bảng trái; lệch bất kỳ dòng nào là join sai.
+    #
+    # Giữ (1) vì đặc tả yêu cầu, giữ (2) vì (1) một mình là dead code.
     assert len(df_merged) <= len(df_air), (
         f"Row Explosion: merged ({len(df_merged)}) > air ({len(df_air)}). "
         f"Kiểm tra lại khóa ghép {on}."
     )
+    assert len(df_merged) == len(df_air), (
+        f"Row count drift: merged ({len(df_merged)}) != air ({len(df_air)}). "
+        f"Kiểm tra lại khóa ghép {on} và tham số validate={validate!r}. "
+        f"`<=` ở trên không bắt được trường hợp này."
+    )
+
+    # `.agents/rules/data.md` §3.6 BẮT BUỘC phải có kiểm tra này. Thiếu nó thì
+    # một lệch timezone / định dạng timestamp sẽ cho ra frame trông hoàn toàn
+    # bình thường (đúng số dòng, đúng schema) nhưng mọi cột khí tượng đều NaN —
+    # rồi `SimpleImputer` lấp median và mô hình vẫn "chạy mượt" trên 6 hằng số
+    # bịa, mọi chỉ số ở Issue #11-#13 trở nên vô nghĩa.
+    weather_cols = [c for c in df_weather.columns if c not in on]
+    if weather_cols:
+        all_nan = [c for c in weather_cols if df_merged[c].isna().all()]
+        if all_nan:
+            raise ValueError(
+                f"Không dòng nào khớp được khí tượng — toàn bộ cột "
+                f"{all_nan} đều NaN. Kiểm tra lại timezone và định dạng "
+                f"timestamp, hoặc cửa sổ thời gian của hai bảng (khóa {on})."
+            )
+        unmatched = int(df_merged[weather_cols].isna().all(axis=1).sum())
+        if unmatched:
+            coverage = 100.0 * (1 - unmatched / len(df_merged))
+            warnings.warn(
+                f"Coverage khí tượng chỉ {coverage:.1f}%: {unmatched}/{len(df_merged)} "
+                f"dòng không khớp được khí tượng nào. Kiểm tra lại cửa sổ thời gian.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
 
     logger.info(
         "Merged air (%d) + weather (%d) → %d rows on %s",
@@ -432,9 +627,16 @@ def export_to_parquet(
     df: pd.DataFrame,
     output_path: str | Path,
     compression: str = "snappy",
+    overwrite: bool = False,
 ) -> None:
     """
     Xuất DataFrame ra Parquet (snappy) với validation sau khi ghi.
+
+    Ghi **nguyên tử**: ghi vào file tạm cùng thư mục rồi mới `os.replace()` sang
+    đích. Bản gốc ghi thẳng vào đích nên nếu validation sau ghi thất bại (dtype
+    lệch, schema lệch) thì **file hỏng vẫn nằm ở đó** — người chạy tiếp đọc
+    được một artifact đã hỏng mà tin là hợp lệ. Ở đây file tạm bị dọn và đích
+    giữ nguyên trạng thái trước đó.
 
     Parameters
     ----------
@@ -443,40 +645,65 @@ def export_to_parquet(
     output_path : str | Path
         Đường dẫn file đầu ra.
     compression : str
-        Kiểu nén. Mặc định: "snappy".
+        Kiểu nén. Mặc định: "snappy" theo `.agents/rules/data.md`.
+    overwrite : bool
+        Cho phép ghi đè file đã tồn tại. Mặc định False: ghi đè artifact đã
+        đóng băng là hành vi không thể phát hiện và làm mất dấu vết chạy trước.
 
     Raises
     ------
+    FileExistsError
+        Nếu file đích đã tồn tại và `overwrite=False`.
     AssertionError
-        Nếu file đọc lại không khớp schema hoặc row count.
+        Nếu file đọc lại không khớp schema, row count hoặc dtype.
     """
     output_path = Path(output_path)
+    if output_path.exists() and not overwrite:
+        raise FileExistsError(
+            f"{output_path} đã tồn tại. Truyền overwrite=True nếu thực sự muốn "
+            "ghi đè — artifact đã đóng băng là bằng chứng, không phải rác."
+        )
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     original_rows = len(df)
     original_cols = list(df.columns)
     original_dtypes = df.dtypes.to_dict()
 
-    df.to_parquet(output_path, compression=compression, index=False)
-
-    # Validation: đọc lại và đối chiếu
-    df_readback = pd.read_parquet(output_path)
-
-    assert len(df_readback) == original_rows, (
-        f"Row count mismatch: ghi {original_rows}, đọc lại {len(df_readback)}"
+    # os.replace là atomic trên cùng filesystem; temp nằm CÙNG thư mục đích.
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(output_path.parent), suffix=".parquet.tmp"
     )
-    assert list(df_readback.columns) == original_cols, (
-        f"Schema mismatch: ghi {original_cols}, đọc lại {list(df_readback.columns)}"
-    )
-    # `original_dtypes` phải thực sự được dùng: Parquet có thể đổi kiểu bool/int
-    # khi round-trip, gây hỏng kiểu cờ chẩn đoán mà không đổi số dòng hay tên cột.
-    readback_dtypes = {c: str(df_readback[c].dtype) for c in df_readback.columns}
-    mismatched = {
-        c: (original_dtypes[c], readback_dtypes[c])
-        for c in original_cols
-        if original_dtypes[c] != readback_dtypes[c]
-    }
-    assert not mismatched, f"Dtype mismatch sau khi ghi/đọc lại parquet: {mismatched}"
+    os.close(fd)
+    tmp_path = Path(tmp_name)
+    try:
+        df.to_parquet(tmp_path, compression=compression, index=False)
+
+        # Validation: đọc lại và đối chiếu TRƯỚC khi chạm vào file đích.
+        df_readback = pd.read_parquet(tmp_path)
+
+        assert len(df_readback) == original_rows, (
+            f"Row count mismatch: ghi {original_rows}, đọc lại {len(df_readback)}"
+        )
+        assert list(df_readback.columns) == original_cols, (
+            f"Schema mismatch: ghi {original_cols}, đọc lại {list(df_readback.columns)}"
+        )
+        # `original_dtypes` phải thực sự được dùng: Parquet có thể đổi kiểu
+        # bool/int khi round-trip, gây hỏng kiểu cờ chẩn đoán mà không đổi số
+        # dòng hay tên cột.
+        readback_dtypes = {c: str(df_readback[c].dtype) for c in df_readback.columns}
+        mismatched = {
+            c: (str(original_dtypes[c]), readback_dtypes[c])
+            for c in original_cols
+            if str(original_dtypes[c]) != readback_dtypes[c]
+        }
+        assert not mismatched, (
+            f"Dtype mismatch sau khi ghi/đọc lại parquet: {mismatched}"
+        )
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+    os.replace(tmp_path, output_path)
 
     logger.info(
         "Exported %d rows × %d cols → %s (compression=%s)",
@@ -499,7 +726,9 @@ class DatasetFreezeInfo:
     row_count: int
     timestamp_min: pd.Timestamp
     timestamp_max: pd.Timestamp
-    station_count: int
+    # Optional vì `freeze_dataset()` dùng None khi dataset không có cột trạm —
+    # báo cáo "0 trạm" là khẳng định sai sự thật, còn None là "không đo được".
+    station_count: Optional[int]
     feature_columns: List[str] = field(default_factory=list)
     target_column: str = TARGET_CANDIDATE
     additional_info: Dict[str, Any] = field(default_factory=dict)
@@ -527,7 +756,10 @@ def freeze_dataset(
     station_col : str
         Tên cột station_id.
     feature_columns : list[str] | None
-        Danh sách feature columns. Mặc định: tất cả cột trừ target.
+        Danh sách feature columns. Mặc định: **cột số** trừ target, timestamp và
+        trạm — đúng tập mà `build_preprocessing_pipeline()` nhận. Bản gốc lấy
+        *mọi* cột còn lại, nên `pm25_was_missing` (hàm xác định của target) và
+        `location` (chuỗi) lọt vào danh sách feature theo mặc định.
     additional_info : dict | None
         Thông tin bổ sung (ví dụ: split_timestamp, pipeline_params).
 
@@ -536,23 +768,42 @@ def freeze_dataset(
     DatasetFreezeInfo
     """
     if feature_columns is None:
+        excluded = {timestamp_col, station_col, TARGET_CANDIDATE, *TARGET_DERIVED_FLAGS}
         feature_columns = [
-            c for c in df.columns if c not in {timestamp_col, station_col, TARGET_CANDIDATE}
+            c
+            for c in df.columns
+            if c not in excluded and pd.api.types.is_numeric_dtype(df[c])
         ]
+        dropped = [
+            c for c in df.columns
+            if c not in excluded and not pd.api.types.is_numeric_dtype(df[c])
+        ]
+        if dropped:
+            logger.info(
+                "freeze_dataset: bỏ %d cột không phải số khỏi feature mặc định: %s",
+                len(dropped),
+                dropped,
+            )
+        if any(c in df.columns for c in TARGET_DERIVED_FLAGS):
+            logger.info(
+                "freeze_dataset: loại %s khỏi feature mặc định vì là hàm xác định "
+                "của target — dùng làm feature là rò rỉ mà guard nào cũng không bắt.",
+                TARGET_DERIVED_FLAGS,
+            )
 
     info = DatasetFreezeInfo(
         row_count=len(df),
         timestamp_min=df[timestamp_col].min(),
         timestamp_max=df[timestamp_col].max(),
-        station_count=df[station_col].nunique() if station_col in df.columns else 0,
+        station_count=df[station_col].nunique() if station_col in df.columns else None,
         feature_columns=feature_columns,
         additional_info=additional_info or {},
     )
 
     logger.info(
-        "Dataset frozen: %d rows, %d stations, span [%s → %s]",
+        "Dataset frozen: %d rows, %s stations, span [%s → %s]",
         info.row_count,
-        info.station_count,
+        info.station_count if info.station_count is not None else "unknown",
         info.timestamp_min,
         info.timestamp_max,
     )
@@ -605,29 +856,86 @@ def run_preprocessing_audit(
     }
 
 
+def _learned_arrays(estimator: Any) -> Dict[str, np.ndarray]:
+    """
+    Thu thập **mọi** tham số đã học của một estimator thành dict có khoá đầy đủ.
+
+    Bản gốc chỉ đọc `imputer.statistics_` và bỏ qua `scaler.center_`/`scale_`, nên
+    thay `RobustScaler` bằng bản fit trên Test vẫn in ra "✓ No leakage" dù
+    docstring khẳng định đã kiểm tra cả tham số scale. Hàm này đi theo cây
+    `named_steps` và gom mọi thuộc tính kết thúc bằng `_` có kiểu số, nên guard
+    không cần biết trước pipeline có mấy nhánh hay tên gì.
+    """
+    found: Dict[str, np.ndarray] = {}
+
+    def walk(est: Any, path: str) -> None:
+        # Pipeline lưu con trong `named_steps`; ColumnTransformer lưu trong
+        # `transformers_` (thuộc tính đã fit). Bỏ qua `transformers_` thì
+        # ColumnTransformer trả về dict rỗng vì các biến con nằm trong
+        # `_transformers` — tức là guard im lặng đúng lúc cần phát hiện rò rỉ.
+        for name, child in getattr(est, "named_steps", {}).items():
+            walk(child, f"{path}.{name}" if path else name)
+
+        transformers = getattr(est, "transformers_", None)
+        if isinstance(transformers, list):
+            for entry in transformers:
+                if not isinstance(entry, tuple) or len(entry) < 2:
+                    continue
+                name, child = entry[0], entry[1]
+                if hasattr(child, "transform") or hasattr(child, "fit"):
+                    walk(child, f"{path}.{name}" if path else str(name))
+
+        for key, value in vars(est).items():
+            if key.startswith("_") or not key.endswith("_"):
+                continue
+            if isinstance(value, np.ndarray) and value.dtype.kind in "fbiu":
+                found[f"{path or est.__class__.__name__}::{key}"] = np.asarray(
+                    value, dtype=float
+                )
+
+    walk(estimator, "")
+    return found
+
+
 def validate_no_leakage(
     pipeline: Pipeline,
+    *,
     X_train: pd.DataFrame,
     X_test: pd.DataFrame,
+    timestamps: Optional[pd.Series] = None,
+    test_timestamps: Optional[pd.Series] = None,
     atol: float = 1e-9,
 ) -> None:
     """
     Kiểm chứng pipeline **thực sự** được fit trên Train chứ không phải trên Test.
 
-    Bản gốc chỉ kiểm tra `statistics_` / `center_` "đã tồn tại", nên pipeline fit
-    trên Test vẫn in ra dòng "✓ No leakage" — tức là bảo đảm giả về đúng quy tắc
-    cứng nhất của dự án. Hàm này thay bằng phép so sánh số học: median và
-    tham số scale của pipeline phải **bằng** giá trị fit lại trên `X_train`, và
-    phải **khác** giá trị fit trên `X_test` khi hai tập có phân phối khác nhau.
+    Bốn lớp kiểm chứng, mỗi lớp vá một lỗ hổng của bản gốc:
+
+    1. **Thứ tự thời gian.** Bản gốc không đọc cột `timestamp` lần nào, nên một
+       `train_test_split` ngẫu nhiên — vi phạm cam biên #1 của dự án — vẫn in ra
+       "✓ No leakage". Nay hàm so `train.max() < test.min()`.
+    2. **Giá trị học được, không chỉ sự tồn tại.** Bản gốc kiểm `hasattr()` rồi bỏ
+       qua, nên chỉ so `imputer.statistics_`. Nay so **mọi** tham số đã học
+       (`statistics_`, `center_`, `scale_`, ...) với giá trị refit trên Train.
+    3. **Mọi nhánh của ColumnTransformer.** Bản gốc hard-code tên `"num"`, nên
+       transformer thứ hai học trên Test là im lặng. Nay `_learned_arrays()` đi
+       theo cây `named_steps` nên tự bao phủ mọi nhánh, kể cả nhánh thêm sau này.
+    4. **Thứ tự đối số.** `X_train`/`X_test` là keyword-only; trước đó truyền
+       sai thứ tự vô hiệu hóa toàn bộ guard.
+
+    Tham số `X_train`/`X_test` là **keyword-only** có chủ đích: gọi
+    `validate_no_leakage(p, X_test, X_train)` là lỗi ghi nhầm biến, và guard phải
+    bắt được chứ không được tin theo tên tham số.
 
     Parameters
     ----------
     pipeline : sklearn.pipeline.Pipeline
         Pipeline đã fit.
-    X_train : pd.DataFrame
-        Train features (dùng để fit).
-    X_test : pd.DataFrame
-        Test features (chỉ dùng để transform).
+    X_train, X_test : pd.DataFrame
+        Features của Train (dùng để fit) và Test (chỉ dùng để transform).
+    timestamps, test_timestamps : pd.Series | None
+        Cột thời gian tương ứng. Nếu truyền, hàm kiểm tra không có chồng lấn thời
+        gian giữa hai tập. Không truyền thì bỏ qua lớp kiểm chứng này.
     atol : float
         Sai số cho phép khi so sánh float.
 
@@ -643,80 +951,105 @@ def validate_no_leakage(
     if preprocessor is None:
         raise AssertionError("Pipeline không có bước 'preprocessor'!")
 
-    # Pipeline chưa fit sẽ khiến `named_transformers_` ném AttributeError khó hiểu
-    # ("object has no attribute transformers_"). Chặn trước để lỗi rõ ràng.
     if not hasattr(preprocessor, "named_transformers_"):
         raise AssertionError(
             "Pipeline chưa được fit: ColumnTransformer chưa có `named_transformers_`."
         )
 
-    num_transformer = preprocessor.named_transformers_.get("num")
-    if num_transformer is None:
-        raise AssertionError("Không tìm thấy numeric transformer!")
+    # --- Lớp 1: thứ tự thời gian ---------------------------------------------
+    if timestamps is not None and test_timestamps is not None:
+        tr = pd.to_datetime(pd.Series(timestamps))
+        te = pd.to_datetime(pd.Series(test_timestamps))
+        if tr.isna().any() or te.isna().any():
+            raise AssertionError(
+                "Cột thời gian có NaT — không thể kiểm chứng rò rỉ thời gian."
+            )
+        if not (tr.max() < te.min()):
+            raise AssertionError(
+                "Rò rỉ thời gian: train.max()="
+                f"{tr.max()} KHÔNG nhỏ hơn test.min()={te.min()}. "
+                "Đây là dấu hiệu split ngẫu nhiên — dự án cấm tuyệt đối random split."
+            )
 
-    imputer = num_transformer.named_steps.get("imputer")
-    if imputer is None:
-        raise AssertionError("Không tìm thấy imputer!")
+    # --- Chuẩn bị: tập cột mà ColumnTransformer thực sự học -------------------
+    # Imputer chỉ học trên TẬP CỘT đã chọn, nên phải so sánh trên đúng tập cột đó.
+    #
+    # Bỏ qua entry `remainder`: khi input có cột thừa, sklearn ghi lại các cột
+    # bị drop dưới dạng CHỈ SỐ VỊ TRÍ ([1], [2], …), không phải tên cột. Thu
+    # chúng vào danh sách tên sẽ ra thông báo "thiếu cột '1'" vô nghĩa.
+    columns: List[str] = []
+    for name, _, cols in preprocessor.transformers_:
+        if name == "remainder":
+            continue
+        if isinstance(cols, (list, tuple, np.ndarray, pd.Index)):
+            selector = [c for c in cols]
+            positional = [c for c in selector if not isinstance(c, str)]
+            if positional:
+                raise AssertionError(
+                    f"ColumnTransformer '{name}' dùng chỉ số vị trí {positional} thay "
+                    "vì tên cột. Guard chỉ kiểm chứng được selector theo tên — hãy "
+                    "truyền danh sách tên cột rõ ràng."
+                )
+            columns.extend(selector)
+    columns = list(dict.fromkeys(columns))
+    if not columns:
+        raise AssertionError("ColumnTransformer không có cột số nào để kiểm chứng.")
 
-    if not hasattr(imputer, "statistics_"):
-        raise AssertionError("Imputer chưa được fit!")
+    for label, frame in (("X_train", X_train), ("X_test", X_test)):
+        missing = [c for c in columns if c not in frame.columns]
+        if missing:
+            raise AssertionError(f"{label} thiếu cột mà pipeline đã học: {missing}")
 
-    scaler = num_transformer.named_steps.get("scaler")
-    if scaler is None:
-        raise AssertionError("Không tìm thấy scaler!")
-
-    if not hasattr(scaler, "center_") or not hasattr(scaler, "scale_"):
-        raise AssertionError("Scaler chưa được fit!")
-
-    # --- Phép kiểm chứng thực chất -------------------------------------------
-    # Imputer chỉ học trên TẬP CỘT mà ColumnTransformer đã chọn, nên phải so sánh
-    # trên đúng tập cột đó. So sánh với toàn bộ `X_train` sẽ lệch số phần tử
-    # (ví dụ pipeline 8 cột trong khi X_train có 12 cột) và ném ValueError thay vì
-    # kết luận đúng.
-    _, _, numeric_columns = next(
-        t for t in preprocessor.transformers_ if t[0] == "num"
-    )
-    numeric_columns = list(numeric_columns)
-    missing = [c for c in numeric_columns if c not in X_train.columns]
-    if missing:
-        raise AssertionError(f"X_train thiếu cột mà pipeline đã học: {missing}")
-    missing = [c for c in numeric_columns if c not in X_test.columns]
-    if missing:
-        raise AssertionError(f"X_test thiếu cột mà pipeline đã học: {missing}")
-
-    # Median mà pipeline đã học phải khớp median của Train trên cùng tập cột.
-    expected = SimpleImputer(strategy="median").fit(X_train[numeric_columns]).statistics_
-    got = np.asarray(imputer.statistics_, dtype=float)
-    if not np.allclose(got, expected, rtol=0, atol=atol):
-        test_median = np.asarray(
-            SimpleImputer(strategy="median").fit(X_test[numeric_columns]).statistics_,
-            dtype=float,
-        )
+    # --- Lớp 2 + 3: so MỌI tham số đã học với giá trị refit -------------------
+    got = _learned_arrays(preprocessor)
+    if not got:
         raise AssertionError(
-            "Temporal/preprocessing leakage: imputer.statistics_ khớp Test chứ "
-            f"không khớp Train. pipeline={got.tolist()}, Train={expected.tolist()}, "
-            f"Test={test_median.tolist()}"
+            "Pipeline chưa có tham số nào được học — không thể kiểm chứng rò rỉ."
         )
 
-    # Median của Test phải khác median của Train, nếu bằng nhau thì phép so sánh
-    # ở trên không có sức phân biệt và kiểm chứng là vô nghĩa.
-    test_median = np.asarray(
-        SimpleImputer(strategy="median").fit(X_test[numeric_columns]).statistics_,
-        dtype=float,
-    )
-    distinguishable = not np.allclose(got, test_median, rtol=0, atol=atol)
-    if not distinguishable:
+    ref_train = clone(pipeline).fit(X_train[columns])
+    ref_test = clone(pipeline).fit(X_test[columns])
+    exp_train = _learned_arrays(ref_train.named_steps["preprocessor"])
+    exp_test = _learned_arrays(ref_test.named_steps["preprocessor"])
+
+    mismatched = []
+    for key, value in got.items():
+        if key not in exp_train:
+            mismatched.append((key, "chỉ xuất hiện ở pipeline đang kiểm chứng"))
+            continue
+        if not np.allclose(value, exp_train[key], rtol=0, atol=atol):
+            mismatched.append(
+                (key,
+                 f"pipeline={np.ravel(value)[:4].tolist()} khớp "
+                 f"Test={np.ravel(exp_test.get(key, value))[:4].tolist()} chứ không "
+                 f"khớp Train={np.ravel(exp_train[key])[:4].tolist()}")
+            )
+
+    if mismatched:
+        lines = "\n  - ".join(f"{k}: {why}" for k, why in mismatched[:6])
         raise AssertionError(
-            "Kiểm chứng không có sức phân biệt: median của Train và Test bằng "
-            "nhau nên không thể chứng minh pipeline fit trên Train. Hãy dùng tập "
-            "chia tập có phân phối khác nhau."
+            "Temporal/preprocessing leakage — tham số đã học KHÔNG khớp giá trị "
+            f"refit trên Train:\n  - {lines}\n"
+            "Pipeline phải fit CHỈ trên Train. Kiểm tra cả imputer lẫn scaler, và "
+            "mọi nhánh của ColumnTransformer."
         )
 
-    logger.info("✓ No leakage: imputer.statistics_ khớp Train và khác Test")
-    logger.info("  - Cột số đã học: %s", numeric_columns)
-    logger.info("  - Imputer statistics (pipeline): %s", got.tolist())
-    logger.info("  - Imputer statistics (Train)    : %s", expected.tolist())
-    logger.info("  - Imputer statistics (Test)     : %s", test_median.tolist())
+    # --- Lớp 4: phép so sánh phải có sức phân biệt ----------------------------
+    if all(
+        key in exp_test and np.allclose(got[key], exp_test[key], rtol=0, atol=atol)
+        for key in got
+    ):
+        raise AssertionError(
+            "Kiểm chứng không có sức phân biệt: refit trên Train và trên Test cho ra "
+            "cùng tham số, nên không thể chứng minh pipeline fit trên Train. Hãy dùng "
+            "tập chia có phân phối khác nhau."
+        )
+
+    logger.info("✓ No leakage: mọi tham số đã học khớp refit Train, khác refit Test")
+    logger.info("  - Cột đã học: %s", columns)
+    logger.info("  - Số tham số so sánh: %d", len(got))
+    for key in sorted(got)[:8]:
+        logger.info("    %-46s %s", key, np.ravel(got[key])[:4].tolist())
 
 
 def freeze_dataset_with_audit(

@@ -13,6 +13,7 @@ mà không so sánh với Train, và vì import `data_quality` thiếu tiền t�
 from __future__ import annotations
 
 import sys
+import shutil
 import tempfile
 import unittest
 import warnings
@@ -56,12 +57,27 @@ def _frame(n_hours: int = 48, start: str = "2025-01-01 00:00") -> pd.DataFrame:
 
 def _air_frame(n_hours: int = 48, start: str = "2025-01-01 00:00") -> pd.DataFrame:
     """
-    Frame ô nhiễm đúng Canonical Schema: KHÔNG mang cột độ ẩm thô.
+    Frame ô nhiễm đúng Canonical Schema: timestamp + station_id + PM + cờ chẩn
+    đoán, KHÔNG mang cột khí tượng thô.
 
-    `attach_high_humidity_flag()` lấy độ ẩm từ tập khí tượng và cố tình không
-    giữ lại trong artifact ô nhiễm, nên frame đầu vào phải sạch cột này.
+    Hai lý do bỏ cột khí tượng:
+      1. `attach_high_humidity_flag()` lấy độ ẩm từ tập khí tượng và cố tình
+         không giữ lại trong artifact ô nhiễm.
+      2. Schema thật (`data/interim/air_quality_canonical.parquet`) không có cột
+         khí tượng nào, nên hai bảng ghép không trùng tên ngoài khóa. Fixture cũ
+         để cả hai bảng mang `temperature`/`wind_speed`/... khiến merge sinh hậu
+         tố `_x`/`_y` — chính là lỗi M2 mà `merge_air_weather()` nay chặn.
     """
-    return _frame(n_hours, start).drop(columns=["relative_humidity"])
+    return _frame(n_hours, start).drop(
+        columns=[
+            "temperature",
+            "relative_humidity",
+            "wind_speed",
+            "wind_direction",
+            "precipitation",
+            "surface_pressure",
+        ]
+    )
 
 
 def _weather_frame(n_hours: int = 48, start: str = "2025-01-01 00:00") -> pd.DataFrame:
@@ -98,37 +114,41 @@ class TestModuleImports(unittest.TestCase):
 
 class TestLeakageGuard(unittest.TestCase):
     """
-    Regression cho lỗi nguy hiểm nhất của Issue #7: `validate_no_leakage()`
-    chỉ kiểm tra `statistics_`/`center_` tồn tại, nên pipeline fit trên TEST
-    vẫn in ra "✓ No leakage". Bộ test này buộc hàm phải so sánh số học.
+    Kiểm chứng pipeline **thực sự** fit trên Train, không chỉ "đã fit".
+
+    Feature dùng `pm10` chứ không phải `pm25`: `build_preprocessing_pipeline()`
+    nay raise nếu target lọt vào danh sách feature (xem
+    `tests/test_cleaning_pipeline_guards.py::B5TargetIsNeverADefaultFeature`).
     """
 
     def setUp(self):
         # Hai tập có phân phối khác nhau rõ rệt để phép so sánh có sức phân biệt.
         rng = np.random.default_rng(42)
-        self.X_train = pd.DataFrame({"pm25": rng.normal(20.0, 5.0, 400)})
-        self.X_test = pd.DataFrame({"pm25": rng.normal(90.0, 5.0, 200)})
+        self.X_train = pd.DataFrame({"pm10": rng.normal(20.0, 5.0, 400)})
+        self.X_test = pd.DataFrame({"pm10": rng.normal(90.0, 5.0, 200)})
 
     def _pipeline(self):
         return cp.build_preprocessing_pipeline(
-            numeric_features=["pm25"], cyclical_features=[]
+            numeric_features=["pm10"], cyclical_features=[]
         )
 
     def test_guard_rejects_a_pipeline_fitted_on_test(self):
         pipeline = self._pipeline()
         pipeline.fit(self.X_test)  # SAI: fit trên Test
         with self.assertRaises(AssertionError) as ctx:
-            cp.validate_no_leakage(pipeline, self.X_train, self.X_test)
+            cp.validate_no_leakage(pipeline, X_train=self.X_train, X_test=self.X_test)
         self.assertIn("leakage", str(ctx.exception).lower())
 
     def test_guard_accepts_a_pipeline_fitted_on_train(self):
         pipeline = self._pipeline()
         pipeline.fit(self.X_train)  # ĐÚNG
-        cp.validate_no_leakage(pipeline, self.X_train, self.X_test)  # không ném lỗi
+        cp.validate_no_leakage(pipeline, X_train=self.X_train, X_test=self.X_test)
 
     def test_guard_rejects_untrained_pipeline(self):
         with self.assertRaises(AssertionError):
-            cp.validate_no_leakage(self._pipeline(), self.X_train, self.X_test)
+            cp.validate_no_leakage(
+                self._pipeline(), X_train=self.X_train, X_test=self.X_test
+            )
 
     def test_guard_refuses_to_certify_an_indistinguishable_split(self):
         """Train và Test cùng phân phối thì không thể chứng minh gì."""
@@ -136,7 +156,7 @@ class TestLeakageGuard(unittest.TestCase):
         pipeline = self._pipeline()
         pipeline.fit(self.X_train)
         with self.assertRaises(AssertionError) as ctx:
-            cp.validate_no_leakage(pipeline, self.X_train, same)
+            cp.validate_no_leakage(pipeline, X_train=self.X_train, X_test=same)
         self.assertIn("phân biệt", str(ctx.exception))
 
     def test_guard_compares_only_the_columns_the_pipeline_learned(self):
@@ -156,20 +176,27 @@ class TestLeakageGuard(unittest.TestCase):
             wind_speed=rng.normal(9.0, 1.0, len(self.X_test)),
             precipitation=rng.normal(0.1, 0.1, len(self.X_test)),
         )
-        pipeline = cp.build_preprocessing_pipeline(
-            numeric_features=["pm25"], cyclical_features=[]
-        )
+        pipeline = self._pipeline()
         pipeline.fit(wide_train)
         # Không ném lỗi, và không ném ValueError sai lệch kích thước.
-        cp.validate_no_leakage(pipeline, wide_train, wide_test)
+        cp.validate_no_leakage(pipeline, X_train=wide_train, X_test=wide_test)
 
     def test_guard_reports_a_missing_column_clearly(self):
         pipeline = self._pipeline()
         pipeline.fit(self.X_train)
-        without_column = self.X_test.drop(columns=["pm25"])
+        without_column = self.X_test.drop(columns=["pm10"])
         with self.assertRaises(AssertionError) as ctx:
-            cp.validate_no_leakage(pipeline, self.X_train, without_column)
-        self.assertIn("pm25", str(ctx.exception))
+            cp.validate_no_leakage(
+                pipeline, X_train=self.X_train, X_test=without_column
+            )
+        self.assertIn("pm10", str(ctx.exception))
+
+    def test_guard_requires_keyword_arguments(self):
+        """Truyền X_train/X_test theo vị trí là lỗi ghi nhầm biến — phải ném TypeError."""
+        pipeline = self._pipeline()
+        pipeline.fit(self.X_train)
+        with self.assertRaises(TypeError):
+            cp.validate_no_leakage(pipeline, self.X_train, self.X_test)
 
 
 class TestChronologicalSplit(unittest.TestCase):
@@ -204,15 +231,22 @@ class TestChronologicalSplit(unittest.TestCase):
             with self.assertRaises(ValueError):
                 cp.chronological_split(self.df, bad)
 
-    def test_split_does_not_silently_reorder_rows(self):
+    def test_split_rejects_unsorted_input_instead_of_hiding_it(self):
         """
-        Docstring đã được sửa để nói rõ hàm KHÔNG sort. Hàm phải giữ nguyên
-        thứ tự dòng đầu vào để lỗi này không bị che giấu.
+        Bản gốc chấp nhận dữ liệu đảo thứ tự rồi trả về `train` không tăng dần —
+        assert "không rò rỉ" vẫn xanh vì split theo mốc chờ chứ không theo vị trí.
+        Test cũ từng **ghim** hành vi sai này. Nay hàm từ chối, và người gọi muốn
+        thì sort tường minh bằng `sort_by_time()`.
         """
         shuffled = self.df.iloc[::-1].reset_index(drop=True)
         cut = pd.Timestamp("2025-01-02 00:00", tz=TZ)
-        train, _ = cp.chronological_split(shuffled, cut)
-        self.assertFalse(train["timestamp"].is_monotonic_increasing)
+        with self.assertRaises(AssertionError) as ctx:
+            cp.chronological_split(shuffled, cut)
+        self.assertIn("tăng dần", str(ctx.exception))
+        # Lối thoát tường minh vẫn cho ra kết quả đúng thứ tự.
+        ordered = cp.sort_by_time(shuffled)
+        train, _ = cp.chronological_split(ordered, cut)
+        self.assertTrue(train["timestamp"].is_monotonic_increasing)
 
 
 class TestPipelineIsFittedOnTrainOnly(unittest.TestCase):
@@ -220,21 +254,21 @@ class TestPipelineIsFittedOnTrainOnly(unittest.TestCase):
         rng = np.random.default_rng(42)
         self.X_train = pd.DataFrame(
             {
-                "pm25": rng.normal(20.0, 5.0, 300),
+                "pm10": rng.normal(20.0, 5.0, 300),
                 "temperature": rng.normal(22.0, 3.0, 300),
             }
         )
         # Test cố tình lệch phân phối mạnh + có NaN để lộ ra hành vi imputer.
         self.X_test = pd.DataFrame(
             {
-                "pm25": np.concatenate([rng.normal(80.0, 5.0, 150), [np.nan] * 50]),
+                "pm10": np.concatenate([rng.normal(80.0, 5.0, 150), [np.nan] * 50]),
                 "temperature": rng.normal(30.0, 3.0, 200),
             }
         )
 
     def test_imputer_median_comes_from_train_not_test(self):
         pipeline = cp.build_preprocessing_pipeline(
-            numeric_features=["pm25", "temperature"], cyclical_features=[]
+            numeric_features=["pm10", "temperature"], cyclical_features=[]
         )
         pipeline.fit(self.X_train)
         imputer = (
@@ -244,13 +278,13 @@ class TestPipelineIsFittedOnTrainOnly(unittest.TestCase):
         )
         self.assertAlmostEqual(
             float(imputer.statistics_[0]),
-            float(np.median(self.X_train["pm25"])),
+            float(np.median(self.X_train["pm10"])),
             places=9,
         )
 
     def test_transform_test_does_not_change_fitted_parameters(self):
         pipeline = cp.build_preprocessing_pipeline(
-            numeric_features=["pm25", "temperature"], cyclical_features=[]
+            numeric_features=["pm10", "temperature"], cyclical_features=[]
         )
         pipeline.fit(self.X_train)
         scaler = (
@@ -267,7 +301,7 @@ class TestPipelineIsFittedOnTrainOnly(unittest.TestCase):
     def test_pipeline_drops_columns_it_was_not_asked_for(self):
         X = self.X_train.assign(target=99.0, station_id="STATION_A")
         pipeline = cp.build_preprocessing_pipeline(
-            numeric_features=["pm25", "temperature"], cyclical_features=[]
+            numeric_features=["pm10", "temperature"], cyclical_features=[]
         )
         pipeline.fit(X)
         out = pipeline.transform(self.X_test.assign(target=1.0))
@@ -275,7 +309,7 @@ class TestPipelineIsFittedOnTrainOnly(unittest.TestCase):
 
     def test_pipeline_output_is_finite_despite_nan_in_test(self):
         pipeline = cp.build_preprocessing_pipeline(
-            numeric_features=["pm25", "temperature"], cyclical_features=[]
+            numeric_features=["pm10", "temperature"], cyclical_features=[]
         )
         pipeline.fit(self.X_train)
         out = pipeline.transform(self.X_test)
@@ -311,8 +345,10 @@ class TestCyclicalFeatures(unittest.TestCase):
 
 class TestMergeAirWeather(unittest.TestCase):
     def setUp(self):
-        self.air = _frame(24)
-        self.weather = _frame(24).drop(columns=["station_id", "pm25", "pm10"])
+        # Air mang PM + cờ chẩn đoán, weather mang biến khí tượng — không trùng
+        # tên ngoài khóa `timestamp`, đúng Canonical Schema thật.
+        self.air = _air_frame(24)
+        self.weather = _weather_frame(24)
 
     def test_merge_on_timestamp_keeps_air_row_count(self):
         merged = cp.merge_air_weather(self.air, self.weather)
@@ -323,11 +359,32 @@ class TestMergeAirWeather(unittest.TestCase):
         with self.assertRaises(ValueError):
             cp.merge_air_weather(self.air, dup_weather)
 
-    def test_merge_fails_loudly_on_row_explosion(self):
-        """Một giờ có 2 bản ghi khí tượng phải bị chặn, không được âm thầm nhân dòng."""
+    def test_merge_rejects_a_second_weather_row_for_the_same_hour(self):
+        """
+        Một giờ có 2 bản ghi khí tượng là row explosion — phải bị chặn ngay ở
+        kiểm tra khóa unique, không được chờ đến assert row count (assert đó
+        không bao giờ bắt được gì khi `validate="1:1"` còn giữ nguyên).
+        """
         exploding = pd.concat([self.weather, self.weather.iloc[[0]]], ignore_index=True)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as ctx:
             cp.merge_air_weather(self.air, exploding)
+        self.assertIn("không unique", str(ctx.exception))
+
+    def test_row_count_assertions_are_present_in_the_source(self):
+        """
+        Issue #7 §Yêu cầu kỹ thuật chỉ định `assert len(df_merged) <= len(df_air)`
+        và AC yêu cầu phép đó "được thiết lập và kiểm chứng". Phải có mặt trong mã —
+        nhưng `<=` một mình là tautology, nên phải có thêm phép `==` mới thật sự bắt.
+
+        Test này kiểm mã nguồn chứ không chạy merge: không tồn tại đầu vào nào làm
+        `<=` fail khi `how="left"` + khoá unique + `validate="1:1"`, nên một test
+        hành vi chỉ chứng minh "không bao giờ sai" chứ không chứng minh "có kiểm soát".
+        """
+        import inspect
+
+        src = inspect.getsource(cp.merge_air_weather)
+        self.assertIn("assert len(df_merged) <= len(df_air)", src)
+        self.assertIn("assert len(df_merged) == len(df_air)", src)
 
 
 class TestExportAndFreeze(unittest.TestCase):
@@ -350,10 +407,12 @@ class TestExportAndFreeze(unittest.TestCase):
         self.assertEqual(info.row_count, 36)
         self.assertEqual(info.timestamp_min, df["timestamp"].min())
         self.assertEqual(info.timestamp_max, df["timestamp"].max())
-        self.assertEqual(info.station_count, 1)
+        # Fixture chỉ có 1 trạm nên assert này tự tham chiếu. Gắn nó vào con
+        # số đo được thay vì con số viết tay:
+        self.assertEqual(info.station_count, df["station_id"].nunique())
         self.assertNotIn("timestamp", info.feature_columns)
         self.assertNotIn("station_id", info.feature_columns)
-        self.assertNotIn(cp.TARGET_CANDIDATE, info.feature_columns)
+        self.assertNotIn("pm25", info.feature_columns)
 
 
 class TestIntegrationWithIssueSixOutput(unittest.TestCase):
@@ -363,7 +422,9 @@ class TestIntegrationWithIssueSixOutput(unittest.TestCase):
     """
 
     def setUp(self):
+        # mkdtemp không tự dọn — dùng addCleanup để thư mục tạm không tích tụ.
         self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
         air = _air_frame(48)
         weather = _weather_frame(48)
         # Cố tình tạo khối khuyết dài > 6 giờ và một lần nghịch đảo khí động học.
@@ -371,6 +432,10 @@ class TestIntegrationWithIssueSixOutput(unittest.TestCase):
         air.loc[10:25, "pm10"] = np.nan
         air.loc[30, "pm25"] = 99.0
         air.loc[30, "pm10"] = 12.0
+        # Giữ lại frame TRƯỚC khi làm sạch: `assert_no_imputation` chỉ có ý nghĩa
+        # khi hai vế là hai trạng thái khác nhau. Truyền `self.cleaned` cho cả
+        # hai vế (bản gốc) là tautology — hàm luôn trả về, test luôn xanh.
+        self.air_raw = air.copy()
         self.cleaned, self.air_report = clean_air_quality(air, weather)
         self.cleaned_weather, _ = clean_weather(weather)
 
@@ -405,27 +470,44 @@ class TestIntegrationWithIssueSixOutput(unittest.TestCase):
         self.assertLessEqual(len(isolated), 2, "khối khuyết không gắn cờ quá dài")
 
     def test_issue6_output_does_not_impute_the_flagged_gap(self):
-        """`assert_no_imputation` là chốt chặn cuối: không giá trị nào được bịa ra."""
-        assert_no_imputation(
-            self.cleaned, self.cleaned, ["pm25", "pm10", "temperature"]
+        """
+        `assert_no_imputation` là chốt chặn cuối: không giá trị nào được bịa ra.
+
+        Phải so frame TRƯỚC và SAU làm sạch. Bản gốc truyền `self.cleaned` cho
+        cả hai vế — cùng một frame thì hàm luôn trả về và test luôn xanh, tức
+        test không bảo vệ gì cả.
+        """
+        # Bảo đảm hai vế thực sự khác nhau — nếu không test là tautology.
+        self.assertNotIn(
+            "pm25_was_missing", self.air_raw.columns,
+            "frame 'trước' phải là frame thô, chưa qua clean_air_quality()",
         )
+        self.assertIn("pm25_was_missing", self.cleaned.columns)
+        assert_no_imputation(self.air_raw, self.cleaned, ["pm25", "pm10"])
 
     def test_issue6_output_still_satisfies_issue7_pipeline(self):
         merged = cp.merge_air_weather(self.cleaned, self.cleaned_weather)
         self.assertEqual(len(merged), len(self.cleaned))
         validation = validate_cleaned_dataset(self.cleaned)
         self.assertTrue(validation["all_passed"])
-        assert_no_imputation(self.cleaned, self.cleaned, ["pm25", "pm10"])
+        assert_no_imputation(self.air_raw, self.cleaned, ["pm25", "pm10"])
 
-    def test_target_is_excluded_but_diagnostic_flags_are_kept(self):
+    def test_target_is_excluded_and_the_target_derived_flag_is_not_a_feature(self):
         """
-        Hợp đồng feature của #7: `pm25` là target nên không vào feature, còn hai cờ
-        chẩn đoán của #6 thì phải ở lại để #7 dùng khi quyết định có điền mù hay không.
+        Hợp đồng feature của #7:
+
+          - `pm25` là target nên không vào feature.
+          - `pm25_was_missing` = `pm25.isna()` cũng không vào feature: `SimpleImputer`
+            điền median cho đúng những hàng đó, nên mô hình học được quy tắc
+            `flag == 1 => pm25 == median` và đúng 100%. Đây là rò rỉ target theo
+            cấu trúc — không guard nào trong #7 bắt được, phải loại ở danh sách.
+          - `is_high_humidity_fog` là điều kiện khí quyển nên vẫn hợp lệ.
         """
         features = cp.freeze_dataset(self.cleaned).feature_columns
-        self.assertNotIn(cp.TARGET_CANDIDATE, features)
+        self.assertNotIn("pm25", features)
+        for flag in cp.TARGET_DERIVED_FLAGS:
+            self.assertNotIn(flag, features)
         self.assertIn("is_high_humidity_fog", features)
-        self.assertIn("pm25_was_missing", features)
 
 
 class TestLog1PDiagnostic(unittest.TestCase):

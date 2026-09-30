@@ -40,11 +40,15 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 
 > [!IMPORTANT]
 > **Trạng thái hiện tại sau review:** **Issue #1–#6 đều DONE** (kể cả #4, PR #26 và #5, PR #27 đã merge vào `main`).
+> **Issue #7 (tiền xử lý chống rò rỉ) đã triển khai** (`src/cleaning_pipeline.py`, `notebooks/03_transformation_pipeline.ipynb`, `tests/test_cleaning_pipeline.py`, `tests/test_cleaning_pipeline_guards.py`) — thuộc nhánh `feat/issue-6-deterministic-cleaning`, **chưa merge vào `main`**.
 > - **Issue #1, #2, #19, #3:** Đã hoàn tất và nghiệm thu (**DONE**).
 > - **Issue #4:** PR #26 đã merge vào `main` (**DONE**).
 > - **Issue #5:** Bộ kiểm toán chất lượng 6 chiều đã hoàn thành và merge qua PR #27 (`src/data_quality.py`, `docs/data_quality_audit.md`, `notebooks/02_quality_audit.ipynb`) (**DONE**).
 > - **Issue #6:** Làm sạch tất định đã triển khai (`src/cleaning.py`, `docs/cleaning_log.md`, `notebooks/03_data_cleaning.ipynb`) (**DONE**).
-> - Toàn bộ các phân tích thống kê nâng cao, mô hình học máy và pipeline tiền xử lý chống rò rỉ phía sau thuộc Milestone 2–6 và **chưa bắt đầu**.
+> - **Issue #7:** Pipeline chống rò rỉ đã triển khai và kiểm chứng bằng `validate_no_leakage()` — so **mọi** tham số đã học với giá trị refit trên Train, kiểm tra `train.max() < test.min()`, và từ chối target trong feature (**DONE trên nhánh, chưa merge**).
+> - **Mô hình học máy và phân tích thống kê nâng cao (Issues #11–#13) vẫn chưa bắt đầu** — notebook `04`–`06` chưa tồn tại.
+> - **Tổng số unit test: 259** (`test_data_collection` 57, `test_data_quality` 14, `test_cleaning` 107, `test_cleaning_pipeline` 38, `test_cleaning_pipeline_guards` 34, `test_fetch_dataset` 9). Chạy: `python -m unittest discover tests`.
+> - **Mutation score của `src/cleaning_pipeline.py`: 21/21 = 100%** — mỗi biến thể (xoá guard, cho target lọt vào feature, cho `transform_with_pipeline()` refit trên chính Test) đều làm ít nhất một test đỏ. Baseline trước khi sửa là 21/47 = 44,7%.
 
 **Tuần 01 — Thiết lập dự án & Canonical Schema**
 - [x] Thiết lập khung cây thư mục chuẩn mực theo vòng đời CRISP-DM [Issue #1].
@@ -61,14 +65,14 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 - [x] Hiện thực hóa `AirNowDOSAdapter` (`VN002_HANOI_US_EMBASSY`, Met One BAM-1020) trong `src/data_collection.py` sẵn sàng cho dữ liệu lịch sử khi có tệp thô [Issue #3].
 - [x] Pipeline thu thập & chuẩn hóa 6 biến khí tượng từ Open-Meteo ERA5 Reanalysis, đồng bộ động dải thời gian với chuỗi quan trắc chất lượng không khí [Issue #4].
 - [x] Lưu payload thô dưới `data/raw/` khi pipeline chạy, kèm `metadata.json` ghi nhận xuất xứ, tham số truy vấn, mã băm SHA-256 và giấy phép (theo [chính sách dữ liệu thô ba tầng](docs/roadmap.md#32-cổng-quyết-định-nguồn-dữ-liệu-issue-19-as-source-selection-gate)) [Issue #3, #4].
-- [x] Bộ **71** unit tests tất định cho pipeline thu thập (`tests/test_data_collection.py`) và pipeline kiểm định tự động bằng GitHub Actions (`.github/workflows/ci.yml`).
+- [x] Bộ **57** unit tests tất định cho pipeline thu thập (`tests/test_data_collection.py`) và pipeline kiểm định tự động bằng GitHub Actions (`.github/workflows/ci.yml`).
 
 **Tuần 03–04 — Kiểm toán & Làm sạch dữ liệu**
 - [x] Kiểm toán chất lượng 6 chiều và phân tích cơ chế khuyết thiếu Rubin với **tuyên bố bất định** minh bạch ([Issue #5], `src/data_quality.py`, [`docs/data_quality_audit.md`](docs/data_quality_audit.md), `notebooks/02_quality_audit.ipynb`).
 - [x] Làm sạch **tất định**: chuẩn hóa múi giờ UTC+7, khử trùng lặp, bóc trần missing ngụy trang, lọc giá trị âm phi lý, thực thi ràng buộc khí động học $\text{PM}_{2.5} \le \text{PM}_{10}$, reindex lưới 1 giờ liên tục **độc lập theo từng trạm** ([Issue #6], `src/cleaning.py`).
 - [x] Nhận diện lỗi kẹt cảm biến và gắn cờ chẩn đoán `is_high_humidity_fog`, `pm25_was_missing` — **không** xóa bản ghi, **không** điền khuyết ([`docs/cleaning_log.md`](docs/cleaning_log.md)).
 - [x] Biên soạn **Cleaning Log** tự động sinh từ mã nguồn, ghi nhận 100% phép biến đổi kèm số dòng bị tác động ([`docs/cleaning_log.md`](docs/cleaning_log.md)).
-- [x] Bộ **77** unit tests tất định cho lớp làm sạch (`tests/test_cleaning.py`), bao gồm kiểm chứng **không điền khuyết** và **tính tất định** (idempotent).
+- [x] Bộ **107** unit tests tất định cho lớp làm sạch (`tests/test_cleaning.py`), bao gồm kiểm chứng **không điền khuyết** và **tính tất định** (idempotent).
 
 > [!NOTE]
 > **Về dữ liệu thô:** tệp thô tải từ API **không được Git-track** — đây là chính sách kho dữ liệu của repository, không phải thiếu sót. Tính toàn vẹn được kiểm chứng bằng mã băm SHA-256 ghi trong `data/raw/metadata.json`. Xem [Mục 3.2 của roadmap](docs/roadmap.md#32-cổng-quyết-định-nguồn-dữ-liệu-issue-19-as-source-selection-gate).
@@ -124,11 +128,14 @@ air-pollution-analysis/
 │   ├── __init__.py
 │   ├── data_collection.py              # Adapter OpenAQ, Open-Meteo, AirNow và validation [Issue #3, #4]
 │   ├── data_quality.py                 # Hàm kiểm toán chất lượng 6 chiều & phân tích khuyết thiếu [Issue #5]
-│   └── cleaning.py                     # Làm sạch tất định, kẹt cảm biến, reindex & sinh Cleaning Log [Issue #6]
+│   ├── cleaning.py                     # Làm sạch tất định, kẹt cảm biến, reindex & sinh Cleaning Log [Issue #6]
+│   └── cleaning_pipeline.py            # Merge, freeze, split thời gian, sklearn Pipeline chống rò rỉ, xuất Parquet [Issue #7]
 ├── tests/
 │   ├── test_data_collection.py         # 57 unit tests kiểm thử pipeline thu thập và validation [Issue #3, #4]
 │   ├── test_data_quality.py            # 14 unit tests cho bộ kiểm toán 6 chiều [Issue #5]
-│   ├── test_cleaning.py                # 104 unit tests cho lớp làm sạch tất định [Issue #6]
+│   ├── test_cleaning.py                # 107 unit tests cho lớp làm sạch tất định [Issue #6]
+│   ├── test_cleaning_pipeline.py       # 38 unit tests cho merge/freeze/split/Pipeline của #7
+│   ├── test_cleaning_pipeline_guards.py# 34 unit test hồi quy chặn rò rỉ — mỗi test FAIL trên bản gốc
 │   └── test_fetch_dataset.py           # 9 unit tests cho cơ chế thu thập & kiểm chứng tập dữ liệu
 ├── figures/                            # Thư mục lưu biểu đồ xuất bản chất lượng cao (300 DPI)
 │   └── .gitkeep
@@ -192,11 +199,11 @@ air-pollution-analysis/
    >
    > **Giới hạn cần biết:** bucket OpenAQ S3 là **kho sống** — nhà cung cấp tiếp tục nạp dữ liệu mới, nên một lần tải ở thời điểm sau có thể nhiều dòng hơn bản đã kiểm toán. Ngoài ra, định dạng Parquet **không tái lập được theo byte** giữa các máy (khối nén và metadata nội bộ phụ thuộc phiên bản thư viện), nên SHA-256 kiểm chứng được *tính toàn vẹn của tệp đã lưu* chứ không dựng lại được *tập dữ liệu*. Vì vậy `scripts/fetch_dataset.py` kiểm chứng bằng **so khớp nội dung** (số bản ghi, dải thời gian, độ phủ giao thoa) thay vì so khớp byte.
 
-6. **Chạy bộ Unit Tests kiểm định toàn trình (184 tests tất định):**
+6. **Chạy bộ Unit Tests kiểm định toàn trình (259 tests tất định):**
    ```bash
    python -m unittest discover tests -v
    ```
-   Bộ gồm **57** unit tests trong `tests/test_data_collection.py` (kiểm chứng adapter OpenAQ, Open-Meteo, AirNow, logic lọc địa lý Hà Nội, kiểm định chất lượng khí tượng `validate_weather_canonical()`, cơ chế đồng bộ thời gian động), **14** unit tests trong `tests/test_data_quality.py` (bộ kiểm toán chất lượng 6 chiều), **104** unit tests trong `tests/test_cleaning.py` (làm sạch tất định: chuẩn hóa múi giờ, khử trùng lặp, ràng buộc khí động học, reindex đa trạm, kẹt cảm biến, cờ chẩn đoán, tính tất định, bảo toàn giá trị cực trị, và 20 test hồi quy cho các lỗi tìm ra khi review đối kháng) và **9** unit tests trong `tests/test_fetch_dataset.py` (cơ chế thu thập & kiểm chứng tập dữ liệu) — **tổng cộng 184 test**. Tất cả độc lập với mạng Internet và thực thi tất định trong CI.
+   Bộ gồm **57** unit tests trong `tests/test_data_collection.py` (kiểm chứng adapter OpenAQ, Open-Meteo, AirNow, logic lọc địa lý Hà Nội, kiểm định chất lượng khí tượng `validate_weather_canonical()`, cơ chế đồng bộ thời gian động), **14** unit tests trong `tests/test_data_quality.py` (bộ kiểm toán chất lượng 6 chiều), **107** unit tests trong `tests/test_cleaning.py` (làm sạch tất định: chuẩn hóa múi giờ, khử trùng lặp, ràng buộc khí động học, reindex đa trạm, kẹt cảm biến, cờ chẩn đoán, tính tất định, bảo toàn giá trị cực trị, và 20 test hồi quy cho các lỗi tìm ra khi review đối kháng) **38** unit tests trong `tests/test_cleaning_pipeline.py` (merge có guard, freeze, split thời gian, pipeline, xuất Parquet nguyên tử), **34** unit test hồi quy trong `tests/test_cleaning_pipeline_guards.py` — mỗi test trong đó **FAIL trên bản gốc** và PASS sau khi sửa, nên chúng chứng minh lỗi thật chứ không phải trang trí — và **9** unit tests trong `tests/test_fetch_dataset.py` (cơ chế thu thập & kiểm chứng tập dữ liệu) — **tổng cộng 259 test**. Tất cả độc lập với mạng Internet và thực thi tất định trong CI.
 
 7. **Kiểm tra cú pháp và quy chuẩn diff:**
    ```bash
@@ -204,6 +211,7 @@ air-pollution-analysis/
    python -c "import src.data_collection"
    python -c "import src.data_quality"
    python -c "import src.cleaning"
+   python -c "import src.cleaning_pipeline"
    git diff --check
    ```
 
@@ -224,7 +232,7 @@ air-pollution-analysis/
 git clone
   → pip install -r requirements.txt                (bước 2–3)
   → python scripts/fetch_dataset.py                (bước 5, cần mạng, có đối chiếu metadata)
-  → python -m unittest discover tests              (bước 6, 223 test, offline)
+  → python -m unittest discover tests              (bước 6, 259 test, offline)
   → jupyter nbconvert --execute notebooks/01_data_collection.ipynb
   → jupyter nbconvert --execute notebooks/02_quality_audit.ipynb
   → jupyter nbconvert --execute notebooks/03_data_cleaning.ipynb  (sinh docs/cleaning_log.md)
