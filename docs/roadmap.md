@@ -754,8 +754,8 @@ Chi tiết luồng thực hiện:
 | #3 | Pipeline chất lượng không khí | `OpenAQAdapter` trong `src/data_collection.py` | 8.022 bản ghi canonical, tz `Asia/Ho_Chi_Minh`, mã băm SHA-256 trong metadata | **DONE** | Adapter AirNow DOS chưa thực thi (cần thông tin xác thực AirNow-Tech) |
 | #4 | Pipeline khí tượng + đồng bộ thời gian | `OpenMeteoAdapter`, `validate_weather_canonical` | 9.072 bản ghi/giờ, 0 trùng lặp, 0 khoảng trống, 0 khuyết thiếu; PR #26 đã merge | **DONE** | — |
 | #5 | Kiểm toán chất lượng 6 chiều | `src/data_quality.py`, `docs/data_quality_audit.md`, `notebooks/02_quality_audit.ipynb` | PR #27 đã merge; `docs/data_quality_audit.md` đã hiệu chỉnh theo dữ liệu thực tế trên đĩa | **DONE** | — |
-| #6 | Làm sạch tất định, cleaning log | Chưa có | Chưa có `docs/cleaning_log.md` | **NOT STARTED** | — |
-| #7 | Ghép dữ liệu, đóng băng, split, pipeline | Chưa có | Chưa có `src/cleaning_pipeline.py`, chưa có `data/processed/air_pollution_final.parquet` | **NOT STARTED** | — |
+| #6 | Làm sạch tất định, cleaning log | `src/cleaning.py`, `docs/cleaning_log.md`, `notebooks/03_data_cleaning.ipynb` | 9.044 dòng ô nhiễm + 9.072 dòng khí tượng canonical; `assert_no_imputation()` PASS; 107 unit test | **DONE** | Việc chạy lại `03_data_cleaning.ipynb` cần khôi phục `data/interim/` từ `data/raw/` trước |
+| #7 | Ghép dữ liệu, đóng băng, split, pipeline | `src/cleaning_pipeline.py`, `notebooks/03_transformation_pipeline.ipynb` | 9/9 AC + 2 validation PASS; `data/processed/air_pollution_final.parquet` 9.044×18; 72 unit test; mutation score 21/21 = 100% | **DONE (chưa merge)** | Nằm trên nhánh `feat/issue-6-deterministic-cleaning`, **chưa merge vào `main`** — xem [cảnh báo mốc cắt](#bang-ghi-chinh-thuc--cac-quyet-dinh-da-chot-cho-issue-7) về `2026-01-01` |
 
 ### G.3. Kết luận trạng thái Milestone 1
 
@@ -764,12 +764,18 @@ Chi tiết luồng thực hiện:
 >
 > - `#4` đã hoàn tất: PR #26 **đã merge vào `main`**, toàn bộ tiêu chí nghiệm thu
 >   AC4-1 → AC4-20 đã được tick sau khi AC được chuẩn hóa theo chính sách ba tầng (Mục 3.2).
-> - **Milestone 2 đã bắt đầu:** `#5` (kiểm toán chất lượng 6 chiều) **DONE** qua PR #27.
->   Còn lại: `#6` (làm sạch tất định + cleaning log) và `#7` (ghép dữ liệu, đóng băng, split, pipeline).
+> - **Milestone 2:** `#5` (kiểm toán chất lượng 6 chiều) **DONE** qua PR #27;
+>   `#6` (làm sạch tất định + cleaning log) và `#7` (ghép dữ liệu, đóng băng, split,
+>   pipeline) đều **đã triển khai** và đã vượt qua 259 unit test + kiểm chứng AC 9/9.
+>   Cả hai nằm trên nhánh `feat/issue-6-deterministic-cleaning`, **chưa merge vào
+>   `main`**. Các issue phụ thuộc (`#8`, `#11`, `#12`, `#13`) bị chặn cho tới khi nhánh đó được merge.
 > - Các số liệu thực nghiệm nêu trong các báo cáo (#4, #5) là **kết quả của một lần thực thi cụ thể**
 >   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
-> - Bộ kiểm thử hiện gồm **71 + 14 = 85 unit test tất định**, tất cả PASS
->   (`tests/test_data_collection.py` + `tests/test_data_quality.py`).
+> - Bộ kiểm thử hiện gồm **57 + 14 + 107 + 38 + 34 + 9 = 259 unit test tất định**,
+>   tất cả PASS (`test_data_collection` + `test_data_quality` + `test_cleaning` +
+>   `test_cleaning_pipeline` + `test_cleaning_pipeline_guards` + `test_fetch_dataset`).
+>   Trong đó 34 test hồi quy của #7 **FAIL trên bản gốc** và PASS sau khi sửa, và
+>   mutation score của `src/cleaning_pipeline.py` là **21/21 = 100%**.
 
 > [!WARNING]
 > **Khoảng trống độ phủ thời gian (DATA COVERAGE GAP) — chưa được giải quyết, cần theo dõi ở M2:**
@@ -876,6 +882,94 @@ Chi tiết luồng thực hiện:
 * **Deliverables:** File dữ liệu sạch `data/processed/air_pollution_final.parquet`, module `src/cleaning_pipeline.py`, notebook `03_transformation_pipeline.ipynb`.
 * **Definition of Done:** Số dòng sau merge được kiểm soát (`assert len <= len_air`); tập dữ liệu được đóng băng; phân chia thời gian tuyến tính không rò rỉ; Pipeline fit duy nhất trên Train; tệp Parquet đọc lại nguyên vẹn cấu trúc và kiểu dữ liệu.
 * **Dependencies:** Dữ liệu làm sạch tất định từ Week 04 (#6).
+
+#### Bản ghi chính thức — Các quyết định đã chốt cho Issue #7
+
+Ba quyết định dưới đây được chốt trên dữ liệu thực nghiệm (9044 quan sát giờ, `station_id = VN001_HANOI_556_NGUYEN_VAN_CU` tại 556 Nguyễn Văn Cừ, Hà Nội, 2025-07-03 → 2026-07-15) chứ không phải từ tỷ lệ quy ước. Bằng chứng đầy đủ nằm trong `notebooks/03_transformation_pipeline.ipynb` mục 5.
+
+**Quyết định 1 — Điểm cắt Train/Test = `2026-01-15 00:00:00+07:00`.**
+
+> **Đây là lựa chọn phương pháp luận phù hợp với dữ liệu hiện có, KHÔNG phải tối ưu
+> tuyệt đối.** Xem *Hạn chế đã biết* ngay dưới bảng so sánh.
+
+Căn cứ: **temporal representativeness + event coverage**, theo đúng task 3 của tuần này. Dữ liệu chỉ có **một chu kỳ mùa** (07/2025–07/2026) nên mọi tỷ lệ chia theo số dòng đều hỏng:
+
+| Điểm cắt | Train/Test | `train_gio>100` | `test_gio>100` | Tỉ lệ trong Test | $p90_{test}/p90_{train}$ |
+|---|---|---|---|---|---|
+| `2026-05-01` (80/20) | 79,9 / 20,1 | 388 | **6** | 0,33% | 0,66 |
+| `2026-03-24` (70/30) | 69,8 / 30,2 | 371 | 23 | 0,84% | 0,69 |
+| `2026-02-15` (60/40) | 60,0 / 40,0 | 364 | 30 | 0,83% | 0,66 |
+| **`2026-01-15` (đã chọn)** | **51,8 / 48,2** | 295 | **99** | **2,27%** | 0,80 |
+| `2026-01-01` | 48,1 / 51,9 | 213 | 181 | 3,85% | **0,97** |
+
+Cột cuối là **tỷ lệ p90 Test/Train** — đo trực tiếp *temporal representativeness*: càng gần `1.00` càng giống. Với 80/20, Test có 6 giờ vượt 100 µg/m³ trong 1818 giờ → mô hình đoán "không cảnh báo" cho mọi giờ vẫn đạt ~99,7% accuracy. Đó là **Accuracy Trap** mà `.agents/rules/analysis.md` cấm, và làm Recall / PR-AUC ở Issue #11–#13 mất hết ý nghĩa.
+
+> [!IMPORTANT]
+> **Đã chốt: giữ `2026-01-15`. Không đổi sang `2026-01-01`.**
+>
+> **Lý do — tính đại diện theo thời gian.** Mốc `2026-01-15` cắt **giữa mùa đông**, nên **cả Train lẫn Test đều chứa giai đoạn mùa đông**. Điều này quyết định vì tập dữ liệu hiện chỉ có **đúng một chu kỳ mùa** (07/2025–07/2026): nếu Test chỉ chứa một mùa mà Train chưa từng trải qua, mọi kết quả ở Issue #11–#13 sẽ đo trên phép dịch phân phối chứ không phải trên cùng một thế giới khí quyển.
+>
+> **Đây là lựa chọn phương pháp luận phù hợp với dữ liệu hiện có — KHÔNG phải tối ưu tuyệt đối.** Nó **không** phải mốc cắt điểm cao nhất trên mọi tiêu chí, và không nên được mô tả như vậy.
+>
+> **Hạn chế đã biết, ghi lại để Issues #11–#13 cân nhắc:**
+>
+> | Hạn chế | Số liệu |
+> |---|---|
+> | Mốc `2026-01-01` có event coverage cao hơn | `test_gio>100` 181 so với 99 |
+> | Mốc `2026-01-01` có $p90$ ratio gần 1 hơn | 0,97 so với 0,80 |
+> | Tỷ lệ nhãn nặng ở Test thấp hơn Train khoảng **2,8 lần** | Test 2,27% so với Train 6,30% |
+>
+> Hệ quả cụ thể: **có dịch chuyển tỷ lệ lớp giữa Train và Test**. Khi đánh giá mô hình ở Issue #11–#13, Recall và PR-AUC phải được diễn giải cẩn thận với sự dịch chuyển này; nếu cần, có thể báo cáo thêm chỉ số trên một tập con Test đã cân bằng nhãn. Việc chốt lại mốc cắt **không thuộc phạm vi Issue #7** và chỉ nên xem xét khi có thêm một chu kỳ mùa nữa trong dữ liệu.
+
+**Vì sao giữ CẢ HAI phép kiểm tra số dòng (`<=` và `==`).**
+
+Issue #7 §Yêu cầu kỹ thuật và AC1 chỉ định `assert len(df_merged) <= len(df_air)`. Phép này được **giữ nguyên** để không lệch khỏi tiêu chí nghiệm thu. Nhưng với `how="left"` + khoá unique hai phía + `validate="1:1"`, `<=` là **điều kiện cần mà không phân biệt được** — nó luôn đúng và không bắt được lỗi nào. Vì vậy `merge_air_weather()` kiểm tra **cả hai**:
+
+| Phép | Vai trò | Bắt được gì |
+|---|---|---|
+| `len(df_merged) <= len(df_air)` | **Giữ nguyên theo AC1** | Điều kiện cần: không được sinh thêm dòng |
+| `len(df_merged) == len(df_air)` | **Bất biến thật của pipeline** | Không được **mất** dòng ô nhiễm nào |
+
+**Cơ sở của bất biến `==`.** Theo định nghĩa của Issue #7, phép ghép là `merge(how="left")` theo khoá quan sát: **mọi dòng của bảng ô nhiễm đều được giữ lại**. Nếu một giờ không có bản ghi khí tượng tương ứng thì dòng ô nhiễm đó vẫn còn, chỉ mang `NaN` ở các cột khí tượng — đó chính là hành vi được `SimpleImputer` xử lý sau đó, chứ không phải lý do để xoá dòng. Pipeline này **không được phép loại bỏ air row trong bất kỳ trường hợp hợp lệ nào**, nên `==` là bất biến đúng.
+
+**Nếu trong tương lai pipeline được phép loại air row** (ví dụ thêm bước loại quan sát không đạt kiểm định chất lượng trước khi freeze), thì bất biến trở thành `len(df_merged) <= len(df_air)` và phép `==` **phải được nới lỏng** — kèm ghi chú lý do trong mã. Đó là lý do hai phép cùng tồn tại thay vì một phép bị xoá: phép `==` gắn với *định nghĩa hiện tại* của pipeline, và sẽ tự báo động nếu định nghĩa đó đổi.
+
+Cắt giữa mùa đông là cách để **cả hai** tập đều chứa regime ô nhiễm:
+
+```
+cut   = 2026-01-15 00:00:00+07:00
+train = 4.682 dòng (51,8%)   test = 4.362 dòng (48,2%)
+train: 1.425 giờ > 50,  295 giờ > 100
+test :   878 giờ > 50,   99 giờ > 100
+tổng 394 giờ > 100  →  Train 74,9% | Test 25,1%
+```
+
+Tỷ lệ 51,8/48,2 trông "lệch chuẩn" nhưng là **hệ quả tất yếu** của việc chia theo mùa, không phải lựa chọn tùy tiện.
+
+**Quyết định 2 — `log1p` chỉ chẩn đoán, KHÔNG transform target.**
+
+Đo trên Train ($n = 4.279$ quan sát có $\text{PM}_{2.5}$): skew $1{,}148 \to -0{,}656$, kurtosis $1{,}068 \to 0{,}726$. Task 4 của tuần này chỉ yêu cầu *khảo sát*, không yêu cầu áp dụng. Giữ target ở µg/m³ để ngưỡng cảnh báo còn nghĩa trực tiếp với bối cảnh chất lượng không khí và phần downstream dễ đọc hơn.
+
+**Quyết định 3 — Trong 3 cột cờ chẩn đoán của Issue #5/#6, chỉ 2 cột được làm feature; `pm25_was_missing` bị loại vì là rò rỉ target theo cấu trúc.**
+
+| cột | nunique | tổng | nghĩa | làm feature? |
+|---|---|---|---|---|
+| `pm25_was_missing` | 2 | 1.289 | trạm ngừng báo cáo (khối khuyết $> 6$ giờ) | ❌ **không** |
+| `pm25_was_stuck` | **1** | **0** | cảm biến kẹt — **hằng số trên tập này** | ✅ có |
+| `is_high_humidity_fog` | 2 | 2.834 | sương mù quang học, cảm biến đọc sai | ✅ có |
+
+**Vì sao loại `pm25_was_missing`.** Nó là `pm25.isna()` **với ngưỡng khối khuyết $> 6$ giờ**. Mà `SimpleImputer(strategy="median")` lại điền median cho **đúng những hàng đó**. Hệ quả: mọi hàng `flag == 1` có target bằng **đúng** median của tập học — đo trên dữ liệu thật là **100%**, ở cả Train (256/256, median 37,83) lẫn Test (1.033/1.033). Mô hình học được quy tắc `flag == 1 ⇒ pm25 == median` và đúng 100%: đó là rò rỉ target theo **cấu trúc**.
+
+Con số cần đọc đúng: tổng số hàng `pm25` bị `NaN` là **1.549**, trong đó **1.289** mang cờ `pm25_was_missing` (khối dài) và **260** là khối ngắn không mang cờ. Dòng rò rỉ đo được là **256** hàng ở Train — không phải 1.289 — vì cờ chỉ bắt khối dài, còn khối ngắn cũng được impute nhưng không ai nhìn thấy qua cờ.
+
+Điểm mấu chốt: `validate_no_leakage()` **không** bắt được lỗi này, vì imputer và scaler vẫn học đúng trên Train. Guard kiểm tham số học vô dụng ở đây — phải loại ở mức danh sách feature. Cờ vẫn được **giữ trong dataset** như tài liệu chẩn đoán; nó chỉ không được đưa vào `X`. Xem `TARGET_DERIVED_FLAGS` và `DIAGNOSTIC_FEATURES` trong `src/cleaning_pipeline.py`, và ô 15 của `notebooks/03_transformation_pipeline.ipynb` (nơi cơ chế này được **đo lại** trên dữ liệu thật, không phải khẳng định suông).
+
+`pm25_was_stuck` bằng 0 toàn bộ là **phát hiện thực nghiệm, không phải lỗi**: Issue #5 đã kết luận chuỗi 0.0 dài ở Hà Nội là hiện tượng tự nhiên chứ không phải cảm biến hỏng. Cột này không mang thông tin phân biệt nhưng vẫn an toàn về kỹ thuật (`RobustScaler` cho `scale_ = 1.0`, `center_ = 0.0`, output `0.0` — không NaN), nên giữ lại để các notebook sau dùng chung một bộ cột.
+
+**Hai điểm cần lưu ý cho Issue #11–#13.**
+
+- **Target không được đưa vào feature — và giờ module tự chặn.** `NUMERIC_FEATURES` của `src/cleaning_pipeline.py` **không** còn liệt kê `pm25`, và `build_preprocessing_pipeline()` ném `ValueError` nếu target lọt vào danh sách. Bản gốc liệt kê sẵn `pm25`, nên gọi hàm không tham số là đưa chính câu trả lời vào `X`: bài toán dự báo biến thành bài toán đọc lại đáp án, và mọi chỉ số ở Issues #11–#13 sau này trở nên vô nghĩa.
+- **`pm25` vẫn là `NaN` ở 1.549 hàng** (1.289 khối dài có cờ, 260 khối ngắn). Việc điền median của `SimpleImputer` chỉ xảy ra bên trong `ColumnTransformer` lúc `transform()`, bằng tham số học từ Train — **không ghi đè giá trị nào trong dataset** (`assert_no_imputation()` của Issue #6 vẫn PASS). Khi đánh giá mô hình phải chốt riêng cách xử lý `NaN` ở target.
 
 ---
 

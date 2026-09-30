@@ -4,8 +4,9 @@
 
 ## Project Identity
 - **Domain:** Time-series urban air quality ($\text{PM}_{2.5}$) and meteorology in Hanoi, Vietnam (INFO3020 Data Science).
-- **Stage:** Post-Milestone 1, entering Milestone 2 (Data Quality Audit). Authoritative plan in [`docs/roadmap.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/roadmap.md).
-- **Architecture Notice:** Implemented: ingestion module (`src/data_collection.py`), 6-dimension quality audit module (`src/data_quality.py`), unit tests (`tests/test_data_collection.py` + `tests/test_data_quality.py`), dataset acquisition script (`scripts/fetch_dataset.py`), CI workflow, and notebooks `notebooks/00`–`02`. Not yet implemented: `src/cleaning_pipeline.py`, `notebooks/03`–`06`, and `data/processed/`. Always inspect the filesystem before writing code.
+- **Stage:** Milestone 2 (Data Quality Audit & Deterministic Cleaning), entering Week 05. Authoritative plan in [`docs/roadmap.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/roadmap.md).
+- **Architecture Notice:** Implemented: ingestion module (`src/data_collection.py`), 6-dimension quality audit module (`src/data_quality.py`), deterministic cleaning module (`src/cleaning.py`), leakage-safe preprocessing module (`src/cleaning_pipeline.py`), unit tests (`tests/test_data_collection.py`, `tests/test_data_quality.py`, `tests/test_cleaning.py`, `tests/test_cleaning_pipeline.py`, `tests/test_fetch_dataset.py`), dataset acquisition script (`scripts/fetch_dataset.py`), CI workflow, and notebooks `notebooks/00`–`03`. Not yet implemented: `notebooks/04`–`06`. Always inspect the filesystem before writing code.
+- **Notebook Execution Order:** `00` → `01` (collection) → `02` (audit) → `03` (deterministic cleaning) → `03` (transformation pipeline, Issue #7). The cleaning notebook and the transformation notebook both read/write the canonical interim Parquet files in `data/interim/`, so `02` must run first to audit the pre-cleaning state. To re-run the cleaning notebook correctly, restore `data/interim/` from `data/raw/` first — `reindex_hourly_grid()` requires the pre-cleaning state, not its own output. The transformation notebook writes `data/processed/air_pollution_final.parquet` (gitignored).
 
 ## Package Manager & Toolchain
 - **Runtime:** Python 3.10+
@@ -24,6 +25,8 @@
 
 ## Key Conventions & Non-Negotiables
 - **Data Integrity:** Apply Three-tier Raw Data Policy (roadmap §3.2); preserve payloads in `data/raw/` without manual edits, track SHA-256 in `data/raw/metadata.json`, keep raw payloads untracked via `.gitignore`. Store clean outputs as Snappy Parquet (`.parquet`).
+- **Deterministic Cleaning vs. Data-Dependent Preprocessing:** Never impute, scale, or compute global statistics before the chronological split. Deterministic cleaning (`src/cleaning.py`) is bounded by `assert_no_imputation()`, which compares **cell by cell** on the `(station_id, timestamp)` key: a cell that was `NaN` before must still be `NaN`, and a cell that held a value must keep that exact value or become `NaN`. Observed measurements may only disappear, never appear or change.
+- **Diagnostic flags are not imputations:** `pm25_was_missing` (station reporting gap), `pm25_was_stuck` (sensor frozen), and `is_high_humidity_fog` (optical fog) are separate flags. Issue #7 must read all three before deciding whether imputation is admissible.
 - **Time-Series Safety:** Enforce chronological sort, unique timestamps, and check row counts to prevent Row Explosion on joins.
 - **Strict Leakage Prevention:** Temporal train/test splits only. Fit transformers strictly on Train partitions.
 - **Statistical Testing:** Mandatory trio: Test statistic + $p$-value + Effect Size ($r_{rb}$) + 95% Bootstrap CI.

@@ -12,11 +12,11 @@
 This repository is an **academic data-science project**, not an enterprise distributed-data system or a commercial cloud microservice.
 - **Goal:** Analyze multi-year temporal variations of urban fine particulate matter ($\text{PM}_{2.5}$), quantify meteorological drivers, and develop an interpretable early alert classification model following CRISP-DM methodology.
 - **Dataset:** Time series integrating OpenAQ NCEM/VEA station 4946811 (556 Nguyễn Văn Cừ, Hanoi; 07/2025–07/2026) with Open-Meteo ERA5 surface weather dynamically synchronized (8,022 air records, 9,072 weather records, 100% temporal overlap). AirNow DOS Hanoi serves as historical fallback.
-- **Current State:** **Post-Milestone 1 Stage**.
+- **Current State:** **Milestone 2 (Week 05)** — Issues #6 and #7 implemented; modelling Issues #11–#13 not started.
   - Authoritative requirements are in [`docs/roadmap.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/roadmap.md).
   - An interactive landing page lives on branch `gh-pages` (`index.html`, `styles.css`, `script.js`).
-  - Implementation status: Data collection module (`src/data_collection.py`), 39 unit tests (`tests/test_data_collection.py`), CI workflow (`.github/workflows/ci.yml`), and collection notebook (`notebooks/01_data_collection.ipynb`) are implemented.
-  - Downstream modules (cleaning in `src/cleaning.py`, analysis notebooks `notebooks/02`–`06`, and processed data in `data/processed/`) are planned specifications and not yet implemented.
+  - **Implemented:** `src/data_collection.py`, `src/data_quality.py` (6-dimension audit, Issue #3), `src/cleaning.py` (deterministic cleaning, Issue #6), `src/cleaning_pipeline.py` (leakage-safe preprocessing, Issue #7), `scripts/fetch_dataset.py`, the CI workflow (`.github/workflows/ci.yml`), and notebooks `00`–`03`.
+  - **Not yet implemented:** notebooks `04`–`06` (modelling & evaluation, Issues #11–#13). Everything under `data/processed/` is a gitignored artifact that notebook `03` regenerates.
   - **Roadmap vs. Reality:** Always inspect the filesystem to verify what exists versus what is planned.
 
 ---
@@ -73,9 +73,9 @@ Agents working in Antigravity must explicitly avoid these known failure modes:
 | **Hallucinated Files/Modules** | Inspect directory tree before importing or referencing any file. |
 | **Treating Roadmap as Implemented** | Check file existence before assuming a feature or notebook is present. |
 | **Modifying Raw Data** | Apply Three-tier Raw Data Policy (roadmap §3.2). Preserve raw payloads in `data/raw/` unchanged, track SHA-256 in `metadata.json`, never edit manually. |
-| **Row Explosion on Joins** | Check timestamp uniqueness and assert `len(df_merged) <= len(df_air)` on all joins. |
+| **Row Explosion on Joins** | Use `src/cleaning_pipeline.py::merge_air_weather()`. It rejects non-unique keys and colliding column names, asserts `len(df_merged) == len(df_air)` (**`==`, not `<=`** — with `how="left"` + unique keys + `validate="1:1"` the `<=` form is a tautology that can never fire), and raises when **every** joined weather column is `NaN` (the check that actually catches a timezone/window mismatch). |
 | **Temporal Data Leakage** | Enforce chronological train/test splits (e.g. chronological split on study period). Random splitting is strictly prohibited. |
-| **Preprocessing Leakage** | Fit transformers (Scalers, Imputers) strictly on the training partition inside a `Pipeline`. |
+| **Preprocessing Leakage** | Fit transformers (Scalers, Imputers) strictly on the training partition inside a `Pipeline`, then prove it with `validate_no_leakage()` — it compares every learned parameter against a Train refit and also checks `train.max() < test.min()`. | **Target In The Feature Set** | Never put `pm25` in `X`; `build_preprocessing_pipeline()` raises `ValueError` if you try. Never put a target-derived flag (`pm25_was_missing` = `pm25.isna()`) in `X` either — `SimpleImputer` fills exactly those rows with the median, so every flagged row's target equals the median (100% on the real data). That leak is structural and **no parameter-level guard can detect it**; it must be excluded at the feature-list level. | **Interpolation vs. Observation** | Never impute. `assert_no_imputation()` compares cell by cell and rejects any invented value. See `.agents/rules/data.md` §3.5. |
 | **Unjustified Outlier Deletion** | Never delete extreme pollution episodes (winter inversions, fireworks) merely because they look high. |
 | **Silent Unit/Threshold Changes** | Maintain $\mu\text{g/m}^3$ and local time `Asia/Ho_Chi_Minh` (UTC+7). Document all thresholds. |
 | **Accuracy Trap on Imbalance** | Never use Accuracy alone for binary alert evaluation. Prioritize Recall and PR-AUC. |
