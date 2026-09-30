@@ -88,14 +88,16 @@ CYCLICAL_FEATURES: List[str] = [
     "month_cos",
 ]
 
-# Cờ chẩn đoán do Issue #5/#6 sinh ra, ĐƯỢC dùng làm feature.
-#   - `pm25_was_stuck`      : cảm biến kẹt (hiện là hằng số 0 trên tập Hà Nội,
-#                            nên không mang thông tin phân biệt nhưng vô hại)
-#   - `is_high_humidity_fog`: sương mù quang học — cảm biến đọc sai, đây là
-#                            điều kiện khí quyển nên hợp lệ làm dự báo
+# Cờ chẩn đoán do Issue #5/#6 sinh ra.
+#
+#   - `pm25_was_stuck`: cảm biến kẹt. Trên tập Hà Nội cờ này là **hằng số 0**
+#     (`nunique = 1`, `sum = 0`) — không có phương sai nên không thể mang thông
+#     tin phân biệt. Vẫn giữ trong danh sách feature vì nó vô hại về số học
+#     (scaler tự đặt `scale_ = 1` cho hằng số), nhưng **không được diễn giải** là
+#     biến có tác động. Nếu sau này cảm biến thật sự kẹt thì cờ sẽ biến thiên
+#     và trở lại có ích — đó là lý do giữ.
 DIAGNOSTIC_FEATURES: List[str] = [
     "pm25_was_stuck",
-    "is_high_humidity_fog",
 ]
 
 # Cờ chẩn đoán **KHÔNG** được dùng làm feature vì là hàm xác định của target.
@@ -116,6 +118,55 @@ DIAGNOSTIC_FEATURES: List[str] = [
 # kiểm chứng. Cờ vẫn được GIỮ trong dataset như tài liệu chẩn đoán.
 TARGET_DERIVED_FLAGS: List[str] = [
     "pm25_was_missing",
+]
+
+
+# Cờ chẩn đoán **KHÔNG** được dùng làm feature mặc định vì **chưa có bằng chứng về
+# giá trị dự báo MARGINAL** trên bộ dữ liệu hiện tại. Tách khỏi
+# `TARGET_DERIVED_FLAGS` vốn là rò rỉ *chắc chắn* — hai lý do phải tách bạch, gộp
+# chung sẽ khiến người đọc tưởng mọi cờ bị loại đều vì rò rỉ.
+#
+# ── Cách đo và kết quả ────────────────────────────────────────────────────────
+# Trên `data/interim/air_quality_canonical.parquet` (7.495 dòng có cả `pm25` và RH):
+#
+#   - `corr(pm25, RH)`                  = -0,0365
+#   - PM2.5 TB nhóm có cờ             = 41,65   (n = 2.384)
+#   - PM2.5 TB nhóm không cờ          = 44,75   (n = 5.111)
+#   - Mutual information (8 nhân pm25) = 0,0024  — thấp nhất trong các biến khí tượng
+#
+# Nên ở mức **marginal**, cờ gần như không mang thông tin dự báo.
+#
+# ── NHƯNG: cờ CÓ tương tác thật với mùa, và đây là lý do không nên viết quá tay ──
+#
+# Hồi quy `pm25 ~ fog + season + fog:season` cho ra tương tác rất mạnh:
+#
+#   | Mùa       | Chênh lệch (có cờ − không cờ) | Kết luận         |
+#   |-----------|------------------------------|------------------|
+#   | Đông      |  **+2,79** µg/m³ (p = 0,024)  | có, yếu         |
+#   | Xuân      |  **−8,91** µg/m³              | có, mạnh         |
+#   | Hè        |  +0,28 µg/m³                  | không            |
+#   | Thu       |  **−2,72** µg/m³              | có               |
+#
+#   F-test đồng thời các hệ số tương tác: **F = 16,78, p = 7,4·10⁻¹¹**.
+#   Khác biệt kép giữa Đông và Xuân+Hè: **+7,77 µg/m³**.
+#
+# Tức là `corr(pm25, RH) ≈ 0` **không phải** bằng chứng "không có quan hệ" — nó là
+# hệ quả của việc **trung bình qua các mùa**, nơi hiệu ứng đổi dấu. Đây chính là
+# lý do review buộc phải hạ giọng từ "không dự báo được" (phủ định tuyệt đối, không
+# chứng minh được bằng tương quan) xuống "chưa có bằng chứng về giá trị marginal".
+#
+# ── Vì sao vẫn loại khỏi feature MẶC ĐỊNH ───────────────────────────────────
+#
+# Với một mô hình chỉ nhận cờ trần (không có số tương tác), hệ số học được là
+# hiệu ứng **marginal** đã gộp sạc — tức gần 0. Một hệ số gần 0 chỉ làm **tăng
+# phương sai ước lượng**, không thêm tín hiệu. Còn nếu muốn khai thác phát hiện ở
+# trên thì phải đưa vào dưới dạng **tương tác `fog × mùa`**, và đó là việc của
+# **Issue #8 (EDA)** — nơi quyết định hình thức đặc trưng, không phải M2.
+#
+# Cờ **được giữ nguyên trong dataset** như tài liệu chẩn đoán. Nếu EDA chứng minh
+# tương tác theo mùa là thật và dùng được, thì đưa lại dưới dạng cột tương tác.
+NON_PREDICTIVE_FLAGS: List[str] = [
+    "is_high_humidity_fog",
 ]
 
 
@@ -256,7 +307,12 @@ def chronological_split(
         )
 
     if not ts.is_monotonic_increasing:
-        first_bad = int(np.argmax(ts.diff().to_numpy() < 0)) + 1
+        # `Series.diff()` trên datetime tz-aware trả về `timedelta64[ns]`, và
+        # so sánh nó với `np.timedelta64(1, "h")` quy nạch đơn vị "generic" —
+        # numpy đã DeprecationWarning và sẽ ném lỗi. Ép sang so sánh theo
+        # `Timedelta` của pandas để không phụ thuộc vào đường chuyển đổi đó.
+        deltas = pd.Series(ts).diff()
+        first_bad = int(np.argmax((deltas < pd.Timedelta(0)).to_numpy())) + 1
         raise AssertionError(
             f"Cột thời gian '{timestamp_col}' không tăng dần (hàng {first_bad} đi "
             "lùi). chronological_split() không tự sort lại để không che giấu việc "
@@ -768,7 +824,13 @@ def freeze_dataset(
     DatasetFreezeInfo
     """
     if feature_columns is None:
-        excluded = {timestamp_col, station_col, TARGET_CANDIDATE, *TARGET_DERIVED_FLAGS}
+        excluded = {
+            timestamp_col,
+            station_col,
+            TARGET_CANDIDATE,
+            *TARGET_DERIVED_FLAGS,
+            *NON_PREDICTIVE_FLAGS,
+        }
         feature_columns = [
             c
             for c in df.columns
@@ -789,6 +851,16 @@ def freeze_dataset(
                 "freeze_dataset: loại %s khỏi feature mặc định vì là hàm xác định "
                 "của target — dùng làm feature là rò rỉ mà guard nào cũng không bắt.",
                 TARGET_DERIVED_FLAGS,
+            )
+        if any(c in df.columns for c in NON_PREDICTIVE_FLAGS):
+            logger.info(
+                "freeze_dataset: loại %s khỏi feature mặc định vì chưa có bằng chứng về "
+                "giá trị dự báo MARGINAL trên dữ liệu thật (corr(pm25, RH) ~ -0,04; "
+                "mutual information 0,0024 — thấp nhất trong các biến khí tượng). Lưu ý: "
+                "cờ CÓ tương tác với mùa (F = 16,78, p = 7e-11; Đông +2,79 so với Xuân "
+                "-8,91 µg/m³), nên nếu muốn khai thác thì phải dùng dạng tương tác "
+                "fog × mùa — thuộc Issue #8. Xem NON_PREDICTIVE_FLAGS.",
+                NON_PREDICTIVE_FLAGS,
             )
 
     info = DatasetFreezeInfo(
@@ -904,6 +976,7 @@ def validate_no_leakage(
     X_test: pd.DataFrame,
     timestamps: Optional[pd.Series] = None,
     test_timestamps: Optional[pd.Series] = None,
+    verify_chronology: bool = True,
     atol: float = 1e-9,
 ) -> None:
     """
@@ -934,8 +1007,30 @@ def validate_no_leakage(
     X_train, X_test : pd.DataFrame
         Features của Train (dùng để fit) và Test (chỉ dùng để transform).
     timestamps, test_timestamps : pd.Series | None
-        Cột thời gian tương ứng. Nếu truyền, hàm kiểm tra không có chồng lấn thời
-        gian giữa hai tập. Không truyền thì bỏ qua lớp kiểm chứng này.
+        Cột thời gian tương ứng. **Bắt buộc phải truyền CẢ HAI** (trừ khi đã đặt
+        `verify_chronology=False`) — khi đó hàm kiểm tra không có chồng lấn thời
+        gian giữa hai tập, tức là bắt được phép chia ngẫu nhiên.
+
+        Thiếu hoặc chỉ truyền một sẽ ném `AssertionError`. Bản trung gian của
+        PR này chỉ `logger.warning`; review chỉ ra rằng như vậy guard vẫn **có
+        thể** in ra "✓ No leakage" khi chưa hề kiểm tra thứ tự thời gian. Đúng
+        lý do tồn tại của hàm là để chứng nhận "không rò rỉ", nên thiếu kiểm thì
+        phải là **lỗi**, không phải cảnh báo.
+    verify_chronology : bool, default True
+        Đặt `False` **chỉ** khi thực sự chỉ muốn kiểm rò rỉ tham số (ví dụ unit
+        test cố ý dựng một pipeline fit sai tập). Khi đó hàm vẫn `logger.warning`
+        nói rõ lớp thứ tự thời gian đang bị tắt. Lối tắt này **phải được gõ ra
+        tay** — không thể xảy ra do quên.
+    atol : float
+        Sai số cho phép khi so sánh float.
+
+    .. warning::
+       Đo lại trên dữ liệu thật: một ``train_test_split`` ngẫu nhiên với đúng
+       ``X_train``/``X_test`` là **không bị bắt** nếu không có lớp thứ tự thời
+       gian. Các lớc 2–3 vẫn phát hiện được *scaler fit sai tập*, nhưng không
+       phát hiện được *chính cái phép chia*. Vì vậy lớp 1 là lớp duy nhất chống
+       được random split — đừng bao giờ tắt nó ở bất kỳ đâu liên quan tới dữ
+       liệu thật.
     atol : float
         Sai số cho phép khi so sánh float.
 
@@ -957,7 +1052,42 @@ def validate_no_leakage(
         )
 
     # --- Lớp 1: thứ tự thời gian ---------------------------------------------
-    if timestamps is not None and test_timestamps is not None:
+    #
+    # Lớp này là lớp DUY NHẤT chống được random split: các lớp 2–3 chỉ so tham
+    # số đã học, mà một `train_test_split` ngẫu nhiên vẫn học đúng trên "Train"
+    # của nó. Đo lại trên dữ liệu thật: random split với đúng X_train/X_test mà
+    # không truyền timestamp là **không bị bắt**.
+    #
+    # Vì vậy KHÔNG được im lặng bỏ qua. Nếu thiếu timestamp mà vẫn chạy tiếp và
+    # in ra dấu tick, guard đang chứng nhận "không rò rỉ" cho một phép chia mà nó
+    # chưa từng nhìn — tức chứng nhận sai. Bản trung gian của PR này chỉ
+    # `logger.warning`; review yêu cầu phải là LỖI. Nay ném `AssertionError`.
+    #
+    # `verify_chronology=False` là lối thoát **phải gõ tay**: dành cho unit test
+    # chỉ muốn kiểm rò rỉ tham số, và vẫn cảnh báo để lần đọc kế tiếp thấy ngay.
+    if not verify_chronology:
+        logger.warning(
+            "validate_no_leakage(verify_chronology=False): LỚP KIỂM CHỨNG THỨ TỰ "
+            "THỜI GIAN ĐANG BỊ TẮT THEO YÊU CẦU. Một phép chia ngẫu nhiên sẽ KHÔNG "
+            "bị phát hiện. Chỉ dùng lối tắt này cho unit test rò rỉ tham số — "
+            "KHÔNG dùng với dữ liệu thật."
+        )
+    else:
+        if timestamps is None or test_timestamps is None:
+            missing = (
+                "cả `timestamps` và `test_timestamps`"
+                if timestamps is None and test_timestamps is None
+                else "`test_timestamps`" if timestamps is not None
+                else "`timestamps`"
+            )
+            raise AssertionError(
+                f"Thiếu {missing}. Lớp kiểm chứng thứ tự thời gian là BẮT BUỘC: "
+                "nó là lớp duy nhất bắt được random split, và `validate_no_leakage` "
+                "không thể chứng nhận \"không rò rỉ\" khi chưa kiểm tra "
+                "train.max() < test.min(). Hãy truyền cả hai; nếu thực sự chỉ muốn "
+                "kiểm rò rỉ tham số thì đặt `verify_chronology=False` một cách tường "
+                "minh."
+            )
         tr = pd.to_datetime(pd.Series(timestamps))
         te = pd.to_datetime(pd.Series(test_timestamps))
         if tr.isna().any() or te.isna().any():

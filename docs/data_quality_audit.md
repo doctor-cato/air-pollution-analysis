@@ -6,6 +6,25 @@
 > **Tài liệu tham chiếu:** [`docs/data_dictionary.md`](data_dictionary.md), [`docs/source_profiling_decision.md`](source_profiling_decision.md), [`notebooks/02_quality_audit.ipynb`](../notebooks/02_quality_audit.ipynb).  
 > **Trạng thái:** Hoàn tất kiểm toán dữ liệu Canonical trên `data/interim/`.
 
+> [!IMPORTANT]
+> **Mọi con số trong báo cáo này mô tả trạng thái TRƯỚC làm sạch — và sẽ không còn khớp với `data/interim/` hiện nay.**
+>
+> Issue #5 là kiểm toán **chỉ đọc**, chạy trên artifact mà Issue #3 tạo ra: **8.022** bản ghi quan sát thô × 5 cột. Issue #6 (`run_deterministic_cleaning()`) sau đó **ghi đè chính file đó tại chỗ**: `reindex_hourly_grid()` chèn thêm **1.022** giờ trống thành lưới liên tục và gắn 3 cột cờ chẩn đoán, nên artifact hiện tại là **9.044** dòng × 8 cột. (Con số **18 cột** thuộc về `data/processed/air_pollution_final.parquet` — artifact đã merge khí tượng của Issue #7, không phải file này.)
+>
+> | Số liệu | Báo cáo này (trước #6) | `data/interim/` hiện tại (sau #6) |
+> |---|---|---|
+> | Số dòng × số cột ô nhiễm không khí | 8.022 × 5 | 9.044 × 8 (8.022 quan sát + 1.022 giờ trống; thêm 3 cột cờ chẩn đoán) |
+> | Số ô `pm25` = `NaN` | 203 (2,53%) | 1.549 |
+> | Số ô `pm10` = `NaN` | 123 (1,53%) | 1.469 |
+> | Đỉnh PM2.5 (µg/m³) | 252,6436 | **198,9467** |
+> | Đỉnh PM10 (µg/m³) | 339,99 | 339,99 — **giữ nguyên** |
+>
+> Về đỉnh PM2.5: làm sạch tất định **không** áp dụng quy tắc cắt bỏ cực trị, nhưng bản ghi đỉnh (252,6436 µg/m³ tại `2026-06-05 16:00`) có PM10 đo được chỉ 174,7982 µg/m³ — **vượt PM10 tới 77,85 µg/m³**, tức vi phạm ràng buộc khí động học, nên cả hai kênh được chuyển `NaN`. Đỉnh biến mất là **hệ quả của bằng chứng vật lý**, không phải quy tắc cắt bỏ cực trị. Chi tiết: `docs/cleaning_log.md` §7.
+>
+> Các con số ở đây **vẫn đúng** với vai trò là bằng chứng gốc của Issue #5, và không nên sửa. Nhưng khi tra cứu trạng thái dữ liệu hiện hành, hãy dùng [`docs/cleaning_log.md`](cleaning_log.md) (nhật ký làm sạch, Issue #6) và `notebooks/03_data_cleaning.ipynb`.
+>
+> Bản ghi chi tiết về thay đổi 8.022 → 9.044: `docs/cleaning_log.md` §3.1.
+
 ---
 
 ## 1. Mục Đích & Nguyên Tắc Kiểm Toán (Purpose & Audit Principles)

@@ -77,6 +77,75 @@ class B1RandomSplitIsDetected(unittest.TestCase):
             )
         self.assertIn("thời gian", str(ctx.exception).lower())
 
+    def test_guard_refuses_to_certify_without_the_chronology_layer(self):
+        """Bỏ truyền timestamp KHÔNG được im lặng — phải NÉM LỖI.
+
+        Đo lại trên dữ liệu thật: random split + đúng X_train/X_test nhưng
+        không truyền timestamp là **không bị bắt** — vì các lớc 2–3 chỉ so
+        tham số học, mà split ngẫu nhiên vẫn học đúng trên "Train" của nó.
+        Lớp 1 là lớp DUY NHẤT chống được random split.
+
+        Bản đầu tiên của PR này chỉ `logger.warning`. Reviewer nêu đúng điểm đó:
+        như vậy guard vẫn **có thể** in ra dấu tick "không rò rỉ" cho một phép
+        chia mà nó chưa từng nhìn — tức chứng nhận sai. Nay ném `AssertionError`.
+        """
+        from sklearn.model_selection import train_test_split
+
+        merged = cp.merge_air_weather(self.air, self.wx)
+        feats = ["pm10", "temperature"]
+        X = merged[feats]
+        X_tr, X_te = train_test_split(X, test_size=0.3, random_state=42)
+
+        pipeline = cp.build_preprocessing_pipeline(feats, [])
+        pipeline.fit(X_tr)
+        with self.assertRaises(AssertionError) as ctx:
+            cp.validate_no_leakage(pipeline, X_train=X_tr, X_test=X_te)
+        message = str(ctx.exception)
+        self.assertIn("BẮT BUỘC", message)
+        self.assertIn("random split", message)
+
+    def test_explicit_opt_out_still_warns_loudly(self):
+        """Lối thoát `verify_chronology=False` phải được gõ tay, và vẫn cảnh báo.
+
+        Tồn tại cho unit test chỉ kiểm rò rỉ tham số. Mất dấu vết việc lớp 1
+        đang tắt thì lần đọc kế tiếp sẽ tưởng guard đã kiểm tra thứ tự thời gian.
+        """
+        from sklearn.model_selection import train_test_split
+
+        merged = cp.merge_air_weather(self.air, self.wx)
+        feats = ["pm10", "temperature"]
+        X = merged[feats]
+        X_tr, X_te = train_test_split(X, test_size=0.3, random_state=42)
+
+        pipeline = cp.build_preprocessing_pipeline(feats, [])
+        pipeline.fit(X_tr)
+        with self.assertLogs("src.cleaning_pipeline", level="WARNING") as logs:
+            cp.validate_no_leakage(
+                pipeline, X_train=X_tr, X_test=X_te, verify_chronology=False
+            )
+        self.assertTrue(
+            any("THỨ TỜ THỜI GIAN" in m or "THỨ TỰ THỜI GIAN" in m
+                for m in logs.output),
+            f"phải cảnh báo lớp thứ tự thời gian đang bị tắt; thấy: {logs.output}",
+        )
+
+    def test_guard_rejects_half_passed_timestamps(self):
+        """Truyền `timestamps` mà không truyền `test_timestamps` là lỗi ghi
+        nhầm, không phải ý định — phải ném lỗi chứ không tắt lớp kiểm chứng."""
+        merged = cp.merge_air_weather(self.air, self.wx)
+        feats = ["pm10", "temperature"]
+        X = merged[feats]
+        X_tr, X_te = X.iloc[:120], X.iloc[120:]
+        pipeline = cp.build_preprocessing_pipeline(feats, [])
+        pipeline.fit(X_tr)
+
+        with self.assertRaises(AssertionError) as ctx:
+            cp.validate_no_leakage(
+                pipeline, X_train=X_tr, X_test=X_te,
+                timestamps=merged["timestamp"].iloc[:120],
+            )
+        self.assertIn("test_timestamps", str(ctx.exception))
+
 
 class B2ScalerIsVerified(unittest.TestCase):
     """BLOCKER 2 — docstring hứa so 'tham số scale' nhưng code chỉ so median
@@ -101,7 +170,8 @@ class B2ScalerIsVerified(unittest.TestCase):
         num.named_steps["scaler"].fit(self.X_test)     # rò rỉ ở scaler
         with self.assertRaises(AssertionError) as ctx:
             cp.validate_no_leakage(
-                pipeline, X_train=self.X_train, X_test=self.X_test
+                pipeline, X_train=self.X_train, X_test=self.X_test,
+                verify_chronology=False,
             )
         self.assertIn("scaler", str(ctx.exception).lower())
 
@@ -109,7 +179,10 @@ class B2ScalerIsVerified(unittest.TestCase):
         pipeline = cp.build_preprocessing_pipeline(self.feats, [])
         pipeline.fit(self.X_test)
         with self.assertRaises(AssertionError):
-            cp.validate_no_leakage(pipeline, X_train=self.X_train, X_test=self.X_test)
+            cp.validate_no_leakage(
+                pipeline, X_train=self.X_train, X_test=self.X_test,
+                verify_chronology=False,
+            )
 
 
 class B3EveryTransformerIsChecked(unittest.TestCase):
@@ -138,7 +211,8 @@ class B3EveryTransformerIsChecked(unittest.TestCase):
         pre.named_transformers_["cyc"].fit(X_test)
 
         with self.assertRaises(AssertionError):
-            cp.validate_no_leakage(pipeline, X_train=X_train, X_test=X_test)
+            cp.validate_no_leakage(pipeline, X_train=X_train, X_test=X_test,
+                                   verify_chronology=False)
 
     def test_guard_covers_a_second_branch_over_a_different_column_set(self):
         """
@@ -170,7 +244,8 @@ class B3EveryTransformerIsChecked(unittest.TestCase):
         # Rò rỉ: nhánh `cyc` học trên Test.
         pre.named_transformers_["cyc"].fit(X_test)
         with self.assertRaises(AssertionError):
-            cp.validate_no_leakage(pipeline, X_train=X_train, X_test=X_test)
+            cp.validate_no_leakage(pipeline, X_train=X_train, X_test=X_test,
+                                   verify_chronology=False)
 
 
 class B4ArgumentOrderCannotBeSwapped(unittest.TestCase):
@@ -203,6 +278,32 @@ class B5TargetIsNeverADefaultFeature(unittest.TestCase):
             cp.build_preprocessing_pipeline(numeric_features=["pm25", "pm10"],
                                            cyclical_features=[])
         self.assertIn("target", str(ctx.exception).lower())
+
+    def test_builder_rejects_the_target_in_the_cyclical_list_too(self):
+        """Nhánh cyclical của guard target (`:337-338`) chưa có test nào chạm tới.
+
+        Cột chu kỳ đi qua `passthrough` chứ không qua imputer, nên nếu target lọt
+        vào đây thì nó được truyền thẳng ra ma trận đặc trưng — và
+        `validate_no_leakage()` sẽ **không** bắt được, vì không có tham số nào
+        được học trên nó. Đó là lý do guard phải chặn ở cả hai danh sách.
+        """
+        with self.assertRaises(ValueError) as ctx:
+            cp.build_preprocessing_pipeline(numeric_features=["pm10"],
+                                           cyclical_features=["pm25"])
+        self.assertIn("target", str(ctx.exception).lower())
+
+    def test_builder_rejects_duplicate_numeric_columns(self):
+        """Cột lặp trong danh sách feature bị `ColumnTransformer` đếm hai lần.
+
+        Không có test nào chạm nhánh `:340-342`. Hậu quả: `coef_` /
+        `feature_importances_` đọc theo vị trí sẽ lệch, và cùng một tín hiệu bị
+        đưa vào mô hình hai lần với hai trọng số độc lập.
+        """
+        with self.assertRaises(ValueError) as ctx:
+            cp.build_preprocessing_pipeline(
+                numeric_features=["pm10", "temperature", "pm10"],
+                cyclical_features=[])
+        self.assertIn("lặp", str(ctx.exception).lower())
 
     def test_default_builder_does_not_emit_the_target(self):
         df = pd.DataFrame({
@@ -266,8 +367,36 @@ class B7TargetDerivedFlagIsNotAFeature(unittest.TestCase):
         self.assertNotIn("pm25_was_missing", cp.DIAGNOSTIC_FEATURES)
 
     def test_allowed_diagnostic_features_exclude_only_the_target_derived_one(self):
-        self.assertIn("is_high_humidity_fog", cp.DIAGNOSTIC_FEATURES)
+        """`DIAGNOSTIC_FEATURES` giờ chỉ còn `pm25_was_stuck`.
+
+        `is_high_humidity_fog` bị chuyển sang `NON_PREDICTIVE_FLAGS` vì ở mức
+        **marginal** chưa có bằng chứng dự báo được: `corr(pm25, RH) = -0,0365`,
+        mutual information 0,0024 (thấp nhất trong các biến khí tượng).
+
+        Cờ **không** bị khẳng định là vô dụng: nó có tương tác rõ với mùa (Đông
+        +2,79; Xuân −8,91 µg/m³; F-test p = 7,4·10⁻¹¹). Review đã đúng khi yêu cầu
+        hạ giọng từ "không dự báo được" sang "chưa có bằng chứng marginal".
+        """
         self.assertIn("pm25_was_stuck", cp.DIAGNOSTIC_FEATURES)
+        self.assertNotIn("is_high_humidity_fog", cp.DIAGNOSTIC_FEATURES)
+        self.assertIn("is_high_humidity_fog", cp.NON_PREDICTIVE_FLAGS)
+
+    def test_the_two_flag_groups_stay_disjoint(self):
+        """Hai nhóm loại trừ phải tách bạch — lý do rất khác nhau.
+
+        `TARGET_DERIVED_FLAGS` = rò rỉ target theo cấu trúc (dùng làm feature thì
+        mô hình học được quy tắc `flag == 1 => target == median` và hỏng).
+        `NON_PREDICTIVE_FLAGS` = cờ chạy được nhưng không mang tín hiệu dự báo.
+        Gộp chung sẽ khiến người đọc tưởng mọi cờ bị loại đều vì rò rỉ, và che mất
+        lý do thực sự.
+        """
+        self.assertEqual(
+            set(cp.TARGET_DERIVED_FLAGS) & set(cp.NON_PREDICTIVE_FLAGS), set()
+        )
+        self.assertNotIn(
+            "pm25_was_missing", cp.NON_PREDICTIVE_FLAGS,
+            "pm25_was_missing rò rỉ target, không phải chỉ thiếu tín hiệu",
+        )
 
     def test_the_leak_is_actually_deterministic(self):
         """Chứng minh cơ chế: mọi hàng flag=1 có target = median sau khi impute."""
@@ -469,6 +598,73 @@ class B11ExportIsAtomicAndRefusesSilentOverwrite(unittest.TestCase):
         self.assertEqual(out.read_bytes(), before, "file đích bị thay bằng bản hỏng")
         leftovers = list(self.tmp.glob("*.tmp"))
         self.assertEqual(leftovers, [], f"file tạm sót lại: {leftovers}")
+
+    # --- Ba assert read-back phải bắt được TỪNG điều kiện một ------------------
+    #
+    # Test trên dùng `corrupt = good.head(3).rename(...)` — frame hỏng lệch
+    # ĐỒNG THỜI cả số dòng lẫn tên cột, nên xoá bất kỳ assert nào trong ba
+    # assert read-back thì assert còn lại vẫn bắt được. Ba test dưới đây mỗi
+    # test làm hỏng ĐÚNG MỘT thuộc tính, để từng phải tự giữ mình.
+
+    def test_readback_row_count_assert_fires_on_its_own(self):
+        """Chỉ sai SỐ DÒNG — tên cột và dtype đều đúng.
+
+        Frame truyền vào `export_to_parquet` phải là CHÍNH frame mà mock trả
+        về, nếu không assert số dòng sẽ bắt trước và test không còn kiểm chứng
+        điều tên mình.
+        """
+        good = _wind_frame(8)
+        out = self.tmp / "rowcount.parquet"
+        cp.export_to_parquet(good, out)
+        before = out.read_bytes()
+
+        short = good.head(3)
+        self.assertEqual(list(short.columns), list(good.columns))
+        with unittest.mock.patch.object(cp.pd, "read_parquet", return_value=short):
+            with self.assertRaises(AssertionError) as ctx:
+                cp.export_to_parquet(good, out, overwrite=True)
+        self.assertIn("row count", str(ctx.exception).lower())
+        self.assertEqual(out.read_bytes(), before)
+        self.assertEqual(list(self.tmp.glob("*.tmp")), [])
+
+    def test_readback_schema_assert_fires_on_its_own(self):
+        """Chỉ sai TÊN CỘT — số dòng và dtype giữ nguyên."""
+        good = _wind_frame(8)
+        out = self.tmp / "schema.parquet"
+        cp.export_to_parquet(good, out)
+        before = out.read_bytes()
+
+        # Ghi `good` (tên cột gốc); read-back trả về frame đã đổi tên cột.
+        renamed = good.rename(columns={"pm10": "pm10_renamed"})
+        self.assertEqual(len(renamed), len(good), "fixture phải giữ nguyên số dòng")
+        with unittest.mock.patch.object(cp.pd, "read_parquet", return_value=renamed):
+            with self.assertRaises(AssertionError) as ctx:
+                cp.export_to_parquet(good, out, overwrite=True)
+        self.assertIn("schema", str(ctx.exception).lower())
+        self.assertEqual(out.read_bytes(), before)
+
+    def test_readback_dtype_assert_fires_on_its_own(self):
+        """Chỉ sai KIỂU DỮ LIỆU — số dòng và tên cột giữ nguyên.
+
+        Đây là assert bắt được hỏng hóc mà hai assert kia bỏ lọt: Parquet có
+        thể đổi bool/int khi round-trip mà không đổi số dòng hay tên cột, làm
+        hỏng ký hiệu cờ chẩn đoán mà không ai nhận ra.
+        """
+        good = _wind_frame(8)
+        out = self.tmp / "dtype.parquet"
+        cp.export_to_parquet(good, out)
+        before = out.read_bytes()
+
+        # Ghi `good` (float64); read-back trả về bản float32.
+        recast = good.copy()
+        recast["pm25"] = recast["pm25"].astype("float32")   # float64 -> float32
+        self.assertEqual(len(recast), len(good))
+        self.assertEqual(list(recast.columns), list(good.columns))
+        with unittest.mock.patch.object(cp.pd, "read_parquet", return_value=recast):
+            with self.assertRaises(AssertionError) as ctx:
+                cp.export_to_parquet(good, out, overwrite=True)
+        self.assertIn("dtype", str(ctx.exception).lower())
+        self.assertEqual(out.read_bytes(), before)
 
 
 class B12FreezeAndLog1pAreHonest(unittest.TestCase):

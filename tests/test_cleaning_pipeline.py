@@ -136,13 +136,19 @@ class TestLeakageGuard(unittest.TestCase):
         pipeline = self._pipeline()
         pipeline.fit(self.X_test)  # SAI: fit trên Test
         with self.assertRaises(AssertionError) as ctx:
-            cp.validate_no_leakage(pipeline, X_train=self.X_train, X_test=self.X_test)
+            cp.validate_no_leakage(
+                pipeline, X_train=self.X_train, X_test=self.X_test,
+                verify_chronology=False,
+            )
         self.assertIn("leakage", str(ctx.exception).lower())
 
     def test_guard_accepts_a_pipeline_fitted_on_train(self):
         pipeline = self._pipeline()
         pipeline.fit(self.X_train)  # ĐÚNG
-        cp.validate_no_leakage(pipeline, X_train=self.X_train, X_test=self.X_test)
+        cp.validate_no_leakage(
+            pipeline, X_train=self.X_train, X_test=self.X_test,
+            verify_chronology=False,
+        )
 
     def test_guard_rejects_untrained_pipeline(self):
         with self.assertRaises(AssertionError):
@@ -156,7 +162,10 @@ class TestLeakageGuard(unittest.TestCase):
         pipeline = self._pipeline()
         pipeline.fit(self.X_train)
         with self.assertRaises(AssertionError) as ctx:
-            cp.validate_no_leakage(pipeline, X_train=self.X_train, X_test=same)
+            cp.validate_no_leakage(
+                pipeline, X_train=self.X_train, X_test=same,
+                verify_chronology=False,
+            )
         self.assertIn("phân biệt", str(ctx.exception))
 
     def test_guard_compares_only_the_columns_the_pipeline_learned(self):
@@ -179,7 +188,10 @@ class TestLeakageGuard(unittest.TestCase):
         pipeline = self._pipeline()
         pipeline.fit(wide_train)
         # Không ném lỗi, và không ném ValueError sai lệch kích thước.
-        cp.validate_no_leakage(pipeline, X_train=wide_train, X_test=wide_test)
+        cp.validate_no_leakage(
+            pipeline, X_train=wide_train, X_test=wide_test,
+            verify_chronology=False,
+        )
 
     def test_guard_reports_a_missing_column_clearly(self):
         pipeline = self._pipeline()
@@ -187,7 +199,8 @@ class TestLeakageGuard(unittest.TestCase):
         without_column = self.X_test.drop(columns=["pm10"])
         with self.assertRaises(AssertionError) as ctx:
             cp.validate_no_leakage(
-                pipeline, X_train=self.X_train, X_test=without_column
+                pipeline, X_train=self.X_train, X_test=without_column,
+                verify_chronology=False,
             )
         self.assertIn("pm10", str(ctx.exception))
 
@@ -335,6 +348,66 @@ class TestCyclicalFeatures(unittest.TestCase):
         for prefix in ("hour", "month"):
             total = feats[f"{prefix}_sin"] ** 2 + feats[f"{prefix}_cos"] ** 2
             np.testing.assert_allclose(total.to_numpy(), 1.0, atol=1e-12)
+
+    def test_hour_period_is_exactly_24(self):
+        """Chốt CHU KỲ GIỜ = 24, không phải 12 hay 6.
+
+        Cả ba test cũ ở trên đều bất biến với ước số: ‖(sin,cos)‖ = 1 và
+        sin²+cos² = 1 đúng với mọi chu kỳ, và "nửa đêm là gốc sin" chỉ kiểm tra
+        giờ 0. Đổi `24` thành `12` khiến CẢ BA vẫn xanh — nghĩa là nhánh này
+        chưa từng được kiểm chứng. Test này chốt giá trị thật tại các mốc chia
+        đều: 6h→+1, 12h→0, 18h→−1.
+        """
+        by_hour = {}
+        for hour in (0, 6, 12, 18):
+            df = pd.DataFrame(
+                {"timestamp": [pd.Timestamp(f"2025-01-01 {hour:02d}:00", tz=TZ)]}
+            )
+            feats = cp.add_cyclical_time_features(df)
+            by_hour[hour] = (float(feats["hour_sin"].iloc[0]),
+                             float(feats["hour_cos"].iloc[0]))
+        self.assertAlmostEqual(by_hour[0][0], 0.0, places=12)
+        self.assertAlmostEqual(by_hour[6][0], 1.0, places=12)   # sin(2π·6/24)=sin(π/2)
+        self.assertAlmostEqual(by_hour[12][0], 0.0, places=12)  # sin(π)
+        self.assertAlmostEqual(by_hour[18][0], -1.0, places=12)  # sin(3π/2)
+        self.assertAlmostEqual(by_hour[6][1], 0.0, places=12)
+        self.assertAlmostEqual(by_hour[18][1], 0.0, places=12)
+
+    def test_month_period_is_exactly_12(self):
+        """Chốt CHU KỲ THÁNG = 12. Tương tự: tháng 3 và tháng 9 phải đối xứng."""
+        by_month = {}
+        for month in (3, 6, 9, 12):
+            df = pd.DataFrame(
+                {"timestamp": [pd.Timestamp(f"2025-{month:02d}-15 00:00", tz=TZ)]}
+            )
+            feats = cp.add_cyclical_time_features(df)
+            by_month[month] = float(feats["month_sin"].iloc[0])
+        self.assertAlmostEqual(by_month[3], 1.0, places=12)    # sin(2π·3/12)=sin(π/2)
+        self.assertAlmostEqual(by_month[6], 0.0, places=12)    # sin(π)
+        self.assertAlmostEqual(by_month[9], -1.0, places=12)   # sin(3π/2)
+        # Tháng 12 phải trùng tháng 0: sin(2π) = 0, khác hẳn tháng 6 (cũng 0
+        # ở sin nhưng đối xứng qua cos) — và khác sin(2π·1/12) = 0,5 của tháng 1.
+        self.assertAlmostEqual(by_month[12], 0.0, places=12)
+
+    def test_last_hour_of_a_day_is_adjacent_to_the_first(self):
+        """Đây là LÝ DO của mã hoá sin/cos: 23:00 và 00:00 phải lân cận.
+
+        Với biến tuyến tính `hour`, 23:00 là giá trị cực đại và 00:00 là cực
+        tiểu — hai đầu đối lập của trục, dù chúng là hai giờ liền nhau. Với
+        sin/cos, khoảng cách giữa chúng nhỏ. Test này bảo vệ tính chất đó
+        thay vì chỉ bảo vệ công thức.
+        """
+        df = pd.DataFrame({"timestamp": [
+            pd.Timestamp("2025-01-01 23:00", tz=TZ),
+            pd.Timestamp("2025-01-02 00:00", tz=TZ),
+        ]})
+        feats = cp.add_cyclical_time_features(df)
+        # Khoảng cách L2 trong không gian (sin, cos) phải nhỏ — 2·sin(π/24).
+        gap = np.hypot(
+            float(feats["hour_sin"].iloc[0]) - float(feats["hour_sin"].iloc[1]),
+            float(feats["hour_cos"].iloc[0]) - float(feats["hour_cos"].iloc[1]),
+        )
+        self.assertLess(gap, 0.3, "23:00 và 00:00 phải lân cận trong không gian sin/cos")
 
     def test_input_frame_is_not_mutated(self):
         df = _frame(6)
@@ -501,13 +574,85 @@ class TestIntegrationWithIssueSixOutput(unittest.TestCase):
             điền median cho đúng những hàng đó, nên mô hình học được quy tắc
             `flag == 1 => pm25 == median` và đúng 100%. Đây là rò rỉ target theo
             cấu trúc — không guard nào trong #7 bắt được, phải loại ở danh sách.
-          - `is_high_humidity_fog` là điều kiện khí quyển nên vẫn hợp lệ.
+
+        `is_high_humidity_fog` từng được coi là feature hợp lệ với lập luận "sương
+        mù quang học là điều kiện khí quyển". Đo trên dữ liệu thật thì lập luận đó
+        không đứng vững, nên nay nó bị loại — xem test kế bên.
         """
         features = cp.freeze_dataset(self.cleaned).feature_columns
         self.assertNotIn("pm25", features)
         for flag in cp.TARGET_DERIVED_FLAGS:
             self.assertNotIn(flag, features)
-        self.assertIn("is_high_humidity_fog", features)
+
+    def test_high_humidity_fog_flag_is_excluded_as_a_non_predictive_feature(self):
+        """Cờ bị loại vì **chưa có bằng chứng về giá trị dự báo marginal** — KHÔNG
+        phải vì "chứng minh được là không dự báo được".
+
+        Số đo trên `data/interim/air_quality_canonical.parquet` (7.495 dòng có cả
+        `pm25` và RH):
+
+          - `corr(pm25, RH)` = **-0,0365**.
+          - PM2.5 TB nhóm có cờ = **41,65** (n=2.384); nhóm không cờ = **44,75**
+            (n=5.111).
+          - Mutual information (8 nhân pm25) = **0,0024** — thấp nhất trong số các
+            biến khí tượng (so sánh: tốc độ gió 0,048; nhiệt độ 0,084).
+
+        **Lưu ý quan trọng — cờ CÓ tương tác theo mùa**, nên không được viết quá
+        tay rằng nó "không dự báo được":
+
+        | Mùa  | Chênh lệch (có cờ − không cờ) |
+        |------|------------------------------|
+        | Đông |  **+2,79** µg/m³ (p = 0,024) |
+        | Xuân |  **−8,91** µg/m³             |
+        | Hè   |  +0,28 µg/m³                 |
+        | Thu  |  **−2,72** µg/m³             |
+
+        F-test đồng thời các hệ số tương tác: **F = 16,78, p = 7,4·10⁻¹¹**. Tức
+        `corr ≈ 0` là hệ quả của việc **trung bình qua các mùa**, nơi hiệu ứng đổi
+        dấu — không phải bằng chứng không có quan hệ.
+
+        Vì vậy test này chỉ bảo vệ hành vi *mặc định loại khỏi feature*, không khẳng
+        định cờ vô dụng. Khai thác phát hiện theo mùa thuộc Issue #8 (EDA).
+        """
+        self.assertIn("is_high_humidity_fog", cp.NON_PREDICTIVE_FLAGS)
+        self.assertNotIn(
+            "is_high_humidity_fog", cp.DIAGNOSTIC_FEATURES,
+            "chưa có bằng chứng marginal thì không nên nằm trong DIAGNOSTIC_FEATURES",
+        )
+
+        frame = self.cleaned
+        if "is_high_humidity_fog" not in frame.columns:
+            frame = frame.assign(is_high_humidity_fog=0)
+        features = cp.freeze_dataset(frame).feature_columns
+        self.assertNotIn("is_high_humidity_fog", features)
+
+    def test_the_flag_group_documents_the_seasonal_interaction(self):
+        """Ghi nhớ tương tác theo mùa phải nằm ngay cạnh quyết định loại cờ.
+
+        Nếu chỉ ghi `corr ≈ 0` mà không kèm tương tác, lập luận sẽ trông như đã
+        chứng minh cờ không dự báo được — trong khi thực tế hiệu ứng đổi dấu theo
+        mùa (F = 16,78, p = 7e-11). Đây là test chống lặp lại lỗi diễn đạt.
+        """
+        import inspect
+
+        src = inspect.getsource(cp)
+        block = src[src.index("NON_PREDICTIVE_FLAGS: List[str]") - 6000:
+                    src.index("NON_PREDICTIVE_FLAGS: List[str]")]
+        for needle in ("marginal", "F = 16,78", "tương tác"):
+            self.assertIn(
+                needle, block,
+                f"khối giải thích `NON_PREDICTIVE_FLAGS` phải nhắc {needle!r}",
+            )
+
+    def test_non_predictive_flag_is_still_kept_in_the_dataset(self):
+        """Loại khỏi feature KHÔNG đồng nghĩa xoá khỏi dataset."""
+        frame = self.cleaned.assign(is_high_humidity_fog=1)
+        info = cp.freeze_dataset(frame)
+        self.assertNotIn("is_high_humidity_fog", info.feature_columns)
+        self.assertIn(
+            "is_high_humidity_fog", frame.columns,
+            "cờ chẩn đoán phải còn trong dataset để Issue #6/#8 còn dùng",
+        )
 
 
 class TestLog1PDiagnostic(unittest.TestCase):
