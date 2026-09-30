@@ -1,7 +1,7 @@
 # Git Workflow & Safety Guardrails
 
 > **Scope:** Git hygiene, branch conventions, commit formatting, and safety checks.  
-> **Source Document:** [`docs/roadmap.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/roadmap.md) (Section 12.2 & Week 1).
+> **Source Document:** [`docs/roadmap.md`](../../docs/roadmap.md) (Section 12.2 & Week 1).
 
 ---
 

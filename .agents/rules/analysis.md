@@ -1,7 +1,7 @@
 # Analytical Integrity & Methodology Rules
 
 > **Scope:** Exploratory Data Analysis, Statistical Inference, Regression, Classification, and Visualization.  
-> **Source Document:** [`docs/roadmap.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/roadmap.md) (Chapters 3 & 4, Weeks 6–11).
+> **Source Document:** [`docs/roadmap.md`](../../docs/roadmap.md) (Chapters 3 & 4, Weeks 6–11).
 
 ---
 

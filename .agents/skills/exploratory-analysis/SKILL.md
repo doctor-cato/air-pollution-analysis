@@ -16,7 +16,7 @@ Execute systematic, research-question-driven Exploratory Data Analysis on multi-
 
 ## Preconditions
 - Cleaned and joined dataset exists in `data/processed/air_pollution_final.parquet`.
-- Primary research questions are defined in [`docs/roadmap.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/roadmap.md) (Main RQ and SQ1–SQ4).
+- Primary research questions are defined in [`docs/roadmap.md`](../../../docs/roadmap.md) (Main RQ and SQ1–SQ4).
 
 ## Procedure
 

@@ -1,7 +1,7 @@
 # Data Rules & Time-Series Protocols
 
 > **Scope:** Data ingestion, auditing, cleaning, transformation, and storage.  
-> **Source Document:** [`docs/roadmap.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/roadmap.md) (Chapters 1 & 2, Weeks 1–5).
+> **Source Document:** [`docs/roadmap.md`](../../docs/roadmap.md) (Chapters 1 & 2, Weeks 1–5).
 
 ---
 
@@ -26,7 +26,7 @@
 1. **100% Code-Generated:** Processed files must be generated strictly through executable scripts (e.g., `src/cleaning_pipeline.py`) or tracked notebooks.
 2. **Target Format:** Store final clean datasets in **Apache Parquet** (`.parquet`) format using Snappy compression.
    - *Why:* Drastically reduces disk footprint, preserves native column dtypes (`datetime64[ns, Asia/Ho_Chi_Minh]`, `float64`), and provides orders-of-magnitude faster I/O than CSV.
-3. **Cleaning Documentation:** Every data transformation, filtering step, or value replacement must be logged in [`docs/cleaning_log.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/cleaning_log.md) stating:
+3. **Cleaning Documentation:** Every data transformation, filtering step, or value replacement must be logged in [`docs/cleaning_log.md`](../../docs/cleaning_log.md) stating:
    - Target column(s).
    - Operation performed.
    - Exact count of affected rows.
@@ -65,7 +65,7 @@
    - **Cờ chẩn đoán thay cho việc điền:**
      ```python
      df['pm25_was_missing'] = df['pm25'].isna().astype(int)   # khối khuyết > 6 giờ
-     df['is_high_humidity_fog'] = ...                        # sương mù quang học
+     df['is_high_humidity_fog'] = ...                        # giờ RH > 90% (cờ độ ẩm)
      ```
    - **Cờ chẩn đoán là dữ liệu quan sát, KHÔNG phải giá trị đã được thay thế.**
      Chúng đi cùng dataset để giải thích *tại sao* ô đó trống.
@@ -75,6 +75,15 @@
      (đo trên dữ liệu thật: 100% ở cả Train và Test). Đó là rò rỉ target theo cấu
      trúc, và `validate_no_leakage()` **không** bắt được vì imputer vẫn học đúng trên
      Train. Xem `TARGET_DERIVED_FLAGS` trong `src/cleaning_pipeline.py`.
+    - **Cờ không có giá trị dự báo *marginal* cũng không được đưa vào feature — nhưng lý do khác hẳn.** `is_high_humidity_fog` bị loại khỏi feature mặc định và nằm trong nhóm `NON_PREDICTIVE_FLAGS`, tách riêng `TARGET_DERIVED_FLAGS` để không nhầm lẫn hai lý do:
+      - `TARGET_DERIVED_FLAGS` = **rò rỉ target chắc chắn**.
+      - `NON_PREDICTIVE_FLAGS` = **chưa có bằng chứng** về giá trị dự báo marginal trên bộ
+        dữ liệu hiện tại (`corr(pm25, RH) = -0,037`; mutual information 0,0024).
+      Lưu ý: cờ **có** tương tác theo mùa (Đông +2,79; Xuân −8,91 µg/m³; F-test đồng thời
+      `p = 7,4·10⁻¹¹`), nên `corr ≈ 0` là hệ quả của việc trung bình qua các mùa chứ **không**
+      phải bằng chứng không có quan hệ. Vì vậy **không** được viết "không dự báo được" — đó là
+      phủ định tuyệt đối mà tương quan gần 0 không chứng minh được. Cờ vẫn **được giữ trong
+      dataset** như tài liệu chẩn đoán; chỉ không làm feature.
    - *Lịch sử:* bản sửa đổi trước đây của mục này cho phép
      `interpolate(method='time', limit=2)` cho khuyết ≤ 2 giờ. Quy tắc đó **đã bị
      thay thế** và không còn hiệu lực — nó mâu thuẫn trực tiếp với

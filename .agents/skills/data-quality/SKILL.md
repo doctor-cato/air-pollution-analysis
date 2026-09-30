@@ -16,7 +16,7 @@ Systematically audit raw and interim air quality and meteorological datasets acr
 
 ## Preconditions
 - Raw datasets exist in `data/raw/` (e.g. `openaq_raw_2023_2024.json`, `weather_raw_2023_2024.json`) or interim files in `data/interim/`.
-- Target column definitions are specified in [`docs/roadmap.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/roadmap.md) or `docs/data_dictionary.md`.
+- Target column definitions are specified in [`docs/roadmap.md`](../../../docs/roadmap.md) or `docs/data_dictionary.md`.
 
 ## Procedure
 
@@ -79,4 +79,4 @@ A structured Markdown Data Quality Report containing:
 1. 6-dimension quantitative scorecard (1–5 score per dimension).
 2. Missingness mechanism breakdown (MCAR vs. MAR vs. MNAR).
 3. Table of physical boundary violations (counts, dates, and severity).
-4. Concrete recommendations and parameters for [`docs/cleaning_log.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/cleaning_log.md).
+4. Concrete recommendations and parameters for [`docs/cleaning_log.md`](../../../docs/cleaning_log.md).

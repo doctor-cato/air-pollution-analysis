@@ -754,8 +754,8 @@ Chi tiết luồng thực hiện:
 | #3 | Pipeline chất lượng không khí | `OpenAQAdapter` trong `src/data_collection.py` | 8.022 bản ghi canonical, tz `Asia/Ho_Chi_Minh`, mã băm SHA-256 trong metadata | **DONE** | Adapter AirNow DOS chưa thực thi (cần thông tin xác thực AirNow-Tech) |
 | #4 | Pipeline khí tượng + đồng bộ thời gian | `OpenMeteoAdapter`, `validate_weather_canonical` | 9.072 bản ghi/giờ, 0 trùng lặp, 0 khoảng trống, 0 khuyết thiếu; PR #26 đã merge | **DONE** | — |
 | #5 | Kiểm toán chất lượng 6 chiều | `src/data_quality.py`, `docs/data_quality_audit.md`, `notebooks/02_quality_audit.ipynb` | PR #27 đã merge; `docs/data_quality_audit.md` đã hiệu chỉnh theo dữ liệu thực tế trên đĩa | **DONE** | — |
-| #6 | Làm sạch tất định, cleaning log | `src/cleaning.py`, `docs/cleaning_log.md`, `notebooks/03_data_cleaning.ipynb` | 9.044 dòng ô nhiễm + 9.072 dòng khí tượng canonical; `assert_no_imputation()` PASS; 107 unit test | **DONE** | Việc chạy lại `03_data_cleaning.ipynb` cần khôi phục `data/interim/` từ `data/raw/` trước |
-| #7 | Ghép dữ liệu, đóng băng, split, pipeline | `src/cleaning_pipeline.py`, `notebooks/03_transformation_pipeline.ipynb` | 9/9 AC + 2 validation PASS; `data/processed/air_pollution_final.parquet` 9.044×18; 72 unit test; mutation score 21/21 = 100% | **DONE (chưa merge)** | Nằm trên nhánh `feat/issue-6-deterministic-cleaning`, **chưa merge vào `main`** — xem [cảnh báo mốc cắt](#bang-ghi-chinh-thuc--cac-quyet-dinh-da-chot-cho-issue-7) về `2026-01-01` |
+| #6 | Làm sạch tất định, cleaning log | `src/cleaning.py`, `docs/cleaning_log.md`, `notebooks/03_data_cleaning.ipynb` | 9.044 dòng ô nhiễm + 9.072 dòng khí tượng canonical; `assert_no_imputation()` PASS; 114 unit test | **DONE** | Việc chạy lại `03_data_cleaning.ipynb` cần khôi phục `data/interim/` từ `data/raw/` trước |
+| #7 | Ghép dữ liệu, đóng băng, split, pipeline | `src/cleaning_pipeline.py`, `notebooks/03_transformation_pipeline.ipynb` | 9/9 AC + 2 validation PASS; `data/processed/air_pollution_final.parquet` 9.044×18; **87 unit test** (`test_cleaning_pipeline` 44 + `test_cleaning_pipeline_guards` 43) | **DONE (chưa merge)** | #6+#7 đã merge vào `main` qua **PR #32** (2026-09-30). **PR #34** (`fix/m2-audit-findings`) đang mở, chứa các sửa lỗi từ audit M2 — xem [cảnh báo mốc cắt](#bang-ghi-chinh-thuc--cac-quyet-dinh-da-chot-cho-issue-7) về `2026-01-15` |
 
 ### G.3. Kết luận trạng thái Milestone 1
 
@@ -766,16 +766,25 @@ Chi tiết luồng thực hiện:
 >   AC4-1 → AC4-20 đã được tick sau khi AC được chuẩn hóa theo chính sách ba tầng (Mục 3.2).
 > - **Milestone 2:** `#5` (kiểm toán chất lượng 6 chiều) **DONE** qua PR #27;
 >   `#6` (làm sạch tất định + cleaning log) và `#7` (ghép dữ liệu, đóng băng, split,
->   pipeline) đều **đã triển khai** và đã vượt qua 259 unit test + kiểm chứng AC 9/9.
->   Cả hai nằm trên nhánh `feat/issue-6-deterministic-cleaning`, **chưa merge vào
->   `main`**. Các issue phụ thuộc (`#8`, `#11`, `#12`, `#13`) bị chặn cho tới khi nhánh đó được merge.
+>   pipeline) đều **đã triển khai**, đã vượt qua kiểm chứng AC 9/9, và **đã merge vào `main`
+>   qua PR #32** (2026-09-30). **PR #34** (`fix/m2-audit-findings`) đang mở với các sửa lỗi
+>   từ audit M2 — xem Mục G.4. Các issue phụ thuộc (`#8`, `#11`, `#12`, `#13`) đã mở lại
+>   nhưng nên chờ PR #34 được merge để giảm xung đột.
 > - Các số liệu thực nghiệm nêu trong các báo cáo (#4, #5) là **kết quả của một lần thực thi cụ thể**
 >   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
-> - Bộ kiểm thử hiện gồm **57 + 14 + 107 + 38 + 34 + 9 = 259 unit test tất định**,
+> - Bộ kiểm thử hiện gồm **57 + 44 + 114 + 44 + 43 + 9 = 311 unit test tất định**,
 >   tất cả PASS (`test_data_collection` + `test_data_quality` + `test_cleaning` +
 >   `test_cleaning_pipeline` + `test_cleaning_pipeline_guards` + `test_fetch_dataset`).
->   Trong đó 34 test hồi quy của #7 **FAIL trên bản gốc** và PASS sau khi sửa, và
->   mutation score của `src/cleaning_pipeline.py` là **21/21 = 100%**.
+>   Trong đó **43 test hồi quy** của #7 **FAIL trên bản gốc** và PASS sau khi sửa.
+>
+> > [!NOTE]
+> > **Về con số "mutation score 21/21 = 100%" từng xuất hiện ở đây:** đã **bị gỡ bỏ**.
+> > Đó là kết quả đếm **thủ công** trong một vòng review đối kháng, **không** phải báo cáo
+> > sinh tự động bởi công cụ mutation testing nào. Repo không có `mutmut`/`cosic-ray` trong
+> > `requirements.txt`, không có file cấu hình mutation, không có bước CI nào chạy nó, và
+> > không lưu artifact báo cáo — nên con số **không tái lập được** từ repository và không
+> > được trích dẫn như bằng chứng kiểm định máy móc. Bằng chứng tái lập được là 43 test hồi
+> > quy: chạy `python -m unittest tests.test_cleaning_pipeline_guards -v` là thấy ngay.
 
 > [!WARNING]
 > **Khoảng trống độ phủ thời gian (DATA COVERAGE GAP) — chưa được giải quyết, cần theo dõi ở M2:**
@@ -785,6 +794,59 @@ Chi tiết luồng thực hiện:
 > phụ thuộc nguồn dữ liệu lịch sử (AirNow DOS cần thông tin xác thực của tổ chức/State Dept) và
 > **không được giải quyết bằng cách tự tạo hoặc nội suy dữ liệu**. Khung nghiên cứu **không** bị
 > thay đổi để làm pipeline chạy; khoảng trống này được ghi nhận minh bạch và chuyển giao cho M2.
+
+### G.4. Kết quả kiểm toán Milestone 2 (PR #34)
+
+> [!NOTE]
+> Ngày **2026-09-30**, Issues `#5`→`#6`→`#7` được kiểm toán lại **đối chiếu với code, test và
+> notebook thật**, không dựa vào mô tả PR. Kết luận: **cả ba PASS về mặt nghiệm thu**, nhưng phát
+> hiện thêm **3 lỗi code** và **4 vấn đề mức dữ liệu / diễn đạt**. Tất cả đã sửa trong **PR #34**
+> (`fix/m2-audit-findings`). Mốc cắt `2026-01-15` được **giữ nguyên** — không tìm ra lỗi biện minh
+> cho việc đổi.
+
+#### G.4.1. Lỗi code đã sửa
+
+| # | Lỗi | Mức độ | Cách sửa |
+|---|---|---|---|
+| 1 | `audit_six_dimensions()` **crash** (`TypeError`) khi `pm25` / `relative_humidity` không phải kiểu số | Cao — audit sẽ chết trên dữ liệu bẩn, tức đúng lúc cần nó nhất | Guard dtype trước khi gọi `.min()`/`.max()`/`.corr()` |
+| 2 | `temporal_grid_completeness` **lẫn** độ rộng lưới giờ với số dòng → báo cáo khoảng trống **âm** / sai trên dữ liệu **đa trạm** | Cao — số liệu sai âm thầm | Mẫu số = cửa sổ triển khai dùng chung × số trạm, **không** phải số trạm của từng trạm |
+| 3 | `validate_no_leakage()` cho phép **tắt âm thầm** tầng kiểm tra thứ tự thời gian | Trung bình — một guard tự vô hiệu hóa được thì không phải guard | Tầng chronology **bắt buộc** (ném lỗi); muốn bỏ qua phải truyền `verify_chronology=False` **tường minh** và vẫn cảnh báo |
+
+> Về lỗi #2: dùng mẫu số *số trạm* cho từng trạm sẽ **che** chỗ thiếu phủ ở hai đầu chu kỳ — tức là
+> che đúng phần đáng báo nhất. Đó cũng là bài học dùng lại ở mục khoảng khuyết 630 giờ bên dưới.
+
+#### G.4.2. Vấn đề mức dữ liệu / diễn đạt đã sửa
+
+| # | Vấn đề | Xử lý |
+|---|---|---|
+| 1 | Dropout là **MỘT sự cố liên tục 630 giờ** (`2026-06-19 11:00 → 2026-07-15 16:00`), không phải rơi rải rác. Cả hai kênh cùng mất 630/630 giờ → trạm ngừng phát | Đóng khung lại theo **khoảng liên tục**; công bố độ phủ nhãn **Train 91,4% vs Test 73,7%**. Thêm ô đo trong `notebooks/03_transformation_pipeline.ipynb` để số liệu **tái lập được** |
+| 2 | `is_high_humidity_fog` **chưa có bằng chứng** dự báo marginal PM2.5 | Tách nhóm `NON_PREDICTIVE_FLAGS`, loại khỏi feature mặc định; sửa lập luận "hợp lệ làm dự báo" |
+| 3 | Nhận định khái niệm: `corr(pm25, RH) ≈ 0` bị viết thành **"không dự báo được"** — phủ định tuyệt đối mà tương quan không chứng minh được | Kiểm tra thêm: cờ **có** tương tác theo mùa, hiệu ứng **đảo chiều** (F-test p = 7,4·10⁻¹¹). Đổi wording sang **"chưa có bằng chứng về giá trị marginal"**; ghi phát hiện vào Issue #8 |
+| 4 | Con số **"mutation score 21/21 = 100%"** không tái lập được (đếm tay, không có công cụ/CI/artifact) | Hạ xuống thành ghi chú trung thực ở `README.md`; **gỡ khỏi roadmap** |
+
+#### G.4.3. Chưa sửa — đã chuyển Issue #8 (EDA)
+
+| # | Vấn đề | Vì sao đưa sang EDA |
+|---|---|---|
+| 1 | `corr(pm25, pm10) = 0,9727`, `R²` đơn biến = **0,9462** — `pm10` một mình giải thích 94,6% phương sai `pm25` | Đây là nội dung kiểm tra VIF mà roadmap đã yêu cầu. Loại `pm10` khỏi feature cần chốt ở EDA, không phải ở M2 |
+| 2 | `pm10` thiếu **16,2%** (1.469/9.044) | Là mô tả dữ liệu, thuộc EDA |
+
+> [!WARNING]
+> **Một con số trong bản gốc chưa tái lập được:** mức dịch chuyển tỷ lệ nhãn **31,2% / 24,2%** không
+> khớp với ngưỡng nào đo được (ngưỡng 50 cho 33,3% / 27,3%; ngưỡng 100 cho 6,9% / 3,1%). **Hướng** thì
+> đúng — Test có tỷ lệ dịch chuyển thấp hơn Train — nhưng phải biết dùng ngưỡng nào thì mới đưa vào
+> báo cáo. Cần hỏi lại người viết trước khi trích dẫn.
+
+#### G.4.4. Kiểm chứng
+
+| Cổng | Kết quả |
+|---|---|
+| `python -m pytest tests/ -q` | **311 passed** |
+| `python -m unittest discover -s tests -q` (gate của CI) | **311 tests, OK** |
+| `-W error::DeprecationWarning -W error::FutureWarning` | **311 passed** — 0 cảnh báo |
+| `python -m compileall -q src tests` | exit 0 |
+| `notebooks/*.ipynb` (nbformat 4.5) | 6/6 hợp lệ, 0 warning |
+| `notebooks/03_transformation_pipeline.ipynb` | chạy thật qua `nbconvert --execute`, **0 error output** |
 
 ---
 
@@ -1016,19 +1078,54 @@ Tỷ lệ 51,8/48,2 trông "lệch chuẩn" nhưng là **hệ quả tất yếu*
 
 Đo trên Train ($n = 4.279$ quan sát có $\text{PM}_{2.5}$): skew $1{,}148 \to -0{,}656$, kurtosis $1{,}068 \to 0{,}726$. Task 4 của tuần này chỉ yêu cầu *khảo sát*, không yêu cầu áp dụng. Giữ target ở µg/m³ để ngưỡng cảnh báo còn nghĩa trực tiếp với bối cảnh chất lượng không khí và phần downstream dễ đọc hơn.
 
-**Quyết định 3 — Trong 3 cột cờ chẩn đoán của Issue #5/#6, chỉ 2 cột được làm feature; `pm25_was_missing` bị loại vì là rò rỉ target theo cấu trúc.**
+**Quyết định 3 — Trong 3 cột cờ chẩn đoán của Issue #5/#6, chỉ 1 cột được làm feature; 2 cột bị loại vì hai lý do hoàn toàn khác nhau.**
 
-| cột | nunique | tổng | nghĩa | làm feature? |
-|---|---|---|---|---|
-| `pm25_was_missing` | 2 | 1.289 | trạm ngừng báo cáo (khối khuyết $> 6$ giờ) | ❌ **không** |
-| `pm25_was_stuck` | **1** | **0** | cảm biến kẹt — **hằng số trên tập này** | ✅ có |
-| `is_high_humidity_fog` | 2 | 2.834 | sương mù quang học, cảm biến đọc sai | ✅ có |
+| cột | nunique | tổng | nghĩa | làm feature? | lý do loại |
+|---|---|---|---|---|---|
+| `pm25_was_missing` | 2 | 1.289 | trạm ngừng báo cáo (khối khuyết $> 6$ giờ) | ❌ **không** | `TARGET_DERIVED_FLAGS` — rò rỉ target **theo cấu trúc** |
+| `pm25_was_stuck` | **1** | **0** | cảm biến kẹt — **hằng số trên tập này** | ✅ có | — (giữ: hằng số nên vô hại về số học, nhưng **không được diễn giải** là biến có tác động) |
+| `is_high_humidity_fog` | 2 | 2.834 | giờ RH $> 90\%$ — thực chất là **cờ độ ẩm** | ❌ **không** | `NON_PREDICTIVE_FLAGS` — **chưa có bằng chứng** về giá trị dự báo marginal |
+
+> [!CAUTION]
+> **Hai nhóm loại trừ này KHÔNG được gộp chung.** `TARGET_DERIVED_FLAGS` là rò rỉ *chắc
+> chắn* — dùng làm feature thì mô hình học được quy tắc và hỏng. `NON_PREDICTIVE_FLAGS` là
+> *chưa có bằng chứng* — dùng làm feature thì chỉ làm nhiễu diễn giải hệ số. Gộp chung sẽ
+> khiến người đọc tưởng mọi cờ bị loại đều vì rò rỉ, và che mất lý do thực sự.
+>
+> **Vì sao loại `is_high_humidity_fog`.** Bản gốc ghi chú "đây là điều kiện khí quyển nên hợp
+> lệ làm dự báo". Số đo trên chính bộ dữ liệu dự án **không ủng hộ** lập luận đó ở mức
+> marginal:
+>
+> | Số đo | Kết quả |
+> |---|---|
+> | `corr(pm25, RH)` | $-0{,}0365$ |
+> | PM2.5 TB nhóm có cờ / không cờ | 41,65 / 44,75 |
+> | Mutual information (8 nhân pm25) | 0,0024 — **thấp nhất** trong các biến khí tượng |
+>
+> **Nhưng cờ CÓ tương tác theo mùa**, và hiệu ứng **đảo chiều**:
+>
+> | Mùa | Chênh lệch PM2.5 (có cờ − không cờ) |
+> |---|---|
+> | Đông | $+2{,}79\,\mu\text{g/m}^3$ (p = 0,024) |
+> | Xuân | $-8{,}91\,\mu\text{g/m}^3$ |
+> | Hè | $+0{,}28\,\mu\text{g/m}^3$ |
+> | Thu | $-2{,}72\,\mu\text{g/m}^3$ |
+>
+> F-test đồng thời các hệ số tương tác: **F = 16,78, p = 7,4·10⁻¹¹**. Nghĩa là
+> `corr ≈ 0` là hệ quả của việc **trung bình qua các mùa**, chứ **không** phải bằng chứng
+> không có quan hệ.
+>
+> **Hệ quả phương pháp luận:** tuyệt đối **không** kết luận "không tương quan" chỉ từ hệ số
+> tương quan, và **không** dùng từ "không dự báo được" cho phủ định tuyệt đối. Cờ còn giữ
+> trong dataset như tài liệu chẩn đoán; khai thác phát hiện theo mùa phải dùng dạng **tương
+> tác `fog × mùa`** và thuộc **Issue #8 (EDA)**. Chi tiết: `NON_PREDICTIVE_FLAGS` trong
+> `src/cleaning_pipeline.py`.
 
 **Vì sao loại `pm25_was_missing`.** Nó là `pm25.isna()` **với ngưỡng khối khuyết $> 6$ giờ**. Mà `SimpleImputer(strategy="median")` lại điền median cho **đúng những hàng đó**. Hệ quả: mọi hàng `flag == 1` có target bằng **đúng** median của tập học — đo trên dữ liệu thật là **100%**, ở cả Train (256/256, median 37,83) lẫn Test (1.033/1.033). Mô hình học được quy tắc `flag == 1 ⇒ pm25 == median` và đúng 100%: đó là rò rỉ target theo **cấu trúc**.
 
 Con số cần đọc đúng: tổng số hàng `pm25` bị `NaN` là **1.549**, trong đó **1.289** mang cờ `pm25_was_missing` (khối dài) và **260** là khối ngắn không mang cờ. Dòng rò rỉ đo được là **256** hàng ở Train — không phải 1.289 — vì cờ chỉ bắt khối dài, còn khối ngắn cũng được impute nhưng không ai nhìn thấy qua cờ.
 
-Điểm mấu chốt: `validate_no_leakage()` **không** bắt được lỗi này, vì imputer và scaler vẫn học đúng trên Train. Guard kiểm tham số học vô dụng ở đây — phải loại ở mức danh sách feature. Cờ vẫn được **giữ trong dataset** như tài liệu chẩn đoán; nó chỉ không được đưa vào `X`. Xem `TARGET_DERIVED_FLAGS` và `DIAGNOSTIC_FEATURES` trong `src/cleaning_pipeline.py`, và ô 15 của `notebooks/03_transformation_pipeline.ipynb` (nơi cơ chế này được **đo lại** trên dữ liệu thật, không phải khẳng định suông).
+Điểm mấu chốt: `validate_no_leakage()` **không** bắt được lỗi này, vì imputer và scaler vẫn học đúng trên Train. Guard kiểm tham số học vô dụng ở đây — phải loại ở mức danh sách feature. Cờ vẫn được **giữ trong dataset** như tài liệu chẩn đoán; nó chỉ không được đưa vào `X`. Xem `TARGET_DERIVED_FLAGS`, `NON_PREDICTIVE_FLAGS` và `DIAGNOSTIC_FEATURES` trong `src/cleaning_pipeline.py`, và ô 15 của `notebooks/03_transformation_pipeline.ipynb` (nơi cơ chế này được **đo lại** trên dữ liệu thật, không phải khẳng định suông).
 
 `pm25_was_stuck` bằng 0 toàn bộ là **phát hiện thực nghiệm, không phải lỗi**: Issue #5 đã kết luận chuỗi 0.0 dài ở Hà Nội là hiện tượng tự nhiên chứ không phải cảm biến hỏng. Cột này không mang thông tin phân biệt nhưng vẫn an toàn về kỹ thuật (`RobustScaler` cho `scale_ = 1.0`, `center_ = 0.0`, output `0.0` — không NaN), nên giữ lại để các notebook sau dùng chung một bộ cột.
 

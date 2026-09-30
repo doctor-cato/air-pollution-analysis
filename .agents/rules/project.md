@@ -1,13 +1,13 @@
 # Project & Engineering Rules
 
 > **Scope:** General engineering standards, architecture awareness, dependency control, and anti-patterns.  
-> **Source Document:** [`docs/roadmap.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/roadmap.md) (Chapters 1 & 5).
+> **Source Document:** [`docs/roadmap.md`](../../docs/roadmap.md) (Chapters 1 & 5).
 
 ---
 
 ## 1. Architecture Awareness & Roadmap Separation
 
-- **Roadmap is a Specification, Not Code:** [`docs/roadmap.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/roadmap.md) defines academic requirements across 15 weeks. Planned directories (`data/`, `notebooks/`, `src/`, `figures/`, `reports/`) and files are not implemented until created on disk.
+- **Roadmap is a Specification, Not Code:** [`docs/roadmap.md`](../../docs/roadmap.md) defines academic requirements across 15 weeks. Planned directories (`data/`, `notebooks/`, `src/`, `figures/`, `reports/`) and files are not implemented until created on disk.
 - **Inspect Before Creating:** Never assume a helper function, pipeline stage, or dataset exists. Always inspect the filesystem (`Get-ChildItem` or `ls`) and review existing code before writing new modules.
 - **No Duplicate Implementations:** Do not recreate existing loaders, transformers, or plotters. Extend existing modules in `src/` rather than adding parallel implementations.
 
