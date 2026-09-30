@@ -877,6 +877,53 @@ Chi tiết luồng thực hiện:
 * **Definition of Done:** Số dòng sau merge được kiểm soát (`assert len <= len_air`); tập dữ liệu được đóng băng; phân chia thời gian tuyến tính không rò rỉ; Pipeline fit duy nhất trên Train; tệp Parquet đọc lại nguyên vẹn cấu trúc và kiểu dữ liệu.
 * **Dependencies:** Dữ liệu làm sạch tất định từ Week 04 (#6).
 
+#### Bản ghi chính thức — Các quyết định đã chốt cho Issue #7
+
+Ba quyết định dưới đây được chốt trên dữ liệu thực nghiệm (9044 quan sát giờ, trạm Tư Liên, 2025-07-03 → 2026-07-15) chứ không phải từ tỷ lệ quy ước. Bằng chứng đầy đủ nằm trong `notebooks/03_transformation_pipeline.ipynb` mục 5.
+
+**Quyết định 1 — Điểm cắt Train/Test = `2026-01-15 00:00:00+07:00`.**
+
+Căn cứ: **temporal representativeness + event coverage**, theo đúng task 3 của tuần này. Dữ liệu chỉ có **một chu kỳ mùa** (07/2025–07/2026) nên mọi tỷ lệ chia theo số dòng đều hỏng:
+
+| Điểm cắt | Train/Test | Giờ $> 100$ ở Test | Tỉ lệ trong Test |
+|---|---|---|---|
+| `2026-05-01` (80/20) | 79,9 / 20,1 | **6** | 0,33% |
+| `2026-03-24` (70/30) | 69,8 / 30,2 | 23 | 0,84% |
+| `2026-02-15` (60/40) | 60,0 / 40,0 | 30 | 0,83% |
+| **`2026-01-15` (đã chọn)** | **51,8 / 48,2** | **99** | **2,27%** |
+| `2026-01-01` | 48,1 / 51,9 | 181 | 3,85% |
+
+Với 80/20, Test có 6 giờ vượt 100 µg/m³ trong 1818 giờ → mô hình đoán "không cảnh báo" cho mọi giờ vẫn đạt ~99,7% accuracy. Đó là **Accuracy Trap** mà `.agents/rules/analysis.md` cấm, và làm Recall / PR-AUC ở Issue #11–#13 mất hết ý nghĩa. Cắt giữa mùa đông là cách duy nhất để **cả hai** tập đều chứa regime ô nhiễm:
+
+```
+cut   = 2026-01-15 00:00:00+07:00
+train = 4.682 dòng (51,8%)   test = 4.362 dòng (48,2%)
+train: 1.425 giờ > 50,  295 giờ > 100
+test :   878 giờ > 50,   99 giờ > 100
+tổng 394 giờ > 100  →  Train 74,9% | Test 25,1%
+```
+
+Tỷ lệ 51,8/48,2 trông "lệch chuẩn" nhưng là **hệ quả tất yếu** của việc chia theo mùa, không phải lựa chọn tùy tiện.
+
+**Quyết định 2 — `log1p` chỉ chẩn đoán, KHÔNG transform target.**
+
+Đo trên Train ($n = 4.279$ quan sát có $\text{PM}_{2.5}$): skew $1{,}148 \to -0{,}656$, kurtosis $1{,}068 \to 0{,}726$. Task 4 của tuần này chỉ yêu cầu *khảo sát*, không yêu cầu áp dụng. Giữ target ở µg/m³ để ngưỡng cảnh báo còn nghĩa trực tiếp với bối cảnh chất lượng không khí và phần downstream dễ đọc hơn.
+
+**Quyết định 3 — Đưa cả 3 cột cờ chẩn đoán của Issue #5/#6 vào feature.**
+
+| cột | nunique | tổng | nghĩa |
+|---|---|---|---|
+| `pm25_was_missing` | 2 | 1.289 | trạm ngừng báo cáo (khối khuyết $> 6$ giờ) |
+| `pm25_was_stuck` | **1** | **0** | cảm biến kẹt — **hằng số trên tập này** |
+| `is_high_humidity_fog` | 2 | 2.834 | sương mù quang học, cảm biến đọc sai |
+
+`pm25_was_stuck` bằng 0 toàn bộ là **phát hiện thực nghiệm, không phải lỗi**: Issue #5 đã kết luận chuỗi 0.0 dài ở Hà Nội là hiện tượng tự nhiên chứ không phải cảm biến hỏng. Cột này không mang thông tin phân biệt nhưng vẫn an toàn về kỹ thuật (`RobustScaler` cho `scale_ = 1.0`, `center_ = 0.0`, output `0.0` — không NaN), nên giữ lại để các notebook sau dùng chung một bộ cột.
+
+**Hai điểm cần lưu ý cho Issue #11–#13.**
+
+- **Target không được đưa vào feature.** `NUMERIC_FEATURES` của `src/cleaning_pipeline.py` liệt kê cả `pm25` vì đó là ứng viên target; phải lọc ra, đúng quy ước `freeze_dataset()` đã dùng. Đưa target vào `X` biến bài toán dự báo thành bài toán đọc lại câu trả lời.
+- **`pm25` vẫn là `NaN` ở 1.289 hàng** mang cờ `pm25_was_missing`. Việc điền median của `SimpleImputer` chỉ xảy ra bên trong `ColumnTransformer` lúc `transform()`, bằng tham số học từ Train — **không ghi đè giá trị nào trong dataset** (`assert_no_imputation()` của Issue #6 vẫn PASS). Khi đánh giá mô hình phải chốt riêng cách xử lý `NaN` ở target.
+
 ---
 
 ### Week 06 – Thống kê Mô tả & Phân tích Chu kỳ Thời gian Đa tầng

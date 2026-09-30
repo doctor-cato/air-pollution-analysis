@@ -74,7 +74,7 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 > **Về dữ liệu thô:** tệp thô tải từ API **không được Git-track** — đây là chính sách kho dữ liệu của repository, không phải thiếu sót. Tính toàn vẹn được kiểm chứng bằng mã băm SHA-256 ghi trong `data/raw/metadata.json`. Xem [Mục 3.2 của roadmap](docs/roadmap.md#32-cổng-quyết-định-nguồn-dữ-liệu-issue-19-as-source-selection-gate).
 
 ### 2.2. Kế hoạch thực hiện tiếp theo (Theo `docs/roadmap.md`)
-- **Tuần 03–05 (Milestone 2):** ~~Kiểm toán 6 chiều chất lượng dữ liệu~~ ([Issue #5] — **đã xong**, PR #27) và ~~làm sạch tất định & lập cleaning log~~ ([Issue #6] — **đã xong**). Còn lại: tích hợp dữ liệu, đóng băng tập dữ liệu, phân chia chuỗi thời gian tuyến tính và đóng gói Pipeline chống rò rỉ sang định dạng Parquet ([Issue #7]).
+- **Tuần 03–05 (Milestone 2):** ~~Kiểm toán 6 chiều chất lượng dữ liệu~~ ([Issue #5] — **đã xong**, PR #27), ~~làm sạch tất định & lập cleaning log~~ ([Issue #6] — **đã xong**) và ~~tích hợp dữ liệu, đóng băng, phân chia chuỗi thời gian tuyến tính, đóng gói Pipeline chống rò rỉ~~ ([Issue #7] — **đã xong**). Milestone 2 đã đủ.
 - **Tuần 06–08 (Milestone 3):** Phân tích khám phá dữ liệu (EDA), tính toán 4 họ chỉ số thống kê, thiết kế 7 biểu đồ ấn phẩm giải thích theo nguyên tắc Tufte/Cleveland, hoàn thành Báo cáo Giữa kỳ ([Issue #8, #9, #10]).
 - **Tuần 09–11 (Milestone 4):** Thực hiện kiểm định giả thuyết phi tham số, xây dựng mô hình hồi quy OLS (chẩn đoán LINE), phát triển mô hình phân loại cảnh báo ô nhiễm với điều chỉnh ngưỡng quyết định (*Threshold tuning*) ([Issue #11, #12, #13]).
 - **Tuần 12–15 (Milestones 5 & 6):** Đánh giá định kiến dữ liệu (*Bias Audit*), đo đạc tài nguyên vs Spark, lập Datasheet for Dataset, Model Card 1 trang, hoàn thiện mã nguồn và bảo vệ đồ án cuối kỳ ([Issue #14, #15, #16, #17]).
@@ -224,12 +224,16 @@ air-pollution-analysis/
 git clone
   → pip install -r requirements.txt                (bước 2–3)
   → python scripts/fetch_dataset.py                (bước 5, cần mạng, có đối chiếu metadata)
-  → python -m unittest discover tests              (bước 6, 184 test, offline)
+  → python -m unittest discover tests              (bước 6, 223 test, offline)
   → jupyter nbconvert --execute notebooks/01_data_collection.ipynb
   → jupyter nbconvert --execute notebooks/02_quality_audit.ipynb
   → jupyter nbconvert --execute notebooks/03_data_cleaning.ipynb  (sinh docs/cleaning_log.md)
+  → jupyter nbconvert --execute notebooks/03_transformation_pipeline.ipynb
   → dữ liệu canonical ĐÃ LÀM SẠCH trong data/interim/ sẵn sàng cho Issue #7
+  → data/processed/air_pollution_final.parquet (9044 dòng × 18 cột, gitignored)
 ```
+
+> **Lưu ý khi chạy lại:** `03_data_cleaning.ipynb` cần `data/interim/` ở trạng thái **trước** khi làm sạch. Nếu đã chạy notebook này một lần, hãy khôi phục lại interim từ `data/raw/` trước khi chạy lại — nếu không, `docs/cleaning_log.md` sẽ ghi sai số liệu "trước làm sạch".
 
 ---
 
