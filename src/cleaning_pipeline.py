@@ -121,31 +121,50 @@ TARGET_DERIVED_FLAGS: List[str] = [
 ]
 
 
-# Cờ chẩn đoán **KHÔNG** được dùng làm feature vì **không mang tín hiệu dự báo**,
-# khác với `TARGET_DERIVED_FLAGS` vốn rò rỉ. Hai lý do phải tách bạch, không
-# gộp chung, vì cách xử lý khác nhau.
+# Cờ chẩn đoán **KHÔNG** được dùng làm feature mặc định vì **chưa có bằng chứng về
+# giá trị dự báo MARGINAL** trên bộ dữ liệu hiện tại. Tách khỏi
+# `TARGET_DERIVED_FLAGS` vốn là rò rỉ *chắc chắn* — hai lý do phải tách bạch, gộp
+# chung sẽ khiến người đọc tưởng mọi cờ bị loại đều vì rò rỉ.
 #
-# `is_high_humidity_fog` được Issue #6 gắn cho giờ có RH > 90%. Trên tập Hà Nội:
+# ── Cách đo và kết quả ────────────────────────────────────────────────────────
+# Trên `data/interim/air_quality_canonical.parquet` (7.495 dòng có cả `pm25` và RH):
 #
-#   - Cờ bắt đúng nhóm ẩm cao: RH trung bình nhóm có cờ = 94,99% so với 74,06%
-#     nhóm không cờ. Vậy nó là một **cờ độ ẩm** đúng đắn.
-#   - Nhưng nó **không dự báo được PM2.5**: `corr(pm25, RH) = -0,0365`, và PM2.5
-#     trung bình ở nhóm có cờ (41,65) **thấp hơn** nhóm không cờ (44,75).
-#     `corr(is_high_humidity_fog, pm25) = -0,0519` trên các dòng có nhãn.
-#   - Quét toàn bộ ngưỡng RH (80/85/90/95) đều cho cùng kết luận: nhóm ẩm cao luôn
-#     có PM2.5 **thấp hơn**. Nên đây **không phải** lỗi chọn ngưỡng — ở bộ dữ liệu
-#     này RH đơn thuần không liên quan đến PM2.5.
+#   - `corr(pm25, RH)`                  = -0,0365
+#   - PM2.5 TB nhóm có cờ             = 41,65   (n = 2.384)
+#   - PM2.5 TB nhóm không cờ          = 44,75   (n = 5.111)
+#   - Mutual information (8 nhân pm25) = 0,0024  — thấp nhất trong các biến khí tượng
 #
-# Bản gốc ghi chú "đây là điều kiện khí quyển nên hợp lệ làm dự báo". Số đo trên
-# chính bộ dữ liệu dự án **phủ nhận** lập luận đó, nên giữ cờ làm feature là nuôi
-# một cột không tín hiệu kèm lý do không có cơ sở, và làm nhiễu diễn giải hệ số ở
-# Issue #12–#13.
+# Nên ở mức **marginal**, cờ gần như không mang thông tin dự báo.
 #
-# Cờ vẫn được **GIỮ NGUYÊN trong dataset** như tài liệu chẩn đoán, và
-# `SimpleImputer` trong pipeline không cần đụng tới vì nó không còn là feature.
-# Nếu sau này chứng minh được quan hệ vật lý (ví dụ thêm biến tầm nhìn, hoặc tách
-# riêng tập sương mù thật), thì đưa lại vào feature — quyết định này dựa trên
-# đo đạc, không dựa trên giả định.
+# ── NHƯNG: cờ CÓ tương tác thật với mùa, và đây là lý do không nên viết quá tay ──
+#
+# Hồi quy `pm25 ~ fog + season + fog:season` cho ra tương tác rất mạnh:
+#
+#   | Mùa       | Chênh lệch (có cờ − không cờ) | Kết luận         |
+#   |-----------|------------------------------|------------------|
+#   | Đông      |  **+2,79** µg/m³ (p = 0,024)  | có, yếu         |
+#   | Xuân      |  **−8,91** µg/m³              | có, mạnh         |
+#   | Hè        |  +0,28 µg/m³                  | không            |
+#   | Thu       |  **−2,72** µg/m³              | có               |
+#
+#   F-test đồng thời các hệ số tương tác: **F = 16,78, p = 7,4·10⁻¹¹**.
+#   Khác biệt kép giữa Đông và Xuân+Hè: **+7,77 µg/m³**.
+#
+# Tức là `corr(pm25, RH) ≈ 0` **không phải** bằng chứng "không có quan hệ" — nó là
+# hệ quả của việc **trung bình qua các mùa**, nơi hiệu ứng đổi dấu. Đây chính là
+# lý do review buộc phải hạ giọng từ "không dự báo được" (phủ định tuyệt đối, không
+# chứng minh được bằng tương quan) xuống "chưa có bằng chứng về giá trị marginal".
+#
+# ── Vì sao vẫn loại khỏi feature MẶC ĐỊNH ───────────────────────────────────
+#
+# Với một mô hình chỉ nhận cờ trần (không có số tương tác), hệ số học được là
+# hiệu ứng **marginal** đã gộp sạc — tức gần 0. Một hệ số gần 0 chỉ làm **tăng
+# phương sai ước lượng**, không thêm tín hiệu. Còn nếu muốn khai thác phát hiện ở
+# trên thì phải đưa vào dưới dạng **tương tác `fog × mùa`**, và đó là việc của
+# **Issue #8 (EDA)** — nơi quyết định hình thức đặc trưng, không phải M2.
+#
+# Cờ **được giữ nguyên trong dataset** như tài liệu chẩn đoán. Nếu EDA chứng minh
+# tương tác theo mùa là thật và dùng được, thì đưa lại dưới dạng cột tương tác.
 NON_PREDICTIVE_FLAGS: List[str] = [
     "is_high_humidity_fog",
 ]
@@ -835,11 +854,12 @@ def freeze_dataset(
             )
         if any(c in df.columns for c in NON_PREDICTIVE_FLAGS):
             logger.info(
-                "freeze_dataset: loại %s khỏi feature mặc định vì đo đạc trên dữ "
-                "liệu thật cho thấy không dự báo được target (corr với pm25 ~ -0,05; "
-                "nhóm có cờ có pm25 THẤP hơn nhóm không cờ) — xem "
-                "NON_PREDICTIVE_FLAGS. Cờ vẫn được giữ trong dataset như tài liệu "
-                "chẩn đoán.",
+                "freeze_dataset: loại %s khỏi feature mặc định vì chưa có bằng chứng về "
+                "giá trị dự báo MARGINAL trên dữ liệu thật (corr(pm25, RH) ~ -0,04; "
+                "mutual information 0,0024 — thấp nhất trong các biến khí tượng). Lưu ý: "
+                "cờ CÓ tương tác với mùa (F = 16,78, p = 7e-11; Đông +2,79 so với Xuân "
+                "-8,91 µg/m³), nên nếu muốn khai thác thì phải dùng dạng tương tác "
+                "fog × mùa — thuộc Issue #8. Xem NON_PREDICTIVE_FLAGS.",
                 NON_PREDICTIVE_FLAGS,
             )
 

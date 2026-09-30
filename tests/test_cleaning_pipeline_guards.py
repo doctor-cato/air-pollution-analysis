@@ -369,17 +369,16 @@ class B7TargetDerivedFlagIsNotAFeature(unittest.TestCase):
     def test_allowed_diagnostic_features_exclude_only_the_target_derived_one(self):
         """`DIAGNOSTIC_FEATURES` giờ chỉ còn `pm25_was_stuck`.
 
-        `is_high_humidity_fog` đã bị chuyển sang `NON_PREDICTIVE_FLAGS` sau khi
-        đo trên dữ liệu thật phủ nhận lập luận "sương mù quang học là điều kiện khí
-        quyển nên hợp lệ làm dự báo": `corr(pm25, RH) = -0,0365`, và PM2.5 trung
-        bình nhóm có cờ (41,65) **thấp hơn** nhóm không cờ (44,75). Quét cả ngưỡng
-        RH 80/85/90/95 đều không đảo chiều, nên không phải lỗi chọn ngưỡng.
+        `is_high_humidity_fog` bị chuyển sang `NON_PREDICTIVE_FLAGS` vì ở mức
+        **marginal** chưa có bằng chứng dự báo được: `corr(pm25, RH) = -0,0365`,
+        mutual information 0,0024 (thấp nhất trong các biến khí tượng).
+
+        Cờ **không** bị khẳng định là vô dụng: nó có tương tác rõ với mùa (Đông
+        +2,79; Xuân −8,91 µg/m³; F-test p = 7,4·10⁻¹¹). Review đã đúng khi yêu cầu
+        hạ giọng từ "không dự báo được" sang "chưa có bằng chứng marginal".
         """
         self.assertIn("pm25_was_stuck", cp.DIAGNOSTIC_FEATURES)
-        self.assertNotIn(
-            "is_high_humidity_fog", cp.DIAGNOSTIC_FEATURES,
-            "cờ không dự báo được target không được là feature",
-        )
+        self.assertNotIn("is_high_humidity_fog", cp.DIAGNOSTIC_FEATURES)
         self.assertIn("is_high_humidity_fog", cp.NON_PREDICTIVE_FLAGS)
 
     def test_the_two_flag_groups_stay_disjoint(self):

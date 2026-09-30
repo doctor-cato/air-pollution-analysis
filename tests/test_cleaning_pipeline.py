@@ -585,37 +585,64 @@ class TestIntegrationWithIssueSixOutput(unittest.TestCase):
             self.assertNotIn(flag, features)
 
     def test_high_humidity_fog_flag_is_excluded_as_a_non_predictive_feature(self):
-        """`is_high_humidity_fog` bị loại khỏi feature vì **không dự báo được**.
+        """Cờ bị loại vì **chưa có bằng chứng về giá trị dự báo marginal** — KHÔNG
+        phải vì "chứng minh được là không dự báo được".
 
-        Số đo trên `data/interim/air_quality_canonical.parquet` (9.044 hàng):
+        Số đo trên `data/interim/air_quality_canonical.parquet` (7.495 dòng có cả
+        `pm25` và RH):
 
-          - `corr(pm25, RH) = -0,0365` — gần như không quan hệ.
-          - PM2.5 trung bình ở nhóm có cờ = **41,65**, nhóm không cờ = **44,75** —
-            nhóm ẩm cao có PM2.5 **THẤP hơn**, đúng chiều ngược với giả thuyết
-            sương mù làm cảm biến đọc **cao** hơn.
-          - Quét ngưỡng RH 80/85/90/95 đều ra cùng kết luận → **không phải** lỗi
-            chọn ngưỡng.
-          - Cờ vẫn bắt đúng nhóm ẩm cao (RH trung bình 94,99% so với 74,06%), nên
-            nó là một *cờ độ ẩm* đúng, chỉ là không phải *chỉ báo sương mù quang
-            học* trên bộ dữ liệu này.
+          - `corr(pm25, RH)` = **-0,0365**.
+          - PM2.5 TB nhóm có cờ = **41,65** (n=2.384); nhóm không cờ = **44,75**
+            (n=5.111).
+          - Mutual information (8 nhân pm25) = **0,0024** — thấp nhất trong số các
+            biến khí tượng (so sánh: tốc độ gió 0,048; nhiệt độ 0,084).
 
-        Cờ **vẫn được giữ trong dataset** như tài liệu chẩn đoán; chỉ không được
-        dùng làm feature.
+        **Lưu ý quan trọng — cờ CÓ tương tác theo mùa**, nên không được viết quá
+        tay rằng nó "không dự báo được":
+
+        | Mùa  | Chênh lệch (có cờ − không cờ) |
+        |------|------------------------------|
+        | Đông |  **+2,79** µg/m³ (p = 0,024) |
+        | Xuân |  **−8,91** µg/m³             |
+        | Hè   |  +0,28 µg/m³                 |
+        | Thu  |  **−2,72** µg/m³             |
+
+        F-test đồng thời các hệ số tương tác: **F = 16,78, p = 7,4·10⁻¹¹**. Tức
+        `corr ≈ 0` là hệ quả của việc **trung bình qua các mùa**, nơi hiệu ứng đổi
+        dấu — không phải bằng chứng không có quan hệ.
+
+        Vì vậy test này chỉ bảo vệ hành vi *mặc định loại khỏi feature*, không khẳng
+        định cờ vô dụng. Khai thác phát hiện theo mùa thuộc Issue #8 (EDA).
         """
         self.assertIn("is_high_humidity_fog", cp.NON_PREDICTIVE_FLAGS)
         self.assertNotIn(
             "is_high_humidity_fog", cp.DIAGNOSTIC_FEATURES,
-            "cờ không dự báo được target thì không được nằm trong DIAGNOSTIC_FEATURES",
+            "chưa có bằng chứng marginal thì không nên nằm trong DIAGNOSTIC_FEATURES",
         )
 
         frame = self.cleaned
         if "is_high_humidity_fog" not in frame.columns:
             frame = frame.assign(is_high_humidity_fog=0)
         features = cp.freeze_dataset(frame).feature_columns
-        self.assertNotIn(
-            "is_high_humidity_fog", features,
-            "cờ đo được là không dự báo được thì không được làm feature",
-        )
+        self.assertNotIn("is_high_humidity_fog", features)
+
+    def test_the_flag_group_documents_the_seasonal_interaction(self):
+        """Ghi nhớ tương tác theo mùa phải nằm ngay cạnh quyết định loại cờ.
+
+        Nếu chỉ ghi `corr ≈ 0` mà không kèm tương tác, lập luận sẽ trông như đã
+        chứng minh cờ không dự báo được — trong khi thực tế hiệu ứng đổi dấu theo
+        mùa (F = 16,78, p = 7e-11). Đây là test chống lặp lại lỗi diễn đạt.
+        """
+        import inspect
+
+        src = inspect.getsource(cp)
+        block = src[src.index("NON_PREDICTIVE_FLAGS: List[str]") - 6000:
+                    src.index("NON_PREDICTIVE_FLAGS: List[str]")]
+        for needle in ("marginal", "F = 16,78", "tương tác"):
+            self.assertIn(
+                needle, block,
+                f"khối giải thích `NON_PREDICTIVE_FLAGS` phải nhắc {needle!r}",
+            )
 
     def test_non_predictive_flag_is_still_kept_in_the_dataset(self):
         """Loại khỏi feature KHÔNG đồng nghĩa xoá khỏi dataset."""
