@@ -128,7 +128,8 @@ air-pollution-analysis/
 │   ├── 03_data_cleaning.ipynb         # Thực thi làm sạch tất định & sinh Cleaning Log [Issue #6]
 │   └── 03_transformation_pipeline.ipynb # Merge → freeze → split → fit chống rò rỉ [Issue #7]
 ├── scripts/
-│   └── fetch_dataset.py                # Tải & kiểm chứng tập dữ liệu từ nguồn công khai (không cần API key)
+│   ├── fetch_dataset.py                # Tải & kiểm chứng tập dữ liệu từ nguồn công khai (không cần API key)
+│   └── build_progress_report.py        # Sinh docs/bao_cao_tien_do_M1_M2.docx từ 6 nguồn sự thật (chỉ đọc)
 ├── src/
 │   ├── __init__.py
 │   ├── data_collection.py              # Adapter OpenAQ, Open-Meteo, AirNow và validation [Issue #3, #4]
@@ -247,6 +248,16 @@ git clone
 ```
 
 > **Lưu ý khi chạy lại:** `03_data_cleaning.ipynb` cần `data/interim/` ở trạng thái **trước** khi làm sạch. Nếu đã chạy notebook này một lần, hãy khôi phục lại interim từ `data/raw/` trước khi chạy lại — nếu không, `docs/cleaning_log.md` sẽ ghi sai số liệu "trước làm sạch".
+
+### Báo cáo tiến độ M1 → M2 (DOCX)
+
+```text
+python scripts/build_progress_report.py     → docs/bao_cao_tien_do_M1_M2.docx
+```
+
+Script **chỉ đọc** 6 nguồn sự thật trong repo (`docs/roadmap.md`, `docs/data_dictionary.md`, `docs/source_profiling_decision.md`, `docs/data_quality_audit.md`, `docs/cleaning_log.md`, `data/raw/metadata.json`) rồi dựng báo cáo; nó không đụng tới dữ liệu.
+
+> ⚠️ **`docs/bao_cao_tien_do_M1_M2.docx` là artifact sinh ra, không sửa tay.** Ngoài ra tệp này **không tái lập được theo byte**: `python-docx` ghi dấu thời gian tạo/sửa vào `docProps/core.xml`, nên chạy lại script hai lần cách nhau vài giây sẽ cho hai SHA-256 khác nhau dù nội dung không đổi. Vì vậy không dùng `git diff` trên tệp này để kết luận nội dung đã đổi — hãy so sánh nội dung, hoặc sinh lại tệp rồi commit thẳng. (Cùng giới hạn này đã được ghi nhận với định dạng Parquet ở Mục 3.)
 
 ---
 
