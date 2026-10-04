@@ -1,0 +1,38 @@
+#!/bin/sh
+# OpenCodeReview — delegation mode pre-commit hook.
+#
+# OCR (ocr delegate) chọn file + resolve rule; OpenCode (`opencode run`) thực
+# hiện review bằng model của chính nó. KHÔNG cần LLM API key phía OCR.
+#
+# Hook chỉ CẢNH BÁO, không chặn commit — bạn tự quyết định dựa trên output.
+# Tắt tạm: OCR_REVIEW=0 git commit ...
+#
+# Cài đặt: git config core.hooksPath .githooks
+
+if [ "$OCR_REVIEW" = "0" ]; then
+  echo "ocr: skipped (OCR_REVIEW=0)"
+  exit 0
+fi
+
+if ! command -v ocr >/dev/null 2>&1; then
+  echo "ocr: CLI not found, skipping review (npm i -g @alibaba-group/open-code-review)"
+  exit 0
+fi
+
+if ! command -v opencode >/dev/null 2>&1; then
+  echo "ocr: opencode CLI not found, skipping review"
+  exit 0
+fi
+
+# Không có thay đổi nào để review -> thoát ngay, khỏi tốn thời gian.
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+if [ -z "$STAGED" ]; then
+  exit 0
+fi
+
+echo "ocr: reviewing staged changes (delegation mode, no OCR API key needed)..."
+
+opencode run --auto "Load the open-code-review-delegate skill and review the current staged workspace changes. Use 'ocr delegate preview --format json' to pick files, then apply this repo's rules from AGENTS.md and .agents/rules/. Report findings as path / line / severity. Do not modify any file."
+
+# Hook chỉ cảnh báo: lỗi review (mạng, provider, model) không được chặn commit.
+exit 0

@@ -1,0 +1,3 @@
+# Git hooks chạy bằng sh (Git for Windows) — CRLF sẽ làm hook fail với
+# "sh: ^M: bad interpreter". Giữ LF cho mọi file trong .githooks/.
+.githooks/** text eol=lf
