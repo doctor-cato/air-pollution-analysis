@@ -28,6 +28,7 @@ import subprocess
 import tempfile
 import textwrap
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 from src.data_collection import (
@@ -114,10 +115,10 @@ class TestWritePipelineRuntimeLog(unittest.TestCase):
                 stamp.endswith("+00:00"),
                 f"Timestamp phải ở UTC (hậu tố +00:00), thực tế: {stamp!r}",
             )
-            # datetime.fromisoform chấp nhận ISO-8601 — ném ValueError nếu sai định dạng.
-            from datetime import datetime as _dt
-
-            _dt.fromisoformat(stamp)
+            # datetime.fromisoformat chấp nhận ISO-8601 — ném ValueError nếu sai định dạng.
+            # Dùng `datetime` import ở cấp module (không import lại cục bộ) để tránh
+            # hai tên cho cùng một thứ trong cùng module.
+            datetime.fromisoformat(stamp)
 
     def test_execution_time_seconds_is_pulled_from_summary(self):
         """`execution_time_seconds` phải lấy từ `summary`, không tự tính lại."""
@@ -188,6 +189,263 @@ class TestWritePipelineRuntimeLog(unittest.TestCase):
             )
             self.assertEqual(returned, explicit)
             self.assertFalse((Path(tmp) / "ignored_dir").exists())
+
+    # ---------------------------------------------------------------- GAP 1 ---
+
+    def test_caller_supplied_runtime_log_path_is_honoured_verbatim(self):
+        """
+        GAP 1 — `run_collection_pipeline(runtime_log_path=X)` chuyển tiếp X
+        nguyên vẹn (`:1497`), nên hàm ghi phải đúng vào X.
+
+        Không gọi `run_collection_pipeline` (cần network); chỉ kiểm tra phần hợp
+        đồng có thể kiểm offline: `write_pipeline_runtime_log(..., log_path=X)`
+        ghi đúng X — kể cả khi X nằm NGOÀI `data/raw/` hoàn toàn.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "elsewhere" / "runtime.json"
+            returned = write_pipeline_runtime_log(self._summary(), log_path=target)
+
+            self.assertEqual(returned, target)
+            self.assertTrue(target.is_file())
+            with open(target, "r", encoding="utf-8") as f:
+                self.assertIsInstance(json.load(f), dict)
+            # Không có tệp nào khác dính vào thư mục cha (không rò sang mặc định).
+            siblings = sorted(p.name for p in target.parent.iterdir())
+            self.assertEqual(
+                siblings, [target.name],
+                "Ghi ra nhiều hơn một tệp — runtime log có thể đang rò sang mặc định.",
+            )
+
+    def test_metadata_runtime_log_pointer_is_a_hardcoded_default_literal(self):
+        """
+        GAP 1 — GHI NHẬN hành vi hiện tại (không phải hành vi được chấp nhận):
+        con trỏ `collection_pipeline_execution.runtime_log.file` trong
+        `src/data_collection.py` là literal CỨNG
+        `f"data/raw/{PIPELINE_RUNTIME_LOG_FILENAME}"`.
+
+        Hệ quả đã biết: nếu ai đó cấu hình `runtime_log_path` chỗ khác, tệp thật
+        nằm ở X còn metadata vẫn trỏ `data/raw/...` — hai nơi không đồng ý. Test
+        này chốt hành vi đó để nó không trôi đi âm thầm; KHÔNG sửa literal trong
+        production (đã báo cáo như một phát hiện thiết kế riêng).
+
+        Assert trên AST, không phải substring thô, để không đụng comment.
+        """
+        source = (REPO_ROOT / "src" / "data_collection.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        found = []
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Dict)):
+                continue
+            for key, value in zip(node.keys, node.values):
+                if (isinstance(key, ast.Constant) and key.value == "file"
+                        and isinstance(value, ast.JoinedStr)):
+                    literal_parts = [v.value for v in value.values
+                                     if isinstance(v, ast.Constant)]
+                    names = [v.value.id for v in value.values
+                             if isinstance(v, ast.FormattedValue)
+                             and isinstance(v.value, ast.Name)]
+                    if literal_parts == ["data/raw/"] and names == [
+                            "PIPELINE_RUNTIME_LOG_FILENAME"]:
+                        found.append(node)
+
+        self.assertTrue(
+            found,
+            "Không tìm thấy literal f\"data/raw/{PIPELINE_RUNTIME_LOG_FILENAME}\" cho "
+            "con trỏ runtime_log.file — hoặc nó đã được đổi thành giá trị động, hoặc "
+            "anchor đổi. Nếu đã đổi thành động, hãy CẬP NHẬT test này: con trỏ "
+            "metadata và đường dẫn ghi thật phải khớp nhau.",
+        )
+        # Con trỏ này không được phụ thuộc `runtime_log_path`: nếu nó có, hành vi
+        # "cấu hình ở chỗ khác làm metadata sai" đã không còn đúng.
+        runtime_log_name_uses = sum(
+            1 for n in ast.walk(found[0])
+            if isinstance(n, ast.Name) and n.id == "runtime_log_path"
+        )
+        self.assertEqual(
+            runtime_log_name_uses, 0,
+            "Con trỏ runtime_log.file giờ đã phụ thuộc `runtime_log_path` — cập "
+            "nhật trong docstring của test, vì phát hiện GAP 1 đã được xử lý.",
+        )
+
+    # ---------------------------------------------------------------- GAP 2 ---
+
+    def test_default_path_is_relative_to_process_cwd(self):
+        """
+        GAP 2 — Hợp đồng hiện tại: khi `log_dir=None` và `log_path=None`, đường dẫn
+        là `Path("data/raw") / PIPELINE_RUNTIME_LOG_FILENAME`, tức TƯƠNG ĐỐI với
+        CWD của tiến trình (`src/data_collection.py:166`).
+
+        `chdir` vào thư mục tạm rồi chạy: chứng minh (1) hợp đồng tương đối này,
+        (2) khi CWD ở nơi khác thì KHÔNG gì rơi vào repo này.
+        """
+        # `os.chdir` phải được HOÀN TẤT TRƯỚC khi `TemporaryDirectory` dọn dẹp:
+        # trên Windows, thư mục tạm đang là CWD thì `rmtree` nhận WinError 32.
+        # `addCleanup` KHÔNG dùng được ở đây vì nó chạy SAU khi context manager
+        # đã thoát (và thứ tự giữa nó và `rmtree` không bảo đảm được) — nên dùng
+        # try/finally ngay trong thân test.
+        expected_rel = Path("data/raw") / PIPELINE_RUNTIME_LOG_FILENAME
+        # Bản mặc định trong repo (gitignored) có thể đã tồn tại từ lần chạy
+        # notebook trước — nên "không rơi vào repo" được kiểm bằng MỐC THỜI GIAN
+        # sửa đổi + byte, không bằng "tệp không tồn tại".
+        repo_file = REPO_ROOT / expected_rel
+
+        prev_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tmp:
+            os.chdir(tmp)
+            try:
+                before = (
+                    repo_file.stat().st_mtime_ns if repo_file.exists() else None,
+                    repo_file.read_bytes() if repo_file.exists() else None,
+                )
+
+                returned = write_pipeline_runtime_log(self._summary())
+
+                self.assertEqual(
+                    returned, expected_rel,
+                    "Đường dẫn mặc định phải là ĐƯỜNG DẪN TƯƠNG ĐỐI so với CWD, không "
+                    "phải đường dẫn tuyệt đối.",
+                )
+                self.assertFalse(returned.is_absolute(), "Đường dẫn mặc định phải là tương đối.")
+                self.assertTrue(
+                    (Path(tmp) / expected_rel).is_file(),
+                    f"Không thấy tệp tại <tmp>/{expected_rel} — hàm không ghi theo CWD.",
+                )
+                # Không có gì được ghi vào repo này.
+                after = (
+                    repo_file.stat().st_mtime_ns if repo_file.exists() else None,
+                    repo_file.read_bytes() if repo_file.exists() else None,
+                )
+                self.assertEqual(
+                    after, before,
+                    f"Tệp mặc định trong repo ({repo_file}) bị sửa dù CWD ở thư mục tạm "
+                    "— hàm đang ghi theo CWD chứ không theo thư mục script.",
+                )
+            finally:
+                os.chdir(prev_cwd)
+
+    # ---------------------------------------------------------------- GAP 3 ---
+
+    def test_explicit_log_path_named_metadata_json_is_unguarded(self):
+        """
+        GAP 3 — CHARACTERIZATION TEST, KHÔNG phải hành vi được chấp nhận.
+
+        `write_pipeline_runtime_log` không nhận `metadata_path` và không so sánh
+        với nó, nên `log_path=Path("data/raw/metadata.json")` sẽ GHI ĐÈ âm thầm lên
+        hồ sơ provenance đang được git theo dõi. Test này chứng minh đúng điều đó
+        để không ai hiểu nhầm là đã có chốt bảo vệ.
+
+        Đã báo cáo như một vấn đề thiết kế riêng (đề xuất: chặn khi
+        `log_path.name == "metadata.json"`). KHÔNG thêm chốt vào production code
+        ở đây — việc đó thuộc thay đổi hành vi, cần quyết định riêng.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "metadata.json"  # tên collide, thư mục tạm
+            target.write_text('{"sentinel": "ORIGINAL_PROVENANCE"}', encoding="utf-8")
+
+            returned = write_pipeline_runtime_log(self._summary(), log_path=target)
+
+            self.assertEqual(returned, target)
+            self.assertTrue(
+                target.is_file(),
+                "Tiền đề hỏng: tệp tên metadata.json phải tồn tại trước khi ghi.",
+            )
+            with open(target, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            self.assertNotIn(
+                "sentinel", payload,
+                "Hành vi ĐÃ thay đổi: log_path trùng tên metadata.json nay bị chặn "
+                "— hãy cập nhật docstring test (vấn đề thiết kế GAP 3 đã được xử lý).",
+            )
+            self.assertIn(
+                "execution_timestamp_utc", payload,
+                "Hàm đã ghi đè lên tệp tên `metadata.json` mà không cảnh báo — "
+                "đây là hành vi KHÔNG có chốt bảo vệ mà test này đang chốt lại.",
+            )
+
+    def test_default_path_never_resolves_to_metadata_json(self):
+        """
+        GAP 3 (phần an toàn) — đường dẫn MẶC ĐỊNH không bao giờ trùng
+        `metadata.json`, với CWD bất kỳ: đó là carve-out duy nhất được `.gitignore`
+        bảo vệ khỏi việc bị theo dõi nhầm.
+        """
+        # `os.chdir` phải được hoàn tất TRƯỚC `TemporaryDirectory.cleanup()`:
+        # trên Windows, thư mục tạm còn là CWD thì `rmtree` nhận WinError 32.
+        # `addCleanup` chạy sau context exit nên không bảo đảm được thứ tự này.
+        prev_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tmp:
+            os.chdir(tmp)
+            try:
+                emitted = write_pipeline_runtime_log(self._summary())
+                self.assertNotEqual(emitted.name, "metadata.json")
+                self.assertEqual(emitted.name, PIPELINE_RUNTIME_LOG_FILENAME)
+            finally:
+                os.chdir(prev_cwd)
+
+    # ---------------------------------------------------------------- GAP 5 ---
+
+    def test_windows_separators_in_payload_are_preserved_verbatim(self):
+        """
+        GAP 5 — Chốt hành vi hiện tại: KHÔNG chuẩn hoá dấu phân cách.
+
+        `summary["openaq"]["raw_file"]` / `["open_meteo"]["raw_file"]` được dựng
+        bằng `str(Path)` nên trên Windows chứa `\\`; payload phải giữ nguyên
+        (không `as_posix()`, không `resolve()` — đổi sang POSIX là thay đổi hành
+        vi chưa có yêu cầu nào ở đây).
+
+        Bất đẳng đẳng giữa hai writer (phát hiện để theo dõi, KHÔNG sửa ở test này):
+        - khối metadata dùng `f"data/raw/{path.name}"` (`:1408`/`:1439`) -> luôn
+          dấu `/`;
+        - tệp runtime log chỉ sao chép nguyên văn `summary` -> giữ dấu `\\` của
+          Windows. Cùng một tệp thô, hai nơi biểu diễn khác nhau.
+        """
+        windows_raw = str(Path("data") / "raw" / "openaq_2025.parquet")
+        self.assertIn("\\", windows_raw, "Tiền đề: OS này phải sinh dấu `\\`.")
+
+        summary = self._summary(
+            openaq={"raw_file": windows_raw, "raw_records": 7},
+            open_meteo={"raw_file": windows_raw},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            # log_path dạng Windows cũng phải xử lý không lỗi.
+            target = Path(tmp) / "nested" / PIPELINE_RUNTIME_LOG_FILENAME
+            returned = write_pipeline_runtime_log(summary, log_path=target)
+            self.assertEqual(returned, target)
+            self.assertTrue(target.is_file())
+
+            with open(target, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+
+        report = payload["pipeline_report"]
+        self.assertEqual(
+            report["openaq"]["raw_file"], windows_raw,
+            "Payload đã chuẩn hoá dấu phân cách trong raw_file — hành vi hiện tại "
+            "là giữ nguyên văn; đổi sang POSIX cần một yêu cầu riêng.",
+        )
+        self.assertIn("\\", report["openaq"]["raw_file"])
+        self.assertIn("\\", report["open_meteo"]["raw_file"])
+
+    def test_metadata_block_and_runtime_log_disagree_on_separators(self):
+        r"""
+        GAP 5 (phần đối chiếu) — Xác nhận bất đẳng đẳng giữa hai writer: cùng một
+        tên tệp thô, khối metadata luôn dùng `/` còn runtime log giữ dấu `\`.
+
+        Chốt lại để sự lệch này không bị "sửa" một cách vô tình ở một trong hai
+        bên mà không ai biết; hiện tại KHÔNG có yêu cầu nào buộc phải thống nhất.
+        """
+        raw_path = Path("data") / "raw" / "openaq_2025.parquet"
+        metadata_side = f"data/raw/{raw_path.name}"
+        self.assertNotIn("\\", metadata_side,
+                         "Khối metadata dùng `.name` nên không bao giờ có `\\`.")
+        self.assertIn(
+            "\\", str(raw_path),
+            "Bên runtime log, `str(Path)` trên Windows giữ dấu `\\`.",
+        )
+        self.assertNotEqual(
+            metadata_side, str(raw_path),
+            "Hai writer đang biểu diễn cùng một tệp khác nhau — đây là phát hiện "
+            "đang mở (bất đẳng đẳng dấu phân cách), không phải hành vi đã chốt.",
+        )
 
 
 class _BlockMustNotSwallowHandler(logging.Handler):
@@ -475,6 +733,26 @@ class TestMetadataMutationBlockPreservesProvenance(unittest.TestCase):
             )
         return json.loads(proc.stdout)
 
+    def _committed_metadata_bytes(self) -> bytes:
+        """
+        Byte THÔ của `data/raw/metadata.json` ở HEAD (không parse) — dùng để so
+        byte-identical, và để chứng minh chính test này không làm bẩn tệp đang
+        được git theo dõi.
+        """
+        try:
+            proc = subprocess.run(
+                ["git", "show", "HEAD:data/raw/metadata.json"],
+                cwd=REPO_ROOT, capture_output=True,
+            )
+        except OSError as exc:
+            self.skipTest(f"Không chạy được git ({exc}) — bỏ qua để không fail vì môi trường.")
+        if proc.returncode != 0:
+            self.skipTest(
+                "Không đọc được data/raw/metadata.json ở HEAD (git show thất bại) — "
+                "bỏ qua để không phụ thuộc trạng thái git khi chạy test."
+            )
+        return proc.stdout
+
     @staticmethod
     def _extract_block() -> str:
         """
@@ -500,6 +778,37 @@ class TestMetadataMutationBlockPreservesProvenance(unittest.TestCase):
         TestMetadataMutationBlockPreservesProvenance._assert_capture_is_complete(code)
         return code
 
+    @staticmethod
+    def _strip_comments(code: str) -> str:
+        r"""
+        Cùng văn bản nhưng ĐÃ BỎ comment và docstring, giữ nguyên mọi ký tự còn
+        lại (kể cả thụt lề và newline) để marker nhiều token như `json.dump` vẫn
+        khớp nguyên văn.
+
+        Vì sao: kiểm tra marker gốc là `marker in code` — substring thô, nên một
+        token CHỈ nằm trong comment vẫn thoả. Đó đúng là lớp vacuity mà guard này
+        sinh ra để chặn: block bị cắt còn lại vài dòng comment thì guard vẫn xanh
+        trong khi `exec` không làm gì.
+
+        Docstring chỉ bị bỏ khi là string literal MỘT DÒNG chiếm trọn dòng —
+        string nhiều dòng được giữ nguyên để không cắt nhầm vào giá trị chuỗi.
+        """
+        import io
+        import tokenize
+
+        lines = code.splitlines(keepends=True)
+        blanked = set()
+        for tok in tokenize.generate_tokens(io.StringIO(code).readline):
+            if tok.type == tokenize.COMMENT:
+                blanked.update(range(tok.start[0], tok.end[0] + 1))
+            elif tok.type == tokenize.STRING and tok.start[0] == tok.end[0]:
+                row = tok.start[0] - 1
+                if 0 <= row < len(lines) and lines[row].strip() == tok.string:
+                    blanked.add(row + 1)
+        return "".join(
+            line for idx, line in enumerate(lines, 1) if idx not in blanked
+        )
+
     @classmethod
     def _assert_capture_is_complete(cls, code: str) -> None:
         """
@@ -513,6 +822,15 @@ class TestMetadataMutationBlockPreservesProvenance(unittest.TestCase):
 
         Anchor theo IDENTIFIER/token, không theo số dòng hay độ dài ký tự, để
         refactor hợp lệ không vô tình làm đỏ.
+
+        Ba cổng, theo thứ tự từ rẻ đến đắt:
+        1. `code` không rỗng.
+        2. `ast.parse(code)` — block phải là Python hợp lệ.
+        3. Thân module phải có ít nhất MỘT câu lệnh thực thi khác docstring —
+           `ast.parse("")` và `exec("")` đều thành công nên đây mới là cổng
+           chống vacuity thật sự.
+        Marker được kiểm trên bản ĐÃ BỎ COMMENT (`_strip_comments`), không
+        phải trên thô: nếu không, token nằm trong comment sẽ thoả `in`.
         """
         if not code.strip():
             raise AssertionError(
@@ -521,7 +839,33 @@ class TestMetadataMutationBlockPreservesProvenance(unittest.TestCase):
                 "thành công nên test sẽ PASS VACUOUSLY trên code không chạy. "
                 "Sửa anchor trong `_extract_block`."
             )
-        missing = [m for m in cls.REQUIRED_BLOCK_MARKERS if m not in code]
+        try:
+            tree = ast.parse(code)
+        except SyntaxError as exc:
+            raise AssertionError(
+                "KHỐI ghi metadata.json được trích ra KHÔNG parse được "
+                f"({exc.__class__.__name__}: {exc}) — anchor `start`/`end` đang cắt "
+                "giữa biểu thức, nên `exec` sẽ nổ lỗi khó đọc và test đo trên "
+                "code không chạy. Sửa anchor trong `_extract_block`."
+            ) from exc
+
+        def _is_docstring(node) -> bool:
+            return (
+                isinstance(node, ast.Expr)
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)
+            )
+
+        executable = [n for n in tree.body if not _is_docstring(n)]
+        if not executable:
+            raise AssertionError(
+                "KHỐI ghi metadata.json được trích ra chỉ còn docstring/comment, "
+                "KHÔNG còn câu lệnh thực thi nào — `exec` sẽ là no-op và mọi test "
+                "đo hành vi sẽ PASS VACUOUSLY. Sửa anchor trong `_extract_block`."
+            )
+
+        code_only = cls._strip_comments(code)
+        missing = [m for m in cls.REQUIRED_BLOCK_MARKERS if m not in code_only]
         if missing:
             raise AssertionError(
                 "KHỐI ghi metadata.json được trích ra KHÔNG ĐẦY ĐỦ — thiếu "
@@ -539,6 +883,17 @@ class TestMetadataMutationBlockPreservesProvenance(unittest.TestCase):
             def __init__(self, name): self.name = name
 
         return {
+            # WHY `datetime`/`timezone` phải có mặt ở đây: nếu ai đó cài lại dòng
+            # `meta["last_updated_utc"] = datetime.now(timezone.utc).isoformat()`
+            # vào khối, khối phải chạy THẬT để `test_last_updated_utc_is_not_rewritten_
+            # with_wall_clock` đỏ ĐÚNG ở assertion A-3 (kèm chẩn đoán viết tay ở
+            # dòng assertEqual). Thiếu hai tên này, biểu thức đó ném NameError,
+            # `except Exception -> logger.warning` của khối nuốt mất, và
+            # `_BlockMustNotSwallowHandler` đổi thành AssertionError("Khối ghi
+            # metadata.json nuốt lỗi") — chẩn đoán sai hướng, dẫn người đọc tới
+            # `except` thay vì tới chỗ gán wall-clock thật sự.
+            "datetime": datetime,
+            "timezone": timezone,
             "metadata_path": metadata_path,
             "query_start": "SENTINEL_START",
             "query_end": "SENTINEL_END",
@@ -562,13 +917,31 @@ class TestMetadataMutationBlockPreservesProvenance(unittest.TestCase):
             "actual_min_weather": "SENTINEL_MIN_W",
             "actual_max_weather": "SENTINEL_MAX_W",
             "weather_max_missing_pct": 0.0,
-            "cleaning_totals": {"disguised_missing": 0},
             "weather_validation": {
                 "validation_status": "SENTINEL_STATUS", "is_valid": True,
                 "warnings": [], "timezone": "Asia/Ho_Chi_Minh",
                 "is_continuous_hourly": True, "gap_count": 0, "max_missing_pct": 0.0,
             },
-            "airnow_summary": {"adapter_status": "SENTINEL_ADAPTER"},
+            # WHY shape phải ĐỦ, không phải một khoá: khối gán THAY THẾ (không merge
+            # sâu) `collection_pipeline_execution.open_meteo_ingestion` và
+            # `.airnow_dos_ingestion` bằng giá trị nó tự tính. Nếu sentinel ở đây
+            # chỉ có một khoá thì `test_full_run_does_not_dirty_tracked_metadata` báo
+            # "xoá khoá lồng nhau" — nhưng đó là hệ quả của sentinel thiếu khoá, KHÔNG
+            # phải provenance bị mất. Hai dict dưới đây mirror ĐÚNG shape mà
+            # `run_collection_pipeline()` dựng ra (`cleaning_totals` ở
+            # `data_collection.py:635`, `airnow_summary` nhánh not-executed ở `:1237`).
+            "cleaning_totals": {
+                "disguised_missing": 0, "out_of_bounds": 0, "unparseable": 0,
+            },
+            "airnow_summary": {
+                "canonical_station_id": "SENTINEL_AIRNOW_STATION",
+                "station_name": "SENTINEL_AIRNOW_NAME",
+                "adapter_status": "implemented",
+                "ingestion_status": "not_executed_pending_raw_input",
+                "role": "historical_source_fallback",
+                "raw_input": "unavailable_in_current_execution",
+                "note": "SENTINEL_NOTE",
+            },
             "sync_status": "SENTINEL_SYNC",
             "air_quality_coverage_pct": 100.0,
             "DISQUALIFIED_OPENAQ_LOCATION_ID": 2178,
@@ -608,6 +981,50 @@ class TestMetadataMutationBlockPreservesProvenance(unittest.TestCase):
 
             raw = path.read_bytes()
             return raw, json.loads(raw)
+
+    def test_strip_comments_keeps_real_calls_and_drops_comment_only_tokens(self):
+        """
+        Chính `_strip_comments` phải đúng, nếu không `REQUIRED_BLOCK_MARKERS` vô
+        nghĩa. Cụ thể bắt đúng lớp lỗi đã xảy ra: một bản hiện thực ghép token
+        bằng `" "` biến `json.dump(...)` thành `json . dump (...)` thì marker
+        `json.dump` không bao giờ khớp — guard đỏ với chẩn đoán sai hướng
+        ("block bị cắt") dù block lành lặn.
+
+        Ba phải chứng minh:
+        1. `json.dump(meta, f, ...)` thật sống sót nguyên văn sau khi bỏ comment.
+        2. Token CHỈ nằm trong comment thì biến mất (nếu không, marker trong
+           comment vẫn làm `marker in code` xanh -> PASS VACUOUS).
+        3. Docstring một dòng chiếm trọn dòng cũng bị bỏ.
+        """
+        snippet = textwrap.dedent(
+            '''
+            """Docstring một dòng, phải bị bỏ."""
+            import json
+            # json.dump chỉ nằm trong comment này, phải biến mất:
+            # json.dump(FAKE, f)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(meta, f, indent=2, ensure_ascii=False)
+            '''
+        )
+        stripped = self._strip_comments(snippet)
+
+        self.assertIn(
+            "json.dump(meta, f, indent=2, ensure_ascii=False)", stripped,
+            "`json.dump` thật bị phá vỡ khi bỏ comment — marker `json.dump` sẽ "
+            "không khớp dù block chạy đúng.",
+        )
+        self.assertNotIn(
+            "FAKE", stripped,
+            "Token nằm trong comment vẫn sống -> marker kiểm trên bản bỏ comment "
+            "mất tác dụng chống PASS VACUOUS.",
+        )
+        self.assertNotIn("Docstring", stripped, "Docstring một dòng chưa bị bỏ.")
+
+        # Marker thật của khối phải khớp trên bản đã bỏ comment.
+        code_only = self._strip_comments(self._extract_block())
+        for marker in self.REQUIRED_BLOCK_MARKERS:
+            with self.subTest(marker=marker):
+                self.assertIn(marker, code_only)
 
     def test_schema_version_constant_matches_committed_metadata(self):
         """
@@ -725,6 +1142,69 @@ class TestMetadataMutationBlockPreservesProvenance(unittest.TestCase):
             "hồ, nên mỗi lần chạy lại đều làm bẩn working tree dù dữ liệu không "
             "đổi. Hãy bỏ dòng gán đó và để trạng thái chạy nằm ở "
             f"data/raw/{PIPELINE_RUNTIME_LOG_FILENAME}.",
+        )
+
+    def test_full_run_does_not_dirty_tracked_metadata(self):
+        """
+        GAP: khẳng định đầu-cuối "một lần chạy KHÔNG làm bẩn hồ sơ provenance đang
+        được git theo dõi" — chạy khối thật HAI lần trên bản sao tạm của chính tệp
+        đã commit, rồi so từng khoá với bản HEAD.
+
+        Ngoài ra kiểm (d): đọc lại `git show HEAD:data/raw/metadata.json` SAU khi
+        test chạy và so với lần đọc đầu — chứng minh chính test này không làm bẩn
+        tệp đang được track (nó chỉ ghi vào `TemporaryDirectory`).
+        """
+        head_before = self._committed_metadata_bytes()
+        committed = json.loads(head_before.decode("utf-8"))
+
+        first_bytes, after1 = self._run_block(committed)
+        second_bytes, after2 = self._run_block(committed)
+
+        # (a) không khoá nào bị xoá — ở mọi tầng lồng nhau, không chỉ cấp cao nhất.
+        def _removed_keys(before, after, trail=()):
+            gone = []
+            if isinstance(before, dict):
+                if not isinstance(after, dict):
+                    return [trail or ("<root>",)]
+                for k, v in before.items():
+                    if k not in after:
+                        gone.append(trail + (k,))
+                    else:
+                        gone.extend(_removed_keys(v, after[k], trail + (k,)))
+            return gone
+
+        gone = _removed_keys(committed, after1)
+        self.assertEqual(
+            gone, [],
+            f"Khối ghi xoá khoá ở các tầng lồng nhau: {gone!r} — provenance đang "
+            "được git theo dõi mất dữ liệu ở mỗi lần chạy.",
+        )
+
+        # (b) artifact_dtypes phải byte-identical, không phải "dict tương đương".
+        cpe = after1["collection_pipeline_execution"]
+        self.assertIn("artifact_dtypes", cpe, "artifact_dtypes bị xoá khỏi metadata.")
+        self.assertEqual(
+            json.dumps(cpe["artifact_dtypes"], sort_keys=True, ensure_ascii=False),
+            json.dumps(
+                committed["collection_pipeline_execution"]["artifact_dtypes"],
+                sort_keys=True, ensure_ascii=False),
+            "artifact_dtypes không còn giống bản HEAD.",
+        )
+
+        # (c) hai lần chạy cho cùng byte.
+        self.assertEqual(
+            first_bytes, second_bytes,
+            "Hai lần chạy khối cho output khác nhau — còn phụ thuộc đồng hồ hoặc "
+            "thứ tự khoá không ổn định.",
+        )
+        self.assertEqual(after1, after2, "Hai lần chạy cho nội dung dict khác nhau.")
+
+        # (d) tệp đang được track không đổi trong lúc test này chạy.
+        head_after = self._committed_metadata_bytes()
+        self.assertEqual(
+            head_after, head_before,
+            "Bản `data/raw/metadata.json` ở HEAD đã đổi trong lúc test chạy — "
+            "test này phải chỉ ghi vào thư mục tạm, không được chạm tệp tracked.",
         )
 
     def test_running_block_twice_is_byte_identical(self):
