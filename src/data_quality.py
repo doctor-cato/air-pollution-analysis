@@ -1,15 +1,3 @@
-"""
-Data Quality Audit Framework (Issue #5)
-=======================================
-Module cung cấp bộ công cụ kiểm toán chất lượng dữ liệu độc lập 6 chiều
-(Completeness, Accuracy, Consistency, Validity, Uniqueness, Timeliness)
-cho các tập dữ liệu Canonical trong đồ án air-pollution-analysis.
-
-NGUYÊN TẮC QUẢN TRỊ DỮ LIỆU BẮT BUỘC:
-- Module chỉ thực hiện đo lường, kiểm toán và báo cáo hiện trạng dữ liệu (READ-ONLY).
-- Tuyệt đối không thay đổi, không xóa dòng, không điền khuyết (impute) dữ liệu.
-- Quyết định làm sạch, loại bỏ dị thường và xử lý kẹt cảm biến thuộc về Issue #6.
-"""
 
 from datetime import datetime, timezone
 import logging
@@ -21,7 +9,6 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-# Giới hạn vật lý và khí quyển thực tế tại khu vực Hà Nội (Căn cứ Canonical Data Dictionary)
 ATMOSPHERIC_BOUNDS = {
     "temperature": {"min": 0.0, "max": 50.0, "unit": "°C"},
     "relative_humidity": {"min": 0.0, "max": 100.0, "unit": "%"},
@@ -42,16 +29,6 @@ DISGUISED_STRING_MARKERS = [
 def audit_dataframe(
     df: pd.DataFrame, key_cols: Optional[List[str]] = None
 ) -> pd.DataFrame:
-    """
-    Kiểm toán tổng thể một DataFrame Canonical và trả về bảng thống kê chi tiết từng cột.
-
-    Các chỉ số tối thiểu:
-    - column_name, dtype, total_count, missing_count, missing_percentage
-    - unique_count, min, max, q25, q50 (median), q75
-
-    Hàm xử lý linh hoạt cho cả cột số, cột chuỗi, và cột mốc thời gian datetime,
-    hoàn toàn không crash khi gặp cột phi số.
-    """
     if df is None:
         raise ValueError("DataFrame đầu vào không được là None!")
 
@@ -85,7 +62,6 @@ def audit_dataframe(
                 col_min = str(valid_s.min())
                 col_max = str(valid_s.max())
         else:
-            # String / Object / Categorical
             valid_s = series.dropna()
             if not valid_s.empty:
                 try:
@@ -116,14 +92,6 @@ def audit_dataframe(
 def audit_uniqueness(
     df: pd.DataFrame, key_cols: Optional[List[str]] = None
 ) -> Dict[str, Any]:
-    """
-    Kiểm toán tính duy nhất của khóa quan sát (Observation Key) trong Canonical DataFrame.
-
-    Ưu tiên kiểm tra:
-    - (station_id, timestamp) nếu dataset có cột station_id.
-    - timestamp nếu dataset chỉ có trục thời gian.
-    - key_cols nếu người dùng chỉ định rõ.
-    """
     if df is None:
         raise ValueError("DataFrame đầu vào không được là None!")
 
@@ -138,7 +106,6 @@ def audit_uniqueness(
     else:
         target_keys = key_cols
 
-    # Kiểm tra các khóa có tồn tại trong df không
     for k in target_keys:
         if k not in df.columns:
             raise KeyError(f"Khóa quan trắc '{k}' không tồn tại trong DataFrame!")
@@ -158,14 +125,6 @@ def audit_uniqueness(
 
 
 def audit_missing_representations(df: pd.DataFrame) -> Dict[str, Dict[str, int]]:
-    """
-    Kiểm toán các dạng biểu diễn khuyết thiếu còn tồn tại trong dữ liệu.
-
-    Ghi nhận riêng:
-    - NaN / null (chuẩn hóa từ Issue #3/#4)
-    - Ký tự ngụy trang: 'N/A', 'null', 'None', '', v.v. nếu có.
-    Trung thực báo cáo theo dữ liệu thực tế, không khai báo có nếu thực tế không tồn tại.
-    """
     if df is None:
         raise ValueError("DataFrame đầu vào không được là None!")
 
@@ -174,12 +133,10 @@ def audit_missing_representations(df: pd.DataFrame) -> Dict[str, Dict[str, int]]
         series = df[col]
         col_missing = {}
 
-        # 1. Kiểm tra NaN chuẩn
         nan_count = int(series.isna().sum())
         if nan_count > 0:
             col_missing["np_nan"] = nan_count
 
-        # 2. Kiểm tra chuỗi ngụy trang (cho cột string / object)
         if series.dtype == object or pd.api.types.is_string_dtype(series):
             for marker in DISGUISED_STRING_MARKERS:
                 marker_count = int((series == marker).sum())
@@ -196,20 +153,6 @@ def audit_prolonged_zeros(
     target_cols: Optional[List[str]] = None,
     threshold_hours: int = 6,
 ) -> Dict[str, Any]:
-    """
-    Đo lường và ghi nhận bằng chứng định lượng về các chuỗi giá trị zero (0, 0.0, 0.00).
-
-    Tính năng nâng cao (tuân thủ PR #27 review):
-    - Timestamp-aware: Dựa trên khoảng cách thực tế giữa các timestamp (1 giờ = 3600s).
-      Nếu xuất hiện khoảng trống (gap) giữa các bản ghi, streak sẽ tự động bị ngắt,
-      không gộp nhầm các dòng cách xa nhau thành một chuỗi liên tục.
-    - Station-aware: Phân tích độc lập theo từng station_id (nếu tồn tại) để tránh nối
-      chuỗi dữ liệu giữa các trạm quan trắc khác nhau.
-
-    Mục đích: Cung cấp bằng chứng định lượng cho Issue #6 để rà soát hiện tượng sensor stuck.
-    Lưu ý: Không kết luận '0 là kẹt cảm biến', chỉ ghi nhận 'có pattern prolonged zero có thể
-    cần kiểm tra ở Issue #6'.
-    """
     if df is None:
         raise ValueError("DataFrame đầu vào không được là None!")
 
@@ -232,7 +175,6 @@ def audit_prolonged_zeros(
 
         all_streaks = []
 
-        # Phân tách theo station nếu có, hoặc xử lý toàn bộ nếu không có station_id
         if has_station:
             grouped = df.groupby("station_id", sort=False)
         else:
@@ -252,7 +194,6 @@ def audit_prolonged_zeros(
                 curr_ts = stn_df.loc[orig_idx, "timestamp"] if has_timestamp else None
 
                 if val:
-                    # Kiểm tra tính liên tục của thời gian (timestamp-aware)
                     is_continuous = True
                     if has_timestamp and prev_ts is not None:
                         delta_sec = (curr_ts - prev_ts).total_seconds()
@@ -292,7 +233,6 @@ def audit_prolonged_zeros(
                 detail["end_timestamp"] = str(streak_records[-1][1])
             prolonged_details.append(detail)
 
-        # Trạm có chuỗi prolonged zero
         stations_with_prolonged = list(set(
             d["station_id"] for d in prolonged_details if d["station_id"] != "N/A"
         ))
@@ -304,7 +244,7 @@ def audit_prolonged_zeros(
             "longest_zero_streak_hours": longest_streak,
             "prolonged_zero_streaks_count": len(prolonged_streaks),
             "threshold_hours": threshold_hours,
-            "prolonged_streaks_details": prolonged_details[:10],  # Lưu tối đa 10 chuỗi dài nhất
+            "prolonged_streaks_details": prolonged_details[:10],
             "stations_with_prolonged_zeros": stations_with_prolonged,
             "audit_note": (
                 "Bằng chứng định lượng phục vụ rà soát tại Issue #6 (timestamp-aware và station-aware). "
@@ -320,15 +260,6 @@ def audit_six_dimensions(
     dataset_name: str = "canonical_dataset",
     requested_study_window: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
-    """
-    Xây dựng báo cáo kiểm toán toàn diện theo 6 chiều chất lượng dữ liệu quốc tế:
-    1. Completeness: Tỷ lệ khuyết thiếu, độ bao phủ lưới thời gian 1 giờ.
-    2. Accuracy: Giới hạn vật lý khí quyển, ràng buộc PM2.5 <= PM10 + epsilon.
-    3. Consistency: Tuân thủ đơn vị, múi giờ UTC+7, thứ tự thời gian tăng dần.
-    4. Validity: Định dạng dtypes, tính hợp lệ giá trị và lược đồ.
-    5. Uniqueness: Tính duy nhất của khóa quan sát.
-    6. Timeliness: Khoảng cách lấy mẫu thực tế, mốc min/max thực tế (tách bạch requested window).
-    """
     if df is None:
         raise ValueError("DataFrame đầu vào không được là None!")
 
@@ -336,7 +267,6 @@ def audit_six_dimensions(
     has_timestamp = "timestamp" in df.columns
     has_station = "station_id" in df.columns
 
-    # 1. COMPLETENESS
     missing_by_var = {}
     for col in df.columns:
         cnt = int(df[col].isna().sum())
@@ -349,25 +279,6 @@ def audit_six_dimensions(
         (1 - total_missing_cells / total_cells) * 100, 4
     ) if total_cells > 0 else 0.0
 
-    # Độ bao phủ lưới 1 giờ liên tục.
-    #
-    # PHẢI TÍNH THEO TỪNG TRẠM RỒI MỚI CỘNG. Bản gốc lấy `expected_grid` từ
-    # `min_ts → max_ts` của CẢ DataFrame nhưng trừ `len(df)` — tức trộn "chiều
-    # dài lưới của toàn khung" với "số dòng của mọi trạm cộng lại". Hai đại lượng
-    # khác nhau nên kết quả sai, và sai theo hướng nguy hiểm: với ≥2 trạm đều
-    # đủ dữ liệu thì `expected - rows` **âm** (2 trạm × 8h = 16 dòng trong khi
-    # `expected_grid` chỉ dài 8 → -8, tức -100%). Tệ hơn, một trạm mất hàng thật
-    # vẫn ra số âm nên **khoảng trống bị giấu hoàn toàn**.
-    #
-    # Mẫu số là **cửa sổ triển khai dùng chung** = `min_ts → max_ts` của toàn khung,
-    # nhân với số trạm. Cách này bắt được cả ba loại thiếu hút, và không bao giờ
-    # ra số âm:
-    #   - khoảng trống nội bộ giữa các giờ của một trạm;
-    #   - trạm thiếu hẳn ở một khoảng thời gian;
-    #   - trạm bị cắt cụt ở hai mép coverage (chỉ báo đầu/cuối).
-    #
-    # Với mỗi trạm, "thực tế" là số mốc thời gian **duy nhất** — dùng `nunique`
-    # chứ không phải `len`, vì trùng khóa là lỗi khác, không phải giờ có quan sát.
     temporal_grid_completeness = {}
     if has_timestamp and total_rows > 1:
         if "station_id" in df.columns:
@@ -375,7 +286,6 @@ def audit_six_dimensions(
         else:
             groups = [("(khong co cot station_id)", df)]
 
-        # Cửa sổ triển khai dùng chung: bỏ qua trạm toàn-NaT.
         valid_spans = []
         for station_key, sub in groups:
             s_min = sub["timestamp"].min()
@@ -400,9 +310,7 @@ def audit_six_dimensions(
                     "window_start": s_min.isoformat(),
                     "window_end": s_max.isoformat(),
                     "actual_recorded_hours": s_actual,
-                    # Khoảng trống bên trong cửa sổ quan sát của riêng trạm.
                     "internal_gap_hours": own_hours - s_actual,
-                    # Thiếu so với cửa sổ triển khai chung (gồm mép bị cắt cụt).
                     "missing_vs_shared_window_hours": shared_hours - s_actual,
                 }
                 actual_total += s_actual
@@ -431,7 +339,6 @@ def audit_six_dimensions(
         "temporal_grid_completeness": temporal_grid_completeness,
     }
 
-    # 2. ACCURACY (Physical Plausibility)
     plausibility_flags = {}
     for col, bounds in ATMOSPHERIC_BOUNDS.items():
         if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
@@ -446,13 +353,6 @@ def audit_six_dimensions(
                 "total_violations": viol_low + viol_high,
             }
 
-    # Ràng buộc khí động học: PM2.5 <= PM10 (kiểm tra cả vi phạm nghiệm ngặt và ngưỡng dung sai sai số đo)
-    #
-    # CHỈ chạy khi cả hai cột là kiểu SỐ. Bản gốc không có kiểm tra này, nên một
-    # `pm25` kiểu chuỗi (chính là vi phạm mà chiều Validity phải BÁO CÁO) làm
-    # `>` ném `TypeError` và hàm sập trước khi kịp trả báo cáo — tức là bộ kiểm
-    # toán không đo lỗi, mà chết vì lỗi. `dropna` cũng không giúp: `"NaN"` là
-    # chuỗi hợp lệ trong pandas, không phải giá trị thiếu.
     aerodynamic_inversion = None
     pm_cols_numeric = all(
         col in df.columns and pd.api.types.is_numeric_dtype(df[col])
@@ -472,7 +372,7 @@ def audit_six_dimensions(
             "strict_inversion_pct": strict_inv_pct,
             "tolerance_inversion_count": tolerance_inv,
             "tolerance_inversion_pct": tolerance_inv_pct,
-            "inversion_count": strict_inv,  # Chuẩn hóa acceptance criteria: PM2.5 <= PM10
+            "inversion_count": strict_inv,
             "inversion_pct": strict_inv_pct,
             "tolerance_epsilon_ug_m3": 2.0,
             "rule": "pm25 <= pm10 (strict) & pm25 <= pm10 + 2.0 µg/m³ (sensor uncertainty tolerance)",
@@ -489,10 +389,7 @@ def audit_six_dimensions(
             ),
         }
 
-    # Cảnh báo độ ẩm cao (RH > 90%): có thể gây nhiễu tán xạ quang học
     high_humidity_fog = None
-    # Cùng lý do như `pm_cols_numeric`: so sánh `>` trên cột chuỗi sẽ ném
-    # `TypeError` thay vì báo cáo vi phạm schema.
     if ("relative_humidity" in df.columns
             and pd.api.types.is_numeric_dtype(df["relative_humidity"])):
         rh_s = df["relative_humidity"].dropna()
@@ -511,7 +408,6 @@ def audit_six_dimensions(
         "high_humidity_fog_evidence": high_humidity_fog,
     }
 
-    # 3. CONSISTENCY
     timestamp_tz = None
     is_monotonic = None
     if has_timestamp:
@@ -527,7 +423,6 @@ def audit_six_dimensions(
         "canonical_units_aligned": True,
     }
 
-    # 4. VALIDITY
     validity_checks = {}
     for col in df.columns:
         dt = str(df[col].dtype)
@@ -548,10 +443,8 @@ def audit_six_dimensions(
         "all_columns_conformant": all(v["is_schema_conformant"] for v in validity_checks.values()),
     }
 
-    # 5. UNIQUENESS
     uniqueness_dim = audit_uniqueness(df)
 
-    # 6. TIMELINESS & TEMPORAL STATS
     actual_min_ts = None
     actual_max_ts = None
     sampling_stats = {}
@@ -599,13 +492,6 @@ def audit_six_dimensions(
 def analyze_missingness_patterns(
     df: pd.DataFrame, target_col: str = "pm25"
 ) -> Dict[str, Any]:
-    """
-    Phân tích chuyên sâu hình thái khuyết thiếu (Missingness Patterns) và chẩn đoán
-    cơ chế khuyết thiếu theo lý thuyết Rubin (MCAR / MAR / MNAR).
-
-    TUYỆT ĐỐI KHÔNG KHẲNG ĐỊNH VÕ ĐOÁN NẾU DỮ LIỆU CHƯA ĐỦ CHỨNG MINH.
-    Tuyên bố minh bạch mức độ không chắc chắn (Uncertainty Declaration).
-    """
     if df is None:
         raise ValueError("DataFrame đầu vào không được là None!")
     if target_col not in df.columns:
@@ -617,12 +503,10 @@ def analyze_missingness_patterns(
     missing_count = int(is_na.sum())
     missing_pct = round((missing_count / total_rows * 100), 4) if total_rows > 0 else 0.0
 
-    # 1. Phân tích theo giờ trong ngày (Diurnal pattern)
     diurnal_pattern = {}
     if "timestamp" in df.columns:
         df_copy = df.copy()
         df_copy["_hour"] = df_copy["timestamp"].dt.hour
-        # Dùng size để tính tổng số record (cả quan sát và missing), sửa lỗi dùng count
         hourly_grp = df_copy.groupby("_hour").agg(
             total=(target_col, "size"),
             missing=(target_col, lambda x: int(x.isna().sum())),
@@ -633,7 +517,6 @@ def analyze_missingness_patterns(
             pct = round((mis / tot * 100), 2) if tot > 0 else 0.0
             diurnal_pattern[int(hr)] = {"total": tot, "missing": mis, "missing_pct": pct}
 
-    # 1b. Phân tích missingness theo station_id nếu tồn tại (tái sử dụng theo yêu cầu Issue #5)
     station_missingness = {}
     if "station_id" in df.columns:
         stn_grp = df.groupby("station_id").agg(
@@ -650,7 +533,6 @@ def analyze_missingness_patterns(
                 "missing_pct": pct,
             }
 
-    # 1c. Phân tích missingness theo source nếu tồn tại
     source_missingness = {}
     if "source" in df.columns:
         src_grp = df.groupby("source").agg(
@@ -667,7 +549,6 @@ def analyze_missingness_patterns(
                 "missing_pct": pct,
             }
 
-    # 2. Phân tích các khối khuyết liên tục (Consecutive missing blocks)
     blocks = []
     curr_len = 0
     curr_start = None
@@ -690,15 +571,13 @@ def analyze_missingness_patterns(
     multi_hour_outages = int((pd.Series(block_lengths) > 1).sum()) if block_lengths else 0
     longest_block_hours = max(block_lengths) if block_lengths else 0
 
-    # 3. Phân tích đồng khuyết thiếu (Co-missingness với PM10 nếu có)
     co_missing_analysis = {}
     if target_col == "pm25" and "pm10" in df.columns:
         pm10_s = df["pm10"]
         both_missing = int((is_na & pm10_s.isna()).sum())
         pm25_missing_pm10_present = int((is_na & pm10_s.notna()).sum())
         pm10_missing_pm25_present = int((is_na.apply(lambda x: not x) & pm10_s.isna()).sum())
-        
-        # Nồng độ PM10 khi PM2.5 bị khuyết
+
         pm10_during_pm25_na = pm10_s[is_na].dropna()
         co_missing_analysis = {
             "both_pm25_and_pm10_missing": both_missing,
@@ -709,7 +588,6 @@ def analyze_missingness_patterns(
             "pm10_mean_overall": round(float(pm10_s.dropna().mean()), 2) if not pm10_s.dropna().empty else None,
         }
 
-    # 4. Chẩn đoán cơ chế khuyết thiếu Rubin & Tuyên bố bất định
     rubin_diagnosis = {
         "mcar_diagnostic_hypothesis": (
             f"Mẫu hình quan sát: Phát hiện {isolated_1h_drops} trường hợp mất dữ liệu đơn lẻ đúng 1 giờ. "
@@ -773,9 +651,6 @@ def run_quality_audit_pipeline(
     air_interim_path: Path = Path("data/interim/air_quality_canonical.parquet"),
     weather_interim_path: Path = Path("data/interim/weather_canonical.parquet"),
 ) -> Dict[str, Any]:
-    """
-    Thực thi toàn bộ luồng kiểm toán chất lượng dữ liệu độc lập cho cả hai tập dữ liệu Canonical.
-    """
     results = {}
 
     if air_interim_path.exists():

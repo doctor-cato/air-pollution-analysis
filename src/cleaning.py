@@ -1,44 +1,3 @@
-"""
-Deterministic Cleaning Module (Issue #6)
-========================================
-Module thực hiện **làm sạch tất định** (deterministic cleaning) cho hai tập dữ liệu
-Canonical trong `data/interim/` (ô nhiễm không khí và khí tượng bề mặt ERA5),
-theo `docs/roadmap.md` §4.1 và §4.3 (Tuần 04).
-
-PHÂN ĐỊNH RẠCH MẠCH VỚI TIỀN XỬ LÝ PHỤ THUỘC DỮ LIỆU (Issue #7)
--------------------------------------------------------------------
-Module này CHỈ thực hiện các phép biến đổi **tất định** — tức là mọi quyết định
-được đưa ra chỉ dựa trên bản thân bản ghi đang xét hoặc trên hằng số vật lý
-công bố, KHÔNG dùng bất kỳ đại lượng thống kê toàn cục nào của tập dữ liệu:
-
-    ┌──────────────────────── Issue #6 (module này) ────────────────────────┐
-    │ Chuẩn hóa múi giờ UTC+7 · sắp xếp tăng dần · khử trùng lặp           │
-    │ Chuyển missing ngụy trang → NaN · lọc giá trị âm phi lý               │
-    │ Lọc giá trị vi phạm giới hạn vật lý khí quyển                        │
-    │ Ràng buộc khí động học PM2.5 ≤ PM10 (+ epsilon sai số đo)             │
-    │ Reindex lưới 1 giờ liên tục độc lập theo từng trạm (NaN = khoảng trống)│
-    │ Gắn cờ chẩn đoán: is_high_humidity_fog, pm25_was_missing               │
-    └───────────────────────────────────────────────────────────────────────┘
-                                     │
-                                     ▼
-    ┌──────────────── Issue #7 (CHƯA thực hiện ở đây) ──────────────────────┐
-    │ Đóng băng tập dữ liệu · phân chia Train/Test theo chuỗi thời gian     │
-    │ SimpleImputer(strategy='median') · RobustScaler · np.log1p             │
-    │ TẤT CẢ đều phụ thuộc dữ liệu và PHẢI fit trên Train                   │
-    └───────────────────────────────────────────────────────────────────────┘
-
-NGUYÊN TẮC BẤT BIẾN
---------------------
-1. **Không điền khuyết (no imputation):** hàm này KHÔNG BAO GIỜ điền NaN bằng
-   giá trị thống kê (trung vị, trung bình, nội suy, giá trị trượt). Số ô NaN
-   chỉ được TĂNG hoặc giữ nguyên, không bao giờ giảm.
-2. **Bảo toàn giá trị cực trị thực tế:** không cắt bỏ đỉnh ô nhiễm chỉ vì cao.
-   Chỉ giá trị vi phạm ràng buộc vật lý mới bị chuyển thành NaN.
-3. **Fail loudly:** sai lệch lược đồ, trùng khóa không xử lý được, hoặc ghép
-   dẹp gây bùng nổ số dòng đều phải ném lỗi rõ ràng thay vì im lặng.
-4. **Tất định (idempotent):** chạy lại trên chính đầu ra của mình cho kết quả
-   không đổi — không phụ thuộc thứ tự dòng, không phụ thuộc lần chạy trước.
-"""
 
 from __future__ import annotations
 
@@ -62,96 +21,46 @@ from src.data_quality import DISGUISED_STRING_MARKERS
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Hằng số quy ước — nguồn sự thật duy nhất cho Issue #6
-# ---------------------------------------------------------------------------
 
 TIMESTAMP_COLUMN = "timestamp"
 STATION_COLUMN = "station_id"
 HOURLY_FREQ = "h"
-# Dùng `np.timedelta64` thay vì `pd.Timedelta` để nhất quán với `src/data_collection.py`
-# và tránh DeprecationWarning của numpy với đơn vị "generic".
 ONE_HOUR = np.timedelta64(1, "h")
 
-#: Các cột đo ô nhiễm của Canonical Schema (không khí).
 AIR_MEASUREMENT_COLUMNS: Tuple[str, ...] = ("pm25", "pm10")
 
-#: Sáu biến khí tượng bề mặt của Canonical Schema (khí tượng).
 WEATHER_MEASUREMENT_COLUMNS: Tuple[str, ...] = tuple(WEATHER_CANONICAL_COLUMNS[1:])
 
-#: Ngưỡng "kẹt cảm biến": chuỗi đo KHÔNG ĐỔI trên dài hơn 6 giờ liên tiếp.
-#:
-#: Quy ước đếm theo `.agents/rules/data.md` §3.5/§4: ngưỡng được đếm bằng SỐ
-#: QUAN SÁT liên tiếp trên lưới 1 giờ. Vì vậy "dài hơn 6 giờ" ⇔ chuỗi có ít nhất
-#: 7 quan sát giống hệt nhau (xem `_run_mask_longer_than`).
-#:
-#: LƯU Ý: `audit_prolonged_zeros()` của Issue #5 dùng `>= 6`, lệch đúng 1 quan sát
-#: với quy ước ở đây. Số liệu hai issue KHÔNG so sánh trực tiếp được.
 STUCK_VALUE_THRESHOLD_HOURS = 6
 
-#: Ngưỡng "khoảng khuyết lớn" cho cờ chỉ báo `pm25_was_missing`.
 PROLONGED_MISSING_THRESHOLD_HOURS = 6
 
-#: Ngưỡng cảnh báo sương mù quang học: RH > 90%.
 HIGH_HUMIDITY_FOG_THRESHOLD_PCT = 90.0
 
-#: Sai số đo thiết bị (µg/m³) dùng làm dung sai cho ràng buộc khí động học.
-#: Căn cứ: .agents/rules/data.md §4 và bàn giao Handoff 1 của Issue #5
-#: (độ không đảm bảo đo lường của BAM-1020 / cảm biến quang học theo US EPA, QCVN).
 PM_AERODYNAMIC_EPSILON_UG_M3 = 2.0
 
-#: Cột cờ chẩn đoán do Issue #6 sinh ra (KHÔNG phải imputation).
 PM25_MISSING_FLAG = "pm25_was_missing"
 HIGH_HUMIDITY_FLAG = "is_high_humidity_fog"
-#: Cờ chẩn đoán phân biệt "cảm biến bị kẹt" với "trạm ngừng phát". Cả hai đều làm
-#: `pm25` thành `NaN`, nhưng nguyên nhân vật lý khác nhau nên Issue #7 phải xử lý
-#: khác nhau (xem `docs/cleaning_log.md` §6).
 STUCK_SENSOR_FLAG = "pm25_was_stuck"
 
-#: Cột chỉ được phép áp dụng quy tắc kẹt cảm biến.
-#:
-#: CHỈ áp dụng cho nồng độ hạt bụi. KHÔNG áp dụng cho `precipitation` và
-#: `wind_speed` của khí tượng: Issue #5 đã đo lịch sử và kết luận rõ ràng rằng
-#: chuỗi 0.0 dài 275 giờ của `precipitation` (74,15% số giờ) và các đợt gió
-#: lặng 0.0 m/s là **hiện tượng khí tượng tự nhiên** ở miền Bắc Việt Nam, không
-#: phải lỗi phần cứng. Áp dụng máy móc quy tắc kẹt cho các biến này sẽ xóa
-#: mất dữ liệu khí tượng hợp lệ — vi phạm nguyên tắc bảo toàn giá trị thực tế.
 STUCK_SENSOR_COLUMNS: Tuple[str, ...] = AIR_MEASUREMENT_COLUMNS
 
-#: Mã lỗi ngụy trang dạng số do nhà cung cấp dùng để mã hóa giá trị khuyết thiếu.
 DISGUISED_NUMERIC_CODES: Tuple[float, ...] = tuple(float(c) for c in WEATHER_SENTINEL_CODES)
 
 
-# ---------------------------------------------------------------------------
-# Tiện ích nội bộ
-# ---------------------------------------------------------------------------
-
-
 def _require_columns(df: pd.DataFrame, columns: Sequence[str], context: str) -> None:
-    """Ném ValueError nếu thiếu bất kỳ cột bắt buộc nào (fail loudly)."""
     missing = [c for c in columns if c not in df.columns]
     if missing:
         raise ValueError(f"{context} thiếu cột bắt buộc: {missing}.")
 
 
 def _observation_key(df: pd.DataFrame) -> List[str]:
-    """
-    Khóa quan sát đúng theo đơn vị quan trắc:
-    `(station_id, timestamp)` nếu đa trạm, ngược lại chỉ `timestamp`.
-    """
     if STATION_COLUMN in df.columns:
         return [STATION_COLUMN, TIMESTAMP_COLUMN]
     return [TIMESTAMP_COLUMN]
 
 
 def _break_mask(df: pd.DataFrame, column: Optional[str] = None) -> pd.Series:
-    """
-    Chuỗi Boolean đánh dấu vị trí bắt đầu một chuỗi liên tục mới.
-
-    Một chuỗi bị NGẮT khi: đổi trạm, hoặc khoảng cách thời gian khác đúng 1 giờ,
-    hoặc (nếu `column` được chỉ định) giá trị thay đổi. Hai giá trị NaN liên tiếp
-    được coi là BẰNG NHAU để các khối khuyết liên tục không bị cắt vụn.
-    """
     breaks = df[TIMESTAMP_COLUMN].diff() != ONE_HOUR
     if STATION_COLUMN in df.columns:
         breaks = breaks | df[STATION_COLUMN].ne(df[STATION_COLUMN].shift())
@@ -164,29 +73,16 @@ def _break_mask(df: pd.DataFrame, column: Optional[str] = None) -> pd.Series:
 
 
 def _run_ids(df: pd.DataFrame, column: Optional[str] = None) -> pd.Series:
-    """Đánh số chuỗi liên tục: hai hàng cùng chuỗi khi cùng trạm, cách đúng 1 giờ
-    và (nếu có `column`) có cùng giá trị — kể cả cùng đều là `NaN`."""
     return _break_mask(df, column).cumsum()
 
 
 def run_ids_of(df: pd.DataFrame, column: Optional[str] = None) -> pd.Series:
-    """Alias công khai của `_run_ids()` dùng trong thống kê bước làm sạch."""
     return _run_ids(df, column)
 
 
 def _run_mask_longer_than(
     df: pd.DataFrame, column: Optional[str], threshold_hours: int
 ) -> Tuple[pd.Series, pd.Series]:
-    """
-    Tính mặt nạ của các hàng nằm trong chuỗi liên tục dài HƠN `threshold_hours`.
-
-    Quy ước đếm theo `.agents/rules/data.md`: ngưỡng được đếm bằng SỐ QUAN SÁT
-    liên tiếp trên lưới 1 giờ. Do đó "dài hơn 6 giờ" ⇔ chuỗi có ít nhất 7 quan
-    sát. (`audit_prolonged_zeros()` của Issue #5 dùng `>= 6`, lệch 1 quan sát.)
-
-    Trả về `(mask, run_length)` với `run_length` là độ dài chuỗi (số quan sát)
-    của hàng đang xét.
-    """
     if df.empty:
         empty_bool = pd.Series(dtype=bool)
         return empty_bool, pd.Series(dtype="int64")
@@ -197,10 +93,6 @@ def _run_mask_longer_than(
 
 
 def _snapshot(df: pd.DataFrame) -> Dict[str, Any]:
-    """
-    Ảnh chụp trạng thái một DataFrame (trước hoặc sau làm sạch) để ghi vào
-    Cleaning Log: số dòng, kiểu dữ liệu, số ô khuyết, dải thời gian, trùng khóa.
-    """
     snapshot: Dict[str, Any] = {
         "rows": int(len(df)),
         "columns": list(df.columns),
@@ -211,10 +103,6 @@ def _snapshot(df: pd.DataFrame) -> Dict[str, Any]:
     for pollutant in AIR_MEASUREMENT_COLUMNS:
         if pollutant not in df.columns:
             continue
-        # Input thô có thể còn cột chuỗi ("N/A", "  ", rác) — đó đúng là thứ mà
-        # `normalize_disguised_missing()` sinh ra để xử lý. Ép sang số với
-        # errors="coerce" để ảnh chụp không giết pipeline trước khi quy tắc kịp
-        # chạy; giá trị không parse được thành NaN và không đóng góp vào peak.
         numeric = pd.to_numeric(df[pollutant], errors="coerce")
         if numeric.notna().any():
             snapshot[f"{pollutant}_peak"] = round(float(numeric.max()), 4)
@@ -227,18 +115,9 @@ def _snapshot(df: pd.DataFrame) -> Dict[str, Any]:
 
 
 def _trace_input_peak(df: pd.DataFrame) -> Dict[str, Any]:
-    """
-    Ghi lại danh tính bản ghi chứa đỉnh PM2.5 lớn nhất **trước** khi làm sạch.
-
-    Mục tiêu: chứng minh bằng số liệu rằng khi đỉnh này biến mất khỏi chuỗi, nguyên
-    nhân là bằng chứng vật lý (vi phạm ràng buộc khí động học) chứ không phải một quy
-    tắc cắt bỏ cực trị tùy ý. Nếu không có cột `pm25` quan sát được thì trả về rỗng.
-    """
     if "pm25" not in df.columns:
         return {}
 
-    # Ép số vì input thô còn có thể chứa chuỗi lỗi; `.loc[label]` cũng nguy hiểm
-    # khi index trùng lặp nên dùng `.iloc` theo vị trí.
     numeric = pd.to_numeric(df["pm25"], errors="coerce")
     if not numeric.notna().any():
         return {}
@@ -261,12 +140,6 @@ def _trace_input_peak(df: pd.DataFrame) -> Dict[str, Any]:
 
 
 def _resolve_peak_trace(trace: Dict[str, Any], cleaned: pd.DataFrame) -> Dict[str, Any]:
-    """
-    Đối chiếu bản ghi đỉnh PM2.5 với tập dữ liệu **sau** làm sạch.
-
-    Trả về bằng chứng đã đối chiếu: đỉnh còn sống hay không, và nếu biến mất thì
-    nguyên nhân có phải nghịch đảo khí động học hay không.
-    """
     if not trace:
         return {}
 
@@ -286,23 +159,9 @@ def _resolve_peak_trace(trace: Dict[str, Any], cleaned: pd.DataFrame) -> Dict[st
     return resolved
 
 
-# ---------------------------------------------------------------------------
-# Bước 1 — Chuẩn hóa mốc thời gian và sắp xếp
-# ---------------------------------------------------------------------------
-
-
 def normalize_timestamps(
     df: pd.DataFrame, timezone: str = CANONICAL_TIMEZONE
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-    """
-    Chuẩn hóa cột `timestamp` thành datetime64 tz-aware theo múi giờ địa phương.
-
-    - Timestamp tz-naive → `tz_localize` (giữ nguyên mốc giờ địa phương).
-    - Timestamp ở múi giờ khác (kể cả UTC) → `tz_convert` (không đổi mốc thời gian tuyệt đối).
-    - Chuỗi không parse được → ném ValueError (không âm thầm thành NaT).
-
-    Trả về `(df_đã_chuẩn_hóa, thống_kê)`.
-    """
     _require_columns(df, [TIMESTAMP_COLUMN], "Bước chuẩn hóa mốc thời gian")
     if df.empty:
         return df.copy(), {
@@ -316,19 +175,22 @@ def normalize_timestamps(
     out = df.copy()
     before_tz = getattr(out[TIMESTAMP_COLUMN].dtype, "tz", None)
 
-    # pandas tới phiên bản này cảnh báo `FutureWarning` mỗi lần gọi
-    # `to_datetime` trên một cột chứa nhiều UTC offset lẫn lộn, vì hành vi mặc
-    # định sẽ đổi thành ném lỗi. Ở đây phép gọi đó là CỐ Ý: nó là bước dò
-    # mixed-offset, và nhánh `mixed_offsets` bên dưới xử lý đúng bằng cách
-    # phân tích lại với `utc=True`. Vì vậy chỉ dập đúng cảnh báo này, không
-    # dập chung `FutureWarning` — mọi cảnh báo khác vẫn phải lộ ra.
+    mixed_offsets = False
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore",
             message=".*parsing datetimes with mixed time zones.*",
             category=FutureWarning,
         )
-        parsed = pd.to_datetime(out[TIMESTAMP_COLUMN], errors="coerce")
+        try:
+            parsed = pd.to_datetime(out[TIMESTAMP_COLUMN], errors="coerce")
+        except ValueError as exc:
+            if "Mixed timezones detected" in str(exc):
+                mixed_offsets = True
+                parsed = pd.to_datetime(out[TIMESTAMP_COLUMN], errors="coerce", utc=True)
+            else:
+                raise
+
     unparseable = int(parsed.isna().sum())
     if unparseable > 0:
         raise ValueError(
@@ -336,12 +198,8 @@ def normalize_timestamps(
             "Làm sạch tất định không được âm thầm biến mốc thời gian hỏng thành NaT."
         )
 
-    # Cột lẫn lộn nhiều UTC offset khiến `to_datetime` trả về kiểu `object`, và
-    # `.dt` sẽ ném AttributeError khó hiểu thay vì chuyển đổi như tài liệu mô tả.
-    # Gom về UTC trước (mốc thời gian tuyệt đối không đổi) rồi chuyển xuống múi
-    # giờ địa phương. Cột naive cho ra `datetime64[ns]` nên không bị tính nhầm.
-    mixed_offsets = parsed.dtype == object
-    if mixed_offsets:
+    if not mixed_offsets and parsed.dtype == object:
+        mixed_offsets = True
         parsed = pd.to_datetime(out[TIMESTAMP_COLUMN], errors="coerce", utc=True)
 
     was_naive = not mixed_offsets and parsed.dt.tz is None
@@ -371,19 +229,11 @@ def normalize_timestamps(
 def sort_chronologically(
     df: pd.DataFrame, key_cols: Optional[Sequence[str]] = None
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-    """
-    Sắp xếp tăng dần theo thời gian (và theo `station_id` trước timestamp khi
-    đa trạm) bằng thuật toán ổn định `mergesort`, rồi đặt lại chỉ mục.
-
-    Trả về `(df_đã_sắp_xếp, thống_kê)`.
-    """
     if key_cols is None:
         key_cols = _observation_key(df)
     _require_columns(df, key_cols, "Bước sắp xếp tăng dần")
 
     out = df.sort_values(list(key_cols), kind="mergesort").reset_index(drop=True)
-    # `Series.equals` chỉ so GIÁ TRỊ, nên reset index khiến một frame đã đúng thứ
-    # tự bị báo "1 dòng bị sắp xếp lại". So sánh danh sách giá trị thật sự.
     reordered = df[TIMESTAMP_COLUMN].tolist() != out[TIMESTAMP_COLUMN].tolist()
     return out, {
         "sort_keys": list(key_cols),
@@ -393,25 +243,9 @@ def sort_chronologically(
     }
 
 
-# ---------------------------------------------------------------------------
-# Bước 2 — Khử trùng lặp tại đúng đơn vị quan trắc
-# ---------------------------------------------------------------------------
-
-
 def drop_duplicate_observations(
     df: pd.DataFrame, key_cols: Optional[Sequence[str]] = None
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-    """
-    Khử trùng lặp tại đúng khóa quan trắc `(station_id, timestamp)` hoặc `timestamp`.
-
-    Quy tắc: giữ lại bản ghi xuất hiện ĐẦU TIÊN theo thứ tự đã sắp xếp. Vì
-    `mergesort` là ổn định, "đầu tiên" ở đây là **thứ tự dòng trong file đầu vào**,
-    nên kết quả CÓ phụ thuộc thứ tự ban đầu khi hai bản ghi trùng khóa mang giá
-    trị khác nhau. Đây là hành vi có chủ đích (không bịa cách chọn giá trị đúng),
-    và vẫn tất định: cùng một đầu vào luôn cho cùng kết quả.
-
-    Trả về `(df_đã_khử, thống_kê)`.
-    """
     if key_cols is None:
         key_cols = _observation_key(df)
     _require_columns(df, key_cols, "Bước khử trùng lặp")
@@ -430,28 +264,12 @@ def drop_duplicate_observations(
     }
 
 
-# ---------------------------------------------------------------------------
-# Bước 3 — Missing ngụy trang → NaN
-# ---------------------------------------------------------------------------
-
-
 def normalize_disguised_missing(
     df: pd.DataFrame,
     columns: Sequence[str],
     string_markers: Sequence[str] = tuple(DISGUISED_STRING_MARKERS),
     numeric_codes: Sequence[float] = DISGUISED_NUMERIC_CODES,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-    """
-    Rà soát và chuyển mọi dạng biểu diễn khuyết thiếu bị ngụy trang thành `NaN`.
-
-    - Chuỗi: `"N/A"`, `"null"`, `"None"`, `""`, `" "`… (tái sử dụng danh mục của
-      `src.data_quality` để không nhân bản hằng số).
-    - Số: mã lỗi `-999.0` / `-9999.0` (tái sử dụng `WEATHER_SENTINEL_CODES`).
-
-    Giá trị đo hợp lệ bằng `0.0` KHÔNG bao giờ bị coi là missing.
-
-    Trả về `(df_đã_chuẩn_hóa, thống_kê)`.
-    """
     out = df.copy()
     stats: Dict[str, Any] = {}
 
@@ -468,9 +286,6 @@ def normalize_disguised_missing(
                 lambda v: np.nan if isinstance(v, str) and v.strip() in string_markers else v
             )
             numeric = pd.to_numeric(coerced, errors="coerce")
-            # Ô chứa giá trị KHÔNG rỗng nhưng không parse được thành số ("abc", "N/A*",
-            # "1,5") là missing ngụy trang và phải được BÁO CÁO, không nuốt im lặng.
-            # Trước đây biểu thức này luôn bằng 0 vì `numeric` suy ra từ `coerced`.
             unparseable = int((coerced.notna() & numeric.isna()).sum())
             converted += int((series.isna() != numeric.isna()).sum()) + unparseable
             out[col] = numeric.astype("float64")
@@ -495,26 +310,9 @@ def normalize_disguised_missing(
     }
 
 
-# ---------------------------------------------------------------------------
-# Bước 4 — Ràng buộc vật lý tất định
-# ---------------------------------------------------------------------------
-
-
 def enforce_air_quality_physical_rules(
     df: pd.DataFrame, columns: Sequence[str] = AIR_MEASUREMENT_COLUMNS
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-    """
-    Lọc giá trị âm phi lý và mã lỗi ngụy trang cho nồng độ hạt bụi.
-
-    Tái sử dụng `clean_air_quality_values()` của `src.data_collection` — cùng một
-    hàm chuẩn hóa đã áp dụng lúc nạp, nên lớp làm sạch Issue #6 không phát minh
-    lại ngưỡng mới: `NaN → NaN`, mã `-999/-9999 → NaN`, `< 0 → NaN`, `0.0` giữ nguyên.
-
-    KHÔNG đặt trần nồng độ: đợt ô nhiễm bùng phát là hiện tượng thực tế và phải
-    được bảo toàn.
-
-    Trả về `(df_đã_lọc, thống_kê)`.
-    """
     out = df.copy()
     stats: Dict[str, Any] = {}
 
@@ -541,15 +339,6 @@ def enforce_air_quality_physical_rules(
 def enforce_weather_physical_rules(
     df: pd.DataFrame, columns: Sequence[str] = WEATHER_MEASUREMENT_COLUMNS
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-    """
-    Kiểm tra dải hợp lệ khí tượng bề mặt trên 6 biến Canonical.
-
-    Tái sử dụng `clean_weather_values()` và `WEATHER_PHYSICAL_BOUNDS` của
-    `src.data_collection` (0% ≤ RH ≤ 100%, 0 ≤ hướng gió ≤ 360° với chuẩn hóa
-    modulo 360, lượng mưa ≥ 0, nhiệt độ và áp suất trong dải vật lý).
-
-    Trả về `(df_đã_lọc, thống_kê)`.
-    """
     out = df.copy()
     stats: Dict[str, Any] = {}
 
@@ -585,24 +374,8 @@ def enforce_pm_subset_constraint(
     fine_column: str = "pm25",
     coarse_column: str = "pm10",
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-    """
-    Thực thi ràng buộc khí động học PM2.5 ⊆ PM10 trên các cặp quan sát đồng thời.
-
-    $\\text{PM}_{2.5} \\le \\text{PM}_{10} + \\epsilon$ với `epsilon` là sai số đo
-    thiết bị. Bản ghi vi phạm bị chuyển **cả hai** cột thành `NaN` — hành động
-    này theo đúng `.agents/rules/data.md` §4: khi hai kênh quang học của cùng
-    một thiết bị mâu thuẫn nhau thì không kênh nào còn đáng tin, và giữ lại một
-    kênh trong khi xóa kênh kia sẽ tạo ra dữ liệu "nửa vời" khó giải thích.
-
-    Bản ghi chỉ có `pm25` hoặc chỉ có `pm10` không thể kiểm tra được nên được giữ
-    nguyên — tuyệt đối không suy diễn giá trị cho kênh còn lại.
-
-    Trả về `(df_đã_sửa, thống_kê)`.
-    """
     out = df.copy()
     stats: Dict[str, Any] = {
-        # `epsilon` KHÔNG tham gia quyết định hành động — nó chỉ phân loại bằng
-        # chứng. Viết rõ để không ai đọc nhầm là ngưỡng cắt.
         "rule": f"{fine_column} <= {coarse_column} (nghiêm ngặt, mọi nghịch đảo)",
         "reporting_epsilon_ug_m3": epsilon,
         "epsilon_rationale": (
@@ -649,38 +422,16 @@ def enforce_pm_subset_constraint(
     return out, stats
 
 
-# ---------------------------------------------------------------------------
-# Bước 5 — Reindex lưới thời gian 1 giờ liên tục theo từng trạm
-# ---------------------------------------------------------------------------
-
-
 def reindex_station_series(
     df_station: pd.DataFrame,
     start_time: pd.Timestamp,
     end_time: pd.Timestamp,
     freq: str = HOURLY_FREQ,
 ) -> pd.DataFrame:
-    """
-    Reindex chuỗi thời gian của MỘT trạm về lưới liên tục `freq` trong [start, end].
-
-    Thực thi đúng công thức trong "Ghi chú triển khai" của Issue #6:
-
-        full_idx = pd.date_range(start=start_time, end=end_time, freq=freq)
-        return df_station.set_index('timestamp').reindex(full_idx) \\
-                            .rename_axis('timestamp').reset_index()
-
-    Mở rộng duy nhất: điền lại các thuộc tính cấp TRẠM (`station_id`, `location`)
-    cho **những hàng do reindex sinh ra**, vì chúng là hằng số theo trạm chứ
-    không phải quan sát thời gian. Hàng đã có sẵn giữ nguyên giá trị gốc — kể cả
-    khi gốc đó là `NaN`, vì bịa giá trị cho một quan sát có thật là vi phạm nguyên
-    tắc "không chế tác dữ liệu". Nếu một trạm có nhiều giá trị khác nhau cho cùng
-    một thuộc tính cấp trạm → ném ValueError (dữ liệu mâu thuẫn).
-    """
     _require_columns(df_station, [TIMESTAMP_COLUMN], "Bước reindex theo trạm")
 
     full_idx = pd.date_range(start=start_time, end=end_time, freq=freq)
     indexed = df_station.set_index(TIMESTAMP_COLUMN).reindex(full_idx)
-    # Hàng reindex tạo ra = có trong `full_idx` nhưng không có trong input.
     is_new_row = ~indexed.index.isin(df_station[TIMESTAMP_COLUMN])
 
     for station_level_col in (STATION_COLUMN, "location"):
@@ -693,7 +444,6 @@ def reindex_station_series(
                 f"khác nhau ({list(unique_values)}) — không thể điền cho hàng reindex."
             )
         if len(unique_values) == 1:
-            # Chỉ ghi vào hàng MỚI; hàng cũ giữ nguyên (kể cả NaN).
             indexed.loc[is_new_row, station_level_col] = unique_values.iloc[0]
 
     return indexed.rename_axis(TIMESTAMP_COLUMN).reset_index()
@@ -705,29 +455,6 @@ def reindex_hourly_grid(
     window: Optional[Tuple[pd.Timestamp, pd.Timestamp]] = None,
     max_pad_hours: int = 24 * 31,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-    """
-    Reindex liên tục 1 giờ, thực hiện **độc lập cho từng trạm quan trắc**.
-
-    Với dữ liệu đa trạm, tuyệt đối không áp đặt một trục thời gian đơn nhất chung
-    cho mọi trạm (sẽ vỡ vụn dữ liệu khi các trạm có dải quan sát khác nhau và có
-    thể làm mất quan sát hợp lệ).
-
-    `window` mặc định là dải quan sát thực tế chung `min → max` của toàn bộ tập,
-    nhờ đó mọi trạm cùng nằm trên một lưới giờ chung để phục vụ phép ghép ở
-    Issue #7; truyền `window` riêng để dùng dải riêng cho từng trạm nếu cần.
-
-    Hai chốt an toàn:
-    - Cửa sổ hẹp hơn dải quan sát của một trạm → ném `ValueError` thay vì âm
-      thầm xoá quan sát.
-    - Đệm quá `max_pad_hours` giờ `NaN` cho một trạm → ném `ValueError` thay vì
-      phình bảng. Mặc định 31 ngày, đủ rộng cho sai lệch giữa các trạm trong cùng
-      một đợt thu thập.
-
-    Các khoảng trống sau reindex được ĐỂ LẠI dạng `NaN` — không nội suy, không xóa
-    dòng — để bộc lộ trung thực mọi khoảng khuyết.
-
-    Trả về `(df_đã_reindex, thống_kê)`.
-    """
     _require_columns(df, [TIMESTAMP_COLUMN], "Bước reindex lưới thời gian")
     if df.empty:
         return df.copy(), {
@@ -747,9 +474,6 @@ def reindex_hourly_grid(
 
     has_station = STATION_COLUMN in df.columns
     if has_station:
-        # `groupby` mặc định BỎ QUA các khoá NaN. Một quan sát thiếu `station_id`
-        # sẽ biến mất, rồi được thay bằng hàng NaN do trạm khác đệm vào — tức là
-        # dữ liệu bị bịa. Phải nói to thay vì im lặng.
         null_stations = int(df[STATION_COLUMN].isna().sum())
         if null_stations:
             raise ValueError(
@@ -761,10 +485,6 @@ def reindex_hourly_grid(
     else:
         groups = [("(single_series)", df)]
 
-    # Cửa sổ chung tiện cho ghép ở Issue #7 nhưng NỞ theo dải quan sát của từng
-    # trạm: trạm sống ngắn sẽ bị thêm hàng loạt NaN chỉ vì một trạm khác sống
-    # lâu hơn. Không có trần thì đó là Row Explosion (vi phạm data.md §6), nên ta
-    # đặt trần và nói to thay vì im lặng phình bảng.
     if has_station and max_pad_hours is not None and df[TIMESTAMP_COLUMN].notna().any():
         observed_span = int(
             (df[TIMESTAMP_COLUMN].max() - df[TIMESTAMP_COLUMN].min())
@@ -795,8 +515,6 @@ def reindex_hourly_grid(
         station_df = station_df.sort_values(TIMESTAMP_COLUMN, kind="mergesort")
         station_key = str(station_id) if has_station else "(single_series)"
         indexed = reindex_station_series(station_df, window_start, window_end, freq=freq)
-        # `reindex` âm thầm loại mọi quan sát nằm NGOÀI cửa sổ. Đây là mất dữ
-        # liệu, nên phải nói to chứ không được để `rows_inserted` thành số âm.
         if len(indexed) < len(station_df):
             outside = station_df[
                 (station_df[TIMESTAMP_COLUMN] < window_start)
@@ -842,29 +560,11 @@ def reindex_hourly_grid(
     }
 
 
-# ---------------------------------------------------------------------------
-# Bước 6 — Lỗi kẹt cảm biến
-# ---------------------------------------------------------------------------
-
-
 def flag_stuck_values(
     df: pd.DataFrame,
     columns: Sequence[str] = STUCK_SENSOR_COLUMNS,
     threshold_hours: int = STUCK_VALUE_THRESHOLD_HOURS,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-    """
-    Phát hiện lỗi kẹt cảm biến: chuỗi đo KHÔNG ĐỔI quá `threshold_hours` giờ
-    liên tếp trên lưới giờ đồng nhất, và chuyển toàn bộ chuỗi đó thành `NaN`.
-
-    Timestamp-aware: một khoảng trống thời gian (khác đúng 1 giờ) ngắt chuỗi, tránh
-    gộp nhầm hai dòng cách xa nhau thành một chuỗi "kẹt".
-    Station-aware: không bao giờ nối chuỗi dữ liệu xuyên trạm.
-
-    Mặc định chỉ áp dụng cho nồng độ hạt bụi — xem `STUCK_SENSOR_COLUMNS` để hiểu
-    vì sao KHÔNG áp dụng cho chuỗi 0.0 của `precipitation`/`wind_speed`.
-
-    Trả về `(df_đã_sửa, thống_kê)`.
-    """
     out = df.copy()
     stats: Dict[str, Any] = {
         "threshold_hours": threshold_hours,
@@ -881,8 +581,6 @@ def flag_stuck_values(
         ),
     }
 
-    # Cờ chẩn đoán phải được gắn TRƯỚC khi xoá giá trị, nếu không mọi giờ bị cảm
-    # biến kẹt sẽ không phân biệt được với giờ trạm ngừng phát.
     any_stuck = pd.Series(False, index=out.index)
     for col in columns:
         if col not in out.columns:
@@ -890,8 +588,6 @@ def flag_stuck_values(
         observed = out[col].notna()
         stuck_mask, run_length = _run_mask_longer_than(out, col, threshold_hours)
         stuck_mask = stuck_mask.fillna(False) & observed
-        # `run_ids_of` phải tính TRƯỚC khi mask: sau khi chuyển NaN, các chuỗi
-        # kẹt biến thành NaN sẽ dính vào chuỗi NaN sẵn có và bị đếm chung làm một.
         run_ids_before = run_ids_of(out, col)
         out[col] = out[col].mask(stuck_mask).astype("float64")
         any_stuck |= stuck_mask
@@ -920,26 +616,12 @@ def flag_stuck_values(
     return out, stats
 
 
-# ---------------------------------------------------------------------------
-# Bước 7 — Cờ chỉ báo khuyết thiếu & cảnh báo độ ẩm cao
-# ---------------------------------------------------------------------------
-
-
 def flag_prolonged_missing(
     df: pd.DataFrame,
     column: str = "pm25",
     flag_name: str = PM25_MISSING_FLAG,
     threshold_hours: int = PROLONGED_MISSING_THRESHOLD_HOURS,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-    """
-    Gắn cờ chỉ báo `flag_name = 1` cho mọi hàng thuộc khối khuyết liên tụp dài
-    hơn `threshold_hours` giờ của biến `column`.
-
-    Cờ này là **chỉ báo chẩn đoán**, KHÔNG phải phép điền khuyết: giá trị gốc vẫn
-    là `NaN` và được bảo toàn nguyên trạng cho Issue #7.
-
-    Trả về `(df_đã_gắn_cờ, thống_kê)`.
-    """
     _require_columns(df, [TIMESTAMP_COLUMN], "Bước gắn cờ khuyết thiếu kéo dài")
 
     out = df.copy()
@@ -989,25 +671,10 @@ def attach_high_humidity_flag(
     threshold_pct: float = HIGH_HUMIDITY_FOG_THRESHOLD_PCT,
     flag_name: str = HIGH_HUMIDITY_FLAG,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-    """
-    Gắn cờ chẩn đoán `is_high_humidity_fog = 1` cho giờ có độ ẩm tương đối > 90%.
-
-    Cảm biến quang học nhầm giọt nước vi mô thành hạt bụi khi RH rất cao; quy tắc
-    này **chỉ gắn cờ, tuyệt đối không xóa bản ghi**.
-
-    Độ ẩm được tra cứu bằng phép LEFT JOIN tất định theo `timestamp` với
-    `validate="many_to_one"` và kiểm tra số dòng trước/sau — đảm bảo tuyệt đối
-    không xảy ra Row Explosion. Cột độ ẩm thô KHÔNG được giữ lại trong artifact
-    ô nhiễm (việc tích hợp đầy đủ khí tượng là phạm vi Issue #7).
-
-    Trả về `(df_đã_gắn_cờ, thống_kê)`.
-    """
     _require_columns(df, [TIMESTAMP_COLUMN], "Bước gắn cờ sương mù độ ẩm cao")
     _require_columns(weather_df, [TIMESTAMP_COLUMN, "relative_humidity"], "Tập khí tượng")
 
     if "relative_humidity" in df.columns:
-        # Nếu không chặn, pandas tự đổi tên thành relative_humidity_x/_y khi merge
-        # và dòng `out.pop("relative_humidity")` bên dưới ném KeyError khó hiểu.
         raise ValueError(
             "Tập ô nhiễm đã mang sẵn cột `relative_humidity`. Cột độ ẩm thô phải "
             "CHỈ tới từ tập khí tượng; hãy bỏ cột này khỏi df trước khi gắn cờ."
@@ -1056,24 +723,7 @@ def attach_high_humidity_flag(
     }
 
 
-# ---------------------------------------------------------------------------
-# Kiểm chứng sau làm sạch
-# ---------------------------------------------------------------------------
-
-
 def validate_cleaned_dataset(df: pd.DataFrame) -> Dict[str, Any]:
-    """
-    Kiểm chứng các tiêu chí nghiệm thu bắt buộc của Issue #6 trên dữ liệu ĐÃ làm sạch.
-
-    1. Mọi mốc thời gian đều ở múi giờ canonical `Asia/Ho_Chi_Minh`.
-    2. Không còn bản ghi trùng lặp tại đơn vị quan sát.
-    3. Chuỗi thời gian tăng đơn điệu và liên tục đúng 1 giờ trên TỪNG trạm.
-    4. Không còn giá trị âm phi lý.
-    5. Ràng buộc hạt bụi `PM2.5 <= PM10 + 1e-3` được thực thi khi có PM10.
-    6. Không có bước điền khuyết: không quan sát nào bị thêm vào.
-
-    Trả về dict kết quả; `all_passed` = True khi tất cả kiểm tra đạt.
-    """
     checks: Dict[str, Any] = {}
 
     timestamps = df[TIMESTAMP_COLUMN] if TIMESTAMP_COLUMN in df.columns else None
@@ -1109,10 +759,6 @@ def validate_cleaned_dataset(df: pd.DataFrame) -> Dict[str, Any]:
         else:
             diffs = timestamps.diff().dropna()
             irregular = int((diffs != ONE_HOUR).sum())
-    # Với dữ liệu đa trạm, output được sắp xếp theo (station_id, timestamp) nên
-    # chuỗi timestamp TOÀN CỤC không bao giờ đơn điệu — dù mỗi trạm đều hoàn hảo.
-    # Vì vậy chỉ được dùng điều kiện đơn điệu toàn cục khi tập dữ liệu chỉ có một
-    # chuỗi; còn lại thì quyết định dựa trên số khoảng cách lệch quy chuẩn.
     global_monotonic = monotonic
     if timestamps is not None and STATION_COLUMN in df.columns:
         global_monotonic = bool(
@@ -1159,22 +805,6 @@ def validate_cleaned_dataset(df: pd.DataFrame) -> Dict[str, Any]:
 
 
 def assert_no_imputation(before: pd.DataFrame, after: pd.DataFrame, columns: Sequence[str]) -> None:
-    """
-    Chứng minh **theo từng ô** rằng không có phép điền khuyết nào đã diễn ra.
-
-    Với mỗi cột đo trong `columns`, đối chiếu từng bản ghi theo khóa quan sát
-    `(station_id, timestamp)` (chỉ `timestamp` nếu không có `station_id`):
-
-    1. **Không hồi sinh giá trị.** Ô nào `NaN` trước thì phải còn `NaN` sau. Ô nào
-       có giá trị trước thì sau hoặc giữ nguyên giá trị đó, hoặc trở thành `NaN`
-       (chuyển `NaN` là quy tắc làm sạch hợp lệ; tăng giá trị hoặc bịa giá trị mới
-       thì không).
-    2. Dòng mới do reindex tạo ra (`NaN` ở cả hai phía) được bỏ qua — chúng không
-       phải quan sát nào bị thay đổi.
-
-    Bản cũ chỉ so sánh `notna().sum()` nên một giá trị bịa ra kèm việc xoá đúng số
-    quan sát tương ứng sẽ lọt qua. Bản này bắt được cả hai.
-    """
     key_cols = _observation_key(before)
     if key_cols != _observation_key(after):
         raise AssertionError(
@@ -1185,10 +815,6 @@ def assert_no_imputation(before: pd.DataFrame, after: pd.DataFrame, columns: Seq
     before_keyed = before.set_index(key_cols, drop=False) if key_cols else before
     after_keyed = after.set_index(key_cols, drop=False) if key_cols else after
 
-    # Input thô CÓ THỂ chứa khóa trùng lặp (đó là việc `drop_duplicate_observations`
-    # sẽ xử lý ở bước kế). So sánh ô cần mỗi khóa xuất hiện đúng một lần ở mỗi
-    # phía, nên giữ lại bản ghi đầu tiên — đúng quy tắc mà chính bước khử trùng
-    # lặp dùng, để hai phía đối chiếu cùng một tiêu chí.
     if before_keyed.index.has_duplicates:
         before_keyed = before_keyed[~before_keyed.index.duplicated(keep="first")]
 
@@ -1205,9 +831,7 @@ def assert_no_imputation(before: pd.DataFrame, after: pd.DataFrame, columns: Seq
         was_observed = was.notna()
         now_observed = now.notna()
 
-        # (1a) Hồi sinh giá trị ở ô vốn đã NaN.
         fabricated = (~was_observed) & now_observed
-        # (1b) Thay đổi giá trị ở ô vốn có quan sát.
         mutated = was_observed & now_observed & (~np.isclose(was, now, equal_nan=True))
 
         if fabricated.any() or mutated.any():
@@ -1221,28 +845,9 @@ def assert_no_imputation(before: pd.DataFrame, after: pd.DataFrame, columns: Seq
             )
 
 
-# ---------------------------------------------------------------------------
-# Pipeline điều phối
-# ---------------------------------------------------------------------------
-
-
 def clean_air_quality(
     df_air: pd.DataFrame, df_weather: pd.DataFrame
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-    """
-    Thực hiện toàn bộ chuỗi làm sạch tất định cho tập ô nhiễm không khí.
-
-    Thứ tự các bước (mỗi bước là một phép biến đổi tất định, không phụ thuộc dữ liệu):
-    1. Chuẩn hóa múi giờ UTC+7 · 2. Sắp xếp tăng dần · 3. Khử trùng lặp ·
-    4. Missing ngụy trang → NaN · 5. Giá trị âm phi lý → NaN ·
-    6. Ràng buộc khí động học PM2.5 ⊆ PM10 · 7. Reindex lưới 1 giờ theo từng trạm ·
-    8. Kẹt cảm biến → NaN · 9. Cờ `pm25_was_missing` · 10. Cờ `is_high_humidity_fog`.
-
-    Reindex được đặt TRƯỚC các bước cảm biến để mọi quy tắc phía sau đo trên
-    cùng một lưới giờ đồng nhất.
-
-    Trả về `(df_đã_làm_sạch, báo_cáo_các_bước)`.
-    """
     steps: List[Dict[str, Any]] = []
     df_air_input = df_air.copy(deep=True)
     input_snapshot = _snapshot(df_air)
@@ -1301,9 +906,6 @@ def clean_air_quality(
         reindex_stats,
     )
 
-    # Gắn cờ "cảm biến kẹt" TRƯỚC khi xoá giá trị, để phân biệt được với khối
-    # khuyết do trạm thực sự ngừng phát. Nếu không, mọi giờ bị cảm biến kẹt sẽ bị
-    # gắn nhầm `pm25_was_missing` và Issue #7 sẽ tưởng đó là sự cố trạm.
     df_air, stuck_stats = flag_stuck_values(df_air)
     _record(
         "flag_stuck_values", "Nhận diện lỗi kẹt cảm biến (> 6 giờ không đổi)",
@@ -1312,9 +914,6 @@ def clean_air_quality(
     )
 
     df_air, missing_flag_stats = flag_prolonged_missing(df_air, column="pm25")
-    # Phân biệt hai nguyên nhân bằng cột cờ, không bằng số đếm: `pm25_was_missing`
-    # nói "giờ này không có quan sát hợp lệ trong một khối khuyết dài", còn
-    # `pm25_was_stuck` nói "giá trị bị xoá vì cảm biến kẹt". Issue #7 đọc cả hai.
     missing_flag_stats = dict(missing_flag_stats)
     if STUCK_SENSOR_FLAG in df_air.columns:
         stuck_true = df_air[STUCK_SENSOR_FLAG].astype(bool)
@@ -1336,8 +935,6 @@ def clean_air_quality(
         humidity_stats,
     )
 
-    # Đối chiếu với BẢN SAO của input thật, không phải với chính `df_air` — so sánh
-    # một frame với bản thân nó là mệnh đề tautology và không bảo vệ gì cả.
     assert_no_imputation(df_air_input, df_air, AIR_MEASUREMENT_COLUMNS)
     return df_air, {
         "input": input_snapshot,
@@ -1348,15 +945,6 @@ def clean_air_quality(
 
 
 def clean_weather(df_weather: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-    """
-    Thực hiện chuỗi làm sạch tất định cho tập khí tượng bề mặt ERA5.
-
-    Khác với ô nhiễm không khí, tập khí tượng KHÔNG áp dụng quy tắc kẹt cảm biến
-    (chuỗi 0.0 dài của lượng mưa là hiện tượng tự nhiên, xem `STUCK_SENSOR_COLUMNS`)
-    và không sinh cờ `pm25_was_missing` (không có biến nào tên pm25).
-
-    Trả về `(df_đã_làm_sạch, báo_cáo_các_bước)`.
-    """
     steps: List[Dict[str, Any]] = []
     df_weather_input = df_weather.copy(deep=True)
     input_snapshot = _snapshot(df_weather)
@@ -1407,7 +995,6 @@ def clean_weather(df_weather: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any
         reindex_stats,
     )
 
-    # Xem `clean_air_quality`: phải đối chiếu với input thật, không tự so sánh.
     assert_no_imputation(df_weather_input, df_weather, WEATHER_MEASUREMENT_COLUMNS)
     return df_weather, {"input": input_snapshot, "steps": steps, "output": _snapshot(df_weather)}
 
@@ -1419,32 +1006,6 @@ def run_deterministic_cleaning(
     save: bool = True,
     project_root: Path = Path("."),
 ) -> Dict[str, Any]:
-    """
-    Điểm vào chính của Issue #6: nạp hai tập Canonical, chạy toàn bộ làm sạch tất định,
-    kiểm chứng và lưu lại artifact trung gian.
-
-    Artifact đầu ra ghi đè đúng các đường dẫn Canonical trong `data/interim/` —
-    đây chính là hai tệp mà Issue #7 khai báo là đầu vào. Dữ liệu gốc vẫn được
-    bảo toàn bất biến trong `data/raw/` kèm mã băm SHA-256 (chính sách ba tầng),
-    nên toàn bộ artifact trung gian luôn tái tạo được bằng mã nguồn.
-
-    Args:
-        air_interim_path: Đường dẫn Parquet canonical ô nhiễm không khí đầu vào.
-        weather_interim_path: Đường dẫn Parquet canonical khí tượng đầu vào.
-        interim_dir: Thư mục ghi artifact đầu ra (mặc định: thư mục chứa
-            `air_interim_path`).
-        save: Ghi Parquet ra đĩa hay không.
-        project_root: Thư mục gốc dự án, dùng để trình bày đường dẫn tương đối
-            trong Cleaning Log (tránh phụ thuộc máy).
-
-    Returns:
-        Báo cáo có cấu trúc (dùng để dựng `docs/cleaning_log.md`).
-
-    Raises:
-        FileNotFoundError: Thiếu tệp đầu vào.
-        ValueError / AssertionError: Sai lệch dữ liệu khiến làm sạch tất định
-            không thể thực hiện an toàn.
-    """
     air_interim_path = Path(air_interim_path)
     weather_interim_path = Path(weather_interim_path)
     if interim_dir is None:
@@ -1461,10 +1022,6 @@ def run_deterministic_cleaning(
     df_air_input = pd.read_parquet(air_interim_path)
     df_weather_input = pd.read_parquet(weather_interim_path)
 
-    # Cảnh báo tái lập: nếu artifact trung gian đã trải qua Issue #6 thì chạy lại
-    # sẽ KHÔNG còn hiện tượng cần xử lý và Cleaning Log sinh ra sẽ mô tả dữ liệu
-    # đã làm sạch chứ không phải lần làm sạch gốc. Người dùng cần chạy lại
-    # notebook 01 (hoặc scripts/fetch_dataset.py) để tái tạo log gốc.
     already_cleaned = [
         flag for flag in (PM25_MISSING_FLAG, HIGH_HUMIDITY_FLAG) if flag in df_air_input.columns
     ]
@@ -1476,10 +1033,6 @@ def run_deterministic_cleaning(
             ", ".join(already_cleaned),
         )
 
-    # Thứ tự có ý nghĩa: khí tượng phải được làm sạch TRƯỚC, vì `clean_air_quality`
-    # tra cứu độ ẩm bằng phép LEFT JOIN theo timestamp. Gọi ngược lại sẽ ghép với
-    # khí tượng thô — chưa chuẩn hóa múi giờ, chưa khử trùng lặp — và hoặc ném lỗi
-    # "trùng mốc thời gian", hoặc âm thầm ghép sai dải dữ liệu.
     df_weather_clean, weather_report = clean_weather(df_weather_input)
     df_air_clean, air_report = clean_air_quality(df_air_input, df_weather_clean)
 
@@ -1489,9 +1042,6 @@ def run_deterministic_cleaning(
     air_validation = validate_cleaned_dataset(df_air_clean)
     weather_validation = validate_cleaned_dataset(df_weather_clean)
 
-    # Kết quả kiểm chứng phải được ÉP, không chỉ in ra log. Nếu một tiêu chí nghiệm
-    # thu FAIL mà artifact vẫn được ghi đè xuống `data/interim/` thì Issue #7 sẽ
-    # nhận nhầm dữ liệu hỏng.
     for label, validation in (
         ("ô nhiễm không khí", air_validation),
         ("khí tượng bề mặt", weather_validation),
@@ -1561,21 +1111,10 @@ def run_deterministic_cleaning(
     }
 
 
-# ---------------------------------------------------------------------------
-# Sinh Cleaning Log
-# ---------------------------------------------------------------------------
-
 _VI_CHECK = {True: "PASS", False: "FAIL"}
 
 
 def _display_path(path: Optional[str], project_root: Path) -> Optional[str]:
-    """
-    Trình bày đường dẫn theo dạng tương đối so với thư mục gốc dự án (dấu `/`).
-
-    Mục đích: `docs/cleaning_log.md` được Git-track nên KHÔNG được chứa đường dẫn
-    tuyệt đối phụ thuộc máy (ví dụ `C:\\Users\\...`), nếu không mỗi máy sẽ sinh ra
-    một nội dung tài liệu khác nhau.
-    """
     if path is None:
         return None
     resolved = Path(path).resolve()
@@ -1586,14 +1125,6 @@ def _display_path(path: Optional[str], project_root: Path) -> Optional[str]:
 
 
 def _fmt(value: Any) -> str:
-    """
-    Định dạng số liệu cho log.
-
-    Quy ước: chỉ số nguyên (`int`) dùng dấu chấm phân tách nghìn kiểu Việt Nam
-    (`8.022` = tám nghìn không trăm hai mươi hai). Số thực (`float`) giữ nguyên
-    dạng thập phân **không** phân tách nghìn, vì dấu chấm kiểu Việt Nam sẽ gây
-    mơ hồ (`-9.999` có thể bị đọc thành `-9,999` thập phân thay vì `-9999`).
-    """
     if isinstance(value, bool):
         return "Có" if value else "Không"
     if isinstance(value, int):
@@ -1606,7 +1137,6 @@ def _fmt(value: Any) -> str:
 
 
 def _flatten_stats(stats: Dict[str, Any], prefix: str = "") -> List[Tuple[str, Any]]:
-    """Làm phẳng thống kê lồng nhau thành các cặp `(khóa, giá trị)` để dựng bảng."""
     rows: List[Tuple[str, Any]] = []
     for key, value in stats.items():
         label = f"{prefix}{key}"
@@ -1618,12 +1148,6 @@ def _flatten_stats(stats: Dict[str, Any], prefix: str = "") -> List[Tuple[str, A
 
 
 def _render_steps(steps: List[Dict[str, Any]]) -> List[str]:
-    """
-    Dựng các mục Markdown mô tả từng bước làm sạch kèm số dô ng bị tác động.
-
-    Giá trị ngắn (số, boolean, chuỗi ≤ 90 ký tự) nằm trong bảng; chuỗi văn bản dài
-    được trình bày thành gạch đầu dòng riêng để bảng không bị tràn cột.
-    """
     lines: List[str] = []
     for step in steps:
         lines.append(f"#### Bước {step['step']} — {step['title']}")
@@ -1649,7 +1173,6 @@ def _render_steps(steps: List[Dict[str, Any]]) -> List[str]:
 
 
 def _render_validation(dataset: str, validation: Dict[str, Any]) -> List[str]:
-    """Dựng bảng kiểm chứng tiêu chí nghiệm thu của Issue #6."""
     lines = [
         f"**Kiểm chứng tập {dataset}:**",
         "",
@@ -1661,21 +1184,12 @@ def _render_validation(dataset: str, validation: Dict[str, Any]) -> List[str]:
             continue
         flat = _flatten_stats({k: v for k, v in result.items() if k != "passed"})
         detail_text = "; ".join(f"{key}={_fmt(value)}" for key, value in flat) or "—"
-        # Tiêu chí bị bỏ qua KHÔNG PHẢI tiêu chí đạt — trình bày "N/A" để không
-        # báo cáo nhầm cho người đọc rằng ràng buộc đã được kiểm chứng.
         status = "N/A" if result.get("skipped") else _VI_CHECK[result["passed"]]
         lines.append(f"| `{name}` | {detail_text} | **{status}** |")
     return lines
 
 
 def _render_extreme_preservation(report: Dict[str, Any]) -> List[str]:
-    """
-    Dựng bằng chứng định lượng rằng **không** giá trị nào bị mất vì lý do khác
-    ngoài ràng buộc vật lý đã công bố.
-
-    Bằng chứng được rút ra từ chính báo cáo làm sạch: đối chiếu đỉnh nồng độ
-    trước/sau và liệt kê đầy đủ nhóm nguyên nhân đã dùng để chuyển `NaN`.
-    """
     air = report["air_quality"]
     before = air["input"]["missing_cells"]
     after = air["output"]["missing_cells"]
@@ -1705,8 +1219,6 @@ def _render_extreme_preservation(report: Dict[str, Any]) -> List[str]:
     reasons = []
     for step in air["steps"]:
         stats = step["stats"]
-        # `rows_inserted` được xử lý riêng bởi nhánh reindex bên dưới để tránh
-        # liệt kê trùng hai lần cho cùng một con số.
         for key in ("total_cells_converted", "total_rows_nullified", "rows_nullified",
                     "duplicate_rows_removed"):
             if stats.get(key):
@@ -1731,13 +1243,6 @@ def _render_extreme_preservation(report: Dict[str, Any]) -> List[str]:
 
 
 def _render_peak_note(air: Dict[str, Any]) -> str:
-    """
-    Dựng ghi chú đã **kiểm chứng** về đỉnh PM2.5, thay cho một khẳng định có điều kiện.
-
-    Ghi chú chỉ nêu kết luận khi bằng chứng đã được đối chiếu trên dữ liệu thật:
-    đỉnh còn sống, hoặc đỉnh biến mất vì chính bản ghi đó vi phạm ràng buộc khí
-    động học PM2.5 ≤ PM10.
-    """
     trace = air.get("peak_trace") or {}
     if not trace:
         return "> **Lưu ý về đỉnh nồng độ:** không xác định được đỉnh PM2.5 trên tập dữ liệu này."
@@ -1766,14 +1271,6 @@ def _render_peak_note(air: Dict[str, Any]) -> str:
 
 
 def render_cleaning_log(report: Dict[str, Any]) -> str:
-    """
-    Dựng nội dung Markdown cho `docs/cleaning_log.md` từ báo cáo làm sạch.
-
-    Hàm **tất định hoàn toàn**: cùng một báo cáo đầu vào luôn cho ra cùng một chuỗi
-    Markdown. Cố tình KHÔNG nhúng dấu thời gian chạy (wall-clock) để tài liệu theo
-    dõi trong Git không bị bẩn mỗi lần chạy lại notebook — cùng nguyên tắc với
-    `data/raw/metadata.json`.
-    """
     policy = report["policy"]
     air = report["air_quality"]
     weather = report["weather"]
@@ -2073,8 +1570,71 @@ def render_cleaning_log(report: Dict[str, Any]) -> str:
 
 
 def _step_stat(report_section: Dict[str, Any], step_name: str, stat_key: str) -> Any:
-    """Trích một chỉ số thống kê của một bước trong báo cáo (trả về 0 nếu thiếu)."""
     for step in report_section["steps"]:
         if step["name"] == step_name:
             return step["stats"].get(stat_key, 0)
     return 0
+
+
+def split_air_quality_parameters(
+    df_air: pd.DataFrame,
+    drop_target_na: bool = False,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    if df_air is None:
+        raise ValueError("df_air không được là None!")
+
+    if TIMESTAMP_COLUMN not in df_air.columns:
+        raise ValueError(f"df_air thiếu cột bắt buộc '{TIMESTAMP_COLUMN}'.")
+
+    if "pm25" not in df_air.columns and "pm10" not in df_air.columns:
+        raise ValueError("df_air phải chứa ít nhất một trong hai cột 'pm25' hoặc 'pm10'.")
+
+    common_cols = [col for col in [TIMESTAMP_COLUMN, STATION_COLUMN, "location"] if col in df_air.columns]
+
+    pm25_flag_candidates = [
+        PM25_MISSING_FLAG,
+        STUCK_SENSOR_FLAG,
+        HIGH_HUMIDITY_FLAG,
+    ]
+    pm25_cols = common_cols + (["pm25"] if "pm25" in df_air.columns else [])
+    pm25_cols += [f for f in pm25_flag_candidates if f in df_air.columns and f not in pm25_cols]
+
+    pm10_flag_candidates = [HIGH_HUMIDITY_FLAG]
+    pm10_cols = common_cols + (["pm10"] if "pm10" in df_air.columns else [])
+    pm10_cols += [f for f in pm10_flag_candidates if f in df_air.columns and f not in pm10_cols]
+
+    df_pm25 = df_air[pm25_cols].copy()
+    df_pm10 = df_air[pm10_cols].copy()
+
+    if drop_target_na:
+        if "pm25" in df_pm25.columns:
+            df_pm25 = df_pm25.dropna(subset=["pm25"]).reset_index(drop=True)
+        if "pm10" in df_pm10.columns:
+            df_pm10 = df_pm10.dropna(subset=["pm10"]).reset_index(drop=True)
+
+    return df_pm25, df_pm10
+
+
+def export_split_air_quality_datasets(
+    df_air: pd.DataFrame,
+    output_dir: Union[str, Path] = Path("data/interim"),
+    drop_target_na: bool = False,
+    prefix: str = "air_quality",
+) -> Tuple[Path, Path]:
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    df_pm25, df_pm10 = split_air_quality_parameters(df_air, drop_target_na=drop_target_na)
+
+    pm25_path = out_dir / f"{prefix}_pm25.parquet"
+    pm10_path = out_dir / f"{prefix}_pm10.parquet"
+
+    df_pm25.to_parquet(pm25_path, index=False)
+    df_pm10.to_parquet(pm10_path, index=False)
+
+    logger.info(
+        f"Đã lưu tập PM2.5 ({len(df_pm25)} dòng) -> {pm25_path} "
+        f"và tập PM10 ({len(df_pm10)} dòng) -> {pm10_path}"
+    )
+
+    return pm25_path, pm10_path

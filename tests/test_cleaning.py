@@ -1,20 +1,3 @@
-"""
-Unit Test Suite for Deterministic Cleaning Framework (Issue #6)
-===============================================================
-Kiểm thử tự động các tiêu chí nghiệm thu bắt buộc của Issue #6:
-
-1.  Chuẩn hóa mốc thời gian về Asia/Ho_Chi_Minh (UTC+7), fail loudly khi hỏng.
-2.  Sắp xếp tăng dần và khử trùng lặp tại đúng khóa quan sát.
-3.  Chuyển missing ngụy trang thành NaN, giữ nguyên giá trị 0.0 hợp lệ.
-4.  Lọc giá trị âm phi lý và dải hợp lệ khí tượng.
-5.  Ràng buộc khí động học PM2.5 <= PM10 + epsilon.
-6.  Reindex lưới 1 giờ liên tục, độc lập theo từng trạm, giữ khoảng trống là NaN.
-7.  Nhận diện kẹt cảm biến (> 6 giờ không đổi) và gắn cờ `pm25_was_missing`.
-8.  Gắn cờ sương mù độ ẩm cao `is_high_humidity_fog` mà không xóa bản ghi.
-9.  Kiểm chứng tiêu chí nghiệm thu sau làm sạch.
-10. Tính tất định (idempotent), không điền khuyết, bảo toàn giá trị cực trị,
-    và tính tất định của Cleaning Log.
-"""
 
 import shutil
 import tempfile
@@ -51,6 +34,8 @@ from src.cleaning import (
     render_cleaning_log,
     run_deterministic_cleaning,
     sort_chronologically,
+    split_air_quality_parameters,
+    export_split_air_quality_datasets,
     validate_cleaned_dataset,
 )
 
@@ -58,7 +43,6 @@ HOURS_10 = pd.date_range("2025-01-01 00:00:00", periods=10, freq="h", tz=CANONIC
 
 
 def make_air_frame(pm25, pm10=None, station="STATION_A", start="2025-01-01 00:00:00"):
-    """Dựng DataFrame ô nhiễm không khí tối giản theo đúng Canonical Schema."""
     return pd.DataFrame({
         "timestamp": pd.date_range(start, periods=len(pm25), freq="h", tz=CANONICAL_TIMEZONE),
         "station_id": station,
@@ -69,7 +53,6 @@ def make_air_frame(pm25, pm10=None, station="STATION_A", start="2025-01-01 00:00
 
 
 def make_weather_frame(humidity, start="2025-01-01 00:00:00"):
-    """Dựng DataFrame khí tượng tối giản theo đúng Canonical Schema."""
     n = len(humidity)
     return pd.DataFrame({
         "timestamp": pd.date_range(start, periods=n, freq="h", tz=CANONICAL_TIMEZONE),
@@ -83,10 +66,6 @@ def make_weather_frame(humidity, start="2025-01-01 00:00:00"):
 
 
 def make_hourly_station_frame(hours, pm25, station="STATION_A", start="2025-01-01 00:00:00"):
-    """
-    Dựng DataFrame ô nhiễm không khí chỉ quan sát tại các giờ chỉ định trong `hours`
-    (giờ tính từ `start`), nhờ vậy có thể tạo khoảng trống thời gian thật sự.
-    """
     full = pd.date_range(start, periods=max(hours) + 1, freq="h", tz=CANONICAL_TIMEZONE)
     return pd.DataFrame({
         "timestamp": list(full[np.asarray(hours)]),
@@ -98,7 +77,6 @@ def make_hourly_station_frame(hours, pm25, station="STATION_A", start="2025-01-0
 
 
 class TestNormalizeTimestamps(unittest.TestCase):
-    """AC1 — chuẩn hóa mốc thời gian về múi giờ địa phương."""
 
     def test_naive_timestamps_are_localized(self):
         df = pd.DataFrame({"timestamp": ["2025-01-01 00:00", "2025-01-01 01:00"], "pm25": [1.0, 2.0]})
@@ -106,14 +84,12 @@ class TestNormalizeTimestamps(unittest.TestCase):
         self.assertEqual(str(out["timestamp"].dt.tz), CANONICAL_TIMEZONE)
         self.assertEqual(stats["rows_localized"], 2)
         self.assertEqual(stats["timezone_before"], "None (naive)")
-        # Localize giữ nguyên mốc giờ địa phương (không dịch chuyển thời gian).
         self.assertEqual(out["timestamp"].iloc[0].hour, 0)
 
     def test_utc_timestamps_are_converted_not_shifted(self):
         df = pd.DataFrame({"timestamp": pd.to_datetime(["2025-01-01 17:00"], utc=True)})
         out, stats = normalize_timestamps(df)
         self.assertEqual(str(out["timestamp"].dt.tz), CANONICAL_TIMEZONE)
-        # 17:00 UTC = 00:00 ngày 02/01 theo UTC+7 — mốc thời gian tuyệt đối không đổi.
         self.assertEqual(out["timestamp"].iloc[0].hour, 0)
         self.assertEqual(out["timestamp"].iloc[0].day, 2)
         self.assertEqual(out["timestamp"].iloc[0], pd.Timestamp("2025-01-01 17:00", tz="UTC"))
@@ -138,7 +114,6 @@ class TestNormalizeTimestamps(unittest.TestCase):
 
 
 class TestSortAndDeduplicate(unittest.TestCase):
-    """AC1 — sắp xếp tăng dần và khử trùng lặp tại đúng khóa quan sát."""
 
     def test_sort_is_chronological_and_index_is_reset(self):
         df = make_air_frame([1.0] * 5, start="2025-01-01 05:00")
@@ -152,7 +127,6 @@ class TestSortAndDeduplicate(unittest.TestCase):
     def test_sort_is_stable_for_equal_keys(self):
         df = make_air_frame([5.0, 1.0, 3.0])
         out, _ = sort_chronologically(df)
-        # Ba hàng cùng khóa quan sát giữ nguyên thứ tự gốc nhờ mergesort ổn định.
         self.assertEqual(list(out["pm25"]), [5.0, 1.0, 3.0])
 
     def test_duplicates_removed_on_station_and_timestamp(self):
@@ -173,10 +147,6 @@ class TestSortAndDeduplicate(unittest.TestCase):
         self.assertEqual(len(out), 4)
 
     def test_dedup_keeps_first_deterministically(self):
-        # PHẢI có khoá quan sát TRÙNG THẬT, nếu không `drop_duplicate_observations`
-        # không xóa gì và assertion nào cũng đúng một cách vô nghĩa. Bản cũ dùng
-        # `HOURS_10[:2]` — hai mốc thời gian KHÁC NHAU, nên 0 khóa trùng và test
-        # pass với cả `keep="last"`.
         df = pd.DataFrame({
             "timestamp": [HOURS_10[0], HOURS_10[0], HOURS_10[1]],
             "station_id": ["STATION_A", "STATION_A", "STATION_A"],
@@ -193,7 +163,6 @@ class TestSortAndDeduplicate(unittest.TestCase):
 
 
 class TestDisguisedMissing(unittest.TestCase):
-    """AC — missing ngụy trang (-999/-9999, chuỗi lỗi) phải thành NaN."""
 
     def test_numeric_sentinel_codes_become_nan(self):
         df = make_air_frame([-999.0, -9999.0, 12.5])
@@ -229,7 +198,6 @@ class TestDisguisedMissing(unittest.TestCase):
 
 
 class TestPhysicalRules(unittest.TestCase):
-    """AC — không còn giá trị âm phi lý; dải hợp lệ khí tượng được kiểm tra."""
 
     def test_negative_pm_becomes_nan_and_zero_is_kept(self):
         df = make_air_frame([-5.0, 0.0, 42.0])
@@ -247,7 +215,6 @@ class TestPhysicalRules(unittest.TestCase):
         self.assertTrue(pd.isna(out["pm25"].iloc[0]))
 
     def test_extreme_real_pollution_episode_is_preserved(self):
-        """Đợt ô nhiễm bùng phát là hiện tượng thực tế — không được cắt bỏ."""
         df = make_air_frame([850.0, 252.64])
         out, _ = enforce_air_quality_physical_rules(df)
         self.assertEqual(out["pm25"].iloc[0], 850.0)
@@ -256,11 +223,11 @@ class TestPhysicalRules(unittest.TestCase):
 
     def test_weather_bounds_and_range_rules(self):
         df = make_weather_frame([50.0] * 6)
-        df.loc[0, "relative_humidity"] = 101.0   # vượt giới hạn khí quyển
-        df.loc[1, "wind_speed"] = -2.0          # tốc độ gió âm là bất khả thi
-        df.loc[2, "precipitation"] = -1.0       # lượng mưa âm là bất khả thi
-        df.loc[3, "temperature"] = 55.0         # ngoài dải [0, 50]°C
-        df.loc[4, "surface_pressure"] = 1200.0  # ngoài dải [950, 1050] hPa
+        df.loc[0, "relative_humidity"] = 101.0
+        df.loc[1, "wind_speed"] = -2.0
+        df.loc[2, "precipitation"] = -1.0
+        df.loc[3, "temperature"] = 55.0
+        df.loc[4, "surface_pressure"] = 1200.0
         out, stats = enforce_weather_physical_rules(df)
         self.assertEqual(stats["total_out_of_range"], 5)
         for column in ("relative_humidity", "wind_speed", "precipitation",
@@ -289,7 +256,6 @@ class TestPhysicalRules(unittest.TestCase):
 
 
 class TestPmSubsetConstraint(unittest.TestCase):
-    """AC — ràng buộc khí động học PM2.5 <= PM10 + epsilon được thực thi."""
 
     def test_strict_inversion_nullifies_both_channels(self):
         df = make_air_frame([30.0, 10.0], pm10=[20.0, 40.0])
@@ -300,7 +266,6 @@ class TestPmSubsetConstraint(unittest.TestCase):
         self.assertEqual(stats["rows_nullified"], 1)
 
     def test_inversion_within_epsilon_is_nullified_for_issue6_acceptance(self):
-        """Nghiệm thu Issue #6 đòi (pm25 > pm10 + 1e-3).sum() == 0 → nghịch đảo nhẹ cũng bị xử lý."""
         df = make_air_frame([21.5], pm10=[20.0])
         out, stats = enforce_pm_subset_constraint(df)
         self.assertTrue(pd.isna(out["pm25"].iloc[0]))
@@ -314,11 +279,10 @@ class TestPmSubsetConstraint(unittest.TestCase):
         self.assertEqual(stats["rows_nullified"], 0)
 
     def test_epsilon_splits_evidence_tiers(self):
-        """ε là mốc phân loại bằng chứng: nghịch đảo vượt ε và trong ε được đếm riêng."""
         df = make_air_frame([30.0, 21.0], pm10=[20.0, 20.0])
         _, stats = enforce_pm_subset_constraint(df)
-        self.assertEqual(stats["inversions_beyond_epsilon"], 1)   # 30 > 20 + 2
-        self.assertEqual(stats["inversions_within_measurement_tolerance"], 1)  # 21 ≤ 22
+        self.assertEqual(stats["inversions_beyond_epsilon"], 1)
+        self.assertEqual(stats["inversions_within_measurement_tolerance"], 1)
         self.assertEqual(stats["rows_nullified"], 2)
 
     def test_missing_pm10_column_skips_with_reason(self):
@@ -331,7 +295,7 @@ class TestPmSubsetConstraint(unittest.TestCase):
         df = make_air_frame([5.0, np.nan, 7.0], pm10=[50.0, 60.0, np.nan])
         out, stats = enforce_pm_subset_constraint(df)
         self.assertEqual(out["pm25"].iloc[0], 5.0)
-        self.assertTrue(pd.isna(out["pm25"].iloc[1]))  # chỉ có pm10 — không suy diễn pm25
+        self.assertTrue(pd.isna(out["pm25"].iloc[1]))
         self.assertEqual(out["pm10"].iloc[1], 60.0)
         self.assertEqual(stats["pairs_evaluated"], 1)
         self.assertEqual(stats["rows_nullified"], 0)
@@ -341,12 +305,11 @@ class TestPmSubsetConstraint(unittest.TestCase):
 
 
 class TestReindexHourlyGrid(unittest.TestCase):
-    """AC — reindex lưới 1 giờ liên tục, độc lập theo từng trạm."""
 
     def test_gap_is_filled_with_nan_rows(self):
         df = make_hourly_station_frame([0, 1, 4], [1.0, 2.0, 3.0])
         out, stats = reindex_hourly_grid(df)
-        self.assertEqual(len(out), 5)  # lưới 0h → 4h, quan sát tại 0h, 1h, 4h
+        self.assertEqual(len(out), 5)
         self.assertEqual(stats["rows_inserted"], 2)
         self.assertEqual(int(out["pm25"].isna().sum()), 2)
         self.assertEqual(out["station_id"].unique().tolist(), ["STATION_A"])
@@ -359,7 +322,6 @@ class TestReindexHourlyGrid(unittest.TestCase):
         self.assertTrue((diffs == np.timedelta64(1, "h")).all())
 
     def test_gap_is_not_imputed(self):
-        """Reindex chỉ bộc lộ khoảng trống — tuyệt đối không nội suy."""
         df = make_hourly_station_frame([0, 1, 4], [10.0, 20.0, 90.0])
         out, _ = reindex_hourly_grid(df)
         self.assertTrue(pd.isna(out["pm25"].iloc[2]))
@@ -373,7 +335,6 @@ class TestReindexHourlyGrid(unittest.TestCase):
         out, stats = reindex_hourly_grid(pd.concat([a, b], ignore_index=True))
 
         self.assertEqual(set(stats["stations"]), {"STATION_A", "STATION_B"})
-        # Cửa sổ lưới chung 0h → 3h: mỗi trạm 4 hàng, không trạm nào mất hàng.
         self.assertEqual(len(out), 8)
         expected = {
             "STATION_A": [1.0, 2.0, 3.0, np.nan],
@@ -389,7 +350,6 @@ class TestReindexHourlyGrid(unittest.TestCase):
                     self.assertEqual(got, want)
 
     def test_single_global_index_is_never_forced_on_multiple_stations(self):
-        """Hai trạm có dải quan sát rất khác nhau vẫn phải giữ trọn quan sát hợp lệ."""
         a = make_hourly_station_frame([0, 1], [1.0, 2.0], station="STATION_A")
         b = make_hourly_station_frame([0], [21.0], station="STATION_B",
                                       start="2025-01-05 00:00:00")
@@ -397,11 +357,9 @@ class TestReindexHourlyGrid(unittest.TestCase):
 
         station_b = out[out["station_id"] == "STATION_B"]
         station_a = out[out["station_id"] == "STATION_A"]
-        # Quan sát duy nhất của trạm B được giữ nguyên tại đúng mốc thời gian.
         observed_at = station_b.loc[station_b["pm25"].notna(), "timestamp"].iloc[0]
         self.assertEqual(observed_at, pd.Timestamp("2025-01-05 00:00:00", tz=CANONICAL_TIMEZONE))
         self.assertEqual(station_b["pm25"].dropna().tolist(), [21.0])
-        # Cả hai trạm nằm trên cùng một lưới giờ liên tục.
         for frame in (station_a, station_b):
             diffs = frame["timestamp"].diff().dropna()
             self.assertTrue((diffs == np.timedelta64(1, "h")).all())
@@ -439,7 +397,6 @@ class TestReindexHourlyGrid(unittest.TestCase):
 
 
 class TestStuckSensorDetection(unittest.TestCase):
-    """AC — lỗi kẹt cảm biến được gắn nhãn theo đúng quy chuẩn kỹ thuật."""
 
     def test_constant_run_longer_than_six_hours_is_nullified(self):
         df = make_air_frame([42.0] * 9 + [43.0])
@@ -449,14 +406,12 @@ class TestStuckSensorDetection(unittest.TestCase):
         self.assertEqual(out["pm25"].iloc[9], 43.0)
 
     def test_run_of_exactly_six_hours_is_preserved(self):
-        """6 quan sát giống hệt chưa vượt ngưỡng > 6 quan sát của Issue #6."""
         df = make_air_frame([42.0] * 6 + [43.0])
         out, stats = flag_stuck_values(df)
         self.assertEqual(stats["by_column"]["pm25"]["rows_nullified"], 0)
         self.assertEqual(int(out["pm25"].isna().sum()), 0)
 
     def test_seven_equal_readings_exceed_the_six_observation_threshold(self):
-        """Ngưỡng đếm bằng số quan sát (nhất quán với Issue #5): > 6 quan sát → loại."""
         df = make_air_frame([42.0] * 7 + [43.0])
         out, stats = flag_stuck_values(df)
         self.assertEqual(stats["by_column"]["pm25"]["rows_nullified"], 7)
@@ -469,15 +424,6 @@ class TestStuckSensorDetection(unittest.TestCase):
         self.assertEqual(stats["by_column"]["pm25"]["rows_nullified"], 8)
 
     def test_temporal_gap_breaks_the_stuck_run(self):
-        # 6 quan sát giống hệt, khoảng trống 3 giờ, rồi 6 quan sát giống hệt nữa.
-        #
-        # Con số phải là 6+6 chứ không phải 4: ngưỡng là "chuỗi dài hơn 6
-        # quan sát" (`run_length > 6`). Với 4+4, CẢ HAI nhánh đều cho
-        # `rows_nullified == 0` — xóa bỏ nhánh nhận diện khoảng trống thời gian
-        # khỏi `_break_mask()` thì test vẫn xanh, tức nó không kiểm chứng điều
-        # tên mình. Với 6+6: nếu khoảng trống KHÔNG ngắt chuỗi thì 12 quan sát
-        # liên tiếp thành một chuỗi 12 > 6 và BỊ gắn cờ. Chỉ khi khoảng trống
-        # thật sự ngắt chuỗi thì mỗi nhánh dài đúng 6, không vượt ngưỡng.
         offsets = [0, 1, 2, 3, 4, 5, 9, 10, 11, 12, 13, 14]
         df = make_hourly_station_frame(offsets, [42.0] * 12)
         out, stats = flag_stuck_values(df)
@@ -486,12 +432,6 @@ class TestStuckSensorDetection(unittest.TestCase):
         self.assertEqual(int(out["pm25"].isna().sum()), 0)
 
     def test_without_the_gap_this_fixture_would_be_flagged(self):
-        """Bổ trợ cho test trên: chứng minh fixture THẬT SỰ nhạy cảm.
-
-        Cùng dữ liệu nhưng lấp khoảng trống thời gian thành chuỗi liên tục
-        12 quan sát. Nếu chuỗi này KHÔNG bị gắn cờ thì ngưỡng đang hỏng và mọi
-        kết luận "khoảng trống thời gian ngắt chuỗi" ở test trên là vô nghĩa.
-        """
         df = make_hourly_station_frame(list(range(12)), [42.0] * 12)
         _, stats = flag_stuck_values(df)
         self.assertEqual(stats["by_column"]["pm25"]["rows_nullified"], 12,
@@ -515,7 +455,6 @@ class TestStuckSensorDetection(unittest.TestCase):
 
 
 class TestProlongedMissingFlag(unittest.TestCase):
-    """AC — đánh dấu khoảng khuyết lớn (> 6 giờ) bằng cờ `pm25_was_missing`."""
 
     def test_flag_set_for_blocks_longer_than_six_hours(self):
         df = make_air_frame([1.0] + [np.nan] * 8 + [2.0])
@@ -555,7 +494,6 @@ class TestProlongedMissingFlag(unittest.TestCase):
 
 
 class TestHighHumidityFlag(unittest.TestCase):
-    """AC — cờ cảnh báo độ ẩm cao `is_high_humidity_fog` không xóa bản ghi."""
 
     def test_flag_set_when_humidity_above_ninety(self):
         air = make_air_frame([10.0] * 4)
@@ -599,7 +537,6 @@ class TestHighHumidityFlag(unittest.TestCase):
 
 
 class TestValidationAndLeakageGuards(unittest.TestCase):
-    """AC — không điền khuyết, tiêu chí nghiệm thu đều đạt."""
 
     def test_validation_passes_on_a_fully_cleaned_frame(self):
         df = make_air_frame([5.0, 6.0, 7.0], pm10=[50.0, 60.0, 70.0])
@@ -647,19 +584,15 @@ class TestValidationAndLeakageGuards(unittest.TestCase):
 
 
 class TestPipelineEndToEnd(unittest.TestCase):
-    """AC — pipeline hoàn chỉnh, tất định và kiểm chứng được."""
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="cleaning_test_"))
         self.air_path = self.tmp / "air_quality_canonical.parquet"
         self.weather_path = self.tmp / "weather_canonical.parquet"
 
-        # Giờ 0: nghịch đảo khí động học (30 > 20) · giờ 10: đợt ô nhiễm cực đoan
-        # 900 µg/m³ với PM10 = 950 (hợp lệ, phải bảo toàn) · giờ 11: giá trị âm.
-        # Giờ 11–12 vắng mặt → khoảng trống 2 giờ được reindex bộc lộ.
         pm25 = [30.0, 12.0, 14.0, 16.0, 18.0, 20.0, 22.0, 24.0, 26.0, 28.0, 900.0, -3.0]
         pm10 = [20.0, 32.0, 34.0, 36.0, 38.0, 40.0, 42.0, 44.0, 46.0, 48.0, 950.0, 25.0]
-        hours = list(range(11)) + [13]  # bỏ giờ 11 và 12 → khoảng trống 2 giờ
+        hours = list(range(11)) + [13]
         full = pd.date_range("2025-01-01 00:00:00", periods=14, freq="h", tz=CANONICAL_TIMEZONE)
         air = pd.DataFrame({
             "timestamp": list(full[hours]),
@@ -706,7 +639,6 @@ class TestPipelineEndToEnd(unittest.TestCase):
 
         pd.testing.assert_frame_equal(first, second)
         pd.testing.assert_frame_equal(first_weather, pd.read_parquet(self.weather_path))
-        # Lần chạy lại phải tự nhận diện artifact đã làm sạch để không gây hiểu nhầm.
         self.assertEqual(second_report["air_quality"]["input_already_cleaned"],
                          [PM25_MISSING_FLAG, HIGH_HUMIDITY_FLAG])
 
@@ -726,12 +658,10 @@ class TestPipelineEndToEnd(unittest.TestCase):
     def test_pipeline_reindexes_gap_but_keeps_every_original_row(self):
         run_deterministic_cleaning(self.air_path, self.weather_path)
         cleaned = pd.read_parquet(self.air_path)
-        self.assertEqual(len(cleaned), 14)  # lưới đủ 0h → 13h, không quan sát nào bị xóa
-        # Ba giờ mất quan sát: giờ 10 (nghịch đảo khí động học), giờ 11 (giá trị âm),
-        # và giờ 11–12 là khoảng trống do trạm ngừng phát.
+        self.assertEqual(len(cleaned), 14)
         self.assertEqual(int(cleaned["pm25"].isna().sum()), 4)
-        self.assertEqual(int(cleaned[PM25_MISSING_FLAG].sum()), 0)  # khối trống chỉ 2 giờ < 6
-        self.assertEqual(int(cleaned[HIGH_HUMIDITY_FLAG].sum()), 7)  # RH > 90% ở 7/14 giờ
+        self.assertEqual(int(cleaned[PM25_MISSING_FLAG].sum()), 0)
+        self.assertEqual(int(cleaned[HIGH_HUMIDITY_FLAG].sum()), 7)
 
     def test_save_false_leaves_input_untouched(self):
         before = pd.read_parquet(self.air_path)
@@ -771,12 +701,9 @@ class TestPipelineEndToEnd(unittest.TestCase):
 
 
 class TestCleaningLogRendering(unittest.TestCase):
-    """AC — mọi thay đổi được ghi nhận minh bạch trong docs/cleaning_log.md."""
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="cleaning_log_test_"))
-        # Có khoảng trống 2 giờ (giờ 1, 2) và một nghịch đảo khí động học tại giờ 0
-        # để mọi nhóm nguyên nhân tạo NaN đều xuất hiện trong Cleaning Log.
         air = make_hourly_station_frame([0, 3, 4], [40.0, 10.0, 20.0], station="STATION_A")
         air["pm10"] = [20.0, 50.0, 60.0]
         air.to_parquet(self.tmp / "air_quality_canonical.parquet", index=False)
@@ -845,13 +772,10 @@ class TestCleaningLogRendering(unittest.TestCase):
         self.assertIn("Asia/Ho_Chi_Minh", log)
 
     def test_log_proves_extreme_values_were_not_dropped(self):
-        """§7.1 phải chứng minh bằng số liệu rằng không mất giá trị vô căn cứ."""
         log = render_cleaning_log(self.report)
         self.assertIn("Bằng Chứng Định Lượng", log)
         self.assertIn("Không đặt trần nồng độ hạt bụi", log)
-        # Đỉnh PM2.5 của dữ liệu mẫu là 40.0 µg/m³ và phải được nêu đích danh.
         peak = self.report["air_quality"]["input"]["pm25_peak"]
-        # Giá trị float nguyên được hiển thị không dấu thập phân (40.0 -> "40").
         rendered_peak = str(int(peak)) if float(peak).is_integer() else str(peak)
         self.assertIn(f"đỉnh PM2.5 lớn nhất trước làm sạch là {rendered_peak} µg/m³", log)
 
@@ -861,22 +785,18 @@ class TestCleaningLogRendering(unittest.TestCase):
         self.assertIn("40 µg/m³", render_cleaning_log(self.report))
 
     def test_log_shows_peak_before_and_after_cleaning(self):
-        """§3.1 đối chiếu đỉnh PM2.5 trước và sau bằng số liệu, không chỉ nêu điều kiện."""
         air = self.report["air_quality"]
         log = render_cleaning_log(self.report)
         self.assertIn("Đỉnh PM2.5 (µg/m³)", log)
-        # Float nguyên hiển thị không dấu thập phân (40.0 -> "40"), giống `_fmt`.
         for key in ("input", "output"):
             peak = float(air[key]["pm25_peak"])
             rendered = str(int(peak)) if peak.is_integer() else str(peak)
             self.assertIn(rendered, log)
 
     def test_peak_note_states_a_verified_outcome_not_a_conditional(self):
-        """Ghi chú đỉnh nồng độ phải kết luận đã đối chiếu, không nêu điều kiện suông."""
         trace = self.report["air_quality"]["peak_trace"]
         log = render_cleaning_log(self.report)
         self.assertIn("Kiểm chứng đỉnh nồng độ", log)
-        # Cụm cấu điều kiện cũ ("Nếu đỉnh này biến mất") không được quay lại.
         self.assertNotIn("Nếu đỉnh này biến mất", log)
         if trace["survived_cleaning"]:
             self.assertIn("vẫn còn nguyên", log)
@@ -886,7 +806,6 @@ class TestCleaningLogRendering(unittest.TestCase):
             self.assertIn(trace["timestamp"], log)
 
     def test_log_lists_every_reason_that_created_missing_cells(self):
-        """Mọi nguyên nhân tạo ra ô NaN phải xuất hiện trong bảng đối chiếu §7.1."""
         log = render_cleaning_log(self.report)
         for reason in (
             "Khoảng trống thời gian từ reindex + ràng buộc khí động học",
@@ -895,19 +814,14 @@ class TestCleaningLogRendering(unittest.TestCase):
             self.assertIn(reason, log)
 
     def test_log_does_not_double_count_the_same_cause(self):
-        """`rows_inserted` của reindex chỉ được liệt kê đúng một lần trong §7.1."""
         log = render_cleaning_log(self.report)
         reason = "Khoảng trống thời gian từ reindex (NaN cố ý)"
         self.assertEqual(log.count(reason), 1)
-        # Bảng đối chiếu §7.1 nằm sau tiêu đề cột "| Phép biến đổi | Chỉ số | Số lượng |"
-        # và trước ghi chú đỉnh nồng độ. Chỉ trong đoạn này mới được tính, vì tên chỉ số
-        # `rows_inserted` vốn xuất hiện hợp lệ ở bảng thống kê từng bước của §3/§4.
         table = log.split("| Phép biến đổi | Chỉ số | Số lượng |", 1)[1]
         table = table.split("Lưu ý về đỉnh nồng độ", 1)[0]
         self.assertEqual(table.count(f"| {reason} | `rows_inserted` |"), 1)
 
     def test_log_uses_relative_paths_not_machine_specific_ones(self):
-        """`docs/cleaning_log.md` được Git-track nên không chứa đường dẫn tuyệt đối."""
         report = run_deterministic_cleaning(
             self.tmp / "air_quality_canonical.parquet",
             self.tmp / "weather_canonical.parquet",
@@ -915,19 +829,12 @@ class TestCleaningLogRendering(unittest.TestCase):
             project_root=self.tmp,
         )
         log = render_cleaning_log(report)
-        # Đường dẫn được rút gọn còn tương đối so với project_root.
         self.assertIn("`air_quality_canonical.parquet`", log)
         self.assertNotIn(str(self.tmp), log)
         self.assertNotIn("C:\\", log)
 
 
 class TestAdversarialReviewRegressions(unittest.TestCase):
-    """
-    Hồi quy cho các lỗi tìm ra khi review đối kháng diff Issue #6.
-
-    Mỗi test ở đây FAIL trên bản gốc và PASS sau khi sửa — chúng là bằng chứng,
-    không phải phần trang trí.
-    """
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -962,10 +869,8 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
             }
         )
 
-    # --- BLOCKER: cam nhan "khong dien khuyet" phai la that, khong phai hinh thuc
 
     def test_no_imputation_guard_catches_value_fabrication(self):
-        """Bản cũ chỉ đếm ô; bịa 1 giá trị + xoá 1 giá trị thì lọt qua."""
         before = self._air(4)
         after = self._air(4)
         after["pm25"] = [999.0, np.nan, np.nan, 10.0]
@@ -980,19 +885,12 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
             assert_no_imputation(before, after, ["pm25"])
 
     def test_no_imputation_guard_allows_the_legit_direction(self):
-        """Giá trị được giữ nguyên hoặc chuyển NaN thì hợp lệ."""
         before = self._air(4)
         after = before.copy()
         after.loc[0:1, "pm25"] = np.nan
         assert_no_imputation(before, after, ["pm25"])
 
     def test_no_imputation_guard_catches_a_changed_observation_key(self):
-        """Đổi khoá quan sát giữa hai vế = không thể đối chiếu ô nào là ô nào.
-
-        Không có test nào chạm nhánh này. Nếu hàm im lặng trả về, hai frame
-        khác nhau về cấu trúc sẽ bị coi là "không có phép điền khuyết" — đúng
-        mệnh đề tautology mà `assert_no_imputation()` sinh ra để chặn.
-        """
         before = self._air(4)
         after = before.drop(columns=["station_id"])
         with self.assertRaises(AssertionError) as ctx:
@@ -1000,11 +898,6 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
         self.assertIn("khóa", str(ctx.exception).lower())
 
     def test_pipelines_compare_against_their_real_input(self):
-        """
-        Bản gốc gọi `assert_no_imputation(df, df, ...)`. Test này chứng minh cả
-        hai pipeline bây giờ thực sự so với input: nếu `clean_air_quality` tự so
-        sánh với chính nó, hàm này sẽ không bao giờ ném lỗi.
-        """
         import inspect
 
         for func in (clean_air_quality, clean_weather):
@@ -1020,14 +913,6 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
             self.assertIn("assert_no_imputation", source)
 
     def test_air_pipeline_raises_when_a_cleaning_step_fabricates_a_value(self):
-        """BẰNG CHỨNG HÀNH VI, không phải grep mã nguồn.
-
-        Test `test_pipelines_compare_against_their_real_input` ở trên là một
-        phép tìm chuỗi trong `inspect.getsource()`: chèn lại một tautology thật
-        sự — `assert_no_imputation(df_air.copy(), df_air.copy(), ...)` — vẫn lọt
-        qua, vì chuỗi đó không chứa đúng mẫu bị cấm. Test này thay thế bằng
-        cách thật sự làm một bước làm sạch bịa giá trị, rồi đòi pipeline ném lỗi.
-        """
         import src.cleaning as cleaning_module
 
         air = make_air_frame([10.0, 20.0, 30.0, 40.0], pm10=[12.0, 22.0, 32.0, 42.0])
@@ -1037,9 +922,6 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
 
         def fabricating(df, columns=cleaning_module.AIR_MEASUREMENT_COLUMNS):
             out, stats = real(df, columns)
-            # Bịa một giá trị ở ô ĐÃ có quan sát: 10.0 -> 11.5. Giá trị này phải
-            # sống sót qua mọi bước còn lại, nếu không guard sẽ không có cơ hội
-            # thấy nó — nên nó CỐ Ý vẫn thỏa PM2.5 <= PM10 (11.5 <= 12.0).
             out = out.copy()
             out.loc[0, "pm25"] = 11.5
             return out, stats
@@ -1053,30 +935,19 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
         self.assertIn("pm25", str(ctx.exception))
         self.assertIn("khuyết", str(ctx.exception).lower())
 
-    # --- BLOCKER: cot chuoi lai giet pipeline truoc khi quy tac kip chay
 
     def test_string_columns_do_not_kill_the_pipeline(self):
-        """
-        `pm25 = "abc"` từng làm `_snapshot` ném ValueError khi gọi `float(max())`,
-        khiến quy tắc missing ngụy trang không bao giờ chạy được qua pipeline.
-        """
         air = self._air(3)
         air["pm25"] = ["10", "abc", "30"]
         air["pm10"] = ["20", "20", "40"]
         out, report = clean_air_quality(air, self._weather(3))
         self.assertIn("timestamp", out.columns)
-        # Chuỗi rác đã thành NaN, giá trị hợp lệ được giữ.
         self.assertTrue(pd.isna(out["pm25"].iloc[1]))
         self.assertEqual(float(out["pm25"].iloc[0]), 10.0)
         self.assertEqual(len(report["steps"]), 10)
 
-    # --- MAJOR: validator phai chay dung voi luoi da tram
 
     def test_validator_accepts_a_correct_multi_station_grid(self):
-        """
-        Bản cũ AND điều kiện đơn điệu TOÀN CỤC với số khoảng cách lệch, nên lưới
-        đa trạm hoàn hảo vẫn bị báo FAIL.
-        """
         frames = []
         for station in ("A", "B"):
             part = self._air(10)
@@ -1093,18 +964,12 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
 
     def test_validator_still_catches_a_broken_single_series_grid(self):
         broken = self._air(10)
-        # `np.timedelta64 + pd.Timedelta` quy nạch đơn vị "generic" của numpy —
-        # DeprecationWarning và sẽ ném lỗi. Dùng `pd.DateOffset` thay thế.
         broken.loc[5, "timestamp"] = broken.loc[5, "timestamp"] + pd.DateOffset(hours=3)
         broken = broken.sort_values("timestamp", kind="mergesort").reset_index(drop=True)
         result = validate_cleaned_dataset(broken)
         self.assertFalse(result["continuous_hourly_grid_per_station"]["passed"])
 
     def test_reindex_refuses_rows_with_a_null_station_id(self):
-        """
-        `groupby` bỏ qua khoá NaN: quan sát thiếu `station_id` sẽ bị loại rồi thay
-        bằng hàng đệm mang ID của trạm khác — tức dữ liệu bị bịa.
-        """
         df = self._air(4)
         df.loc[1, "station_id"] = np.nan
         with self.assertRaises(ValueError) as ctx:
@@ -1112,27 +977,21 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
         self.assertIn("station_id", str(ctx.exception))
 
     def test_reindex_does_not_fabricate_metadata_for_existing_rows(self):
-        """Bản gốc điền `location` cho MỌI hàng, kể cả hàng gốc bị NaN."""
-        # Bỏ giờ 02:00 để reindex thật sự tạo ra một hàng mới, rồi đặt `location`
-        # của một quan sát CÓ THẬT thành NaN.
         df = self._air(4).drop(index=[2]).reset_index(drop=True)
         df.loc[df.index[0], "location"] = np.nan
         out, _ = reindex_hourly_grid(df)
         self.assertEqual(len(out), 4, "phải chèn đúng 1 hàng cho khoảng trống")
 
-        # Quan sát thật có `location` NaN → phải giữ NaN, KHÔNG bị bịa.
         original = out[out["timestamp"] == df["timestamp"].iloc[0]]
         self.assertTrue(
             pd.isna(original["location"].iloc[0]),
             "location NaN của quan sát thật bị bịa thành giá trị",
         )
-        # Hàng reindex TẠO RA (không phải quan sát nào) thì được điền hằng trạm.
         inserted = out[out["pm25"].isna()]
         self.assertEqual(len(inserted), 1)
         self.assertEqual(inserted["location"].iloc[0], "HN")
 
     def test_reindex_refuses_to_silently_delete_observations(self):
-        """Cửa sổ hẹp hơn dữ liệu từng làm `reindex` âm thầm xoá bản ghi."""
         df = self._air(5)
         narrow = (
             df["timestamp"].iloc[1],
@@ -1143,7 +1002,6 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
         self.assertIn("không xoá quan sát", str(ctx.exception))
 
     def test_reindex_guards_against_padding_a_station_into_nonsense(self):
-        """Trạm sống 1 giờ cùng trạm sống 1 năm: đệm chung sẽ phình bảng."""
         short = self._air(2)
         short["station_id"] = "SHORT"
         long_station = self._air(900)
@@ -1153,13 +1011,8 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
             reindex_hourly_grid(multi, max_pad_hours=48)
         self.assertIn("max_pad_hours", str(ctx.exception))
 
-    # --- MAJOR: tra cuu do am phai dung khí tuong DA LAM SACH
 
     def test_pipeline_tolerates_duplicated_weather_hours(self):
-        """
-        Thứ tự cũ gọi `clean_air_quality` trước `clean_weather`, nên ghép với khí
-        tượng thô và ném lỗi "trùng mốc thời gian" — ngay trong Issue #6.
-        """
         weather = self._weather(10)
         weather = pd.concat([weather, weather.iloc[[3]]], ignore_index=True)
         air_path = self.tmp / "air.parquet"
@@ -1184,13 +1037,8 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
         )
         self.assertTrue(report["air_quality"]["validation"]["all_passed"])
 
-    # --- MAJOR: phan biet cam bien ket voi tram ngung phat
 
     def test_stuck_sensor_is_flagged_separately_from_station_outage(self):
-        """
-        Bản gốc để cả giờ cảm biến kẹt cũng mang `pm25_was_missing=1`, khiến Issue #7
-        tưởng đó là sự cố trạm. Nay phải có cờ riêng.
-        """
         air = self._air(24)
         air.loc[2:12, "pm25"] = 42.0
         air.loc[2:12, "pm10"] = 50.0
@@ -1203,16 +1051,11 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
         missing = out[PM25_MISSING_FLAG].astype(bool)
         self.assertGreater(int(stuck.sum()), 0, "cảm biến kẹt phải được gắn cờ")
         self.assertGreater(int(missing.sum()), 0, "khối khuyết phải được gắn cờ")
-        # Giờ cảm biến kẹt cũng nằm trong khối khuyết nên mang cả hai cờ — đó là
-        # hệ quả đúng, không phải lỗi. Điểm cần chứng minh là hai cờ TÁCH ĐƯỢC:
-        # có giờ chỉ do trạm ngừng phát, không bị cảm biến kẹt.
         self.assertGreater(int((missing & ~stuck).sum()), 0, "thiếu nhóm outage-only")
         self.assertEqual(int((stuck & ~missing).sum()), 0)
 
-    # --- MINOR: dem chuoi bi sai, va bien toan rac khong duoc bao cao
 
     def test_two_separate_stuck_runs_are_counted_as_two(self):
-        """Sau khi mask, hai chuỗi kẹt dính vào chuỗi NaN ở giữa và bị đếm là một."""
         air = self._air(20)
         air["pm25"] = (
             [42.0] * 8 + [np.nan] * 3 + [42.0] * 8 + [1.0]
@@ -1225,14 +1068,12 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
         self.assertEqual(stuck["stats"]["by_column"]["pm25"]["nullified_runs"], 2)
 
     def test_unparseable_strings_are_not_silently_swallowed(self):
-        """`pd.to_numeric(errors='coerce')` nuốt rác không báo, nên số liệu lệch."""
         dirty = pd.DataFrame({"pm25": ["abc", "1.5", "  ", None]})
         out, stats = normalize_disguised_missing(dirty, columns=["pm25"])
         self.assertEqual(out["pm25"].isna().sum(), 3)
         self.assertEqual(stats["by_column"]["pm25"]["rows_converted_to_nan"], 3)
         self.assertEqual(stats["by_column"]["pm25"]["unparseable_values_to_nan"], 1)
 
-    # --- NIT: trinh bay trung thuc
 
     def test_cleaning_log_marks_skipped_checks_as_na(self):
         self.tmp.mkdir(parents=True, exist_ok=True)
@@ -1249,7 +1090,6 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
         self.assertNotIn("| `pm_subset_constraint` | skipped=Có | **PASS** |", weather_block)
 
     def test_cleaning_log_does_not_overclaim_issue5_consistency(self):
-        """Claim "nhất quán với audit_prolonged_zeros" là sai lệch 1 quan sát."""
         self.tmp.mkdir(parents=True, exist_ok=True)
         air_path = self.tmp / "air.parquet"
         wx_path = self.tmp / "wx.parquet"
@@ -1274,7 +1114,6 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
         self.assertIn("np.timedelta64(1, 'h')", log)
 
     def test_mixed_utc_offsets_are_converted_not_crashed_on(self):
-        """Cột lẫn lộn UTC offset từng ném AttributeError từ `.dt`."""
         mixed = pd.DataFrame(
             {
                 "timestamp": [
@@ -1289,11 +1128,9 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
         out, stats = normalize_timestamps(mixed)
         self.assertEqual(str(out["timestamp"].dt.tz), CANONICAL_TIMEZONE)
         self.assertEqual(stats["rows_mixed_offsets_utc_first"], 3)
-        # Mốc thời gian tuyệt đối được giữ: 00:00Z = 07:00 giờ Hà Nội.
         self.assertEqual(out["timestamp"].iloc[0].hour, 7)
 
     def test_already_sorted_frame_is_not_reported_as_reordered(self):
-        """`Series.equals` chỉ so giá trị nên reset index làm báo động giả."""
         ts = pd.date_range("2025-01-01", periods=4, freq="h", tz=CANONICAL_TIMEZONE)
         df = pd.DataFrame({"timestamp": ts, "pm25": [1.0, 2.0, 3.0, 4.0]},
                           index=[7, 8, 9, 10])
@@ -1302,7 +1139,6 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
         self.assertTrue(stats["was_monotonic_increasing"])
 
     def test_humidity_lookup_rejects_a_polluted_air_frame(self):
-        """Frame ô nhiễm mang sẵn `relative_humidity` từng gây KeyError mù."""
         air = self._air(4)
         air["relative_humidity"] = 95.0
         with self.assertRaises(ValueError) as ctx:
@@ -1310,7 +1146,6 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
         self.assertIn("relative_humidity", str(ctx.exception))
 
     def test_epsilon_is_labelled_as_reporting_tier_not_action_threshold(self):
-        """`epsilon` không tham gia quyết định hành động — đừng gọi nó là ngưỡng."""
         self.tmp.mkdir(parents=True, exist_ok=True)
         air_path = self.tmp / "air.parquet"
         wx_path = self.tmp / "wx.parquet"
@@ -1323,16 +1158,6 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
         self.assertIn("`reporting_epsilon_ug_m3`", log)
 
     def test_failing_validation_blocks_the_write_to_data_interim(self):
-        """CỔNG CHẶN CUỐI trước khi Issue #7 đọc artifact.
-
-        `run_deterministic_cleaning()` cố ý ÉP kết quả `validate_cleaned_dataset()`
-        rồi ném lỗi trước khi ghi xuống `data/interim/`. Không có test nào chạm
-        nhánh này, nên xoá hẳn cổng chặn vẫn giữ toàn bộ suite xanh — trong khi
-        đó chính là ranh giới "dữ liệu hỏng không được truyền sang #7".
-
-        Test: làm hỏng MỘT tiêu chí kiểm chứng, rồi đòi (a) ném lỗi và
-        (b) file trên đĩa phải Y NGUYÊN so với trước khi chạy.
-        """
         import src.cleaning as cleaning_module
 
         self.tmp.mkdir(parents=True, exist_ok=True)
@@ -1347,7 +1172,6 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
 
         def failing(df):
             result = real_validator(df)
-            # Giả lập một tiêu chí nghiệm thu FAIL sau khi làm sạch.
             result["no_negative_values"] = {
                 "passed": False,
                 "negatives_by_column": {"pm25": 3},
@@ -1371,12 +1195,6 @@ class TestAdversarialReviewRegressions(unittest.TestCase):
 
 
 class TestValidatorCatchesNegativeConcentrations(unittest.TestCase):
-    """`no_negative_values` trong `validate_cleaned_dataset()` chưa có test nào.
-
-    Không một test nào đưa giá trị âm vào validator. Một validator âm thầm
-    chấp nhận nồng độ âm sẽ lọt qua toàn bộ suite — và đó đúng là loại lỗi mà
-    cổng chặn ở `run_deterministic_cleaning()` sinh ra để bắt.
-    """
 
     def _air(self, n):
         return make_air_frame(list(np.arange(10.0, 10.0 + n)), pm10=[x + 2 for x in np.arange(10.0, 10.0 + n)])
@@ -1402,6 +1220,79 @@ class TestValidatorCatchesNegativeConcentrations(unittest.TestCase):
         result = validate_cleaned_dataset(self._air(5))
         self.assertTrue(result["no_negative_values"]["passed"])
         self.assertTrue(result["all_passed"])
+
+
+class TestSplitAirQualityParameters(unittest.TestCase):
+
+    def setUp(self):
+        self.ts = pd.date_range("2025-01-01 00:00:00", periods=5, freq="h", tz=CANONICAL_TIMEZONE)
+        self.df = pd.DataFrame(
+            {
+                "timestamp": self.ts,
+                "station_id": ["STATION_A"] * 5,
+                "location": ["Hà Nội"] * 5,
+                "pm25": [15.0, np.nan, 25.0, 30.0, 35.0],
+                "pm10": [20.0, 22.0, np.nan, 40.0, 45.0],
+                "pm25_was_missing": [0, 1, 0, 0, 0],
+                "pm25_was_stuck": [0, 0, 0, 0, 0],
+                "is_high_humidity_fog": [0, 0, 1, 0, 0],
+            }
+        )
+
+    def test_split_produces_two_frames_with_correct_columns(self):
+        df_pm25, df_pm10 = split_air_quality_parameters(self.df)
+
+        self.assertIn("pm25", df_pm25.columns)
+        self.assertNotIn("pm10", df_pm25.columns)
+        self.assertIn("timestamp", df_pm25.columns)
+        self.assertIn("station_id", df_pm25.columns)
+        self.assertIn("location", df_pm25.columns)
+        self.assertIn("pm25_was_missing", df_pm25.columns)
+        self.assertIn("pm25_was_stuck", df_pm25.columns)
+        self.assertIn("is_high_humidity_fog", df_pm25.columns)
+        self.assertEqual(len(df_pm25), 5)
+
+        self.assertIn("pm10", df_pm10.columns)
+        self.assertNotIn("pm25", df_pm10.columns)
+        self.assertNotIn("pm25_was_missing", df_pm10.columns)
+        self.assertNotIn("pm25_was_stuck", df_pm10.columns)
+        self.assertIn("is_high_humidity_fog", df_pm10.columns)
+        self.assertEqual(len(df_pm10), 5)
+
+    def test_split_with_drop_target_na(self):
+        df_pm25, df_pm10 = split_air_quality_parameters(self.df, drop_target_na=True)
+
+        self.assertEqual(len(df_pm25), 4)
+        self.assertFalse(df_pm25["pm25"].isna().any())
+
+        self.assertEqual(len(df_pm10), 4)
+        self.assertFalse(df_pm10["pm10"].isna().any())
+
+    def test_split_fails_loudly_on_invalid_input(self):
+        with self.assertRaises(ValueError):
+            split_air_quality_parameters(None)
+
+        with self.assertRaises(ValueError):
+            split_air_quality_parameters(pd.DataFrame({"pm25": [10.0]}))
+
+        with self.assertRaises(ValueError):
+            split_air_quality_parameters(pd.DataFrame({"timestamp": self.ts}))
+
+    def test_export_split_datasets_writes_valid_parquet(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            p25, p10 = export_split_air_quality_datasets(self.df, output_dir=out_dir)
+
+            self.assertTrue(p25.exists())
+            self.assertTrue(p10.exists())
+
+            read_p25 = pd.read_parquet(p25)
+            read_p10 = pd.read_parquet(p10)
+
+            self.assertEqual(len(read_p25), 5)
+            self.assertEqual(len(read_p10), 5)
+            self.assertIn("pm25", read_p25.columns)
+            self.assertIn("pm10", read_p10.columns)
 
 
 if __name__ == "__main__":

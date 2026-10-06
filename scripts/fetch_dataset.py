@@ -1,44 +1,3 @@
-"""
-fetch_dataset.py — Thu thập & kiểm chứng tập dữ liệu cho một lần clone mới.
-
-Mục đích
---------
-Repository KHÔNG commit tập dữ liệu thô (chính sách ba tầng, `docs/roadmap.md` §3.2
-Tầng C: tệp thô tải từ API không bắt buộc phải Git-track và có thể tái tạo từ nguồn).
-Lệnh này là **cơ chế tái tạo tập dữ liệu có kiểm chứng** cho người dùng mới:
-
-    python scripts/fetch_dataset.py
-
-Nguồn (không cần API key):
-  - Chất lượng không khí : OpenAQ S3 public archive, location_id=4946811
-                          Giấy phép: Open Database License (ODC-BY) v1.0
-  - Khí tượng bề mặt   : Open-Meteo Historical Weather API (ECMWF ERA5)
-                          Giấy phép: CC BY 4.0 (chứa dữ liệu ERA5 của Copernicus)
-
-Kiểm chứng mà không tải lại
-----------------------------
-Vì bucket OpenAQ S3 là **kho sống** (nhà cung cấp tiếp tục nạp dữ liệu mới), chạy lại
-`fetch_dataset.py` ở thời điểm sau sẽ tải về NHIỀU DÒNG HƠN bản đã kiểm toán. Vì vậy
-cần một cách kiểm chứng tập dữ liệu **đang có sẵn trên đĩa** mà không chạm vào mạng:
-
-    python scripts/fetch_dataset.py --skip-fetch
-
-Chế độ này đọc trực tiếp `data/interim/*.parquet` và đối chiếu với `data/raw/metadata.json`.
-
-Giới hạn tái lập đã biết (xin đọc, không phải lỗi chương trình)
---------------------------------------------------------------
-  * Mã băm SHA-256 trong `data/raw/metadata.json` kiểm chứng được **tính toàn vẹn của
-    tệp đã lưu** (phát hiện được tệp bị sửa/hỏng), nhưng **không** dùng để dựng lại
-    tập dữ liệu: định dạng Parquet không tái lập được theo byte (metadata nội bộ và
-    khối nén phụ thuộc phiên bản thư viện ghi file). Đã kiểm chứng thực nghiệm: tải lại
-    cho cùng số bản ghi nhưng SHA-256 khác.
-  * Vì vậy lệnh này kiểm chứng bằng **so khớp nội dung** (số bản ghi, dải thời gian,
-    tỷ lệ độ phủ giao thoa) — các đại lượng ổn định và mang ý nghĩa với phân tích —
-    chứ không so khớp byte.
-
-Sau khi chạy xong, dữ liệu sẵn sàng cho `notebooks/01_data_collection.ipynb` và
-`notebooks/02_quality_audit.ipynb`.
-"""
 
 from __future__ import annotations
 
@@ -60,14 +19,6 @@ DEFAULT_METADATA = REPO_ROOT / "data" / "raw" / "metadata.json"
 
 
 def summarise_interim_on_disk(interim_dir: Path) -> Dict[str, Any]:
-    """
-    Tạo bản tóm tắt tối thiểu từ các tệp canonical trên đĩa.
-
-    Chỉ dùng cho chế độ ``--skip-fetch``. Các trường dẫn xuất trực tiếp từ dữ liệu đã
-    chuẩn hóa nên có ý nghĩa giống hệt trường cùng tên do ``run_collection_pipeline()``
-    sinh ra. ``raw_records_total`` không dẫn xuất được (cần tệp thô) nên để ``None``
-    và bị bỏ qua khi so khớp.
-    """
     air_path = interim_dir / "air_quality_canonical.parquet"
     wx_path = interim_dir / "weather_canonical.parquet"
     for path in (air_path, wx_path):
@@ -83,7 +34,7 @@ def summarise_interim_on_disk(interim_dir: Path) -> Dict[str, Any]:
 
     return {
         "openaq": {
-            "raw_records_total": None,  # cần tệp thô, bỏ qua khi so khớp
+            "raw_records_total": None,
             "canonical_records": len(air),
             "actual_source_coverage": {
                 "actual_min_timestamp": str(air["timestamp"].min()),
@@ -106,12 +57,6 @@ def summarise_interim_on_disk(interim_dir: Path) -> Dict[str, Any]:
 
 
 def compare_with_metadata(summary: Dict[str, Any], metadata_path: Path) -> bool:
-    """
-    So khớp nội dung tập dữ liệu với bản đã kiểm toán trong ``metadata.json``.
-
-    Các mục có giá trị ``None`` (không dẫn xuất được trong chế độ ``--skip-fetch``) được
-    bỏ qua. Trả về ``True`` nếu mọi mục dẫn xuất được đều khớp.
-    """
     print("\n=== Kiem chung noi dung voi metadata.json ===")
     if not metadata_path.exists():
         print(f"  ! Khong tim thay {metadata_path} - bo qua buoc kiem chung.")
@@ -209,7 +154,7 @@ def main() -> int:
     else:
         print(f"\nDia chi: {args.raw_dir}")
         print("Dang tai du lieu tu nguon (co the mat vai phut)...\n")
-        from src.data_collection import run_collection_pipeline  # noqa: E402
+        from src.data_collection import run_collection_pipeline
 
         summary = run_collection_pipeline(
             raw_dir=args.raw_dir,

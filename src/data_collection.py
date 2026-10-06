@@ -1,13 +1,3 @@
-"""
-Module thu thập và chuẩn hóa dữ liệu chất lượng không khí & khí tượng Hà Nội.
-
-Tuân thủ:
-- Milestone 1 / GitHub Issue #3, #4 & #19.
-- Quyết định rà soát nguồn dữ liệu (Đính chính: Loại bỏ OpenAQ 2178, xác thực trạm Hà Nội 4946811 & AirNow DOS).
-- Canonical Data Schema trong docs/data_dictionary.md.
-- Nguyên tắc an toàn dữ liệu chuỗi thời gian trong .agents/rules/data.md.
-- Nguyên tắc kỹ thuật & không over-engineering trong .agents/rules/project.md.
-"""
 
 from __future__ import annotations
 
@@ -29,11 +19,9 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 
-# Thiết lập logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-# Bounding box Hà Nội theo docs/data_dictionary.md & metadata.json
 HANOI_BBOX = {
     "lat_min": 20.50,
     "lat_max": 21.60,
@@ -42,9 +30,8 @@ HANOI_BBOX = {
 }
 
 CANONICAL_TIMEZONE = "Asia/Ho_Chi_Minh"
-CANONICAL_UTC_OFFSET_HOURS = 7  # Việt Nam không quan sát giờ mùa hè (no DST) -> UTC+7 quanh năm.
+CANONICAL_UTC_OFFSET_HOURS = 7
 
-# Danh mục cột chuẩn hóa cho dữ liệu khí tượng bề mặt (Issue #4 / docs/data_dictionary.md)
 WEATHER_CANONICAL_COLUMNS = [
     "timestamp",
     "temperature",
@@ -55,7 +42,6 @@ WEATHER_CANONICAL_COLUMNS = [
     "surface_pressure",
 ]
 
-# Giới hạn vật lý khí tượng bề mặt Hà Nội theo docs/data_dictionary.md & .agents/skills/data-quality/SKILL.md
 WEATHER_PHYSICAL_BOUNDS = {
     "temperature": {"min": 0.0, "max": 50.0, "unit": "°C"},
     "relative_humidity": {"min": 0.0, "max": 100.0, "unit": "%"},
@@ -65,10 +51,6 @@ WEATHER_PHYSICAL_BOUNDS = {
     "surface_pressure": {"min": 950.0, "max": 1050.0, "unit": "hPa"},
 }
 
-# Đơn vị chuẩn BẮT BUỘC của 6 biến khí tượng canonical (Issue #4 AC4-11).
-# Key = tên biến canonical, value = (tên trường tại nhà cung cấp, đơn vị kỳ vọng).
-# Đơn vị phải được đối chiếu với trường `hourly_units` trong payload GỐC của
-# Open-Meteo — không được giả định là đúng chỉ vì request đã yêu cầu.
 WEATHER_EXPECTED_UNITS: Dict[str, Tuple[str, str]] = {
     "temperature": ("temperature_2m", "°C"),
     "relative_humidity": ("relative_humidity_2m", "%"),
@@ -78,23 +60,14 @@ WEATHER_EXPECTED_UNITS: Dict[str, Tuple[str, str]] = {
     "surface_pressure": ("surface_pressure", "hPa"),
 }
 
-# Ngưỡng tỷ lệ khuyết thiếu khí tượng mà pipeline thực thi phải đạt.
-# Issue #19 (docs/source_profiling_decision.md §14.2) yêu cầu kiểm định dữ liệu 6 biến
-# khí tượng không có giá trị khuyết thiếu trước khi lưu. Đây là ngưỡng tường minh của
-# pipeline; validate_weather_canonical() mặc định chỉ BÁO CÁO, không ép ngưỡng.
 WEATHER_PIPELINE_MAX_MISSING_PCT = 0.0
 
-# Mã lỗi ngụy trang (disguised missing codes) do nhà cung cấp dùng để mã hóa giá trị khuyết thiếu.
-# Giá trị đo hợp lệ bằng 0.0 KHÔNG nằm trong danh sách này và luôn được giữ nguyên.
 WEATHER_SENTINEL_CODES = (-999.0, -9999.0)
 
-# Tọa độ truy vấn mặc định: tâm lõi đô thị Hà Nội (Issue #19 / docs/source_profiling_decision.md §14.2).
-# API Open-Meteo tự ánh xạ sang điểm lưới ERA5 gần nhất (COORDS_WEATHER_ERA5).
 WEATHER_QUERY_COORDS = (21.0285, 105.8542)
 
-# Định danh trạm chuẩn hóa (Canonical Station Identifiers)
-DISQUALIFIED_OPENAQ_LOCATION_ID = 2178  # Del Norte, Albuquerque, NM, USA -> LOẠI BỎ HOÀN TOÀN
-HANOI_OPENAQ_LOCATION_ID = 4946811      # Trạm 556 Nguyễn Văn Cừ, Long Biên, Hà Nội
+DISQUALIFIED_OPENAQ_LOCATION_ID = 2178
+HANOI_OPENAQ_LOCATION_ID = 4946811
 STATION_OPENAQ_HANOI = "VN001_HANOI_556_NGUYEN_VAN_CU"
 LOCATION_OPENAQ_HANOI = "556 Nguyễn Văn Cừ"
 COORDS_OPENAQ_HANOI = (21.0491, 105.8831)
@@ -109,7 +82,6 @@ COORDS_WEATHER_ERA5 = (21.05448, 105.89848)
 
 
 def compute_file_sha256(filepath: Path) -> str:
-    """Tính toán mã băm SHA-256 của tệp để bảo toàn tính toàn vẹn và provenance."""
     sha256_hash = hashlib.sha256()
     with open(filepath, "rb") as f:
         for byte_block in iter(lambda: f.read(65536), b""):
@@ -118,13 +90,6 @@ def compute_file_sha256(filepath: Path) -> str:
 
 
 def clean_air_quality_values(val: Any) -> float:
-    """
-    Làm sạch giá trị đo ô nhiễm không khí theo đúng các quy tắc chất lượng dữ liệu:
-    - -999, -9999 -> NaN (bóc trần mã lỗi ngụy trang).
-    - < 0 -> NaN (giá trị âm phi vật lý đối với nồng độ hạt).
-    - 0.0 -> giữ nguyên 0.0 (giá trị đo hợp lệ, tuyệt đối không biến thành NaN).
-    - Tuyệt đối không fillna(0) để thay thế missing data.
-    """
     if pd.isna(val):
         return np.nan
     try:
@@ -140,18 +105,6 @@ def clean_air_quality_values(val: Any) -> float:
 
 
 def clean_weather_values(val: Any, var_name: Optional[str] = None) -> float:
-    """
-    Làm sạch giá trị đo khí tượng theo đúng các quy tắc chất lượng dữ liệu:
-    - Bóc trần mã lỗi ngụy trang (-999, -9999, "NaN", "None", "") -> NaN.
-    - Bảo toàn giá trị 0.0 hợp lệ (lượng mưa 0.0 mm, tốc độ gió 0.0 m/s là hiện tượng thực tế, không biến thành NaN).
-    - Tuyệt đối không fillna(0) để thay thế missing data (no silent zero imputation).
-    - Phát hiện và chuyển đổi các giá trị vi phạm quy luật vật lý hiển nhiên thành NaN:
-      * Tốc độ gió âm (< 0 m/s) -> NaN
-      * Lượng mưa âm (< 0 mm) -> NaN
-      * Độ ẩm ngoài dải [0, 100]% -> NaN
-      * Hướng gió ngoài [0, 360] -> nếu âm gán NaN; nếu > 360 chuẩn hóa modulo 360.
-      * Nhiệt độ ngoài [0, 50]°C hoặc áp suất ngoài [950, 1050] hPa -> NaN
-    """
     if pd.isna(val):
         return np.nan
     try:
@@ -159,11 +112,9 @@ def clean_weather_values(val: Any, var_name: Optional[str] = None) -> float:
     except (ValueError, TypeError):
         return np.nan
 
-    # Bóc trần mã lỗi ngụy trang
     if fval in (-999.0, -9999.0, -999, -9999):
         return np.nan
 
-    # Kiểm tra giới hạn vật lý theo từng biến khí tượng
     if var_name:
         if var_name in ("wind_speed", "precipitation") and fval < 0.0:
             return np.nan
@@ -183,10 +134,6 @@ def clean_weather_values(val: Any, var_name: Optional[str] = None) -> float:
 
 
 def is_sentinel_code(val: Any) -> bool:
-    """
-    Kiểm tra một giá trị thô có phải mã lỗi ngụy trang (-999 / -9999) hay không.
-    Giá trị 0.0 hợp lệ KHÔNG phải sentinel.
-    """
     if pd.isna(val):
         return False
     try:
@@ -198,26 +145,15 @@ def is_sentinel_code(val: Any) -> bool:
 def summarize_weather_cleaning(
     raw_values: Dict[str, List[Any]], cleaned_values: Dict[str, List[float]]
 ) -> Dict[str, Dict[str, int]]:
-    """
-    Thống kê nguyên nhân các giá trị thô bị chuyển thành NaN ở LỚP LÀM SẠCH (cleaning),
-    phân biệt rõ ba trường hợp:
-      - `disguised_missing`: mã lỗi ngụy trang -999 / -9999.
-      - `out_of_bounds`     : giá trị đọc được nhưng vi phạm giới hạn vật lý đã công bố.
-      - `unparseable`       : không chuyển được sang số (None, chuỗi rỗng, ...).
-
-    Mục đích: lớp cleaning KHÔNG được "giấu" vi phạm giới hạn vật lý.
-    validate_weather_canonical() dựa vào bảng thống kê này để báo cáo trung thực
-    số lượng giá trị đã bị loại bỏ, thay vì báo `bounds_violation_count = 0` một cách giả định.
-    """
     report: Dict[str, Dict[str, int]] = {}
     for var_name, raw_list in raw_values.items():
         cleaned_list = cleaned_values.get(var_name, [])
         stats = {"disguised_missing": 0, "out_of_bounds": 0, "unparseable": 0}
         for raw_val, clean_val in zip(raw_list, cleaned_list):
             if clean_val is None or not np.isnan(clean_val):
-                continue  # giá trị được giữ lại (bao gồm cả 0.0 hợp lệ)
+                continue
             if pd.isna(raw_val):
-                continue  # đã là NaN ngay từ nguồn, không phải cleaning loại bỏ
+                continue
             if is_sentinel_code(raw_val):
                 stats["disguised_missing"] += 1
                 continue
@@ -237,15 +173,6 @@ def filter_hanoi_bounds(
     lon_col: Optional[str] = None,
     bbox: Optional[Dict[str, float]] = None,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-    """
-    Lọc không gian từng bản ghi theo Bounding Box Hà Nội [20.50, 21.60]N, [105.30, 106.10]E.
-    
-    Yêu cầu kỹ thuật:
-    1. Kiểm tra từng record.
-    2. Loại bỏ record nằm ngoài bounding box.
-    3. Không sửa raw coordinates.
-    4. Trả về DataFrame đã lọc và thống kê: raw_records, filtered_out_records, retained_records.
-    """
     if bbox is None:
         bbox = HANOI_BBOX
 
@@ -259,7 +186,6 @@ def filter_hanoi_bounds(
             "retained_pct": 0.0,
         }
 
-    # Tự động nhận diện tên cột tọa độ nếu không chỉ định
     if lat_col is None:
         for c in ["lat", "latitude", "Lat", "Latitude"]:
             if c in df.columns:
@@ -308,10 +234,6 @@ def assert_canonical_within_hanoi(
     df: pd.DataFrame,
     station_coords: Optional[Dict[str, Tuple[float, float]]] = None,
 ) -> None:
-    """
-    Assertion bảo đảm 100% canonical records nằm trong Hanoi bounding box.
-    Nếu còn record ngoài bbox thì pipeline fail rõ ràng (AssertionError/ValueError).
-    """
     known_coords = {
         STATION_OPENAQ_HANOI: COORDS_OPENAQ_HANOI,
         STATION_AIRNOW_HANOI: COORDS_AIRNOW_HANOI,
@@ -320,7 +242,6 @@ def assert_canonical_within_hanoi(
     if station_coords:
         known_coords.update(station_coords)
 
-    # 1. Kiểm tra nếu có cột tọa độ trực tiếp
     for lat_c, lon_c in [("latitude", "longitude"), ("lat", "lon")]:
         if lat_c in df.columns and lon_c in df.columns:
             in_lat = (df[lat_c] >= HANOI_BBOX["lat_min"]) & (df[lat_c] <= HANOI_BBOX["lat_max"])
@@ -330,7 +251,6 @@ def assert_canonical_within_hanoi(
                 out_cnt = (~in_box).sum()
                 raise AssertionError(f"Phát hiện {out_cnt} bản ghi canonical nằm ngoài Bounding Box Hà Nội!")
 
-    # 2. Kiểm tra theo trạm quan trắc (station_id)
     if "station_id" in df.columns:
         for sid in df["station_id"].unique():
             if sid not in known_coords:
@@ -345,10 +265,6 @@ def assert_canonical_within_hanoi(
 def validate_canonical_uniqueness(
     df: pd.DataFrame, key_cols: List[str] = ["station_id", "timestamp"]
 ) -> None:
-    """
-    Kiểm tra tính duy nhất của khóa quan trắc (station_id, timestamp).
-    Fail-fast: Ném lỗi ValueError nếu phát hiện trùng lặp khóa.
-    """
     duplicates_mask = df.duplicated(subset=key_cols, keep=False)
     num_dups = duplicates_mask.sum()
     if num_dups > 0:
@@ -360,18 +276,6 @@ def validate_canonical_uniqueness(
 
 
 def resolve_canonical_timezone_key(tz: Any) -> Optional[str]:
-    """
-    Trả về khóa timezone IANA (ví dụ "Asia/Ho_Chi_Minh") nếu `tz` là một named
-    zone của hệ đơn vị thời gian; trả về None nếu `tz` chỉ là fixed offset
-    (ví dụ UTC+07:00, pytz.FixedOffset, datetime.timezone, tzutc) hoặc rỗng.
-
-    Mục đích: phân biệt timezone IANA `Asia/Ho_Chi_Minh` với fixed offset
-    `+07:00` — cả hai có cùng offset UTC nhưng chỉ một cái là múi giờ canonical
-    của dự án. Việc chỉ so sánh offset (như `utcoffset() == 7h`) là KHÔNG ĐỦ.
-
-    Hỗ trợ cả hai backend của pandas: `zoneinfo.ZoneInfo` (thuộc tính `.key`)
-    và `pytz` (thuộc tính `.zone`).
-    """
     if tz is None:
         return None
     for attr in ("key", "zone"):
@@ -382,21 +286,6 @@ def resolve_canonical_timezone_key(tz: Any) -> Optional[str]:
 
 
 def validate_open_meteo_hourly_units(raw_data: Dict[str, Any]) -> Dict[str, str]:
-    """
-    AC4-11: đối chiếu `hourly_units` trong payload GỐC của Open-Meteo với đơn vị
-    chuẩn của 6 biến khí tượng canonical (°C, %, m/s, °, mm, hPa).
-
-    Không được chỉ dựa vào việc request đã yêu cầu đúng đơn vị: hàm này CHỈ ĐỌC
-    trường `hourly_units` thực tế trong response. Hàm CHỈ ĐỌC (không sửa payload).
-
-    Validation failure (ném ValueError) khi:
-      - payload không có trường `hourly_units`;
-      - một trong 6 biến không có khai báo đơn vị;
-      - đơn vị khai báo khác đơn vị chuẩn của biến đó.
-    Không tự ý quy đổi đơn vị và không chấp nhận im lặng đơn vị lạ.
-
-    Trả về: dict {tên biến canonical: đơn vị đã kiểm định}.
-    """
     hourly_units = (raw_data or {}).get("hourly_units")
     if not isinstance(hourly_units, dict) or not hourly_units:
         raise ValueError(
@@ -413,7 +302,6 @@ def validate_open_meteo_hourly_units(raw_data: Dict[str, Any]) -> Dict[str, str]
             missing_units.append(provider_field)
             continue
         actual_unit = hourly_units[provider_field]
-        # So sánh chuỗi sau khi strip: provider có thể trả về unit kèm khoảng trắng.
         if not isinstance(actual_unit, str) or actual_unit.strip() != expected_unit:
             mismatched_units[var_name] = {
                 "provider_field": provider_field,
@@ -441,12 +329,6 @@ def validate_open_meteo_hourly_units(raw_data: Dict[str, Any]) -> Dict[str, str]
 
 
 def is_canonical_timezone(tz: Any) -> bool:
-    """
-    True CHỈ khi `tz` là đúng timezone IANA `Asia/Ho_Chi_Minh`.
-
-    Fixed offset `+07:00` (dù cho đúng UTC+7) và mọi timezone khác đều trả về
-    False — xem `resolve_canonical_timezone_key()`.
-    """
     return resolve_canonical_timezone_key(tz) == CANONICAL_TIMEZONE
 
 
@@ -456,35 +338,13 @@ def validate_weather_canonical(
     check_continuity: bool = True,
     max_missing_pct: Optional[float] = None,
 ) -> Dict[str, Any]:
-    """
-    Kiểm định chất lượng dữ liệu khí tượng chuẩn hóa theo Acceptance Criteria của Issue #4.
-    Hàm này CHỈ ĐỌC (read-only): không gán, không điền, không sắp xếp lại dữ liệu đầu vào.
-
-    Phân biệt rõ ba mức kết quả:
-      1. VALIDATION FAILURE (ném ValueError/TypeError):
-         - thiếu cột canonical hoặc sai kiểu dữ liệu;
-         - `timestamp` không phải datetime tz-aware, hoặc không phải đúng timezone
-           IANA `Asia/Ho_Chi_Minh` (fixed offset `+07:00` bị từ chối dù cùng UTC+7);
-         - `timestamp` trùng lặp hoặc không tăng đơn điệu;
-         - giá trị vượt giới hạn vật lý;
-         - tỷ lệ khuyết thiếu vượt ngưỡng `max_missing_pct`.
-      2. VALIDATION WARNING (ghi cảnh báo + đánh dấu trong report, KHÔNG ném lỗi):
-         - chuỗi giờ bị gián đoạn. Khi đó `is_valid` = False để báo cáo trung thực.
-      3. CLEANING (KHÔNG thuộc hàm này): bóc trần mã lỗi ngụy trang và loại giá trị
-         vi phạm giới hạn vật lý. Hoạt động này được đếm minh bạch qua
-         `summarize_weather_cleaning()` và gắn vào `df.attrs["weather_cleaning"]`.
-    """
     if bounds is None:
         bounds = WEATHER_PHYSICAL_BOUNDS
 
-    # 1. Kiểm tra sự hiện diện của các cột bắt buộc
     missing_cols = [c for c in WEATHER_CANONICAL_COLUMNS if c not in df.columns]
     if missing_cols:
         raise ValueError(f"Canonical Weather DataFrame thiếu cột bắt buộc: {missing_cols}")
 
-    # Kiểm tra timezone: bắt buộc datetime64 tz-aware với ĐÚNG timezone IANA
-    # `Asia/Ho_Chi_Minh`. Không chấp nhận fixed offset `+07:00` dù cho cùng
-    # UTC+7, và không chấp nhận timezone khác; tz-naive cũng bị từ chối.
     ts_dtype = df["timestamp"].dtype
     if not isinstance(ts_dtype, pd.DatetimeTZDtype):
         raise ValueError(
@@ -507,15 +367,12 @@ def validate_weather_canonical(
             f"bản ghi đầu tiên là {sample_offset}, mong đợi {expected_offset}!"
         )
 
-    # Kiểm tra kiểu dữ liệu float64 cho 6 biến khí tượng
     for col in WEATHER_CANONICAL_COLUMNS[1:]:
         if not np.issubdtype(df[col].dtype, np.floating):
             raise TypeError(f"Cột khí tượng '{col}' phải có kiểu float64, hiện tại là {df[col].dtype}!")
 
-    # 2. Kiểm tra tính duy nhất của khóa quan trắc
     validate_canonical_uniqueness(df, key_cols=["timestamp"])
 
-    # 3. Kiểm tra tính tăng đơn điệu và liên tục theo giờ
     if not df["timestamp"].is_monotonic_increasing:
         raise ValueError("Chuỗi thời gian khí tượng không được sắp xếp tăng đơn điệu!")
 
@@ -532,7 +389,6 @@ def validate_weather_canonical(
             warnings.append(message)
             logger.warning(message)
 
-    # 4. Kiểm tra giới hạn vật lý
     bounds_violations = {}
     var_stats = {}
     for col, b_info in bounds.items():
@@ -563,7 +419,6 @@ def validate_weather_canonical(
             f"Phát hiện vi phạm giới hạn vật lý trong dữ liệu khí tượng:\n{bounds_violations}"
         )
 
-    # 5. Báo cáo minh bạch hoạt động của lớp cleaning (không phải validation failure)
     cleaning_stats = df.attrs.get("weather_cleaning", {}) or {}
     cleaning_totals = {
         key: int(sum(int(v.get(key, 0)) for v in cleaning_stats.values()))
@@ -577,7 +432,6 @@ def validate_weather_canonical(
         warnings.append(message)
         logger.warning(message)
 
-    # 6. Ngưỡng tỷ lệ khuyết thiếu (chỉ kiểm tra khi caller truyền ngưỡng tường minh)
     max_missing_observed = max((s["missing_pct"] for s in var_stats.values()), default=0.0)
     if max_missing_pct is not None and max_missing_observed > max_missing_pct:
         worst_col = max(var_stats, key=lambda c: var_stats[c]["missing_pct"])
@@ -611,10 +465,6 @@ def validate_weather_canonical(
 def resolve_station_metadata(
     source_type: str, source_identifier: Any
 ) -> Tuple[str, str, Tuple[float, float]]:
-    """
-    Ánh xạ source/identifier sang (station_id, location_name, (latitude, longitude)).
-    Reject / raise error nếu không xác định được trạm hợp lệ tại Hà Nội.
-    """
     if source_type == "openaq":
         loc_id = int(source_identifier)
         if loc_id == HANOI_OPENAQ_LOCATION_ID:
@@ -641,10 +491,6 @@ def resolve_station_metadata(
 
 
 class OpenAQAdapter:
-    """
-    Adapter thu thập và chuẩn hóa dữ liệu ô nhiễm không khí OpenAQ cho trạm Hà Nội:
-    Location ID = 4946811 (556 Nguyễn Văn Cừ, Long Biên, Hà Nội - NCEM / VEA).
-    """
 
     def __init__(
         self,
@@ -667,7 +513,6 @@ class OpenAQAdapter:
         self.interim_dir.mkdir(parents=True, exist_ok=True)
 
     def _list_s3_keys(self) -> List[str]:
-        """Lấy danh sách toàn bộ các khóa tệp S3 lưu trữ cho location_id."""
         url = f"https://openaq-data-archive.s3.amazonaws.com/?prefix=records/csv.gz/locationid={self.location_id}/"
         req = urllib.request.Request(url, headers={"User-Agent": "HanoiAirPollutionResearch/1.0"})
         with urllib.request.urlopen(req, timeout=30) as resp:
@@ -678,7 +523,6 @@ class OpenAQAdapter:
         return sorted(keys)
 
     def _fetch_single_s3_file(self, key: str) -> Optional[pd.DataFrame]:
-        """Tải và giải nén một tệp CSV.gz từ OpenAQ S3 public archive."""
         url = f"https://openaq-data-archive.s3.amazonaws.com/{key}"
         req = urllib.request.Request(url, headers={"User-Agent": "HanoiAirPollutionResearch/1.0"})
         try:
@@ -697,12 +541,6 @@ class OpenAQAdapter:
         max_workers: int = 25,
         force_reload: bool = False,
     ) -> Tuple[pd.DataFrame, Path]:
-        """
-        Thu thập toàn bộ dữ liệu thô từ OpenAQ S3 public archive cho trạm 4946811.
-        Payload nguồn được lưu nguyên trạng vào data/raw/ (không chỉnh sửa thủ công);
-        mọi biến đổi diễn ra ở lớp chuẩn hóa. Tệp đã có sẽ được nạp lại thay vì
-        tải lại từ API, trừ khi `force_reload=True`.
-        """
         raw_path = self.raw_dir / raw_output_name
         if not force_reload and raw_path.exists() and raw_path.stat().st_size > 0:
             logger.info(f"Tệp thô OpenAQ đã tồn tại tại {raw_path}. Đang nạp lại nguyên trạng (không tải lại)...")
@@ -732,37 +570,22 @@ class OpenAQAdapter:
         return df_raw, raw_path
 
     def to_canonical(self, df_raw: pd.DataFrame) -> pd.DataFrame:
-        """
-        Chuẩn hóa dữ liệu thô OpenAQ sang Canonical Schema:
-        1. Lọc địa lý (filter_hanoi_bounds) TRƯỚC canonicalization.
-        2. Phân giải metadata trạm đúng quy chuẩn (resolve_station_metadata).
-        3. Parse datetime tz-aware Asia/Ho_Chi_Minh (UTC+7).
-        4. Làm sạch giá trị (-999, -9999, < 0 -> NaN; 0.0 giữ nguyên).
-        5. Tổng hợp chuỗi telemetry dưới giờ (sub-hourly) thành trung bình theo giờ (hourly aggregation).
-        6. Kiểm tra tính duy nhất của khóa (station_id, timestamp).
-        7. Assertion 100% canonical records nằm trong Bounding Box Hà Nội.
-        """
-        # 1. Lọc không gian trước canonicalization
         df_geo, geo_stats = filter_hanoi_bounds(df_raw)
         if df_geo.empty:
             raise ValueError("Toàn bộ bản ghi đã bị lọc bỏ do nằm ngoài Bounding Box Hà Nội!")
 
         df = df_geo.copy()
 
-        # 2. Phân giải metadata trạm
         station_id, location_name, coords = resolve_station_metadata("openaq", self.location_id)
 
-        # 3. Parse datetime
         df["dt_parsed"] = pd.to_datetime(df["datetime"], errors="coerce", utc=True)
         df = df.dropna(subset=["dt_parsed"]).copy()
         df["timestamp_raw"] = df["dt_parsed"].dt.tz_convert(CANONICAL_TIMEZONE)
         df["timestamp"] = df["timestamp_raw"].dt.floor("h")
 
-        # 4. Lọc các thông số ô nhiễm quan tâm (pm25, pm10)
         df_pollutants = df[df["parameter"].isin(["pm25", "pm10"])].copy()
         df_pollutants["val_clean"] = df_pollutants["value"].apply(clean_air_quality_values)
 
-        # 5. Tổng hợp trung bình theo giờ (hourly aggregation) cho từng thông số
         df_agg = (
             df_pollutants.groupby(["timestamp", "parameter"])["val_clean"]
             .mean()
@@ -777,25 +600,18 @@ class OpenAQAdapter:
         df_agg["station_id"] = station_id
         df_agg["location"] = location_name
 
-        # Sắp xếp tuyến tính
         df_canonical = df_agg[
             ["timestamp", "station_id", "location", "pm25", "pm10"]
         ].sort_values("timestamp").reset_index(drop=True)
 
-        # 6. Kiểm tra trùng lặp khóa
         validate_canonical_uniqueness(df_canonical, key_cols=["station_id", "timestamp"])
 
-        # 7. Assertion đảm bảo 100% bản ghi nằm trong Hà Nội
         assert_canonical_within_hanoi(df_canonical, {station_id: coords})
 
         return df_canonical
 
 
 class AirNowDOSAdapter:
-    """
-    Adapter nạp và chuẩn hóa dữ liệu ô nhiễm không khí lịch sử từ AirNow DOS CSV:
-    Trạm: Đại sứ quán Hoa Kỳ tại Hà Nội (Site == "Hanoi", Met One BAM-1020 FEM).
-    """
 
     def __init__(
         self,
@@ -811,9 +627,6 @@ class AirNowDOSAdapter:
         )
 
     def load_and_canonicalize(self, csv_file: Optional[Union[str, Path]] = None) -> pd.DataFrame:
-        """
-        Nạp tệp AirNow DOS Historical CSV và chuẩn hóa sang Canonical Schema.
-        """
         target_file = Path(csv_file) if csv_file else self.csv_path
         if not target_file.exists():
             raise FileNotFoundError(
@@ -824,20 +637,17 @@ class AirNowDOSAdapter:
         df_raw = pd.read_csv(target_file)
         df_raw.columns = [c.strip() for c in df_raw.columns]
 
-        # Kiểm tra cột bắt buộc
         req_cols = ["Site", "Parameter", "Date (LST)", "Value"]
         for c in req_cols:
             if c not in df_raw.columns:
                 raise ValueError(f"Tệp AirNow CSV thiếu cột bắt buộc '{c}'! Các cột hiện có: {list(df_raw.columns)}")
 
-        # Lọc trạm Hanoi và thông số PM2.5
         df_site = df_raw[df_raw["Site"].astype(str).str.strip().str.lower() == "hanoi"].copy()
         if df_site.empty:
             raise ValueError("Không tìm thấy bản ghi Site == 'Hanoi' trong tệp AirNow CSV!")
 
         df_pm25 = df_site[df_site["Parameter"].astype(str).str.strip().str.upper() == "PM2.5"].copy()
 
-        # Parse timestamp (Date (LST) là giờ địa phương UTC+7)
         df_pm25["timestamp"] = pd.to_datetime(df_pm25["Date (LST)"], errors="coerce")
         df_pm25 = df_pm25.dropna(subset=["timestamp"]).copy()
         if df_pm25["timestamp"].dt.tz is None:
@@ -845,7 +655,6 @@ class AirNowDOSAdapter:
         else:
             df_pm25["timestamp"] = df_pm25["timestamp"].dt.tz_convert(CANONICAL_TIMEZONE)
 
-        # Làm sạch giá trị (-999 -> NaN, 0.0 giữ nguyên)
         df_pm25["pm25"] = df_pm25["Value"].apply(clean_air_quality_values)
         df_pm25["pm10"] = np.nan
         df_pm25["station_id"] = self.station_id
@@ -855,7 +664,6 @@ class AirNowDOSAdapter:
             ["timestamp", "station_id", "location", "pm25", "pm10"]
         ].sort_values("timestamp").reset_index(drop=True)
 
-        # Kiểm tra tính duy nhất và không gian
         validate_canonical_uniqueness(df_canonical, key_cols=["station_id", "timestamp"])
         assert_canonical_within_hanoi(df_canonical, {self.station_id: self.coordinates})
 
@@ -863,13 +671,6 @@ class AirNowDOSAdapter:
 
 
 class OpenMeteoAdapter:
-    """
-    Adapter thu thập và chuẩn hóa dữ liệu khí tượng bề mặt ERA5 từ Open-Meteo.
-
-    Vai trò nguồn: PRIMARY khí tượng theo Quyết Định Cổng Nguồn tại Issue #19
-    (xem docs/source_profiling_decision.md §12.2). NOAA ISD 48820 chỉ là FALLBACK và
-    không được kích hoạt khi Open-Meteo đã đáp ứng yêu cầu.
-    """
 
     def __init__(
         self,
@@ -879,8 +680,6 @@ class OpenMeteoAdapter:
         raw_dir: Path = Path("data/raw"),
         interim_dir: Path = Path("data/interim"),
     ):
-        # AC3 (Issue #4): tọa độ khí tượng bắt buộc phải nằm trong địa bàn Hà Nội.
-        # Kiểm tra NGAY TẠI CONSTRUCTOR để không phát tải cho vị trí ngoài Hà Nội.
         in_lat = HANOI_BBOX["lat_min"] <= latitude <= HANOI_BBOX["lat_max"]
         in_lon = HANOI_BBOX["lon_min"] <= longitude <= HANOI_BBOX["lon_max"]
         if not (in_lat and in_lon):
@@ -897,10 +696,6 @@ class OpenMeteoAdapter:
         self.interim_dir.mkdir(parents=True, exist_ok=True)
 
     def build_request_url(self, start_date: str, end_date: str) -> str:
-        """
-        Dựng URL truy vấn Open-Meteo Historical Archive cho dải ngày được yêu cầu.
-        Tách riêng để metadata.json có thể ghi lại đúng URL thực thi (provenance).
-        """
         params = {
             "latitude": self.latitude,
             "longitude": self.longitude,
@@ -920,17 +715,6 @@ class OpenMeteoAdapter:
         raw_output_name: Optional[str] = None,
         force_reload: bool = False,
     ) -> Tuple[Dict[str, Any], Path]:
-        """
-        Gọi Open-Meteo Historical Archive API, lấy 6 biến khí tượng Canonical.
-
-        `start_date` / `end_date` là THAM SỐ BẮT BUỘC (không có giá trị mặc định):
-        theo Issue #4, dải thời gian khí tượng phải được suy diễn động từ độ phủ
-        thực tế của chuỗi chất lượng không khí, tuyệt đối không áp đặt trước một
-        khung thời gian lịch sử cố định.
-
-        Payload trả về từ API được ghi nguyên trạng vào data/raw/ (không biến đổi
-        giá trị nào trước khi lưu); mọi biến đổi diễn ra ở lớp cleaning/canonical.
-        """
         if not start_date or not end_date:
             raise ValueError(
                 "start_date và end_date là bắt buộc. Issue #4 yêu cầu dải thời gian khí tượng "
@@ -973,27 +757,16 @@ class OpenMeteoAdapter:
         return raw_json, raw_path
 
     def to_canonical(self, raw_data: Dict[str, Any], validate: bool = True) -> pd.DataFrame:
-        """
-        Chuẩn hóa payload Open-Meteo sang Canonical Schema:
-        - timestamp: datetime64[ns, Asia/Ho_Chi_Minh]
-        - 6 biến khí tượng kiểu float64 theo docs/data_dictionary.md.
-        - Kiểm định `hourly_units` của raw response (AC4-11) trước khi chuẩn hóa.
-        - Làm sạch mã ngụy trang và bảo toàn số 0 hợp lệ.
-        - Kiểm tra tính duy nhất, vị trí điểm lưới, và kiểm định chất lượng toàn diện.
-        """
         hourly = raw_data.get("hourly", {})
         if not hourly or "time" not in hourly:
             raise ValueError("Payload Open-Meteo không chứa cấu trúc 'hourly.time' hợp lệ!")
 
-        # AC4-11: đối chiếu `hourly_units` thực tế trong raw response TRƯỚC khi
-        # chuẩn hóa. Không được giả định đơn vị đúng chỉ vì request đã yêu cầu.
         validated_units = validate_open_meteo_hourly_units(raw_data)
         logger.debug(
             "Đơn vị khí tượng đã kiểm định từ 'hourly_units': "
             + ", ".join(f"{var}={unit}" for var, unit in validated_units.items())
         )
 
-        # Ánh xạ biến canonical -> tên trường tại nhà cung cấp (theo docs/data_dictionary.md §4.3)
         provider_fields = {
             var: field for var, (field, _unit) in WEATHER_EXPECTED_UNITS.items()
         }
@@ -1006,8 +779,6 @@ class OpenMeteoAdapter:
                 f"(mong đợi {n_hours} mốc giờ như 'time')."
             )
 
-        # Lớp CLEANING: bóc trần mã lỗi ngụy trang, loại giá trị vi phạm giới hạn vật lý,
-        # tuyệt đối giữ nguyên giá trị 0.0 hợp lệ. Không có fillna(0).
         cleaned_by_var = {
             var: [clean_weather_values(v, var) for v in vals] for var, vals in raw_by_var.items()
         }
@@ -1020,22 +791,15 @@ class OpenMeteoAdapter:
         else:
             df["timestamp"] = df["timestamp"].dt.tz_convert(self.timezone)
 
-        # Đảm bảo kiểu float64 cho toàn bộ 6 biến khí tượng
         for col in WEATHER_CANONICAL_COLUMNS[1:]:
             df[col] = df[col].astype("float64")
 
         df_canonical = df[WEATHER_CANONICAL_COLUMNS].sort_values("timestamp").reset_index(drop=True)
 
-        # Minh bạch hóa lớp cleaning: validate_weather_canonical() sẽ báo cáo đây,
-        # tránh việc giá trị bị loại bỏ âm thầm mà báo cáo vẫn ghi "0 vi phạm".
         df_canonical.attrs["weather_cleaning"] = cleaning_stats
 
-        # Kiểm tra tính duy nhất của timestamp
         validate_canonical_uniqueness(df_canonical, key_cols=["timestamp"])
 
-        # Kiểm tra tọa độ điểm lưới ERA5 phản hồi (AC3).
-        # Bắt buộc payload phải kèm tọa độ: nếu API không trả về thì KHÔNG được
-        # âm thầm thay bằng hằng số nội bộ, vì như vậy assertion sẽ tự động pass.
         if raw_data.get("latitude") is None or raw_data.get("longitude") is None:
             raise ValueError(
                 "Payload Open-Meteo không trả về tọa độ điểm lưới (latitude/longitude). "
@@ -1048,7 +812,6 @@ class OpenMeteoAdapter:
             and HANOI_BBOX["lon_min"] <= grid_lon <= HANOI_BBOX["lon_max"]
         ), f"Điểm lưới ERA5 ({grid_lat}, {grid_lon}) nằm ngoài Bounding Box Hà Nội!"
 
-        # Kiểm định chất lượng toàn diện nếu validate=True
         if validate:
             validate_weather_canonical(df_canonical)
 
@@ -1064,17 +827,6 @@ def run_collection_pipeline(
     raw_dir: Path = Path("data/raw"),
     interim_dir: Path = Path("data/interim"),
 ) -> Dict[str, Any]:
-    """
-    Hàm thực thi toàn bộ pipeline thu thập và chuẩn hóa dữ liệu ô nhiễm & khí tượng:
-    1. Thu thập dữ liệu thô OpenAQ trạm chuẩn Hà Nội (4946811) từ S3 archive.
-    2. Xác định cửa sổ truy vấn khí tượng đồng bộ động từ chuỗi ô nhiễm thực tế (nếu không truyền explicit window).
-    3. Thu thập dữ liệu thô Open-Meteo ERA5 từ API theo requested query window đồng bộ.
-    4. Kiểm tra và tích hợp AirNow DOS Historical Adapter (xác định trạng thái thực tế, không tạo dữ liệu giả).
-    5. Lọc không gian Bounding Box Hà Nội từng record và chuẩn hóa sang Canonical Schema.
-    6. Xác thực địa lý, bảo đảm 100% bản ghi nằm trong Hà Nội, kiểm tra duplicate key.
-    7. Lưu canonical interim files vào data/interim/.
-    8. Cập nhật metadata.json với execution metrics thực tế (phân biệt rõ requested study window vs actual source coverage).
-    """
     t_start = time.time()
     raw_dir = Path(raw_dir)
     interim_dir = Path(interim_dir)
@@ -1089,12 +841,10 @@ def run_collection_pipeline(
         interim_dir=interim_dir,
     )
 
-    # 1. OpenAQ 4946811 Ingestion & Canonicalization
     df_openaq_raw, openaq_raw_path = openaq_adapter.fetch_raw_data()
     _, geo_filter_stats = filter_hanoi_bounds(df_openaq_raw)
     df_air_canonical = openaq_adapter.to_canonical(df_openaq_raw)
 
-    # 2. Xác định cửa sổ truy vấn khí tượng: đồng bộ động từ chuỗi ô nhiễm thực tế nếu không truyền tham số cứng
     if study_window_start is None:
         query_start = df_air_canonical["timestamp"].min().strftime("%Y-%m-%d")
     else:
@@ -1110,7 +860,6 @@ def run_collection_pipeline(
         f"({'đồng bộ động từ chuỗi OpenAQ' if study_window_start is None and study_window_end is None else 'theo tham số caller'})"
     )
 
-    # 3. Open-Meteo Ingestion & Canonicalization
     weather_raw_json, weather_raw_path = weather_adapter.fetch_raw_data(
         start_date=query_start, end_date=query_end
     )
@@ -1119,7 +868,6 @@ def run_collection_pipeline(
         df_weather_canonical, max_missing_pct=WEATHER_PIPELINE_MAX_MISSING_PCT
     )
 
-    # Kiểm tra giao thoa thời gian (Temporal Overlap) giữa Air Quality và Weather
     df_overlap = pd.merge(df_air_canonical, df_weather_canonical, on="timestamp", how="inner")
     if len(df_overlap) == 0:
         raise AssertionError("Tập giao thoa thời gian giữa chất lượng không khí và khí tượng bị rỗng!")
@@ -1128,7 +876,6 @@ def run_collection_pipeline(
             f"Row explosion: số bản ghi giao thoa ({len(df_overlap)}) vượt quá dữ liệu không khí ({len(df_air_canonical)})!"
         )
 
-    # 4. AirNow DOS Historical Adapter Check & Ingestion
     airnow_adapter = AirNowDOSAdapter(
         csv_path=airnow_csv_path,
         raw_dir=raw_dir,
@@ -1173,7 +920,6 @@ def run_collection_pipeline(
             "note": "AirNowDOSAdapter is implemented in src/data_collection.py. Ingestion is pending valid raw CSV from AirNow-Tech / State Dept due to access restrictions.",
         }
 
-    # 4. Lưu interim canonical files
     air_interim_path = None
     weather_interim_path = None
     if save_interim:
@@ -1183,18 +929,14 @@ def run_collection_pipeline(
         df_weather_canonical.to_parquet(weather_interim_path, index=False, compression="snappy")
         logger.info(f"Đã lưu canonical interim files: {air_interim_path} và {weather_interim_path}")
 
-    # 5. Tính toán mã băm SHA-256
     openaq_sha256 = compute_file_sha256(openaq_raw_path)
     weather_sha256 = compute_file_sha256(weather_raw_path)
 
-    # 6. Phân định rõ Requested Window vs Actual Source Coverage
-    # actual timestamps được tính toán TRỰC TIẾP từ chuỗi thời gian trong DataFrame sau ingestion
     actual_min_openaq = str(df_air_canonical["timestamp"].min())
     actual_max_openaq = str(df_air_canonical["timestamp"].max())
     actual_min_weather = str(df_weather_canonical["timestamp"].min())
     actual_max_weather = str(df_weather_canonical["timestamp"].max())
 
-    # 6.1 Chỉ số khí tượng ĐƯỢC TÍNH TOÁN từ dữ liệu thực tế (không hardcode)
     weather_missing_pct = {
         col: round(float(df_weather_canonical[col].isna().mean() * 100), 2)
         for col in WEATHER_CANONICAL_COLUMNS[1:]
@@ -1279,7 +1021,6 @@ def run_collection_pipeline(
         },
     }
 
-    # 7. Cập nhật data/raw/metadata.json
     if metadata_path.exists():
         try:
             with open(metadata_path, "r", encoding="utf-8") as f:

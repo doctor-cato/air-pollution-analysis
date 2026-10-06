@@ -1,25 +1,3 @@
-"""
-Issue #7 – Preprocessing & sklearn pipeline chống data leakage.
-
-Module này cung cấp các function/interface ĐỘC LẬP có thể hoạt động
-ngay khi #5/#6 chưa hoàn thành. Khi #5/#6 merge xong, chỉ cần truyền
-output của chúng vào các function dưới đây – không cần viết lại architecture.
-
-PHẠM VI (chỉ những phần độc lập của #7):
-  - Cyclical time features (hour/month sin/cos)
-  - Chronological split helper (không random split)
-  - sklearn Pipeline + ColumnTransformer (fit strictly on Train)
-  - Target transformation diagnostic (log1p candidate)
-  - Parquet export helper (snappy)
-  - Merge function với row-explosion protection
-  - Dataset freeze helper (ghi nhận metadata, không hard-code)
-  - Integration với #5 (reuse audit_dataframe, audit_six_dimensions)
-
-KHÔNG LÀM (thuộc #5/#6):
-  - Completeness/accuracy/consistency/validity/uniqueness/timeliness audit
-  - Physical constraint cleaning, sensor error detection, deduplication
-  - Geographic filtering, timezone normalization, station-wise reindex
-"""
 
 from __future__ import annotations
 
@@ -41,15 +19,9 @@ from sklearn.preprocessing import RobustScaler
 
 logger = logging.getLogger(__name__)
 
-# Reuse từ Issue #5 – không duplicate logic.
-# Bắt buộc dùng đường dẫn đóng gói `src.data_quality`: module nằm trong package
-# `src/`, nên `from data_quality import ...` luôn ModuleNotFoundError và im lặng
-# biến hai hàm thành None — khiến `run_preprocessing_audit()` hỏng vĩnh viễn.
 try:
     from src.data_quality import audit_dataframe, audit_six_dimensions
-except ImportError as exc:  # pragma: no cover - chỉ xảy ra khi thiếu Issue #5
-    # Ghi cảnh báo thay vì nuốt lỗi: `run_preprocessing_audit()` sẽ ném lỗi rõ
-    # ràng khi được gọi, còn việc import module vẫn không làm sập CI.
+except ImportError as exc:
     logger.warning(
         "Không import được src.data_quality (%s). Tính năng audit của Issue #5 "
         "sẽ không khả dụng cho tới khi Issue #5 được cài đặt.",
@@ -58,19 +30,9 @@ except ImportError as exc:  # pragma: no cover - chỉ xảy ra khi thiếu Issu
     audit_dataframe = None
     audit_six_dimensions = None
 
-# ---------------------------------------------------------------------------
-# Constants – feature groups (không hard-code dataset-specific values)
-# ---------------------------------------------------------------------------
 
 TARGET_CANDIDATE: str = "pm25"
 
-# Ứng viên feature SỐ. KHÔNG chứa `TARGET_CANDIDATE`.
-#
-# Lý do: bản gốc liệt kê cả `pm25`, nên `build_preprocessing_pipeline()` gọi
-# không tham số sẽ đưa chính target vào `X`. Bài toán dự báo biến thành bài toán
-# đọc lại câu trả lời — R² = 1.0 một cách vô nghĩa, và sai lệch này KHÔNG bị
-# `validate_no_leakage()` phát hiện vì imputer vẫn học đúng trên Train.
-# `build_preprocessing_pipeline()` giờ raise nếu target lọt vào danh sách.
 NUMERIC_FEATURES: List[str] = [
     "pm10",
     "temperature",
@@ -88,131 +50,27 @@ CYCLICAL_FEATURES: List[str] = [
     "month_cos",
 ]
 
-# Cờ chẩn đoán do Issue #5/#6 sinh ra.
-#
-#   - `pm25_was_stuck`: cảm biến kẹt. Trên tập Hà Nội cờ này là **hằng số 0**
-#     (`nunique = 1`, `sum = 0`) — không có phương sai nên không thể mang thông
-#     tin phân biệt. Vẫn giữ trong danh sách feature vì nó vô hại về số học
-#     (scaler tự đặt `scale_ = 1` cho hằng số), nhưng **không được diễn giải** là
-#     biến có tác động. Nếu sau này cảm biến thật sự kẹt thì cờ sẽ biến thiên
-#     và trở lại có ích — đó là lý do giữ.
 DIAGNOSTIC_FEATURES: List[str] = [
     "pm25_was_stuck",
 ]
 
-# Cờ chẩn đoán **KHÔNG** được dùng làm feature vì là hàm xác định của target.
-#
-# `pm25_was_missing` = `pm25.isna()` với ngưỡng khối khuyết > 6 giờ.
-# `SimpleImputer(strategy="median")` lại điền median cho ĐÚNG những hàng đó. Hệ
-# quả: mọi hàng `flag == 1` có target bằng đúng median của tập học — đo trên dữ
-# liệu thật (cut 2026-01-15, median Train 37,83) là 256/256 hàng ở Train và
-# 1.033/1.033 hàng ở Test, tức 100% ở cả hai. Mô hình học được quy tắc
-# `flag == 1 => pm25 == median` và đúng 100%, đó là rò rỉ target theo cấu trúc chứ
-# không phải tín hiệu vật lý.
-#
-# Lưu ý khi đọc con số: tổng số hàng `pm25` bị NaN là 1.549, nhưng cờ chỉ bắt
-# 1.289 khối dài — 260 khối ngắn cũng được impute nhưng không lộ qua cờ.
-#
-# `validate_no_leakage()` VỀ BẢN CHẤT KHÔNG THỂ bắt lỗi này: imputer vẫn học
-# đúng trên Train. Vì vậy phải loại ở mức danh sách feature, không phải ở mức
-# kiểm chứng. Cờ vẫn được GIỮ trong dataset như tài liệu chẩn đoán.
 TARGET_DERIVED_FLAGS: List[str] = [
     "pm25_was_missing",
 ]
 
 
-# Cờ chẩn đoán **KHÔNG** được dùng làm feature mặc định vì **chưa có bằng chứng về
-# giá trị dự báo MARGINAL** trên bộ dữ liệu hiện tại. Tách khỏi
-# `TARGET_DERIVED_FLAGS` vốn là rò rỉ *chắc chắn* — hai lý do phải tách bạch, gộp
-# chung sẽ khiến người đọc tưởng mọi cờ bị loại đều vì rò rỉ.
-#
-# ── Cách đo và kết quả ────────────────────────────────────────────────────────
-# Trên `data/interim/air_quality_canonical.parquet` (7.495 dòng có cả `pm25` và RH):
-#
-#   - `corr(pm25, RH)`                  = -0,0365
-#   - PM2.5 TB nhóm có cờ             = 41,65   (n = 2.384)
-#   - PM2.5 TB nhóm không cờ          = 44,75   (n = 5.111)
-#   - Mutual information (8 nhân pm25) = 0,0024  — thấp nhất trong các biến khí tượng
-#
-# Nên ở mức **marginal**, cờ gần như không mang thông tin dự báo.
-#
-# ── NHƯNG: cờ CÓ tương tác thật với mùa, và đây là lý do không nên viết quá tay ──
-#
-# Hồi quy `pm25 ~ fog + season + fog:season` cho ra tương tác rất mạnh:
-#
-#   | Mùa       | Chênh lệch (có cờ − không cờ) | Kết luận         |
-#   |-----------|------------------------------|------------------|
-#   | Đông      |  **+2,79** µg/m³ (p = 0,024)  | có, yếu         |
-#   | Xuân      |  **−8,91** µg/m³              | có, mạnh         |
-#   | Hè        |  +0,28 µg/m³                  | không            |
-#   | Thu       |  **−2,72** µg/m³              | có               |
-#
-#   F-test đồng thời các hệ số tương tác: **F = 16,78, p = 7,4·10⁻¹¹**.
-#   Khác biệt kép giữa Đông và Xuân+Hè: **+7,77 µg/m³**.
-#
-# Tức là `corr(pm25, RH) ≈ 0` **không phải** bằng chứng "không có quan hệ" — nó là
-# hệ quả của việc **trung bình qua các mùa**, nơi hiệu ứng đổi dấu. Đây chính là
-# lý do review buộc phải hạ giọng từ "không dự báo được" (phủ định tuyệt đối, không
-# chứng minh được bằng tương quan) xuống "chưa có bằng chứng về giá trị marginal".
-#
-# ── Vì sao vẫn loại khỏi feature MẶC ĐỊNH ───────────────────────────────────
-#
-# Với một mô hình chỉ nhận cờ trần (không có số tương tác), hệ số học được là
-# hiệu ứng **marginal** đã gộp sạc — tức gần 0. Một hệ số gần 0 chỉ làm **tăng
-# phương sai ước lượng**, không thêm tín hiệu. Còn nếu muốn khai thác phát hiện ở
-# trên thì phải đưa vào dưới dạng **tương tác `fog × mùa`**, và đó là việc của
-# **Issue #8 (EDA)** — nơi quyết định hình thức đặc trưng, không phải M2.
-#
-# Cờ **được giữ nguyên trong dataset** như tài liệu chẩn đoán. Nếu EDA chứng minh
-# tương tác theo mùa là thật và dùng được, thì đưa lại dưới dạng cột tương tác.
 NON_PREDICTIVE_FLAGS: List[str] = [
     "is_high_humidity_fog",
 ]
-
-
-# ---------------------------------------------------------------------------
-# A. Cyclical time features
-# ---------------------------------------------------------------------------
 
 
 def add_cyclical_time_features(
     df: pd.DataFrame,
     timestamp_col: str = "timestamp",
 ) -> pd.DataFrame:
-    """
-    Thêm các cột đặc trưng chu kỳ thời gian (sin/cos) vào DataFrame.
-
-    Công thức:
-        hour_sin = sin(2π * hour / 24)
-        hour_cos = cos(2π * hour / 24)
-        month_sin = sin(2π * month / 12)
-        month_cos = cos(2π * month / 12)
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        DataFrame chứa cột timestamp (đã là datetime).
-    timestamp_col : str
-        Tên cột timestamp.
-
-    Returns
-    -------
-    pd.DataFrame
-        DataFrame gốc + 4 cột mới: hour_sin, hour_cos, month_sin, month_cos.
-
-    Raises
-    ------
-    ValueError
-        Nếu cột thời gian có NaT hoặc không parse được. Nhánh `cyc` của
-        ColumnTransformer là `passthrough` — không có imputer — nên NaN ở đây đi
-        thẳng vào ma trận, và `RobustScaler` phía sau sẽ âm thầm biến nó thành 0.
-    """
     result = df.copy()
     ts = pd.to_datetime(result[timestamp_col])
 
-    # NaT -> hour/month là NaN -> sin/cos là NaN -> nhánh `cyc` passthrough không
-    # lọc -> RobustScaler đổi NaN thành 0. Hàng đó biến thành "nửa đêm" giả, đúng
-    # cái loại rò rỉ âm thầm mà #7 sinh ra để chặn. Phải chặn ngay tại nguồn.
     if ts.isna().any():
         n_nat = int(ts.isna().sum())
         raise ValueError(
@@ -233,23 +91,10 @@ def add_cyclical_time_features(
     return result
 
 
-# ---------------------------------------------------------------------------
-# B. Chronological split
-# ---------------------------------------------------------------------------
-
-
 def sort_by_time(
     df: pd.DataFrame,
     timestamp_col: str = "timestamp",
 ) -> pd.DataFrame:
-    """
-    Trả về bản sao đã sắp xếp tăng dần theo cột thời gian.
-
-    `chronological_split()` **không** tự sort lại: sort tại chỗ sẽ che giấu
-    việc người gọi truyền vào dữ liệu chưa chuẩn hoá, và một tập dữ liệu bị
-    đảo thứ tự dòng là dấu hiệu đường ống ingestion có vấn đề. Gọi hàm này
-    tường minh trước `chronological_split()` nếu thật sự cần.
-    """
     return df.sort_values(timestamp_col, kind="stable").reset_index(drop=True)
 
 
@@ -258,43 +103,6 @@ def chronological_split(
     split_timestamp: pd.Timestamp,
     timestamp_col: str = "timestamp",
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Chia DataFrame thành (train, test) theo mốc thời gian tuyến tính.
-
-    TUYỆT ĐỐI không dùng random split. Train = dữ liệu trước split_timestamp,
-    Test = dữ liệu từ split_timestamp trở đi.
-
-    Hàm **từ chối** dữ liệu không sử dụng được thay vì tự sửa:
-
-      - `NaT` trong cột thời gian — `ts < split` xử lý NaT là `False`, nên hàng đó
-        rơi vào Test và mang theo NaT, biến mất khỏi mọi kiểm tra mà không ai biết
-        mất bao nhiêu dòng. Tệ hơn: `train.max()` vẫn đúng nên assert rò rỉ thời
-        gian vẫn xanh.
-      - Thứ tự dòng không tăng dần — điều kiện không rò rỉ vẫn đạt (vì split theo
-        mốc thời gian chứ không theo vị trí) nhưng thứ tự dòng trong output sai,
-        mọi phép kiểm tra giả định "theo thời gian" phía sau sẽ sai lệch âm thầm.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        DataFrame đã được sắp xếp theo thời gian (xem `sort_by_time()`).
-    split_timestamp : pd.Timestamp
-        Mốc cắt. Train: ts < split; Test: ts >= split.
-    timestamp_col : str
-        Tên cột timestamp.
-
-    Returns
-    -------
-    (train, test) : Tuple[pd.DataFrame, pd.DataFrame]
-
-    Raises
-    ------
-    AssertionError
-        Nếu train.max >= test.min (rò rỉ thời gian), hoặc dữ liệu chứa NaT,
-        hoặc thứ tự dòng không tăng dần theo thời gian.
-    ValueError
-        Nếu split_timestamp nằm ngoài dải thời gian của dữ liệu.
-    """
     ts = pd.to_datetime(df[timestamp_col])
 
     if ts.isna().any():
@@ -307,10 +115,6 @@ def chronological_split(
         )
 
     if not ts.is_monotonic_increasing:
-        # `Series.diff()` trên datetime tz-aware trả về `timedelta64[ns]`, và
-        # so sánh nó với `np.timedelta64(1, "h")` quy nạch đơn vị "generic" —
-        # numpy đã DeprecationWarning và sẽ ném lỗi. Ép sang so sánh theo
-        # `Timedelta` của pandas để không phụ thuộc vào đường chuyển đổi đó.
         deltas = pd.Series(ts).diff()
         first_bad = int(np.argmax((deltas < pd.Timedelta(0)).to_numpy())) + 1
         raise AssertionError(
@@ -328,13 +132,11 @@ def chronological_split(
     train = df[ts < split_timestamp].copy()
     test = df[ts >= split_timestamp].copy()
 
-    # Validation cứng: không có rò rỉ thời gian
     assert train[timestamp_col].max() < test[timestamp_col].min(), (
         f"Temporal leakage: train.max ({train[timestamp_col].max()}) "
         f">= test.min ({test[timestamp_col].min()})"
     )
 
-    # Không mất dòng: hai tập phải phủ đúng toàn bộ input.
     assert len(train) + len(test) == len(df), (
         f"Split làm mất dòng: {len(train)} + {len(test)} != {len(df)}"
     )
@@ -348,42 +150,13 @@ def chronological_split(
     return train, test
 
 
-# ---------------------------------------------------------------------------
-# C. sklearn Pipeline + ColumnTransformer
-# ---------------------------------------------------------------------------
-
-
 def build_preprocessing_pipeline(
     numeric_features: Optional[List[str]] = None,
     cyclical_features: Optional[List[str]] = None,
 ) -> Pipeline:
-    """
-    Xây dựng Scikit-Learn Pipeline chống rò rỉ dữ liệu.
-
-    Architecture:
-        ColumnTransformer:
-          - numeric: SimpleImputer(median) → RobustScaler
-          - cyclical: passthrough (đã là sin/cos, không cần impute/scale)
-
-    Pipeline CHỈ được fit trên Train. Khi gọi .transform(X_test),
-    các tham số (median, IQR) từ Train được áp dụng – không học từ Test.
-
-    Parameters
-    ----------
-    numeric_features : list[str] | None
-        Danh sách cột số. Mặc định: NUMERIC_FEATURES.
-    cyclical_features : list[str] | None
-        Danh sách cột chu kỳ. Mặc định: CYCLICAL_FEATURES.
-
-    Returns
-    -------
-    sklearn.pipeline.Pipeline
-        Pipeline chưa fit. Gọi .fit(X_train) rồi .transform(X_train/X_test).
-    """
     num_feats = list(numeric_features if numeric_features is not None else NUMERIC_FEATURES)
     cyc_feats = list(cyclical_features if cyclical_features is not None else CYCLICAL_FEATURES)
 
-    # Target vào feature = bài toán đọc lại đáp án. Chặn ở đây, không đợi tới test.
     if TARGET_CANDIDATE in num_feats:
         raise ValueError(
             f"Target '{TARGET_CANDIDATE}' không được đưa vào feature. "
@@ -399,9 +172,6 @@ def build_preprocessing_pipeline(
 
     numeric_transformer = Pipeline(
         steps=[
-            # keep_empty_features=True: cột toàn NaN phải được giữ lại (giá trị
-            # 0 sau impute) chứ không âm thầm biến mất khỏi ma trận — mất cột
-            # làm lệch mọi `coef_`/`feature_importances_` đọc theo vị trí.
             ("imputer", SimpleImputer(strategy="median", keep_empty_features=True)),
             ("scaler", RobustScaler()),
         ]
@@ -412,7 +182,7 @@ def build_preprocessing_pipeline(
             ("num", numeric_transformer, num_feats),
             ("cyc", "passthrough", cyc_feats),
         ],
-        remainder="drop",  # bỏ các cột không được định nghĩa (ví dụ: target, ID)
+        remainder="drop",
     )
 
     pipeline = Pipeline(steps=[("preprocessor", preprocessor)])
@@ -429,21 +199,6 @@ def fit_pipeline_on_train(
     pipeline: Pipeline,
     X_train: pd.DataFrame,
 ) -> Pipeline:
-    """
-    Fit pipeline STRICTLY trên Train.
-
-    Parameters
-    ----------
-    pipeline : sklearn.pipeline.Pipeline
-        Pipeline từ build_preprocessing_pipeline().
-    X_train : pd.DataFrame
-        Features của Train (không chứa target).
-
-    Returns
-    -------
-    Pipeline
-        Pipeline đã fit.
-    """
     pipeline.fit(X_train)
     logger.info("Pipeline fitted on train set (%d rows)", len(X_train))
     return pipeline
@@ -453,66 +208,12 @@ def transform_with_pipeline(
     pipeline: Pipeline,
     X: pd.DataFrame,
 ) -> np.ndarray:
-    """
-    Transform dữ liệu bằng pipeline đã fit.
-
-    Áp dụng cho cả Train và Test – KHÔNG học lại tham số từ Test.
-
-    Parameters
-    ----------
-    pipeline : sklearn.pipeline.Pipeline
-        Pipeline đã fit trên Train.
-    X : pd.DataFrame
-        Features cần transform.
-
-    Returns
-    -------
-    np.ndarray
-        Ma trận đã transform.
-    """
     return pipeline.transform(X)
-
-
-# ---------------------------------------------------------------------------
-# D. Target transformation diagnostic (log1p candidate)
-# ---------------------------------------------------------------------------
 
 
 def evaluate_log1p_transform(
     y_train: pd.Series,
 ) -> Dict[str, Any]:
-    """
-    Đánh giá biến đổi log1p trên target – CHỈ diagnostic, KHÔNG kết luận.
-
-    Tính các chỉ số trên Train để sau khi dataset freeze có thể quyết định
-    có dùng log1p hay không dựa trên bằng chứng thực tế.
-
-    Parameters
-    ----------
-    y_train : pd.Series
-        Target (pm25) của Train.
-
-    Returns
-    -------
-    dict
-        {
-            "n_observations": int,
-            "n_negative": int,
-            "original_skew": float,
-            "log1p_skew": float,
-            "original_kurtosis": float,
-            "log1p_kurtosis": float,
-            "log1p_values": pd.Series,  # giữ index để đối chiếu với y_train
-        }
-
-    Raises
-    ------
-    ValueError
-        Nếu target có giá trị âm. `log1p` không xác định ở đó và `np.log1p`
-        âm thầm trả NaN — biểu đồ phân phối sau đó vẽ ra rỗng mà không ai biết
-        vì sao. Với PM2.5 đơn vị µg/m³ thế này không xảy ra, nhưng hàm không được
-        giả định điều đó về dữ liệu tương lai.
-    """
     y = pd.Series(y_train).dropna()
 
     if y.empty:
@@ -553,54 +254,18 @@ def evaluate_log1p_transform(
     return result
 
 
-# ---------------------------------------------------------------------------
-# E. Merge function với row-explosion protection
-# ---------------------------------------------------------------------------
-
-
 def merge_air_weather(
     df_air: pd.DataFrame,
     df_weather: pd.DataFrame,
     on: Optional[List[str]] = None,
     validate: str = "1:1",
 ) -> pd.DataFrame:
-    """
-    Ghép dữ liệu ô nhiễm và khí tượng theo khóa quan sát.
-
-    Parameters
-    ----------
-    df_air : pd.DataFrame
-        Dữ liệu chất lượng không khí (canonical).
-    df_weather : pd.DataFrame
-        Dữ liệu khí tượng (canonical).
-    on : list[str] | None
-        Cột khóa ghép. Mặc định: ["station_id", "timestamp"] nếu cả hai có station_id,
-        ngược lại ["timestamp"].
-    validate : str
-        Kiểm tra quan hệ: "1:1", "1:m", "m:1", "m:m". Mặc định "1:1".
-
-    Returns
-    -------
-    pd.DataFrame
-        DataFrame đã ghép.
-
-    Raises
-    ------
-    ValueError
-        Nếu khóa không unique trên một trong hai bảng, nếu hai bảng có cột trùng
-        tên ngoài khóa, hoặc nếu KHÔNG cột khí tượng nào khớp được (toàn NaN).
-    AssertionError
-        Nếu len(df_merged) != len(df_air) – Row Explosion.
-    """
     if on is None:
         if "station_id" in df_air.columns and "station_id" in df_weather.columns:
             on = ["station_id", "timestamp"]
         else:
             on = ["timestamp"]
 
-    # Cột trùng tên ngoài khóa sẽ bị pandas đổi thành `_x`/`_y`, mất tên gốc —
-    # ví dụ `pm25_was_missing` biến mất khỏi output, mọi tra cứu tên gốc phía
-    # sau sẽ KeyError hoặc âm thầm lấy nhầm cột bên khí tượng.
     collide = sorted((set(df_air.columns) & set(df_weather.columns)) - set(on))
     if collide:
         raise ValueError(
@@ -609,7 +274,6 @@ def merge_air_weather(
             "trước khi ghép, hoặc truyền `on` rõ ràng."
         )
 
-    # Kiểm tra uniqueness của khóa trên mỗi bảng
     for name, df in [("air", df_air), ("weather", df_weather)]:
         dup_count = df.duplicated(subset=on).sum()
         if dup_count > 0:
@@ -620,16 +284,6 @@ def merge_air_weather(
 
     df_merged = df_air.merge(df_weather, on=on, how="left", validate=validate)
 
-    # Chống Row Explosion — HAI phép, cả hai đều đúng, khác sức bắt:
-    #
-    # (1) `<=` là điều kiện cần mà Issue #7 §Yêu cầu kỹ thuật chỉ định, nên
-    #     giữ nguyên để không lệch khỏi đặc tả. Nhưng với `how="left"` + khoá
-    #     unique hai phía + `validate="1:1"`, nó **luôn đúng** và không bắt được
-    #     gì: row explosion bị chặn sớm hơn bởi kiểm tra khoá unique ở trên.
-    # (2) `==` là phép thật sự phân biệt được. `merge(how="left")` phải giữ đúng
-    #     số dòng của bảng trái; lệch bất kỳ dòng nào là join sai.
-    #
-    # Giữ (1) vì đặc tả yêu cầu, giữ (2) vì (1) một mình là dead code.
     assert len(df_merged) <= len(df_air), (
         f"Row Explosion: merged ({len(df_merged)}) > air ({len(df_air)}). "
         f"Kiểm tra lại khóa ghép {on}."
@@ -640,11 +294,6 @@ def merge_air_weather(
         f"`<=` ở trên không bắt được trường hợp này."
     )
 
-    # `.agents/rules/data.md` §3.6 BẮT BUỘC phải có kiểm tra này. Thiếu nó thì
-    # một lệch timezone / định dạng timestamp sẽ cho ra frame trông hoàn toàn
-    # bình thường (đúng số dòng, đúng schema) nhưng mọi cột khí tượng đều NaN —
-    # rồi `SimpleImputer` lấp median và mô hình vẫn "chạy mượt" trên 6 hằng số
-    # bịa, mọi chỉ số ở Issue #11-#13 trở nên vô nghĩa.
     weather_cols = [c for c in df_weather.columns if c not in on]
     if weather_cols:
         all_nan = [c for c in weather_cols if df_merged[c].isna().all()]
@@ -674,45 +323,12 @@ def merge_air_weather(
     return df_merged
 
 
-# ---------------------------------------------------------------------------
-# F. Parquet export helper
-# ---------------------------------------------------------------------------
-
-
 def export_to_parquet(
     df: pd.DataFrame,
     output_path: str | Path,
     compression: str = "snappy",
     overwrite: bool = False,
 ) -> None:
-    """
-    Xuất DataFrame ra Parquet (snappy) với validation sau khi ghi.
-
-    Ghi **nguyên tử**: ghi vào file tạm cùng thư mục rồi mới `os.replace()` sang
-    đích. Bản gốc ghi thẳng vào đích nên nếu validation sau ghi thất bại (dtype
-    lệch, schema lệch) thì **file hỏng vẫn nằm ở đó** — người chạy tiếp đọc
-    được một artifact đã hỏng mà tin là hợp lệ. Ở đây file tạm bị dọn và đích
-    giữ nguyên trạng thái trước đó.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        DataFrame cần xuất.
-    output_path : str | Path
-        Đường dẫn file đầu ra.
-    compression : str
-        Kiểu nén. Mặc định: "snappy" theo `.agents/rules/data.md`.
-    overwrite : bool
-        Cho phép ghi đè file đã tồn tại. Mặc định False: ghi đè artifact đã
-        đóng băng là hành vi không thể phát hiện và làm mất dấu vết chạy trước.
-
-    Raises
-    ------
-    FileExistsError
-        Nếu file đích đã tồn tại và `overwrite=False`.
-    AssertionError
-        Nếu file đọc lại không khớp schema, row count hoặc dtype.
-    """
     output_path = Path(output_path)
     if output_path.exists() and not overwrite:
         raise FileExistsError(
@@ -725,7 +341,6 @@ def export_to_parquet(
     original_cols = list(df.columns)
     original_dtypes = df.dtypes.to_dict()
 
-    # os.replace là atomic trên cùng filesystem; temp nằm CÙNG thư mục đích.
     fd, tmp_name = tempfile.mkstemp(
         dir=str(output_path.parent), suffix=".parquet.tmp"
     )
@@ -734,7 +349,6 @@ def export_to_parquet(
     try:
         df.to_parquet(tmp_path, compression=compression, index=False)
 
-        # Validation: đọc lại và đối chiếu TRƯỚC khi chạm vào file đích.
         df_readback = pd.read_parquet(tmp_path)
 
         assert len(df_readback) == original_rows, (
@@ -743,9 +357,6 @@ def export_to_parquet(
         assert list(df_readback.columns) == original_cols, (
             f"Schema mismatch: ghi {original_cols}, đọc lại {list(df_readback.columns)}"
         )
-        # `original_dtypes` phải thực sự được dùng: Parquet có thể đổi kiểu
-        # bool/int khi round-trip, gây hỏng kiểu cờ chẩn đoán mà không đổi số
-        # dòng hay tên cột.
         readback_dtypes = {c: str(df_readback[c].dtype) for c in df_readback.columns}
         mismatched = {
             c: (str(original_dtypes[c]), readback_dtypes[c])
@@ -770,20 +381,12 @@ def export_to_parquet(
     )
 
 
-# ---------------------------------------------------------------------------
-# G. Dataset freeze helper
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class DatasetFreezeInfo:
-    """Metadata của dataset đã đóng băng – không hard-code giá trị."""
 
     row_count: int
     timestamp_min: pd.Timestamp
     timestamp_max: pd.Timestamp
-    # Optional vì `freeze_dataset()` dùng None khi dataset không có cột trạm —
-    # báo cáo "0 trạm" là khẳng định sai sự thật, còn None là "không đo được".
     station_count: Optional[int]
     feature_columns: List[str] = field(default_factory=list)
     target_column: str = TARGET_CANDIDATE
@@ -797,32 +400,6 @@ def freeze_dataset(
     feature_columns: Optional[List[str]] = None,
     additional_info: Optional[Dict[str, Any]] = None,
 ) -> DatasetFreezeInfo:
-    """
-    Ghi nhận metadata của dataset sau khi đóng băng.
-
-    KHÔNG hard-code giá trị hiện tại thành final result.
-    Chỉ thu thập và trả về thông tin để sau này so sánh/kiểm chứng.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Dataset đã làm sạch (output của #5/#6).
-    timestamp_col : str
-        Tên cột timestamp.
-    station_col : str
-        Tên cột station_id.
-    feature_columns : list[str] | None
-        Danh sách feature columns. Mặc định: **cột số** trừ target, timestamp và
-        trạm — đúng tập mà `build_preprocessing_pipeline()` nhận. Bản gốc lấy
-        *mọi* cột còn lại, nên `pm25_was_missing` (hàm xác định của target) và
-        `location` (chuỗi) lọt vào danh sách feature theo mặc định.
-    additional_info : dict | None
-        Thông tin bổ sung (ví dụ: split_timestamp, pipeline_params).
-
-    Returns
-    -------
-    DatasetFreezeInfo
-    """
     if feature_columns is None:
         excluded = {
             timestamp_col,
@@ -882,36 +459,10 @@ def freeze_dataset(
     return info
 
 
-# ---------------------------------------------------------------------------
-# H. Integration với Issue #5 (reuse audit functions)
-# ---------------------------------------------------------------------------
-
-
 def run_preprocessing_audit(
     df: pd.DataFrame,
     dataset_name: str = "canonical_dataset",
 ) -> Dict[str, Any]:
-    """
-    Chạy audit từ Issue #5 trên dataset trước khi preprocessing.
-
-    Reuse trực tiếp `audit_dataframe` và `audit_six_dimensions` từ `data_quality.py`.
-    Không duplicate logic – chỉ gọi lại và wrap kết quả.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Dataset cần audit (thường là output của #5/#6).
-    dataset_name : str
-        Tên dataset để ghi nhận trong báo cáo.
-
-    Returns
-    -------
-    dict
-        {
-            "summary_table": pd.DataFrame,  # từ audit_dataframe
-            "six_dimensions": dict,         # từ audit_six_dimensions
-        }
-    """
     if audit_dataframe is None or audit_six_dimensions is None:
         raise ImportError(
             "Không thể import audit functions từ data_quality. "
@@ -929,22 +480,9 @@ def run_preprocessing_audit(
 
 
 def _learned_arrays(estimator: Any) -> Dict[str, np.ndarray]:
-    """
-    Thu thập **mọi** tham số đã học của một estimator thành dict có khoá đầy đủ.
-
-    Bản gốc chỉ đọc `imputer.statistics_` và bỏ qua `scaler.center_`/`scale_`, nên
-    thay `RobustScaler` bằng bản fit trên Test vẫn in ra "✓ No leakage" dù
-    docstring khẳng định đã kiểm tra cả tham số scale. Hàm này đi theo cây
-    `named_steps` và gom mọi thuộc tính kết thúc bằng `_` có kiểu số, nên guard
-    không cần biết trước pipeline có mấy nhánh hay tên gì.
-    """
     found: Dict[str, np.ndarray] = {}
 
     def walk(est: Any, path: str) -> None:
-        # Pipeline lưu con trong `named_steps`; ColumnTransformer lưu trong
-        # `transformers_` (thuộc tính đã fit). Bỏ qua `transformers_` thì
-        # ColumnTransformer trả về dict rỗng vì các biến con nằm trong
-        # `_transformers` — tức là guard im lặng đúng lúc cần phát hiện rò rỉ.
         for name, child in getattr(est, "named_steps", {}).items():
             walk(child, f"{path}.{name}" if path else name)
 
@@ -979,66 +517,6 @@ def validate_no_leakage(
     verify_chronology: bool = True,
     atol: float = 1e-9,
 ) -> None:
-    """
-    Kiểm chứng pipeline **thực sự** được fit trên Train chứ không phải trên Test.
-
-    Bốn lớp kiểm chứng, mỗi lớp vá một lỗ hổng của bản gốc:
-
-    1. **Thứ tự thời gian.** Bản gốc không đọc cột `timestamp` lần nào, nên một
-       `train_test_split` ngẫu nhiên — vi phạm cam biên #1 của dự án — vẫn in ra
-       "✓ No leakage". Nay hàm so `train.max() < test.min()`.
-    2. **Giá trị học được, không chỉ sự tồn tại.** Bản gốc kiểm `hasattr()` rồi bỏ
-       qua, nên chỉ so `imputer.statistics_`. Nay so **mọi** tham số đã học
-       (`statistics_`, `center_`, `scale_`, ...) với giá trị refit trên Train.
-    3. **Mọi nhánh của ColumnTransformer.** Bản gốc hard-code tên `"num"`, nên
-       transformer thứ hai học trên Test là im lặng. Nay `_learned_arrays()` đi
-       theo cây `named_steps` nên tự bao phủ mọi nhánh, kể cả nhánh thêm sau này.
-    4. **Thứ tự đối số.** `X_train`/`X_test` là keyword-only; trước đó truyền
-       sai thứ tự vô hiệu hóa toàn bộ guard.
-
-    Tham số `X_train`/`X_test` là **keyword-only** có chủ đích: gọi
-    `validate_no_leakage(p, X_test, X_train)` là lỗi ghi nhầm biến, và guard phải
-    bắt được chứ không được tin theo tên tham số.
-
-    Parameters
-    ----------
-    pipeline : sklearn.pipeline.Pipeline
-        Pipeline đã fit.
-    X_train, X_test : pd.DataFrame
-        Features của Train (dùng để fit) và Test (chỉ dùng để transform).
-    timestamps, test_timestamps : pd.Series | None
-        Cột thời gian tương ứng. **Bắt buộc phải truyền CẢ HAI** (trừ khi đã đặt
-        `verify_chronology=False`) — khi đó hàm kiểm tra không có chồng lấn thời
-        gian giữa hai tập, tức là bắt được phép chia ngẫu nhiên.
-
-        Thiếu hoặc chỉ truyền một sẽ ném `AssertionError`. Bản trung gian của
-        PR này chỉ `logger.warning`; review chỉ ra rằng như vậy guard vẫn **có
-        thể** in ra "✓ No leakage" khi chưa hề kiểm tra thứ tự thời gian. Đúng
-        lý do tồn tại của hàm là để chứng nhận "không rò rỉ", nên thiếu kiểm thì
-        phải là **lỗi**, không phải cảnh báo.
-    verify_chronology : bool, default True
-        Đặt `False` **chỉ** khi thực sự chỉ muốn kiểm rò rỉ tham số (ví dụ unit
-        test cố ý dựng một pipeline fit sai tập). Khi đó hàm vẫn `logger.warning`
-        nói rõ lớp thứ tự thời gian đang bị tắt. Lối tắt này **phải được gõ ra
-        tay** — không thể xảy ra do quên.
-    atol : float
-        Sai số cho phép khi so sánh float.
-
-    .. warning::
-       Đo lại trên dữ liệu thật: một ``train_test_split`` ngẫu nhiên với đúng
-       ``X_train``/``X_test`` là **không bị bắt** nếu không có lớp thứ tự thời
-       gian. Các lớc 2–3 vẫn phát hiện được *scaler fit sai tập*, nhưng không
-       phát hiện được *chính cái phép chia*. Vì vậy lớp 1 là lớp duy nhất chống
-       được random split — đừng bao giờ tắt nó ở bất kỳ đâu liên quan tới dữ
-       liệu thật.
-    atol : float
-        Sai số cho phép khi so sánh float.
-
-    Raises
-    ------
-    AssertionError
-        Nếu phát hiện dấu hiệu leakage, hoặc pipeline chưa fit.
-    """
     if not hasattr(pipeline, "named_steps"):
         raise AssertionError("Pipeline chưa được fit!")
 
@@ -1051,20 +529,6 @@ def validate_no_leakage(
             "Pipeline chưa được fit: ColumnTransformer chưa có `named_transformers_`."
         )
 
-    # --- Lớp 1: thứ tự thời gian ---------------------------------------------
-    #
-    # Lớp này là lớp DUY NHẤT chống được random split: các lớp 2–3 chỉ so tham
-    # số đã học, mà một `train_test_split` ngẫu nhiên vẫn học đúng trên "Train"
-    # của nó. Đo lại trên dữ liệu thật: random split với đúng X_train/X_test mà
-    # không truyền timestamp là **không bị bắt**.
-    #
-    # Vì vậy KHÔNG được im lặng bỏ qua. Nếu thiếu timestamp mà vẫn chạy tiếp và
-    # in ra dấu tick, guard đang chứng nhận "không rò rỉ" cho một phép chia mà nó
-    # chưa từng nhìn — tức chứng nhận sai. Bản trung gian của PR này chỉ
-    # `logger.warning`; review yêu cầu phải là LỖI. Nay ném `AssertionError`.
-    #
-    # `verify_chronology=False` là lối thoát **phải gõ tay**: dành cho unit test
-    # chỉ muốn kiểm rò rỉ tham số, và vẫn cảnh báo để lần đọc kế tiếp thấy ngay.
     if not verify_chronology:
         logger.warning(
             "validate_no_leakage(verify_chronology=False): LỚP KIỂM CHỨNG THỨ TỰ "
@@ -1101,12 +565,6 @@ def validate_no_leakage(
                 "Đây là dấu hiệu split ngẫu nhiên — dự án cấm tuyệt đối random split."
             )
 
-    # --- Chuẩn bị: tập cột mà ColumnTransformer thực sự học -------------------
-    # Imputer chỉ học trên TẬP CỘT đã chọn, nên phải so sánh trên đúng tập cột đó.
-    #
-    # Bỏ qua entry `remainder`: khi input có cột thừa, sklearn ghi lại các cột
-    # bị drop dưới dạng CHỈ SỐ VỊ TRÍ ([1], [2], …), không phải tên cột. Thu
-    # chúng vào danh sách tên sẽ ra thông báo "thiếu cột '1'" vô nghĩa.
     columns: List[str] = []
     for name, _, cols in preprocessor.transformers_:
         if name == "remainder":
@@ -1130,7 +588,6 @@ def validate_no_leakage(
         if missing:
             raise AssertionError(f"{label} thiếu cột mà pipeline đã học: {missing}")
 
-    # --- Lớp 2 + 3: so MỌI tham số đã học với giá trị refit -------------------
     got = _learned_arrays(preprocessor)
     if not got:
         raise AssertionError(
@@ -1164,7 +621,6 @@ def validate_no_leakage(
             "mọi nhánh của ColumnTransformer."
         )
 
-    # --- Lớp 4: phép so sánh phải có sức phân biệt ----------------------------
     if all(
         key in exp_test and np.allclose(got[key], exp_test[key], rtol=0, atol=atol)
         for key in got
@@ -1190,29 +646,6 @@ def freeze_dataset_with_audit(
     additional_info: Optional[Dict[str, Any]] = None,
     run_audit: bool = True,
 ) -> Tuple[DatasetFreezeInfo, Optional[Dict[str, Any]]]:
-    """
-    Freeze dataset và chạy audit (nếu run_audit=True).
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Dataset đã làm sạch.
-    timestamp_col : str
-        Tên cột timestamp.
-    station_col : str
-        Tên cột station_id.
-    feature_columns : list[str] | None
-        Danh sách feature columns.
-    additional_info : dict | None
-        Thông tin bổ sung.
-    run_audit : bool
-        Có chạy audit từ #5 không. Mặc định: True.
-
-    Returns
-    -------
-    (DatasetFreezeInfo, audit_results | None)
-    """
-    # Freeze dataset
     freeze_info = freeze_dataset(
         df,
         timestamp_col=timestamp_col,
@@ -1221,11 +654,9 @@ def freeze_dataset_with_audit(
         additional_info=additional_info,
     )
 
-    # Chại audit nếu yêu cầu
     audit_results = None
     if run_audit:
         audit_results = run_preprocessing_audit(df, dataset_name="preprocessing_input")
-        # Ghi nhận audit vào freeze info
         freeze_info.additional_info["audit"] = {
             "summary_table": audit_results["summary_table"].to_dict(),
             "six_dimensions": audit_results["six_dimensions"],
