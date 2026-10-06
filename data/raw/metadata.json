@@ -380,6 +380,13 @@
           "month_cos": "float64"
         }
       }
+    },
+    "runtime_log": {
+      "file": "data/raw/pipeline_execution_runtime.json",
+      "tracked_in_git": false,
+      "gitignore_rule": "data/raw/*.json",
+      "note": "Wall-clock execution state (execution_timestamp_utc, execution_time_seconds) is written here instead of this tracked provenance file, so re-running the notebook does not dirty the git working tree when the dataset and provenance are unchanged."
     }
-  }
+  },
+  "last_updated_utc_semantics": "Static provenance field: last manual review date of this metadata document. NOT rewritten by run_collection_pipeline(); per-run wall-clock state is written to data/raw/pipeline_execution_runtime.json (untracked)."
 }
