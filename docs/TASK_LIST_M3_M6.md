@@ -604,38 +604,44 @@ Ba việc này không thuộc M3–M6 nhưng phát sinh khi rà soát repo. Đã
 
 | # | Vấn đề | Xử lý | Trạng thái |
 |---|---|---|---|
-| 1 | `git status` hiện `?? .opencode/agents/` + `?? .opencode/opencode.json` (10 file, ~48 KB) chưa track | Thêm `.opencode/` vào `.gitignore` (dòng 64) theo chỉ đạo — đây là cấu hình/runtime cục bộ, không thuộc phạm vi bàn giao học thuật. Chú thích trong `.gitignore` ghi rõ tình trạng nửa vời của 2 file đã track (xem cảnh báo bên dưới). | 🟡 xong, còn 1 việc mở |
+| 1 | `git status` hiện `?? .opencode/agents/` + `?? .opencode/opencode.json` (10 file, ~48 KB) chưa track | Thêm vào `.gitignore`: `.opencode/agents/`, `.opencode/command/`, `.opencode/opencode.json`. **Không ignore `.opencode/skills/`** — xem bảng bên dưới. `git rm --cached .opencode/command/ocr-review.md` để dọn nốt phần đã track. | ✅ xong |
 | 2 | `notebooks/03_processed_data_preview.ipynb` không có issue nào sở hữu | **Giữ lại** — notebook 35 ô có giá trị kiểm tra thật (assert schema, kiểm tra cleaning, thông tin split). Đã đăng ký vào cây `notebooks/` của roadmap §12. Thay đổi cục bộ trên file là churn định dạng thuần → không commit. Còn lại: xác nhận thứ tự `nbconvert` (task 4.4). | ✅ xong |
 | 3 | `requirements.txt` thiếu `shap` cho task Explainability | **Không thêm.** `feature_importances_` + `permutation_importance` của scikit-learn (đã có sẵn) cho cùng thông tin. Thêm `shap` chỉ để lấy dữ liệu tương đương là YAGNI. Task 0.5 + 1.9 + 7.9 đã cập nhật. | ✅ xong |
 
-### ⚠️ Cảnh báo còn lại sau khi gitignore `.opencode/`
+### Vì sao `.opencode/skills/` phải ở lại trong repo
 
-`.opencode/` giờ bị ignore, **nhưng 2 file đã được track từ trước vẫn còn trong repo** —
-`.gitignore` không gỡ track file đã track:
+`.githooks/pre-commit` là file **đã track**, và dòng 41 của nó nạp skill:
 
-```text
-$ git ls-files .opencode
-.opencode/command/ocr-review.md                          ← từ commit f9a17bc (2026-10-04)
-.opencode/skills/open-code-review-delegate/SKILL.md      ← từ commit f9a17bc
+```
+Load the open-code-review-delegate skill, run 'ocr delegate rule --format json <those paths>'
 ```
 
-Kết quả là trạng thái **nửa vời**: `.opencode/` vừa được track vừa bị ignore. Nếu muốn trạng thái sạch
-(thống nhất "không track `.opencode/`"), cần `git rm --cached -r .opencode`. Việc này làm file biến mất
-khỏi repo ở commit sau nhưng **không xoá trên đĩa** — cần bạn xác nhận trước khi chạy.
+Skill đó nằm ở `.opencode/skills/open-code-review-delegate/SKILL.md`. Nếu gỡ track, một fresh clone sẽ có
+hook nhưng không có skill → review **im lặng suy giảm** thay vì báo lỗi. `.gitattributes` còn pin
+`.githooks/**` về LF chính vì hook chạy bằng `sh` — cho thấy hook được coi là thành phần bàn giao thật.
 
-Nếu ngược lại muốn giữ 2 file đó (chúng là công cụ review đã được thiết lập có chủ đích), thì `.gitignore`
-nên thu hẹp thành chỉ `.opencode/agents/` + `.opencode/opencode.json` thay vì cả thư mục.
+Phân tách cuối cùng:
+
+| Đường dẫn | Quyết định | Lý do |
+|---|---|---|
+| `.opencode/skills/open-code-review-delegate/SKILL.md` | ✅ **track** | Phụ thuộc cứng của `.githooks/pre-commit:41` |
+| `.opencode/command/ocr-review.md` | 🚫 bỏ track | Lệnh tương tác, hook không dùng |
+| `.opencode/agents/*.md` (8 file) | 🚫 ignore | Agent definitions viết tay cho repo này nhưng thuộc tầng công cụ, không phải bàn giao học thuật |
+| `.opencode/opencode.json` | 🚫 ignore | Config cục bộ (`default_agent`, `subagent_depth`) |
 
 ### Kết quả kiểm chứng
 
 ```text
-$ git check-ignore -v .opencode/opencode.json .opencode/agents/orchestrator.md
-.gitignore:64:.opencode/	.opencode/opencode.json
-.gitignore:64:.opencode/	.opencode/agents/orchestrator.md
-
 $ git ls-files .opencode
-.opencode/command/ocr-review.md
-.opencode/skills/open-code-review-delegate/SKILL.md      ← 2 file này vẫn còn track
+.opencode/skills/open-code-review-delegate/SKILL.md      ← chỉ còn đúng 1 file, hook còn dùng được
+
+$ git check-ignore -v .opencode/opencode.json .opencode/agents/orchestrator.md .opencode/command/ocr-review.md
+.gitignore:67:.opencode/opencode.json	.opencode/opencode.json
+.gitignore:65:.opencode/agents/	.opencode/agents/orchestrator.md
+.gitignore:66:.opencode/command/	.opencode/command/ocr-review.md
+
+$ git check-ignore -v .opencode/skills/open-code-review-delegate/SKILL.md
+exit=1                                                 ← KHÔNG bị ignore nhầm
 
 $ python -c "import importlib.util as u; ..."
 nbclient True · nbconvert True · nbformat True      ← task 0.6 xác nhận
