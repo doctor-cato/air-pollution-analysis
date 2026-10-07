@@ -384,6 +384,11 @@ class TestWritePipelineRuntimeLog(unittest.TestCase):
 
     # ---------------------------------------------------------------- GAP 5 ---
 
+    @unittest.skipUnless(
+        os.name == "nt",
+        "Bất đẳng thứng dấu phân cách chỉ tồn tại trên Windows: str(Path) sinh dấu "
+        "backslash, còn trên POSIX nó luôn sinh forward slash nên không có gì để so sánh.",
+    )
     def test_windows_separators_in_payload_are_preserved_verbatim(self):
         """
         GAP 5 — Chốt hành vi hiện tại: KHÔNG chuẩn hoá dấu phân cách.
@@ -425,6 +430,11 @@ class TestWritePipelineRuntimeLog(unittest.TestCase):
         self.assertIn("\\", report["openaq"]["raw_file"])
         self.assertIn("\\", report["open_meteo"]["raw_file"])
 
+    @unittest.skipUnless(
+        os.name == "nt",
+        "Bất đẳng thứng dấu phân cách chỉ tồn tại trên Windows: str(Path) sinh dấu "
+        "backslash, còn trên POSIX nó luôn sinh forward slash nên không có gì để so sánh.",
+    )
     def test_metadata_block_and_runtime_log_disagree_on_separators(self):
         r"""
         GAP 5 (phần đối chiếu) — Xác nhận bất đẳng đẳng giữa hai writer: cùng một

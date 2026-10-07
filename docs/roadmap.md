@@ -757,11 +757,7 @@ Chi tiết luồng thực hiện:
 | #4 | Pipeline khí tượng + đồng bộ thời gian | `OpenMeteoAdapter`, `validate_weather_canonical` | 9.072 bản ghi/giờ, 0 trùng lặp, 0 khoảng trống, 0 khuyết thiếu; PR #26 đã merge | **DONE** | — |
 | #5 | Kiểm toán chất lượng 6 chiều | `src/data_quality.py`, `docs/data_quality_audit.md`, `notebooks/02_quality_audit.ipynb` | PR #27 đã merge; `docs/data_quality_audit.md` đã hiệu chỉnh theo dữ liệu thực tế trên đĩa | **DONE** | — |
 | #6 | Làm sạch tất định, cleaning log | `src/cleaning.py`, `docs/cleaning_log.md`, `notebooks/03_data_cleaning.ipynb` | 9.044 dòng ô nhiễm + 9.072 dòng khí tượng canonical; `assert_no_imputation()` PASS; 114 unit test | **DONE** | Việc chạy lại `03_data_cleaning.ipynb` cần khôi phục `data/interim/` từ `data/raw/` trước |
-<<<<<<< HEAD
 | #7 | Ghép dữ liệu, đóng băng, split, pipeline | `src/cleaning_pipeline.py`, `notebooks/03_transformation_pipeline.ipynb` | 9/9 AC + 2 validation PASS; `data/processed/air_pollution_final.parquet` 9.044×18; **87 unit test** (`test_cleaning_pipeline` 44 + `test_cleaning_pipeline_guards` 43) | **DONE** | #6+#7 merge vào `main` qua **PR #32**; các sửa lỗi từ audit M2 merge qua **PR #34** (`fix/m2-audit-findings`, 2026-09-30) — xem §G.4. Mốc cắt `2026-01-15` [đã chốt](#bang-ghi-chinh-thuc--cac-quyet-dinh-da-chot-cho-issue-7) |
-=======
-| #7 | Ghép dữ liệu, đóng băng, split, pipeline | `src/cleaning_pipeline.py`, `notebooks/03_transformation_pipeline.ipynb` | 9/9 AC + 2 validation PASS; `data/processed/air_pollution_final.parquet` 9.044×18; **87 unit test** (`test_cleaning_pipeline` 44 + `test_cleaning_pipeline_guards` 43) | **DONE (chưa merge)** | #6+#7 đã merge vào `main` qua **PR #32** (2026-09-30). **PR #34** (`fix/m2-audit-findings`) đang mở, chứa các sửa lỗi từ audit M2 — xem [cảnh báo mốc cắt](#bang-ghi-chinh-thuc--cac-quyet-dinh-da-chot-cho-issue-7) về `2026-01-15` |
->>>>>>> 9d2ed92 (docs: dong bo toan bo tai lieu theo trang thai thuc te sau PR #34)
 
 ### G.3. Kết luận trạng thái Milestone 1
 
@@ -773,18 +769,12 @@ Chi tiết luồng thực hiện:
 > - **Milestone 2:** `#5` (kiểm toán chất lượng 6 chiều) **DONE** qua PR #27;
 >   `#6` (làm sạch tất định + cleaning log) và `#7` (ghép dữ liệu, đóng băng, split,
 >   pipeline) đều **đã triển khai**, đã vượt qua kiểm chứng AC 9/9, và **đã merge vào `main`
-<<<<<<< HEAD
 >   qua PR #32** (2026-09-30). Các sửa lỗi từ audit M2 đã merge qua **PR #34**
 >   (`fix/m2-audit-findings`, 2026-09-30) — xem Mục G.4. Các issue phụ thuộc (`#8`, `#11`,
 >   `#12`, `#13`) **đã được mở lại** và không còn bị chặn.
-=======
->   qua PR #32** (2026-09-30). **PR #34** (`fix/m2-audit-findings`) đang mở với các sửa lỗi
->   từ audit M2 — xem Mục G.4. Các issue phụ thuộc (`#8`, `#11`, `#12`, `#13`) đã mở lại
->   nhưng nên chờ PR #34 được merge để giảm xung đột.
->>>>>>> 9d2ed92 (docs: dong bo toan bo tai lieu theo trang thai thuc te sau PR #34)
 > - Các số liệu thực nghiệm nêu trong các báo cáo (#4, #5) là **kết quả của một lần thực thi cụ thể**
 >   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
-> - Bộ kiểm thử hiện gồm **57 + 44 + 114 + 44 + 43 + 9 = 311 unit test tất định**,
+> - Bộ kiểm thử hiện gồm **57 + 44 + 114 + 44 + 43 + 9 + 31 = 342 unit test tất định**,
 >   tất cả PASS (`test_data_collection` + `test_data_quality` + `test_cleaning` +
 >   `test_cleaning_pipeline` + `test_cleaning_pipeline_guards` + `test_fetch_dataset`).
 >   Trong đó **43 test hồi quy** của #7 **FAIL trên bản gốc** và PASS sau khi sửa.
