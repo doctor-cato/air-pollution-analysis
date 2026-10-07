@@ -55,6 +55,15 @@ data/processed/*.csv
 Thumbs.db
 desktop.ini
 
+# ── OpenCode agent runtime ────────────────────────────────────
+# .opencode/agents/*.md và .opencode/opencode.json là cấu hình/runtime
+# cục bộ của OpenCode, không thuộc phạm vi bàn giao học thuật.
+# Lưu ý: .opencode/command/ocr-review.md và
+# .opencode/skills/open-code-review-delegate/SKILL.md ĐÃ được track từ
+# commit f9a17bc — .gitignore KHÔNG gỡ track file đã track.
+.opencode/
+
+
 # ── Build / dist ─────────────────────────────────────────────
 *.egg-info/
 dist/
