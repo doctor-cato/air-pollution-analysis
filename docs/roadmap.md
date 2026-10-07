@@ -492,17 +492,19 @@ air-pollution-analysis/
 │   ├── model_card.md                   # Model Card 1 trang cho mô hình cảnh báo [Issue #14]
 │   ├── project_charter.md              # Điều lệ dự án quy chuẩn môn học [Issue #14]
 │   ├── mentoring_feedback.md           # Bảng theo dõi tiếp thu ý kiến cố vấn [Issue #15]
-│   └── viva_qa_prep.md                 # 15 câu hỏi chuẩn bị vấn đáp phản biện [Issue #16]
+│   ├── viva_qa_prep.md                 # 15 câu hỏi chuẩn bị vấn đáp phản biện [Issue #16]
+│   └── TASK_LIST_M3_M6.md              # Task list đối chiếu slide bài giảng ↔ roadmap (M3–M6)
 ├── notebooks/
 │   ├── 00_environment_test.ipynb       # Kiểm thử môi trường và nạp thư viện [Issue #1]
 │   ├── 01_data_collection.ipynb        # Thực thi adapter thu thập dữ liệu ô nhiễm & khí tượng [Issue #3, #4]
 │   ├── 02_quality_audit.ipynb          # Kiểm toán 6 chiều chất lượng dữ liệu [Issue #5]
 │   ├── 03_data_cleaning.ipynb          # Làm sạch tất định và reindex chuỗi thời gian [Issue #6]
 │   ├── 03_transformation_pipeline.ipynb# Tích hợp, đóng băng, split và đóng gói Pipeline [Issue #7]
+│   ├── 03_processed_data_preview.ipynb # Kiểm tra artifact đã đóng băng trước khi M3 đọc [Issue #7]
 │   ├── 04_descriptive_stats.ipynb      # Thống kê mô tả 4 họ chỉ số & phân tích chu kỳ [Issue #8]
 │   ├── 05_statistical_inference.ipynb  # Kiểm định phi tham số, Effect Size, Bootstrap CI [Issue #11]
 │   ├── 06_regression_modeling.ipynb    # Hồi quy OLS, chẩn đoán LINE, Ridge/Lasso [Issue #12]
-│   └── 06_classification_alerts.ipynb  # Phân loại cảnh báo sớm, PR-AUC, Threshold tuning [Issue #13]
+│   └── 07_classification_alerts.ipynb  # Phân loại cảnh báo sớm, PR-AUC, Threshold tuning [Issue #13]
 ├── src/
 │   ├── __init__.py
 │   ├── data_loader.py                  # Module nạp file Parquet, adapter dữ liệu [Issue #3, #4, #15]
@@ -652,7 +654,7 @@ Chi tiết luồng thực hiện:
 ### E. Final Deliverables (Danh mục Sản phẩm Bàn giao Cuối cùng)
 1. **Repository GitHub chuẩn mực [Issue #1, #15, #17]:**
    - Hoàn chỉnh cấu trúc thư mục CRISP-DM, mã nguồn module hóa trong `src/` (`data_loader.py`, `cleaning_pipeline.py`, `visualizer.py`).
-   - Chuỗi notebooks đánh số thứ tự từ `00_` đến `06_`, bảo đảm chạy thông suốt từ đầu đến cuối không lỗi unhandled exception trong môi trường sạch.
+   - Chuỗi notebooks đánh số thứ tự từ `00_` đến `07_`, bảo đảm chạy thông suốt từ đầu đến cuối không lỗi unhandled exception trong môi trường sạch.
    - File `requirements.txt` cố định phiên bản các thư viện tương thích Python 3.10+.
    - Git tag chính thức `midterm-submission` [Issue #10] và `final-defense-submission` [Issue #17].
 2. **Bộ dữ liệu & Hồ sơ Quản trị [Issue #3, #4, #6, #7, #19]:**
@@ -1147,7 +1149,7 @@ Con số cần đọc đúng: tổng số hàng `pm25` bị `NaN` là **1.549**,
   5. Tinh chỉnh ngưỡng quyết định trên tập Train/Validation theo mục tiêu vận hành cụ thể (tối đa hóa $F_\beta$ với $\beta > 1$ hoặc tối đa hóa Recall dưới ràng buộc Precision tối thiểu) [Issue #13].
   6. Đo lường hiệu năng cuối cùng trên tập TEST độc lập với ngưỡng đã chốt: Báo cáo Recall, Precision, F1/F-beta, PR-AUC, ROC-AUC và Confusion Matrix [Issue #13].
   7. Lập biên bản kiểm toán rà soát 4 dạng rò rỉ dữ liệu (Target, Train-Test contamination, Temporal, Group) [Issue #13].
-* **Deliverables:** Notebook `notebooks/06_classification_alerts.ipynb`, biểu đồ PR Curve `figures/precision_recall_curve.png`, biên bản kiểm toán rò rỉ dữ liệu.
+* **Deliverables:** Notebook `notebooks/07_classification_alerts.ipynb`, biểu đồ PR Curve `figures/precision_recall_curve.png`, biên bản kiểm toán rò rỉ dữ liệu.
 * **Definition of Done:** Đánh giá trên tập Test độc lập sau khi đóng băng mô hình và ngưỡng; ngưỡng quyết định được tối ưu hoàn toàn trên Train/Val theo mục tiêu vận hành; biên bản kiểm toán 4 dạng rò rỉ dữ liệu đạt chuẩn.
 * **Dependencies:** Dữ liệu hoàn chỉnh từ Week 05 (#7) và mô hình hồi quy từ Week 10 (#12).
 
@@ -1219,7 +1221,7 @@ Con số cần đọc đúng: tổng số hàng `pm25` bị `NaN` là **1.549**,
   1. Kiểm toán kỹ thuật toàn diện repository: Rà soát cấu trúc cây thư mục chuẩn CRISP-DM, kiểm tra sự hiện diện đầy đủ của các tệp bắt buộc (`README.md`, `requirements.txt`, `LICENSE`, `.gitignore`, `data/raw/metadata.json`) [Issue #17].
   2. Kiểm tra tính toàn vẹn tài liệu và tính hợp lệ của toàn bộ liên kết nội bộ (`docs/data_dictionary.md`, `docs/source_profiling_decision.md`, `docs/cleaning_log.md`, `docs/datasheet.md`, `docs/model_card.md`, `docs/project_charter.md`, `docs/mentoring_feedback.md`, `docs/viva_qa_prep.md`) [Issue #17].
   3. Xác thực hồ sơ xuất xứ dữ liệu trong `data/raw/metadata.json`, tính toàn vẹn của `data/raw/` (đối chiếu mã băm SHA-256), tính hợp lệ của tệp Snappy Parquet trong `data/processed/`, và kiểm tra không có rò rỉ giữa Train và Test [Issue #17].
-  4. Thực thi kiểm chứng tự động toàn bộ chuỗi notebooks từ `00_environment_test.ipynb` đến `06_classification_alerts.ipynb` trong môi trường ảo sạch: Bảo đảm 100% các ô mã lệnh thực thi tuần tự, không phát sinh lỗi ngoại lệ unhandled exception [Issue #17].
+  4. Thực thi kiểm chứng tự động toàn bộ chuỗi notebooks từ `00_environment_test.ipynb` đến `07_classification_alerts.ipynb` trong môi trường ảo sạch: Bảo đảm 100% các ô mã lệnh thực thi tuần tự, không phát sinh lỗi ngoại lệ unhandled exception [Issue #17].
   5. Chuẩn bị biểu mẫu biên bản đánh giá bảo vệ đồ án `reports/defense_minutes.md` [Issue #17].
   6. Tạo commit hoàn thiện và gắn git tag chính thức `final-defense-submission` trên nhánh chính [Issue #17].
   7. Thực hiện bảo vệ đồ án trước Hội đồng chấm thi môn học và trả lời phản biện cá nhân (Oral Defense / Viva) [Issue #17].
