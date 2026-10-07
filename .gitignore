@@ -56,12 +56,15 @@ Thumbs.db
 desktop.ini
 
 # ── OpenCode agent runtime ────────────────────────────────────
-# .opencode/agents/*.md và .opencode/opencode.json là cấu hình/runtime
-# cục bộ của OpenCode, không thuộc phạm vi bàn giao học thuật.
-# Lưu ý: .opencode/command/ocr-review.md và
-# .opencode/skills/open-code-review-delegate/SKILL.md ĐÃ được track từ
-# commit f9a17bc — .gitignore KHÔNG gỡ track file đã track.
-.opencode/
+# Agent definitions, slash command và tool config là trạng thái cục bộ,
+# không thuộc phạm vi bàn giao học thuật.
+#
+# KHÔNG ignore .opencode/skills/: file .githooks/pre-commit (đã track) nạp
+# skill "open-code-review-delegate" ở dòng 41. Gỡ track nó đi thì fresh
+# clone có hook nhưng không có skill → review im lặng suy giảm.
+.opencode/agents/
+.opencode/command/
+.opencode/opencode.json
 
 
 # ── Build / dist ─────────────────────────────────────────────
