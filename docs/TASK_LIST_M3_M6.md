@@ -109,12 +109,12 @@ Sau khi đối chiếu số liệu thật, **5 mục 🔴 bị hạ xuống** (x
 đều thay đổi *kết luận khoa học*, không phải chỉ cách trình bày. Sửa issue body trước khi viết notebook,
 vì khi đã viết xong thì phải viết lại cả notebook.
 
-- [ ] **1.1** 🟡 **Issue #11 — hiệu chỉnh multiple testing (đã hạ cấp).**
+- [x] **1.1** 🟡 **Issue #11 — hiệu chỉnh multiple testing (đã hạ cấp).**
       Slide W9 cảnh báo "đo 20 chỉ số gần giống nhau mà không hiệu chỉnh Bonferroni". Ở đây chỉ có **3 kiểm
       định trên các câu hỏi khác nhau** (mùa / ngày trong tuần / QCVN) → không thuộc tình huống slide mô tả.
       Thêm AC *nhẹ*: báo cáo p-value thô **và** p-value hiệu chỉnh Holm cạnh nhau, ghi rõ lý do
       "hiệu chỉnh không làm thay đổi kết luận" (kiểm chứng được, không phải khẳng định suông).
-- [ ] **1.2** 🟡 **Issue #11 + #13 — Base Rate / prior probability (viết lại cho đúng bối cảnh).**
+- [x] **1.2** 🟡 **Issue #11 + #13 — Base Rate / prior probability (viết lại cho đúng bối cảnh).**
       Slide W6 dùng ví dụ bệnh **0,1%** → dương tính chỉ ~9% là thật. Ở đây prevalence thực tế là **18,3%**
       (rolling 24h ≥ 50), DummyClassifier đã đạt ~81,7% → **bẫy Accuracy 99% không nguy hiểm**, không
       được diễn giải quá mức. Vấn đề **thật** là **dịch chuyển prevalence Train 21,06% → Test 15,34%**
@@ -126,61 +126,61 @@ vì khi đã viết xong thì phải viết lại cả notebook.
       của notebook #11. Nội dung cần phủ: định nghĩa p-value đúng (có điều kiện $H_0$) · 4 sai lầm phổ biến ·
       cách hiểu đúng của CI theo nghĩa lặp mẫu · phân biệt sai lầm loại I (α) và loại II (β) · Power = 1 − β
       trong bối cảnh cảnh báo sớm (bỏ lọt 1 đợt tệ hơn báo động giả).
-- [ ] **1.4** 🔴 **Issue #12 — Adjusted $R^2$.**
+- [x] **1.4** 🔴 **Issue #12 — Adjusted $R^2$.**
       Slide W10 cảnh báo: `$R^2` luôn tăng khi thêm biến rác → phải dùng Adjusted `$R^2$`.
       Roadmap không có chỗ nào nhắc (grep rỗng). Thêm vào Task 7 (đánh giá trên Test).
-- [ ] **1.5** 🔴 **Issue #13 — Feature Selection + tuyên bố xử lý đa cộng tuyến.**
+- [x] **1.5** 🔴 **Issue #13 — Feature Selection + tuyên bố xử lý đa cộng tuyến.**
       Issue #8 đã đo `corr(pm25, pm10) = 0,9727`, `$R^2` đơn biến = 0,9462.
       Slide W11 xử lý việc này bằng Feature Selection (loại biến tương quan cao / RF importance / Lasso).
       Thêm AC: hoặc loại `pm10`, hoặc tuyên bố rõ cách xử lý và giải thích trong notebook.
-- [ ] **1.6** 🔴 **Issue #13 — PR-AUC phải đối chiếu với baseline = tỷ lệ dương tính (prevalence).**
+- [x] **1.6** 🔴 **Issue #13 — PR-AUC phải đối chiếu với baseline = tỷ lệ dương tính (prevalence).**
       PR-AUC không có nghĩa nếu không so với prevalence. Slide W11 cảnh báo ROC gây cảm giác lạc quan ảo.
-- [ ] **1.7** 🟡 **Issue #14 — "Tối ưu trước, kết luận sau" (gộp với 1.8 thành MỘT task).**
+- [x] **1.7** 🟡 **Issue #14 — "Tối ưu trước, kết luận sau" (gộp với 1.8 thành MỘT task).**
       Slide W12 takeaway #1: tối ưu code / Parquet / index / float32 **trước khi** nghĩ đến Spark.
       Vấn đề đạo đức học thuật có thật — roadmap `:41` nói kết luận Spark phải dẫn xuất từ số liệu đo.
       Nhưng dataset chỉ 261 KB nên kết luận đã biết trước. Đủ làm **1 bảng**: đo trước, đo lại sau
       float64→float32 + Parquet compression, đo lại sau vectorization, rồi kết luận.
-- [ ] **1.8** 🟡 **Issue #14 — 5V + ngưỡng GB + Scale Up vs Scale Out (gộp với 1.7).**
+- [x] **1.8** 🟡 **Issue #14 — 5V + ngưỡng GB + Scale Up vs Scale Out (gộp với 1.7).**
       Slide W12 đưa ngưỡng: `<10 GB` Pandas/Polars · `10–100 GB` DuckDB/PostgreSQL · `>100 GB` Spark.
       Dataset hiện tại **261 KB — lệch ngưỡng 10 GB khoảng 4 bậc độ lớn**. Ghi thẳng con số, không diễn
       giải dài; thêm 1 dòng mô tả Scale Up (thêm RAM, trần vật lý) vs Scale Out (cụm, cần phần mềm phân tán).
-- [ ] **1.9** 🔴 **Issue #14 — Explainability (feature importance).**
+- [x] **1.9** 🔴 **Issue #14 — Explainability (feature importance).**
       Slide W12 takeaway #4: khả năng giải thích **quan trọng hơn** thêm 0,5% accuracy.
       Roadmap không có deliverable giải thích mô hình nào ở #13 lẫn #14. Với bài cảnh báo ô nhiễm, "vì sao hệ thống cảnh báo
       đợt này?" là câu hỏi vận hành thực tế.
       Dùng công cụ **đã có sẵn**, không thêm dependency (xem task 0.5): `feature_importances_` +
       `sklearn.inspection.permutation_importance` (đo trên **tập Test**). Deliverable:
       `figures/feature_importance.png` + bảng xếp hạng trong `docs/classification_findings.md` (task D13).
-- [ ] **1.10** 🟡 **Issue #8** — mỗi chỉ số phải kèm `n` quan sát + `n_missing`.
+- [x] **1.10** 🟡 **Issue #8** — mỗi chỉ số phải kèm `n` quan sát + `n_missing`.
       Roadmap `:1038`: `pm25` còn NaN ở **1.549 hàng** (1.289 khối dài + 260 khối ngắn). Không có AC nào nói
       thống kê mô tả dựa trên 7.495 dòng hay 5.946 dòng.
-- [ ] **1.11** 🟡 **Issue #8** — báo cáo độ bao phủ từng biến khí tượng trước khi tính tương quan.
+- [x] **1.11** 🟡 **Issue #8** — báo cáo độ bao phủ từng biến khí tượng trước khi tính tương quan.
       Ma trận Pearson/Spearman trên tập thiếu dữ liệu không phải ma trận trên Parquet đã đóng băng.
-- [ ] **1.12** 🟡 **Issue #8** — quy tắc 3 vế `Mean > Median > Mode` để đọc chiều lệch (slide W6 §BLOCK 2).
-- [ ] **1.13** 🟡 **Issue #8** — CLT, `SE = σ/√n`, quy tắc thực nghiệm 68–95–99.7 (slide W6 §BLOCK 1).
-- [ ] **1.14** 🟡 **Issue #8** — Spurious correlation & Confounders (slide W6 §BLOCK 3). Nghịch lý Simpson đã có
+- [x] **1.12** 🟡 **Issue #8** — quy tắc 3 vế `Mean > Median > Mode` để đọc chiều lệch (slide W6 §BLOCK 2).
+- [x] **1.13** 🟡 **Issue #8** — CLT, `SE = σ/√n`, quy tắc thực nghiệm 68–95–99.7 (slide W6 §BLOCK 1).
+- [x] **1.14** 🟡 **Issue #8** — Spurious correlation & Confounders (slide W6 §BLOCK 3). Nghịch lý Simpson đã có
       trong phần addendum (fog × mùa đảo dấu) — giữ nguyên.
-- [ ] **1.15** 🟡 **Issue #9** — thang đo (Nominal/Ordinal/Interval/Ratio) quyết định loại biểu đồ (slide W7 §BLOCK 1).
-- [ ] **1.16** 🟡 **Issue #9** — thứ bậc kênh thị giác Cleveland–McGill (vị trí > độ dài > hướng > góc >
+- [x] **1.15** 🟡 **Issue #9** — thang đo (Nominal/Ordinal/Interval/Ratio) quyết định loại biểu đồ (slide W7 §BLOCK 1).
+- [x] **1.16** 🟡 **Issue #9** — thứ bậc kênh thị giác Cleveland–McGill (vị trí > độ dài > hướng > góc >
       diện tích > thể tích > màu). Kèm **câu trả lời sẵn** cho câu hỏi "vì sao chọn heatmap (dùng màu,
       kênh hạng 7/7)?" → vì mục đích là tìm mẫu hình cục bộ, không phải so sánh giá trị từng ô.
-- [ ] **1.17** 🟡 **Issue #9** — 3 cách bóp méo còn lại ngoài truncated Y: trục tung kép, cắt xén cửa sổ thời gian,
+- [x] **1.17** 🟡 **Issue #9** — 3 cách bóp méo còn lại ngoài truncated Y: trục tung kép, cắt xén cửa sổ thời gian,
       bóp méo bin width histogram (slide W7 §BLOCK 1).
-- [ ] **1.18** 🟡 **Issue #9** — chọn loại bảng màu theo loại dữ liệu (Qualitative / Sequential / Diverging).
-- [ ] **1.19** 🟡 **Issue #12** — phân biệt Outlier vs High Leverage vs Influencing Point (slide W10 §BLOCK 2).
-- [ ] **1.20** 🟡 **Issue #12** — lý do chọn MAE vs RMSE theo ngữ cảnh (slide W10 takeaway #3):
+- [x] **1.18** 🟡 **Issue #9** — chọn loại bảng màu theo loại dữ liệu (Qualitative / Sequential / Diverging).
+- [x] **1.19** 🟡 **Issue #12** — phân biệt Outlier vs High Leverage vs Influencing Point (slide W10 §BLOCK 2).
+- [x] **1.20** 🟡 **Issue #12** — lý do chọn MAE vs RMSE theo ngữ cảnh (slide W10 takeaway #3):
       MAE để giải thích cho người không chuyên môn, RMSE khi sai số lớn gây hậu quả nghiêm trọng.
-- [ ] **1.21** 🟡 **Issue #12** — AC chuẩn hóa trước Ridge/Lasso (slide W10 takeaway #4). Hiện thoả qua #7
+- [x] **1.21** 🟡 **Issue #12** — AC chuẩn hóa trước Ridge/Lasso (slide W10 takeaway #4). Hiện thoả qua #7
       (`RobustScaler`) nhưng chưa được ghi thành tiêu chí nghiệm thu.
-- [ ] **1.22** 🟡 **Issue #13** — biên bản audit Task 7 liệt kê đủ 4 dạng rò rỉ + phủ trường hợp SMOTE
+- [x] **1.22** 🟡 **Issue #13** — biên bản audit Task 7 liệt kê đủ 4 dạng rò rỉ + phủ trường hợp SMOTE
       (dù đang dùng `class_weight` nên không cần SMOTE, phải nói rõ lý do không dùng).
-- [ ] **1.23** 🟡 **Issue #13** — heuristic "nghi ngờ ngay nếu điểm > 99%" (slide W11 takeaway #4) và
+- [x] **1.23** 🟡 **Issue #13** — heuristic "nghi ngờ ngay nếu điểm > 99%" (slide W11 takeaway #4) và
       diễn giải Odds Ratio `$e^β` cho Logistic Regression.
-- [ ] **1.24** ⚪ **Issue #14** — ghi bằng văn bản lý do loại trừ 3 khái niệm slide W12 dạy nhưng roadmap loại:
+- [x] **1.24** ⚪ **Issue #14** — ghi bằng văn bản lý do loại trừ 3 khái niệm slide W12 dạy nhưng roadmap loại:
       k-anonymity (`:44`), Fairness–Accuracy Trade-off, Anonymisation vs Pseudonymisation.
       Loại trừ là hợp lý (1 trạm, không có thuộc tính nhạy cảm) — nhưng **phải có đoạn văn giải thích trong
       `docs/datasheet.md`**, nếu không GV sẽ hỏi "sao không làm?".
-- [ ] **1.25** ⚪ Sửa roadmap `:1196` — trích "Slide W7 & W14" nhưng vault không có slide W14 (tuần 14 là
+- [x] **1.25** ⚪ Sửa roadmap `:1196` — trích "Slide W7 & W14" nhưng vault không có slide W14 (tuần 14 là
       mentoring, không có slide riêng). Trích dẫn không kiểm chứng được.
 - [x] **1.26** ✅ **Đã xong** — thêm `TASK_LIST_M3_M6.md` vào cây `docs/` trong `docs/roadmap.md` §12,
       và `03_processed_data_preview.ipynb` vào cây `notebooks/` (task 0.2).
