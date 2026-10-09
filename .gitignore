@@ -55,6 +55,12 @@ data/processed/*.csv
 Thumbs.db
 desktop.ini
 
+# ── OpenCode agent runtime ────────────────────────────────────
+# Agent definitions, slash command, skills và tool config đều là trạng
+# thái cục bộ, không thuộc phạm vi bàn giao học thuật.
+.opencode/
+
+
 # ── Build / dist ─────────────────────────────────────────────
 *.egg-info/
 dist/

@@ -107,6 +107,28 @@ STATION_WEATHER_ERA5 = "ERA5_HANOI_GRID_2105_10590"
 LOCATION_WEATHER_ERA5 = "Hanoi ERA5 Grid (21.0545N, 105.8985E)"
 COORDS_WEATHER_ERA5 = (21.05448, 105.89848)
 
+# Tệp nhật ký TRẠNG THÁI THỰC THI theo thời gian chạy (wall-clock), tách khỏi hồ sơ
+# provenance tĩnh `data/raw/metadata.json`.
+#
+# Lý do (M1 post-audit cleanup — phát hiện: notebook làm bẩn working tree):
+#   `data/raw/metadata.json` được git theo dõi và chỉ chứa dữ liệu TẤT ĐỊNH
+#   (SHA-256, số bản ghi canonical, độ phủ thực tế, kết quả kiểm định). Trạng thái
+#   phụ thuộc đồng hồ (execution_timestamp_utc, execution_time_seconds) vốn được ghi
+#   vào chính tệp này, khiến mỗi lần chạy lại notebook tạo ra một diff chỉ chứa
+#   timestamp dù dữ liệu thô và provenance không hề thay đổi.
+#   Vì vậy trạng thái runtime được chuyển sang tệp riêng trong `data/raw/`, vốn bị
+#   `.gitignore` (`data/raw/*.json`, chỉ ngoại trừ `metadata.json`) loại trừ.
+PIPELINE_RUNTIME_LOG_FILENAME = "pipeline_execution_runtime.json"
+
+# Phiên bản lược đồ (schema version) của hồ sơ provenance `data/raw/metadata.json`.
+#
+# LÝ DO (provenance, không phải style): giá trị này PHẢI khớp với tệp đang được
+# git theo dõi (`data/raw/metadata.json` ở HEAD hiện là "1.3.0"). Trước đây
+# `run_collection_pipeline()` ghi cứng "1.2.0", khiến mỗi lần chạy đều HẠ PHIÊN BẢN
+# một trường provenance đang được track và làm bẩn working tree dù dữ liệu không đổi.
+# Khi lược đồ thực sự thay đổi, hãy cập nhật TẠI ĐÂY và commit metadata.json cùng lúc.
+METADATA_SCHEMA_VERSION = "1.3.0"
+
 
 def compute_file_sha256(filepath: Path) -> str:
     """Tính toán mã băm SHA-256 của tệp để bảo toàn tính toàn vẹn và provenance."""
@@ -115,6 +137,51 @@ def compute_file_sha256(filepath: Path) -> str:
         for byte_block in iter(lambda: f.read(65536), b""):
             sha256_hash.update(byte_block)
     return sha256_hash.hexdigest()
+
+
+def write_pipeline_runtime_log(
+    summary: Dict[str, Any],
+    log_path: Optional[Path] = None,
+    log_dir: Optional[Path] = None,
+) -> Path:
+    """
+    Ghi lại TRẠNG THÁI THỰC THI theo thời gian chạy (wall-clock) vào tệp RIÊNG,
+    tách biệt khỏi hồ sơ provenance tĩnh `data/raw/metadata.json`.
+
+    Nguyên tắc phân tách (M1 post-audit cleanup):
+    - **Provenance tĩnh** (`data/raw/metadata.json`, CÓ được git theo dõi):
+      SHA-256, số bản ghi canonical, độ phủ thực tế, kết quả kiểm định, cửa sổ
+      truy vấn. Toàn bộ là hàm TẤT ĐỊNH của tập dữ liệu đầu vào.
+    - **Trạng thái runtime** (tệp này, KHÔNG được git theo dõi):
+      `execution_timestamp_utc`, `execution_time_seconds` — phụ thuộc đồng hồ.
+
+    Nếu trạng thái runtime nằm chung trong `metadata.json`, mỗi lần chạy lại
+    notebook sẽ tạo ra một diff chỉ chứa timestamp, làm bẩn working tree dù dữ liệu
+    thô và provenance không hề thay đổi.
+
+    Tệp được ghi vào `data/raw/` nên bị `.gitignore` (`data/raw/*.json`, chỉ ngoại
+    trừ `metadata.json`) loại trừ — xem `PIPELINE_RUNTIME_LOG_FILENAME`.
+    """
+    if log_path is None:
+        base_dir = Path(log_dir) if log_dir is not None else Path("data/raw")
+        log_path = base_dir / PIPELINE_RUNTIME_LOG_FILENAME
+    log_path = Path(log_path)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    payload = {
+        "execution_timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "execution_time_seconds": summary.get("execution_time_seconds"),
+        "note": (
+            "Runtime-only execution state. Intentionally NOT tracked in git "
+            "(see .gitignore rule 'data/raw/*.json'). Deterministic provenance "
+            "lives in data/raw/metadata.json."
+        ),
+        "pipeline_report": summary,
+    }
+
+    with open(log_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+    return log_path
 
 
 def clean_air_quality_values(val: Any) -> float:
@@ -1063,6 +1130,7 @@ def run_collection_pipeline(
     metadata_path: Path = Path("data/raw/metadata.json"),
     raw_dir: Path = Path("data/raw"),
     interim_dir: Path = Path("data/interim"),
+    runtime_log_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """
     Hàm thực thi toàn bộ pipeline thu thập và chuẩn hóa dữ liệu ô nhiễm & khí tượng:
@@ -1074,6 +1142,9 @@ def run_collection_pipeline(
     6. Xác thực địa lý, bảo đảm 100% bản ghi nằm trong Hà Nội, kiểm tra duplicate key.
     7. Lưu canonical interim files vào data/interim/.
     8. Cập nhật metadata.json với execution metrics thực tế (phân biệt rõ requested study window vs actual source coverage).
+    9. Ghi trạng thái thực thi theo đồng hồ (wall-clock) ra tệp RIÊNG `runtime_log_path`
+       (mặc định `data/raw/pipeline_execution_runtime.json`, KHÔNG được git theo dõi)
+       để `data/raw/metadata.json` giữ tính tất định và không bị bẩn mỗi lần chạy lại.
     """
     t_start = time.time()
     raw_dir = Path(raw_dir)
@@ -1285,12 +1356,37 @@ def run_collection_pipeline(
             with open(metadata_path, "r", encoding="utf-8") as f:
                 meta = json.load(f)
 
-            meta["schema_version"] = "1.2.0"
-            meta["last_updated_utc"] = datetime.now(timezone.utc).isoformat()
-            meta["collection_pipeline_execution"] = {
+            meta["schema_version"] = METADATA_SCHEMA_VERSION
+            # `last_updated_utc` là trường provenance TĈNH: mốc rà soát nội dung
+            # metadata, cố ý KHÔNG bị pipeline ghi đè theo đồng hồ mỗi lần chạy.
+            # Trạng thái thực thi theo thời gian chạy nằm ở PIPELINE_RUNTIME_LOG_FILENAME.
+            meta["last_updated_utc_semantics"] = (
+                "Static provenance field: last manual review date of this metadata document. "
+                "NOT rewritten by run_collection_pipeline(); per-run wall-clock state is written "
+                f"to data/raw/{PIPELINE_RUNTIME_LOG_FILENAME} (untracked)."
+            )
+
+            # WHY merge instead of wholesale replacement: this dict literal only
+            # recomputes a subset of the provenance keys. Keys the pipeline cannot
+            # recompute (e.g. `artifact_dtypes`, whose dtype/shape for all three
+            # parquet artifacts is produced by `src/cleaning_pipeline.py`) live only
+            # in the tracked `data/raw/metadata.json`. Reassigning a fresh dict here
+            # silently DELETES that provenance on every run and dirties the tree, so
+            # we start from the on-disk value and overwrite only what we compute.
+            recomputed_execution = {
                 "executed_issue": "#3 & #4 – Pipeline thu thập và chuẩn hóa dữ liệu chất lượng không khí & khí tượng bề mặt Hà Nội",
                 "status": "completed",
-                "execution_timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                "runtime_log": {
+                    "file": f"data/raw/{PIPELINE_RUNTIME_LOG_FILENAME}",
+                    "tracked_in_git": False,
+                    "gitignore_rule": "data/raw/*.json",
+                    "note": (
+                        "Wall-clock execution state (execution_timestamp_utc, "
+                        "execution_time_seconds) is written here instead of this tracked "
+                        "provenance file, so re-running the notebook does not dirty the "
+                        "git working tree when the dataset and provenance are unchanged."
+                    ),
+                },
                 "requested_study_window": {
                     "start": f"{query_start}T00:00:00+07:00",
                     "end": f"{query_end}T23:00:00+07:00",
@@ -1380,11 +1476,32 @@ def run_collection_pipeline(
                 },
             }
 
+            existing_execution = meta.get("collection_pipeline_execution")
+            if not isinstance(existing_execution, dict):
+                existing_execution = {}
+            meta["collection_pipeline_execution"] = {
+                **existing_execution,
+                **recomputed_execution,
+            }
+
             with open(metadata_path, "w", encoding="utf-8") as f:
                 json.dump(meta, f, indent=2, ensure_ascii=False)
             logger.info(f"Đã cập nhật metadata.json tại {metadata_path} thành công!")
         except Exception as e:
             logger.warning(f"Không thể cập nhật metadata.json: {e}")
+
+    # 8. Ghi trạng thái runtime (wall-clock) ra tệp riêng, KHÔNG chạm vào hồ sơ
+    # provenance tĩnh `data/raw/metadata.json` (M1 post-audit cleanup).
+    try:
+        written_log = write_pipeline_runtime_log(
+            summary, log_path=runtime_log_path, log_dir=raw_dir
+        )
+        logger.info(
+            f"Đã ghi nhật ký thực thi runtime tại {written_log} "
+            "(ngoài git; metadata.json giữ nguyên tính tất định)."
+        )
+    except Exception as e:
+        logger.warning(f"Không thể ghi nhật ký thực thi runtime: {e}")
 
     logger.info("Hoàn tất pipeline thu thập và chuẩn hóa dữ liệu thành công!")
     return summary

@@ -51,18 +51,18 @@ Report (concrete evidence, metrics, limitations)
 - Inspect existing modules in `src/` and notebooks in `notebooks/` to avoid redundant code.
 
 ### Step 3: Identify Relevant Rules
-- Review governing rules in [`.agents/rules/`](file:///C:/Users/Admin/Documents/code_workspace/khdl/.agents/rules/):
-  - Engineering constraints $\to$ [`project.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/.agents/rules/project.md)
-  - Data integrity & joins $\to$ [`data.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/.agents/rules/data.md)
-  - Statistical & ML validity $\to$ [`analysis.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/.agents/rules/analysis.md)
-  - Notebook standards $\to$ [`notebooks.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/.agents/rules/notebooks.md)
-  - Git hygiene $\to$ [`git.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/.agents/rules/git.md)
+- Review governing rules in [`.agents/rules/`](../rules):
+  - Engineering constraints $\to$ [`project.md`](../rules/project.md)
+  - Data integrity & joins $\to$ [`data.md`](../rules/data.md)
+  - Statistical & ML validity $\to$ [`analysis.md`](../rules/analysis.md)
+  - Notebook standards $\to$ [`notebooks.md`](../rules/notebooks.md)
+  - Git hygiene $\to$ [`git.md`](../rules/git.md)
 
 ### Step 4: Identify Relevant Skills
-- Consult the Skill Selection Matrix in [`.agents/AGENTS.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/.agents/AGENTS.md) and load only relevant skills from [`.agents/skills/`](file:///C:/Users/Admin/Documents/code_workspace/khdl/.agents/skills/).
+- Consult the Skill Selection Matrix in [`.agents/AGENTS.md`](../AGENTS.md) and load only relevant skills from [`.agents/skills/`](../skills).
 
 ### Step 5: Read Relevant Roadmap Section
-- Read the corresponding Week / Milestone in [`docs/roadmap.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/roadmap.md) to extract exact academic requirements, formulas, and evaluation rubrics.
+- Read the corresponding Week / Milestone in [`docs/roadmap.md`](../../docs/roadmap.md) to extract exact academic requirements, formulas, and evaluation rubrics.
 
 ### Step 6: Plan Minimal Change
 - Define the smallest coherent change set.
