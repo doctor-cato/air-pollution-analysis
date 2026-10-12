@@ -253,6 +253,18 @@ class TestWritePipelineRuntimeLog(unittest.TestCase):
         Tên cũ là `..._on_stderr` nhưng assert nằm trên `assertLogs`, không phải
         stderr. `logger.warning` KHÔNG đảm bảo ra stderr — handler mặc định của
         thư viện mới ghi ra đó. Đổi tên để khỏi hứa sai.
+
+        ⛔ Bài học từ CI (`ubuntu-latest`, run 38285272597): bản đầu assert
+        "Không dọn được tệp tạm" trên MỌI nền tảng và **FAIL trên Linux**. Lý do là
+        khác biệt ngữ nghĩa unlink:
+
+        | | `unlink()` trên tệp đang mở | Kết quả |
+        |---|---|---|
+        | Windows | `PermissionError` (WinError 32) | tệp tạm SÓT → có warning dọn hỏng |
+        | POSIX | **thành công** | tệp tạm bị xoá → KHÔNG có warning dọn hỏng |
+
+        Vì vậy chỉ phần "fd không đóng được" là bất biến mọi nền tảng và được
+        assert không điều kiện. Phần unlink được assert theo đúng ngữ nghĩa từng OS.
         """
         class _Boom(ValueError):
             pass
@@ -282,14 +294,45 @@ class TestWritePipelineRuntimeLog(unittest.TestCase):
                         write_pipeline_runtime_log(self._summary(),
                                                   log_path=target)
 
+                # Bất biến QUA MỌI NỀN TẢNG: fd không đóng được phải được nói ra.
+                # Đây là hành vi production code quyết định, không phụ thuộc OS.
                 self.assertTrue(
-                    any("Không dọn được tệp tạm" in m for m in logs.output),
-                    f"Phải cảnh báo khi dọn tệp tạm hỏng; logs.output={logs.output}",
+                    any("Không đóng được fd" in m for m in logs.output),
+                    f"Phải cảnh báo khi fd không đóng được; logs.output={logs.output}",
                 )
-                self.assertTrue(
-                    any("tạm" in m for m in logs.output),
-                    "Cảnh báo phải nêu tệp tạm bị sót.",
-                )
+
+                # Hành vi phụ thuộc NỀN TẢNG — đây là chỗ CI Linux đã bắt:
+                #   POSIX cho phép unlink() trên tệp ĐANG MỞ -> unlink thành công,
+                #   nên KHÔNG có tệp tạm sót và KHÔNG có warning này.
+                #   Windows trả PermissionError (WinError 32) -> tệp sót -> warning.
+                # Assert theo đúng ngữ nghĩa từng OS, đừng đòi hành vi của
+                # Windows trên cả hai nền tảng.
+                leftovers = sorted(p.name for p in Path(tmp).iterdir())
+                unlink_warned = any("Không dọn được tệp tạm" in m
+                                   for m in logs.output)
+                if os.name == "nt":
+                    self.assertTrue(
+                        unlink_warned,
+                        f"Windows: unlink tệp đang mở phải fail nên phải cảnh báo; "
+                        f"logs.output={logs.output}",
+                    )
+                    self.assertTrue(
+                        leftovers,
+                        "Windows: fd hở thì unlink phải fail, tệp tạm phải còn "
+                        "lại cho tới khi fd được đóng.",
+                    )
+                else:
+                    self.assertFalse(
+                        unlink_warned,
+                        f"POSIX: unlink tệp đang mở vẫn thành công nên KHÔNG được "
+                        f"cảnh báo dọn hỏng; logs.output={logs.output}",
+                    )
+                    self.assertEqual(
+                        leftovers, [],
+                        f"POSIX: unlink phải xoá được tệp tạm dù fd còn mở; "
+                        f"còn sót: {leftovers}",
+                    )
+
                 # Lỗi gốc vẫn phải nổi lên: cảnh báo không được thay cho ném.
                 self.assertTrue(leaked, "Tiền đề hỏng: os.close phải được gọi.")
             finally:
