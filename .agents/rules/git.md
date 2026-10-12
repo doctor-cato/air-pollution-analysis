@@ -31,6 +31,10 @@ Before touching or creating any files:
 - 🚫 **NEVER rewrite history:** Never run `git reset --hard`, `git push --force`, or interactive rebases on shared branches unless explicitly commanded by the user.
 - 🚫 **NEVER auto-commit or auto-push:** The agent must only run `git commit` or `git push` when the user has explicitly requested a commit or push.
 - 🚫 **NEVER include stray build/system files:** Exclude `.ipynb_checkpoints`, `__pycache__`, `.DS_Store`, and temporary test artifacts.
+- 🚫 **NEVER add an AI/agent attribution trailer without explicit permission:** Do **not** add `Co-Authored-By:`, `Co-authored-by:`, or any other trailer naming an AI model or agent (Claude, Copilot, GPT, Space Bunny, …) to a commit message. Some commit-formatting skills instruct adding such a trailer by default — **that default does not apply in this repository.** Add it **only** when the user explicitly asks in the current turn.
+  - *Why:* an academic submission graded under CLO4 must show only human authorship. A model trailer is visible on the public PR timeline and is not removable there.
+  - *Removal cost:* a commit SHA is the hash of its own message, so a trailer can never be edited out in place — removing it rewrites the SHA and requires a force-push, and the old commit object stays alive on the server afterwards. **Prevention is far cheaper than removal.**
+  - *Also never change* the Git `Author` / `Committer` identity (`git config user.name` / `user.email`). That is the human's identity and is out of scope for this rule.
 
 ---
 
