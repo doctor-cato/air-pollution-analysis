@@ -11,7 +11,7 @@ Produce rigorous academic documentation and accountability artifacts required by
 ## When to Use
 - When documenting data variables in `docs/data_dictionary.md` (Week 2).
 - When recording cleaning decisions in `docs/cleaning_log.md` (Weeks 3–5).
-- When preparing the Midterm Report (Week 8) or Final Capstone Report (Weeks 14–15).
+- When preparing the Midterm Report (Week 11) or Final Capstone Report (Weeks 14–15).
 - When authoring the Datasheet for Dataset and Model Card in `docs/` (Week 12).
 - When updating AI usage declarations in `README.md`.
 

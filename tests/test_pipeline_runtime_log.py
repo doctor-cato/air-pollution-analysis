@@ -30,6 +30,7 @@ import textwrap
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest import mock
 
 from src.data_collection import (
     METADATA_SCHEMA_VERSION,
@@ -79,6 +80,282 @@ class TestWritePipelineRuntimeLog(unittest.TestCase):
             self.assertTrue(nested.parent.is_dir(), "Thư mục cha phải được tạo.")
             self.assertEqual(returned, nested)
             self.assertTrue(nested.is_file())
+
+    # --- D4: loi khi ghi file phai NOI LEN, khong bi nuot im lang ------------
+    #
+    # `write_pipeline_runtime_log()` khong co `try/except` nao nuot loi quanh
+    # thao tac ghi (`except BaseException` ben trong chi dọn tệp tạm rồi `raise`
+    # lai — xem khoi D4-partial_file ben duoi). Neu ai do sau nay them handler
+    # `except Exception -> logger.warning` bao quanh, loi ghi se bien mat am
+    # tham va `metadata.json` van ghi lai nhu the lan chay do thanh cong —
+    # cung loai loi vacuity ma `test_block_raises_instead_of_silently_swallowing_errors`
+    # da bat cho khoi metadata. Hai test duoi chot ca hai mat: loi noi len,
+    # VA khong ton tai duong tra ve "thanh cong" gia.
+
+    def test_write_failure_propagates_oserror_instead_of_being_swallowed(self):
+        """Ghi file that bai phai nem `OSError` ra ngoai, khong nuot im lang."""
+        with tempfile.TemporaryDirectory() as tmp:
+            # log_path tro thang vao mot THU MUC da ton tai. Sau khi chuyen sang
+            # ghi atomic, `os.replace(<tệp tạm>, <thư mục>)` ném `PermissionError`
+            # tren Windows (va `IsADirectoryError` tren POSIX) — ca hai la con
+            # cua `OSError`. Test nay KHONG khoa loai loi cu the, chi khoa lop.
+            target = Path(tmp) / "khong_phai_tep.json"
+            target.mkdir()
+            self.assertTrue(target.is_dir(), "Tien de: log_path la mot thu muc.")
+
+            with self.assertRaises(OSError):
+                write_pipeline_runtime_log(self._summary(), log_path=target)
+
+            # Atomic: thu muc dich phai sach, khong con tep tam do la loi.
+            self.assertEqual(
+                sorted(p.name for p in Path(tmp).iterdir()), [target.name],
+                "Loi replace phai don duoc tep tam — neu con sot, ghi khong atomic.",
+            )
+
+    # --- D4-partial-file: ghi ATOMIC (tệp tạm + os.replace) -----------------
+    #
+    # Trước đây `open(log_path, "w")` tiệt trừ tệp ĐÍCH trước khi `json.dump` chạy,
+    # nên lỗi giữa chừng để lại tệp 0 byte trông giống log hỏng. Nay ghi vào tệp
+    # TẠM trong cùng thư mục rồi `os.replace()` sang đích.
+    #
+    # Hợp đồng KHÔNG đổi: hàm vẫn NÉM lỗi. Việc nuốt lỗi là của phía gọi
+    # (`run_collection_pipeline` bọc try/except + logger.warning), không phải của
+    # hàm này — nếu đổi, lỗi sẽ biến mất âm thầm.
+
+    def test_write_failure_propagates_and_returns_no_success_path(self):
+        """Lỗi serialize giữa chừng phải nổi lên; KHÔNG trả về Path như thể thành công."""
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "nested" / "runtime.json"
+            boom = OSError("no space left on device")
+
+            # Chặn ngay tại `json.dump` — mô phỏng đĩa đầy / I/O error giữa
+            # chừng, tức trường hợp tệp tạm ĐÃ được mở nhưng chưa ghi xong byte.
+            def exploding_dump(*args, **kwargs):
+                raise boom
+
+            with mock.patch.object(json, "dump", exploding_dump):
+                # `assertRaises` là bằng chứng cho "không có đường trả về Path
+                # giả": nếu hàm nuốt lỗi rồi `return log_path`, test này fail.
+                with self.assertRaises(OSError) as ctx:
+                    result = write_pipeline_runtime_log(
+                        self._summary(), log_path=target
+                    )
+                    self.fail(
+                        f"Hàm trả về {result!r} dù json.dump đã ném lỗi "
+                        "— nuốt im lặng."
+                    )
+
+            self.assertIs(ctx.exception, boom, "Phải nổi đúng lỗi gốc, không phải bản sao.")
+
+    def test_serialize_failure_leaves_no_file_at_destination(self):
+        """Ghi atomic: serialize hỏng thì đích KHÔNG được tạo (kể cả tệp rỗng)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "runtime.json"
+
+            def exploding_dump(*args, **kwargs):
+                raise OSError("no space left on device")
+
+            with mock.patch.object(json, "dump", exploding_dump):
+                with self.assertRaises(OSError):
+                    write_pipeline_runtime_log(self._summary(), log_path=target)
+
+            self.assertFalse(
+                target.exists(),
+                "Ghi atomic KHÔNG được để lại tệp rác 0 byte ở đích — đó chính là "
+                "lỗi D4-partial-file mà bản `open(..., 'w')` cũ gây ra.",
+            )
+
+    def test_temporary_file_is_cleaned_up_on_failure(self):
+        """Tệp tạm phải bị dọn khi ghi hỏng, không để lại rác trong thư mục đích."""
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "runtime.json"
+
+            def exploding_dump(*args, **kwargs):
+                raise OSError("no space left on device")
+
+            with mock.patch.object(json, "dump", exploding_dump):
+                with self.assertRaises(OSError):
+                    write_pipeline_runtime_log(self._summary(), log_path=target)
+
+            leftovers = sorted(p.name for p in Path(tmp).iterdir())
+            self.assertEqual(
+                leftovers, [],
+                f"Phải dọn hết tệp tạm, còn sót: {leftovers}",
+            )
+
+    def test_replace_failure_is_observable_and_cleans_up(self):
+        """Lỗi ở `os.replace` phải nổi lên VÀ tệp tạm vẫn được dọn."""
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "runtime.json"
+            boom = OSError("cross-device link")
+
+            with mock.patch("src.data_collection.os.replace", side_effect=boom):
+                with self.assertRaises(OSError) as ctx:
+                    write_pipeline_runtime_log(self._summary(), log_path=target)
+
+            self.assertIs(ctx.exception, boom, "Phải nổi đúng lỗi gốc của os.replace.")
+            self.assertFalse(target.exists(), "Đích không được tạo khi replace thất bại.")
+            leftovers = sorted(p.name for p in Path(tmp).iterdir())
+            self.assertEqual(leftovers, [], f"Phải dọn tệp tạm, còn sót: {leftovers}")
+
+    def test_success_path_writes_complete_json_and_leaves_no_temp_file(self):
+        """Đường thành công: tệp đích JSON đầy đủ, không còn tệp tạm nào."""
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "nested" / "runtime.json"
+
+            returned = write_pipeline_runtime_log(self._summary(), log_path=target)
+
+            self.assertEqual(returned, target)
+            with open(target, "r", encoding="utf-8") as f:
+                payload = json.load(f)  # parse nghiêm ngặt: phải là JSON đầy đủ
+            self.assertIsInstance(payload, dict)
+            self.assertEqual(
+                set(payload),
+                {"execution_timestamp_utc", "execution_time_seconds",
+                 "note", "pipeline_report"},
+            )
+            leftovers = [p.name for p in target.parent.iterdir() if p.name != target.name]
+            self.assertEqual(leftovers, [], f"Phải dọn hết tệp tạm, còn sót: {leftovers}")
+
+    def test_fdopen_failure_closes_descriptor_so_cleanup_can_succeed(self):
+        """`os.fdopen` ném → fd phải ĐÓNG, nếu không cleanup chắc chắn thất bại.
+
+        Lỗi đã tái lập được: `tempfile.mkstemp` trả về một fd MỞ. Nếu `os.fdopen`
+        ném trước khi nhận quyền sở hữu fd, fd vẫn mở → `tmp_path.unlink()` ở
+        nhánh dọn dẹp FAIL với `PermissionError` (WinError 32 trên Windows) →
+        tệp tạm sót lại ĐÚNG LÚC ta cần dọn, và fd rò ra.
+
+        Tham số truyền vào `os.fdopen` là hằng số hợp lệ nên đường này gần như
+        không xảy ra ngoài đời — nhưng "gần như không" không phải "không", và
+        hệ quả là rò fd cộng dọn dẹp thất bại, nên vẫn phải chặn.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "runtime.json"
+            boom = ValueError("wrapper refused the descriptor")
+
+            with mock.patch("src.data_collection.os.fdopen", side_effect=boom):
+                with self.assertRaises(ValueError) as ctx:
+                    write_pipeline_runtime_log(self._summary(), log_path=target)
+
+            self.assertIs(ctx.exception, boom, "Phải nổi đúng lỗi gốc, không bọc lại.")
+
+            leftovers = sorted(p.name for p in Path(tmp).iterdir())
+            self.assertEqual(
+                leftovers, [],
+                f"Tệp tạm còn sót {leftovers} — nghĩa là fd chưa đóng nên unlink "
+                "bị PermissionError. Trên Windows, TemporaryDirectory cũng không "
+                "dọn nổi và test sẽ lỗi ở tầng context manager.",
+            )
+
+    def test_fdopen_failure_is_logged_as_warning(self):
+        """Dọn dẹp hỏng phải thành tiếng qua logger, không im lặng — dù lỗi gốc đã ném.
+
+        Tên cũ là `..._on_stderr` nhưng assert nằm trên `assertLogs`, không phải
+        stderr. `logger.warning` KHÔNG đảm bảo ra stderr — handler mặc định của
+        thư viện mới ghi ra đó. Đổi tên để khỏi hứa sai.
+        """
+        class _Boom(ValueError):
+            pass
+
+        leaked: list[int] = []
+        real_close = os.close
+
+        def close_fails(fd):
+            # Mô phỏng fd không đóng được. Ghi lại số fd để test tự dọn SAU khi
+            # patch đã tháo — nếu không, fd vẫn mở và `TemporaryDirectory` không
+            # xoá được tệp tạm còn sót (WinError 32 trên Windows).
+            leaked.append(fd)
+            raise OSError("EBADF")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "runtime.json"
+            try:
+                with (
+                    mock.patch("src.data_collection.os.fdopen",
+                               side_effect=_Boom("no fd")),
+                    mock.patch("src.data_collection.os.close",
+                               side_effect=close_fails),
+                    self.assertLogs("src.data_collection",
+                                    level="WARNING") as logs,
+                ):
+                    with self.assertRaises(_Boom):
+                        write_pipeline_runtime_log(self._summary(),
+                                                  log_path=target)
+
+                self.assertTrue(
+                    any("Không dọn được tệp tạm" in m for m in logs.output),
+                    f"Phải cảnh báo khi dọn tệp tạm hỏng; logs.output={logs.output}",
+                )
+                self.assertTrue(
+                    any("tạm" in m for m in logs.output),
+                    "Cảnh báo phải nêu tệp tạm bị sót.",
+                )
+                # Lỗi gốc vẫn phải nổi lên: cảnh báo không được thay cho ném.
+                self.assertTrue(leaked, "Tiền đề hỏng: os.close phải được gọi.")
+            finally:
+                for fd in leaked:
+                    try:
+                        real_close(fd)
+                    except OSError:
+                        pass
+
+    def test_pipeline_tolerates_runtime_log_failure(self):
+        """Hàm ném lỗi, NHƯNG `run_collection_pipeline()` phải nuốt và ghi warning.
+
+        Việc ghi nhật ký runtime là thông tin phụ, không phải điều kiện thành công:
+        việc thu thập dữ liệu không được sập chỉ vì log hỏng. Test này khoanh vùng
+        đúng ranh giới trách nhiệm — hàm ném, pipeline nuốt.
+        """
+        src = (REPO_ROOT / "src" / "data_collection.py").read_text(encoding="utf-8")
+        tree = ast.parse(src)
+        fn = next(
+            n for n in tree.body
+            if isinstance(n, ast.FunctionDef) and n.name == "run_collection_pipeline"
+        )
+        calls = [
+            n for n in ast.walk(fn)
+            if isinstance(n, ast.Call)
+            and getattr(n.func, "id", None) == "write_pipeline_runtime_log"
+        ]
+        self.assertEqual(len(calls), 1, "Tiền đề: đúng một lần gọi hàm ghi log.")
+
+        guarded = []
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Try):
+                for sub in ast.walk(node):
+                    if isinstance(sub, ast.Call) and sub is calls[0]:
+                        handlers = node.handlers
+                        self.assertTrue(
+                            handlers,
+                            "Lời gọi ghi log phải nằm trong try có except.",
+                        )
+                        # Phải bắt RỘNG, không phải chỉ một lớp lỗi cụ thể.
+                        # `except KeyError` cũng là `ast.Name` nên kiểm tra
+                        # "có Name/Attribute" là quá yếu: lỗi ghi log thật sự là
+                        # `OSError`/`ValueError`, bắt hẹp sẽ vẫn làm sập
+                        # pipeline trong khi test vẫn xanh.
+                        caught = set()
+                        for h in handlers:
+                            if h.type is None:
+                                continue  # bare `except:` — bắt rộng, chấp nhận
+                            if isinstance(h.type, ast.Name):
+                                caught.add(h.type.id)
+                            elif isinstance(h.type, ast.Tuple):
+                                caught.update(
+                                    e.id for e in h.type.elts
+                                    if isinstance(e, ast.Name)
+                                )
+                        self.assertTrue(
+                            caught & {"Exception", "BaseException"},
+                            f"Phải có `except Exception` (bắt rộng) quanh lời gọi "
+                            f"ghi log; thấy: {sorted(caught) or 'bare except'}",
+                        )
+                        guarded.append(node)
+        self.assertTrue(
+            guarded,
+            "Lời gọi write_pipeline_runtime_log() phải được bọc try/except để "
+            "ghi log hỏng không làm sập pipeline.",
+        )
 
     def test_payload_contains_required_keys(self):
         """Payload phải có đủ 4 trường: timestamp, thời gian chạy, note, báo cáo."""
@@ -274,7 +551,8 @@ class TestWritePipelineRuntimeLog(unittest.TestCase):
         """
         GAP 2 — Hợp đồng hiện tại: khi `log_dir=None` và `log_path=None`, đường dẫn
         là `Path("data/raw") / PIPELINE_RUNTIME_LOG_FILENAME`, tức TƯƠNG ĐỐI với
-        CWD của tiến trình (`src/data_collection.py:166`).
+        CWD của tiến trình (`src/data_collection.py`, nhánh `log_path is None`
+        và `log_dir is None`).
 
         `chdir` vào thư mục tạm rồi chạy: chứng minh (1) hợp đồng tương đối này,
         (2) khi CWD ở nơi khác thì KHÔNG gì rơi vào repo này.

@@ -17,6 +17,8 @@ import hashlib
 import io
 import json
 import logging
+import os
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -161,6 +163,24 @@ def write_pipeline_runtime_log(
 
     Tệp được ghi vào `data/raw/` nên bị `.gitignore` (`data/raw/*.json`, chỉ ngoại
     trừ `metadata.json`) loại trừ — xem `PIPELINE_RUNTIME_LOG_FILENAME`.
+
+    Ghi **atomic** (`D4-partial-file`): nội dung được ghi vào tệp TẠM trong CÙNG thư mục
+    rồi `os.replace()` sang đích. `os.replace()` là atomic trên cùng một hệ thống tệp,
+    nên đích chỉ có hai trạng thái: JSON đầy đủ, hoặc **không có gì**. Trước đây
+    `open(log_path, "w")` tiệt trừ tệp đích TRƯỚC khi `json.dump` chạy, nên lỗi giữa
+    chừng để lại một tệp 0 byte trông giống log hỏng.
+
+    Hợp đồng lỗi **không đổi**: hàm ném lỗi ra ngoài cho phía gọi tự quyết định.
+    `run_collection_pipeline()` (:1495-1504) đã bọc `try/except` và ghi
+    `logger.warning`, nên một lần ghi log hỏng KHÔNG làm sập việc thu thập dữ liệu —
+    việc ghi nhật ký chỉ là thông tin phụ, không phải điều kiện thành công.
+
+    Hệ quả CẦN BIẾT: `tempfile.mkstemp` tạo tệp với quyền `0600` trên POSIX, còn
+    `open(path, "w")` tạo với `0666 & ~umask` (thường `0644`). Tệp runtime log sau
+    thay đổi này vì vậy **chỉ chủ sở hữu đọc được** thay vì mọi user. Chấp nhận được:
+    tệp này bị `.gitignore` loại trừ, không mã nào trong repo đọc lại nó, và hạn
+    quyền là hướng an toàn hơn chứ không phải lỗi. Nếu sau này tệp log phải chia sẻ
+    cho người khác, cần `os.chmod` tường minh ở đây.
     """
     if log_path is None:
         base_dir = Path(log_dir) if log_dir is not None else Path("data/raw")
@@ -179,8 +199,48 @@ def write_pipeline_runtime_log(
         "pipeline_report": summary,
     }
 
-    with open(log_path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
+    # Ghi atomic: tệp tạm CÙNG thư mục rồi os.replace(). Hậu tố `.json` cố ý để
+    # khớp quy tắc `.gitignore` `data/raw/*.json` — nếu tiến trình bị giết giữa
+    # chừng, tệp tạm còn sót vẫn bị git bỏ qua thay vì làm bẩn working tree.
+    tmp_fd, tmp_name = tempfile.mkstemp(
+        dir=str(log_path.parent), prefix=f"{log_path.name}.", suffix=".json"
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        try:
+            f = os.fdopen(tmp_fd, "w", encoding="utf-8")
+        except BaseException:
+            # `os.fdopen` chỉ tự đóng fd khi nó ném lỗi do CHÍNH NÓ gây ra. Nếu
+            # nó ném trước khi kịp nhận quyền sở hữu fd (ví dụ `ValueError` từ
+            # một lớp bọc, `MemoryError` khi cấp phát buffer), fd vẫn mở và
+            # `tmp_path.unlink()` bên dưới sẽ FAIL với PermissionError (WinError
+            # 32 trên Windows) — tệp tạm sót lại đúng lúc ta cần dọn.
+            #
+            # `os.close` được bọc riêng: nếu BẢN THÂN nó ném, lỗi gốc sẽ bị che
+            # mất và phía gọi thấy nhầm nguyên nhân. Rò fd là sự cố nhỏ hơn nhiều
+            # so với ném sai lỗi, nên ở đây cảnh báo rồi ném lại lỗi GỐC.
+            try:
+                os.close(tmp_fd)
+            except OSError as close_err:
+                logger.warning(
+                    f"Không đóng được fd {tmp_fd} sau khi mở tệp tạm thất bại: "
+                    f"{close_err}"
+                )
+            raise
+        with f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, log_path)
+    except BaseException:
+        # Dọn tệp tạm rồi ném lại NGUYÊN BẢN lỗi gốc — không nuốt, không thay
+        # bằng lỗi mới, để phía gọi vẫn thấy đúng nguyên nhân.
+        try:
+            tmp_path.unlink()
+        except OSError:
+            logger.warning(
+                f"Không dọn được tệp tạm {tmp_path} sau khi ghi log thất bại."
+            )
+        raise
+
     return log_path
 
 

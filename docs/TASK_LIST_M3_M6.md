@@ -18,7 +18,7 @@
 | **1B** | **Cập nhật tài liệu đồng bộ (xen kẽ)** | **29** | **~1 buổi** |
 | 2 | #8 Thống kê mô tả | 12 | ~1–2 buổi |
 | 3 | #9 7 biểu đồ | 13 | ~2 buổi |
-| 4 | #10 Midterm | 8 | ~1 buổi |
+| 4 | #10 Midterm **(nộp W11)** | 8 | ~1 buổi |
 | 5 | #11 Suy luận | 9 | ~1–2 buổi |
 | 6 | #12 Hồi quy | 9 | ~2 buổi |
 | 7 | #13 Phân loại | 11 | ~2 buổi |
@@ -33,19 +33,89 @@ riêng, **không nên hoãn để làm M4 trước**.
 ### Số liệu thực tế đã kiểm chứng (đọc trực tiếp từ `data/processed/air_pollution_final.parquet`)
 
 ```text
-9.044 dòng × 18 cột · 261 KB · 1 trạm · 1 địa điểm · 376 ngày (~12,5 tháng) · 1.005 dòng/giờ
-pm25 NaN 1.549 (17,1%) · pm10 NaN 1.469 · 5 biến khí tượng NaN 0 · complete-case 7.372 dòng
+9.044 dòng × 18 cột · 261 KB · 1 trạm · 1 địa điểm · 376 ngày (~12,5 tháng) · lưới giờ 24,05 dòng/ngày
+pm25 NaN 1.549 (17,1%) · pm10 NaN 1.469 · 6 biến khí tượng NaN 0 · complete-case 7.372 dòng
 corr(pm25, pm10) = 0,9727 · R² đơn biến pm25~pm10 = 0,9462
 ĐÃ CÓ SẴN trong Parquet: hour_sin, hour_cos, month_sin, month_cos
-Prevalence cảnh báo (trung bình trượt 24h ≥ 50 µg/m³):
-  toàn bộ  1.655/5.317 = 18,30%
-  Train     986/2.994 = 21,06%
-  Test      669/2.323 = 15,34%
+Prevalence cảnh báo (trung bình trượt 24h ≥ 50 µg/m³) — SỐ LIỆU CHƯA XÁC MINH + MẪU SỐ CHƯA CHỐT:
+  ⛔ KHÔNG PHẢI KẾT QUẢ THỰC NGHIỆM ĐÃ KIỂM CHỨNG. Tử số chỉ tái lập được khi giả định
+     rolling(window=24, min_periods=24) và ngưỡng ≥ 50 — giả định này chỉ có dưới dạng
+     văn xuôi, KHÔNG có hàm / test / dấu vết thực thi trong repo. Xem "Độ nhạy" bên dưới.
+  (a) mẫu số = dòng có trung bình trượt hợp lệ
+      toàn bộ  1.655/5.317 = 31,13%   ·   Train  986/2.994 = 32,93%   ·   Test  669/2.323 = 28,80%
+  (b) mẫu số = TOÀN BỘ dòng của tập
+      toàn bộ  1.655/9.044 = 18,30%   ·   Train  986/4.682 = 21,06%   ·   Test  669/4.362 = 15,34%
+  ⚠️ CHƯA CÔNG BỐ con số chính thức — chưa xác minh tử số VÀ chưa chốt mẫu số.
+     Tái lập: `python scripts/verify_claims.py`.
 ```
 
-> ⚠️ **Con số trong roadmap cần xác minh.** `docs/roadmap.md:933` ghi tỷ lệ **3,08% (Train) vs 6,89% (Test)**,
-> nhưng tính lại từ Parquet cho **21,06% vs 15,34%**. Chênh lệch ~7×. Hoặc roadmap dùng định nghĩa khác,
-> hoặc con số đã cũ từ trước khi chốt split. Xem task **0.7**.
+**Vì sao 5.317 chứ không phải 9.044 — đặc tính cửa sổ trượt 24h** *(đo bằng `scripts/verify_claims.py`)*:
+
+| Đặc tính | Số liệu |
+|---|---|
+| **`pm25` dòng thiếu** (`NaN`) | **1.549** / 9.044 (17,1%) — đây là số **DÒNG** |
+| **`pm25` đoạn thiếu** (NaN chạy liên tiếp) | **189 đoạn** — đây là số **ĐOẠN**, không phải số dòng |
+| Đối chiếu chéo | Tổng độ dài 189 đoạn = **1.549** = đúng số dòng thiếu → **khớp** |
+| Đoạn dài nhất | **630 giờ** (= 7,0% toàn bộ chuỗi 9.044 giờ) |
+| Cửa sổ `rolling(24, min_periods=24)` hợp lệ | **5.317 / 9.044** |
+| Cửa sổ hỏng | **3.727** — **không phải 23**, vì `min_periods=24` đòi cả 24 giá trị đều khác `NaN`; một đoạn `NaN` làm hỏng cửa sổ |
+| Cửa sổ vắt qua mốc cắt `2026-01-15`? | **Không ảnh hưởng** — tính trên toàn frame và tính riêng từng tập cho **cùng kết quả** (Train 2.994 · Test 2.323) |
+
+> ⚠️ **Giới hạn quan trọng: nhãn cảnh báo CHƯA BAO GIỜ được hiện thực hoá.**
+> `grep -r "rolling" src/*.py` → rỗng. `grep "rolling(" notebooks/*.ipynb` → rỗng.
+> Con số 1.655 / 986 / 669 chỉ tồn tại dưới dạng **văn xuôi** trong tài liệu.
+> Vì vậy **không tra được định nghĩa từ mã nguồn** — và không có mô tả nào trong repo cho biết
+> báo cáo muốn trả lời câu hỏi nào. Đây chính là lý do chưa chốt được mẫu số.
+
+**⛔ Độ nhạy — bằng chứng cho việc tử số là số CHƯA XÁC MINH** *(chạy bởi `scripts/verify_claims.py`)*:
+
+| Cấu hình | Train | Test | Tổng | (a) Train | (b) Tổng |
+|---|---:|---:|---:|---:|---:|
+| `rolling(24, mp=24) ≥ 50` ← **giả định** | 986 | 669 | **1.655** | 32,93% | 18,30% |
+| `rolling(24, mp=12) ≥ 50` | 1.359 | 772 | 2.131 | 30,84% | 23,56% |
+| `rolling(24, mp=6) ≥ 50` | 1.479 | 837 | 2.316 | 32,36% | 25,61% |
+| `rolling(24, mp=1) ≥ 50` | 1.499 | 856 | 2.355 | 32,32% | 26,04% |
+| không trượt (phút thời) ≥ 50 | 1.426 | 878 | 2.304 | 33,33% | 25,48% |
+| `rolling(24, mp=24) ≥ 35` | 1.765 | 1.368 | 3.133 | 58,95% | 34,64% |
+
+- **Tổng số nhãn dương dao động mạnh**: 1.655 ↔ 2.355 ↔ 3.133 — chỉ đổi `min_periods`
+  hoặc ngưỡng là con số dịch hàng trăm. Không có mã nào trong repo chốt tham số nào.
+- **Tỷ lệ (a) ổn định hơn** (~30–33% khi giữ ngưỡng 50) vì tử số và mẫu số cùng đổi.
+- **Tỷ lệ (b) NHẠY hơn** (18,30% ↔ 26,04%) vì mẫu số cố định ở 9.044.
+- ⇒ **Cả hai tỷ lệ đều không phải kết quả thực nghiệm đã xác minh.** Chúng là phép tính
+  dưới giả định chưa có mã nguồn xác nhận. Chỉ dùng để mô tả hiện trạng, **không trích
+  dẫn như kết quả đo được** cho tới khi task 0.7b hoàn tất.
+
+**Ý nghĩa của hai mẫu số — chúng trả lời HAI câu hỏi khác nhau:**
+
+| | Phép tính | Câu hỏi mà nó trả lời | Dùng khi nào |
+|:--:|---|---|---|
+| **(a)** | `1.655 / 5.317` | *"Trong số giờ **có thể đo được**, bao nhiêu % vượt ngưỡng?"* | Báo cáo độ nhạy / tỷ lệ **trong tập có nhãn**. Giống cách `roadmap.md:990–997` đã chốt cho nhãn nặng. |
+| **(b)** | `1.655 / 9.044` | *"Trên **toàn bộ thời gian**, bao nhiêu % thời điểm vượt ngưỡng?"* | Báo cáo tỷ lệ thời gian. Nhưng phần thời gian **không đo được** (nguồn ngừng gửi) bị tính vào mẫu số → **hạ thấp** tỷ lệ. |
+
+> Chọn (a) là đồng nhất với nguyên tắc `roadmap.md:990–997` đã ban hành cho nhãn nặng.
+> Chọn (b) lại khớp với các con số **đang được in** trong tài liệu này.
+> **Hai lựa chọn đều có tiền lệ** → **không tự chọn**, xem task **0.7b**.
+
+> ⚠️ **ĐIỀU KIỆN CHUNG của cả hai bảng trên:** mọi tử số đều được tính từ giả định
+> `rolling(window=24, min_periods=24).mean() ≥ 50` mà **chưa có mã nguồn xác nhận**.
+> Chọn mẫu số nào cũng chưa làm cho tử số trở thành số đã xác minh. Hai vấn đề này
+> **độc lập**: 0.7b phải giải quyết cả hai, không giải quyết cái này bù được cái kia.
+
+> ℹ️ **Đây KHÔNG phải mâu thuẫn với `roadmap.md`.** Hai tài liệu đo **hai nhãn khác nhau**:
+>
+> | Tài liệu | Nhãn | Ngưỡng | Mẫu số | Kết quả |
+> |---|---|---|---|---|
+> | `roadmap.md:984, :997` | **nhãn nặng** | `pm25 > 100` **tức thời theo giờ** | dòng **có nhãn** `pm25` (đã chốt tại `roadmap.md:990–997`) | Train `295/4.279` = **6,89%** · Test `99/3.216` = **3,08%** |
+> | `TASK_LIST_M3_M6.md` | **cảnh báo** | trung bình **trượt 24h** ≥ 50 µg/m³ | ⚠️ chưa chốt — xem trên | Train `986/2.994` · Test `669/2.323` |
+>
+> Nguồn định nghĩa: `notebooks/03_transformation_pipeline.ipynb` cell 11
+> (`gio>50` / `gio>100` trên **nồng độ tức thời theo giờ**) và cell 13 (mốc cắt `2026-01-15`).
+>
+> ⚠️ **Giới hạn còn lại:** con số cuối cùng cho nhãn cảnh báo **chưa xác định** cho tới khi
+> mẫu số được chốt. `docs/roadmap.md:990–997` đã cảnh báo đúng cái bẫy này cho nhãn nặng
+> (*"một tỷ lệ không nên chia cho các dòng mà nó không đo được"*) nhưng chưa áp cho nhãn
+> trượt 24h. Xem task **0.7** và `docs/PLAN_MIDTERM_RESCHEDULE_PR36.md` §4 D2 Phase B.
 
 ### Các mục đã bị hạ cấp sau khi đối chiếu số liệu thật
 
@@ -90,11 +160,37 @@ Không làm được gì nếu chưa có nền tảng sạch. 8 việc này ph�
       lấy cùng một thông tin là YAGNI. Nếu sau này cần SHAP cho mô hình hộp đen thì thêm lúc đó.
 - [ ] **0.6** ✅ **Đã kiểm chứng** — `nbclient`, `nbconvert`, `nbformat` đều có trong env.
       Lệnh `nbconvert --execute` của task 4.5 chạy được ngay.
-- [ ] **0.7** 🔴 **Xác minh lại con số prevalence 3,08% / 6,89% trong `docs/roadmap.md:933`.**
-      Tính lại từ Parquet ra **21,06% (Train) / 15,34% (Test)**. Phải xác định: (a) roadmap dùng định nghĩa
-      nào — trung bình trượt 24h hay nồng độ tức thời theo giờ? (b) con số có còn đúng sau khi chốt split
-      không? **Đây là con số GV sẽ nhìn thấy trong báo cáo** — sai là mất điểm ở cả midterm lẫn final.
-      Sửa roadmap sau khi xác minh.
+- [x] **0.7** ✅ **Đã kiểm chứng 2026-10-12** bằng `python scripts/verify_claims.py`.
+      Kết quả: **không có sai lệch ~7×** — `roadmap.md` và task list đo **hai nhãn khác nhau**.
+      * `roadmap.md:984` = nhãn nặng `pm25 > 100` **tức thời theo giờ**, mẫu số dòng có nhãn
+        → Train `295/4.279` = **6,89%**, Test `99/3.216` = **3,08%**. Tái lập khớp **từng con số**.
+      * Task list = cảnh báo trung bình **trượt 24h** ≥ 50 → **tử số 986 / 669 / 1.655 chỉ
+        tái lập được DƯỚI GIẢ ĐỊNH** `rolling(24, min_periods=24)`, mà giả định này không có mã.
+        Độ nhạy đo được: `min_periods` 24→12 làm tổng nhảy 1.655→2.131, mp=1 là 2.355.
+        ⇒ Đánh dấu **số liệu chưa xác minh**, không phải kết quả thực nghiệm.
+      * Giả thuyết cũ "nhãn Train/Test bị đảo chỗ" **đã bị bác bỏ**: split `2026-01-15` cho
+        Train 4.682 dòng / Test 4.362 dòng — Test nhỏ hơn Train là thực tế đúng (tổng 9.044).
+      - [ ] **0.7b** ⬜ **Chốt định nghĩa nhãn cảnh báo trượt 24h VÀ mẫu số** trước khi dùng
+        trong báo cáo. Hiện tử **tử số chưa xác minh** *và* **mẫu số chưa chốt**.
+
+        **Tiêu chí hoàn thành — cần đạt ĐỦ cả 5, thiếu một là chưa xong:**
+
+        1. **Có mã hiện thực hoá nhãn** trong `src/` (hiện **KHÔNG có**) — một hàm
+           `build_alert_label()` trả về Series boolean, **fit trên Train**, không dùng
+           dữ liệu Test. Đây là bước bắt buộc: không có mã thì mọi con số chỉ là văn xuôi
+           không tái lập được. **Cho tới khi có hàm này, 986 / 669 / 1.655 là số chưa xác minh.**
+        2. **Có unit test khoá tham số** — test khẳng định `window`, `min_periods`, ngưỡng
+           và đơn vị. Mục đích: chặn "con số đúng vì tình cờ" khi tham số vô tình đổi.
+        3. **Ghi định nghĩa vào `docs/data_dictionary.md`**: cửa sổ, `min_periods`, ngưỡng +
+           đơn vị, và cách xử lý `NaN` — đủ để người khác tái lập đúng.
+        4. **Ghi rõ mẫu số được chọn kèm lý do** trong báo cáo, theo đúng câu chữ ở bảng
+           "Ý nghĩa của hai mẫu số" phía trên. Mọi tỷ lệ khác trong tài liệu phải dùng
+           **cùng một mẫu số** (quy tắc đã có tại `roadmap.md:997`).
+        5. **`python scripts/verify_claims.py` chạy exit 0** và in ra đúng con số đã chốt —
+           với nhãn lấy từ **hàm trong `src/`**, không phải từ phép tính trong script.
+
+        **Không đạt được tiêu chí nào thì tiếp tục hiện cả hai phương án** — tuyệt đối không
+        xoá phương án còn lại để báo cáo trông gọn.
 - [ ] **0.8** 🔴 **Sửa Task 2 của Issue #13 — 4 cột `sin`/`cos` đã có sẵn trong Parquet.**
       `hour_sin`, `hour_cos`, `month_sin`, `month_cos` đã được tạo ở Issue #7 và nằm trong
       `air_pollution_final.parquet`. Nếu làm lại sẽ sinh `hour_sin_x`/`hour_sin_y` hoặc ghi đè.
@@ -117,7 +213,8 @@ vì khi đã viết xong thì phải viết lại cả notebook.
 - [x] **1.2** 🟡 **Issue #11 + #13 — Base Rate / prior probability (viết lại cho đúng bối cảnh).**
       Slide W6 dùng ví dụ bệnh **0,1%** → dương tính chỉ ~9% là thật. Ở đây prevalence thực tế là **18,3%**
       (rolling 24h ≥ 50), DummyClassifier đã đạt ~81,7% → **bẫy Accuracy 99% không nguy hiểm**, không
-      được diễn giải quá mức. Vấn đề **thật** là **dịch chuyển prevalence Train 21,06% → Test 15,34%**
+      được diễn giải quá mức. Vấn đề **thật** là **dịch chuyển prevalence Train → Test** — luôn nêu kèm mẫu số,
+      vì mẫu số khác nhau cho hai phương án (xem khối "Số liệu thực tế")
       (chênh 5,7 điểm phần trăm): mô hình có PPV/recall khác nhau trên hai kỳ, nên **mọi chỉ số tỷ lệ
       phải nêu mẫu số và dùng cùng một mẫu số cho cả Train lẫn Test**.
       Thêm AC: báo cáo PPV (precision) cùng prevalence của tập, không dùng chung một con số.
@@ -202,7 +299,7 @@ thực hiện tốt: mỗi issue đều kèm 1 tài liệu sinh ra từ code th�
       `notebooks/04_descriptive_stats.ipynb`, `src/visualizer.py`, `figures/FIG-01…07.png`,
       `reports/statistical_profile.csv` vào cây thư mục; sửa trạng thái issue #7 "chưa merge" nếu đã merge.
 - [ ] **D3** 🔴 `README.md` — thêm mục thống kê chuỗi dữ liệu thật vào phần mô tả: 9.044 dòng × 18 cột ·
-      1 trạm (`556 Nguyễn Văn Cừ`) · 376 ngày (2025-07-03 → 2026-07-15) · 1.005 dòng/giờ ·
+      1 trạm (`556 Nguyễn Văn Cừ`) · 376 ngày (2025-07-03 → 2026-07-15) · lưới giờ 24,05 dòng/ngày ·
       `pm25` NaN 17,1%. Hiện README chủ yếu mô tả *quy trình*, chưa mô tả *đặc tính chuỗi*.
 - [ ] **D4** 🔴 `docs/data_dictionary.md` — bổ sung mục "Đặc tính quan sát thực tế" cho 18 cột: tỷ lệ
       NaN, min/max/P50, tỷ lệ cờ nhị phân. Là nền cho cả báo cáo giữa kỳ lẫn cuối kỳ.
@@ -416,7 +513,7 @@ Input: `data/processed/air_pollution_final.parquet` (9.044 dòng × 18 cột, gi
 ## Phase 7 — Issue #13: Phân loại cảnh báo (~2 buổi)
 
 - [ ] **7.1** Định nghĩa nhãn nhị phân tương thích toán học về chu kỳ (vd trung bình 24h `pm25 ≥ 50 µg/m³`);
-      đo tỷ lệ mất cân bằng thực tế (3,08% Train vs 6,89% Test — **phải nêu mẫu số, dùng cùng mẫu số**).
+      đo tỷ lệ mất cân bằng thực tế. ⚠️ **Không dùng lại 3,08% / 6,89%** — đó là tỷ lệ *nhãn nặng* `pm25 > 100` tức thời của `roadmap.md`, khác nhãn và khác mẫu số. Task này dùng *cảnh báo* trung bình trượt 24h; **phải nêu mẫu số và dùng cùng mẫu số cho Train lẫn Test**.
 - [ ] **7.2** Đặc trưng trễ & trượt từ quá khứ: `pm25_rolling_mean_24h`, `pm25_rolling_std_24h`, `pm25_lag24`,
       nhiệt-ẩm, cờ lặng gió, sin/cos giờ & tháng. Xác nhận không truy xuất thông tin tương lai.
 - [ ] **7.3** 🔴 Xử lý đa cộng tuyến `pm25`/`pm10` **trước khi** huấn luyện (task 1.5) — hoặc loại `pm10`,

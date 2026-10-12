@@ -514,7 +514,7 @@ air-pollution-analysis/
 │   └── .gitkeep
 └── reports/
     ├── statistical_profile.csv         # Bảng hồ sơ thống kê mô tả 4 họ chỉ số [Issue #8]
-    ├── midterm_report.pdf              # Báo cáo giữa kỳ EDA (8–10 trang, Tuần 8) [Issue #10]
+    ├── midterm_report.pdf              # Báo cáo giữa kỳ EDA (8–10 trang, Tuần 11) [Issue #10]
     ├── final_report.pdf                # Báo cáo đồ án cuối kỳ SCQA (Tuần 14–15) [Issue #16]
     ├── defense_minutes.md              # Biểu mẫu biên bản đánh giá bảo vệ đồ án [Issue #17]
     └── .gitkeep
@@ -548,7 +548,7 @@ air-pollution-analysis/
 | **W5: Transformation & Integration** | Ghép nối tránh nổ dòng, đóng băng dữ liệu, split thời gian tuyến tính, Sklearn Pipeline fit trên Train, Parquet | #7 | **Bắt buộc** |
 | **W6: Descriptive Statistics** | 4 họ chỉ số, hình dạng phân phối quyết định chỉ số, Pearson & Spearman, Anscombe check | #8 | **Bắt buộc** |
 | **W7: Data Visualization** | Nguyên tắc Tufte (Data-ink), Cleveland ranking, SCQA storytelling, tiêu đề kết luận, quy chuẩn chu kỳ lấy mẫu | #9 | **Bắt buộc** |
-| **W8: Midterm Project** | Báo cáo giữa kỳ 8–10 trang, slide thuyết trình 7 phút + 3 phút viva, gắn tag nộp bài | #10 | **Bắt buộc** |
+| **W8 → W11: Midterm Project** | Báo cáo giữa kỳ 8–10 trang, slide thuyết trình 7 phút + 3 phút viva, gắn tag nộp bài | #10 | **Bắt buộc** |
 | **W9: Statistical Inference** | Kiểm định Mann-Whitney U, so sánh quy chuẩn, báo cáo bộ bốn: Thống kê, $p$-value, Effect Size, 95% Bootstrap CI | #11 | **Bắt buộc** |
 | **W10: Regression Analysis** | Hồi quy OLS, biến đổi mục tiêu ứng viên, chẩn đoán LINE, VIF, Cook's dist, điều hòa Ridge/Lasso trên Train | #12 | **Bắt buộc** |
 | **W11: Classification & Features** | Dự báo cảnh báo ô nhiễm, đặc trưng trễ/trượt, xử lý imbalance, threshold tuning Train/Val, kiểm toán 4 dạng leakage | #13 | **Bắt buộc** |
@@ -570,7 +570,7 @@ air-pollution-analysis/
 | **W05** | **Tích hợp & Pipeline**<br>Ghép nối an toàn và chống rò rỉ | Merge tránh nổ dòng, đóng băng dữ liệu, split thời gian tuyến tính, đóng gói Scikit-Learn Pipeline fit trên Train, xuất Parquet | File `air_pollution_final.parquet`, script `src/cleaning_pipeline.py` | #7 | Kiểm soát số dòng sau merge (`len <= len_air`); phân chia thời gian nghiêm ngặt; pipeline fit strictly trên Train |
 | **W06** | **Thống kê Mô tả**<br>Xác lập hồ sơ 4 họ chỉ số & chu kỳ | Tính 4 họ chỉ số cho $\text{PM}_{2.5}$ & khí tượng, phân tích chu kỳ giờ/ngày/tháng/mùa từ số liệu thực tế, ma trận tương quan kép | Notebook EDA thống kê, bảng `reports/statistical_profile.csv` | #8 | 4 họ chỉ số đầy đủ; chứng minh khách quan lựa chọn Median/IQR dựa trên hình dạng phân phối thực nghiệm |
 | **W07** | **Trực quan hóa Ấn phẩm**<br>Thiết kế 7 biểu đồ giải thích | Lập trình FIG-01 đến FIG-07 theo Tufte/Cleveland, đối chiếu ngưỡng quy chuẩn tương thích thời gian, viết tiêu đề kết luận | 7 biểu đồ PNG 300 DPI trong `figures/`, module `src/visualizer.py` | #9 | 100% biểu đồ có tiêu đề kết luận dẫn xuất từ dữ liệu; đường ngưỡng quy chuẩn tương thích về chu kỳ tính toán |
-| **W08** | **MIDTERM MILESTONE**<br>Báo cáo & Thuyết trình giữa kỳ | Hoàn thiện báo cáo giữa kỳ SCQA 8–10 trang, slide thuyết trình 7 phút, kiểm chứng tái lập notebook W1–W3, gắn git tag | `reports/midterm_report.pdf`, slide deck, git tag `midterm-submission` | #10 | Báo cáo nộp đúng hạn; toàn bộ notebook Milestone 1–3 chạy Restart & Run All thành công không lỗi |
+| **W08 → W11** | **MIDTERM MILESTONE**<br>Báo cáo & Thuyết trình giữa kỳ | Hoàn thiện báo cáo giữa kỳ SCQA 8–10 trang, slide thuyết trình 7 phút, kiểm chứng tái lập notebook W1–W3, gắn git tag | `reports/midterm_report.pdf`, slide deck, git tag `midterm-submission` | #10 | Báo cáo nộp đúng hạn; toàn bộ notebook Milestone 1–3 chạy Restart & Run All thành công không lỗi |
 | **W09** | **Suy luận Thống kê**<br>Kiểm định giả thuyết có đối chứng | Chạy kiểm định phi tham số (mùa, ngày làm việc vs cuối tuần, quy chuẩn), tính Effect Size ($r_{rb}$) và 95% Bootstrap CI | Notebook inference, bảng tổng hợp kết quả kiểm định | #11 | 100% kết luận kiểm định có đủ bộ bốn: thống kê, $p$-value, Effect Size ($r_{rb}$) và 95% Bootstrap CI |
 | **W10** | **Phân tích Hồi quy**<br>Hồi quy OLS & Chẩn đoán LINE | Fit OLS trên Train, chẩn đoán 4 giả định LINE trên phần dư, phân tích VIF, Cook's dist, điều hòa Ridge/Lasso trên Train | Notebook regression, biểu đồ chẩn đoán LINE, câu diễn giải $\beta$ phi nhân quả | #12 | Đánh giá độc lập trên Test; chẩn đoán đủ 4 giả định LINE; diễn giải $\beta$ chuẩn 3 nghĩa vụ, không ngụy biện nhân quả |
 | **W11** | **Phân loại Cảnh báo**<br>Dự báo ngày ô nhiễm vượt ngưỡng | Tạo đặc trưng trễ/trượt, train Random Forest, tuning threshold theo mục tiêu vận hành trên Train/Val, kiểm toán rò rỉ | Notebook classification, đường cong PR, biên bản kiểm toán rò rỉ | #13 | Đánh giá trên Test độc lập bằng Recall, PR-AUC, Confusion Matrix; biên bản kiểm toán 4 dạng rò rỉ đạt chuẩn |
@@ -1179,7 +1179,18 @@ Con số cần đọc đúng: tổng số hàng `pm25` bị `NaN` là **1.549**,
 
 ---
 
-### Week 08 – BÁO CÁO & ĐÁNH GIÁ GIỮA KỲ (MIDTERM PROJECT MILESTONE)
+### Week 08 → Week 11 – BÁO CÁO & ĐÁNH GIÁ GIỮA KỲ (MIDTERM PROJECT MILESTONE)
+
+> [!NOTE]
+> **MỐC NỘP ĐÃ DỊCH.** Giảng viên cho nộp bài sang sau Chương 10 (Regression Analysis,
+> tuần 10), nên mốc cũ ở tuần 8 đã chuyển sang **tuần 11**. Ký hiệu `W08 → W11`
+> trong roadmap là do đó.
+>
+> **Phạm vi nội dung chưa được xác nhận.** Số trang, thời gian thuyết trình, Q&A, rubric
+> và phạm vi chấm đều **chưa** được giảng viên xác nhận. Issue #13 **không di chuyển**
+> vì **chưa có căn cứ**; milestone **không** đổi. Chi tiết:
+> `docs/PLAN_MIDTERM_RESCHEDULE_PR36.md`.
+
 * **Phân loại tuần:** Milestone Báo cáo & Thuyết trình Giữa kỳ.
 * **Mục tiêu tuần:** Hoàn thiện và nộp Báo cáo Khám phá Dữ liệu (Midterm EDA Report) dung lượng 8–10 trang PDF theo cấu trúc SCQA; thiết kế slide thuyết trình 7 phút; kiểm chứng tính tái lập của toàn bộ các notebook thuộc phạm vi giữa kỳ (Milestone 1–3); gắn git tag nộp bài.
 * **Kiến thức INFO3020 áp dụng:** Toàn bộ kiến thức Chương 1, Chương 2, Chương 3; Rubric đánh giá Midterm trên slide W7 (Làm sạch tất định 25%, Độ sâu EDA 25%, Chất lượng biểu đồ ấn phẩm 20%, Diễn giải thống kê trung thực 20%, Thuyết trình & Báo cáo 10%); Cấu trúc kể chuyện SCQA.
