@@ -316,19 +316,29 @@ def normalize_timestamps(
     out = df.copy()
     before_tz = getattr(out[TIMESTAMP_COLUMN].dtype, "tz", None)
 
+    mixed_offsets = False
     # pandas tới phiên bản này cảnh báo `FutureWarning` mỗi lần gọi
     # `to_datetime` trên một cột chứa nhiều UTC offset lẫn lộn, vì hành vi mặc
-    # định sẽ đổi thành ném lỗi. Ở đây phép gọi đó là CỐ Ý: nó là bước dò
-    # mixed-offset, và nhánh `mixed_offsets` bên dưới xử lý đúng bằng cách
-    # phân tích lại với `utc=True`. Vì vậy chỉ dập đúng cảnh báo này, không
-    # dập chung `FutureWarning` — mọi cảnh báo khác vẫn phải lộ ra.
+    # định sẽ đổi thành ném lỗi. Ở các phiên bản pandas mới (>=2.2/3.0),
+    # `ValueError: Mixed timezones detected` được ném trực tiếp thay vì cảnh báo.
+    # Ở đây phép gọi đó là CỐ Ý: nó là bước dò mixed-offset, và nhánh `mixed_offsets`
+    # xử lý đúng bằng cách phân tích lại với `utc=True`. Vì vậy bắt lỗi/dập cảnh báo này,
+    # mọi ngoại lệ hay cảnh báo khác vẫn phải lộ ra.
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore",
             message=".*parsing datetimes with mixed time zones.*",
             category=FutureWarning,
         )
-        parsed = pd.to_datetime(out[TIMESTAMP_COLUMN], errors="coerce")
+        try:
+            parsed = pd.to_datetime(out[TIMESTAMP_COLUMN], errors="coerce")
+        except ValueError as exc:
+            if "Mixed timezones detected" in str(exc):
+                mixed_offsets = True
+                parsed = pd.to_datetime(out[TIMESTAMP_COLUMN], errors="coerce", utc=True)
+            else:
+                raise
+
     unparseable = int(parsed.isna().sum())
     if unparseable > 0:
         raise ValueError(
@@ -336,12 +346,12 @@ def normalize_timestamps(
             "Làm sạch tất định không được âm thầm biến mốc thời gian hỏng thành NaT."
         )
 
-    # Cột lẫn lộn nhiều UTC offset khiến `to_datetime` trả về kiểu `object`, và
-    # `.dt` sẽ ném AttributeError khó hiểu thay vì chuyển đổi như tài liệu mô tả.
+    # Cột lẫn lộn nhiều UTC offset khiến `to_datetime` trả về kiểu `object` (ở pandas cũ)
+    # hoặc ném ValueError (ở pandas mới đã được xử lý phía trên).
     # Gom về UTC trước (mốc thời gian tuyệt đối không đổi) rồi chuyển xuống múi
     # giờ địa phương. Cột naive cho ra `datetime64[ns]` nên không bị tính nhầm.
-    mixed_offsets = parsed.dtype == object
-    if mixed_offsets:
+    if not mixed_offsets and parsed.dtype == object:
+        mixed_offsets = True
         parsed = pd.to_datetime(out[TIMESTAMP_COLUMN], errors="coerce", utc=True)
 
     was_naive = not mixed_offsets and parsed.dt.tz is None
@@ -2078,3 +2088,112 @@ def _step_stat(report_section: Dict[str, Any], step_name: str, stat_key: str) ->
         if step["name"] == step_name:
             return step["stats"].get(stat_key, 0)
     return 0
+
+
+def split_air_quality_parameters(
+    df_air: pd.DataFrame,
+    drop_target_na: bool = False,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Tách bộ dữ liệu chất lượng không khí tổng hợp thành hai tập độc lập: PM2.5 và PM10.
+
+    Logic nghiệp vụ:
+      - Cột định danh chung: `timestamp`, `station_id`, `location` (nếu có trong dữ liệu).
+      - Tập PM2.5: các cột chung + `pm25` + các cờ chẩn đoán liên quan (`pm25_was_missing`,
+        `pm25_was_stuck`, `is_high_humidity_fog`).
+      - Tập PM10: các cột chung + `pm10` + cờ chẩn đoán `is_high_humidity_fog`.
+      - Khi `drop_target_na=True`: loại bỏ các dòng có giá trị NaN ở cột mục tiêu tương ứng
+        (loại NaN ở cột `pm25` cho tập PM2.5, và loại NaN ở cột `pm10` cho tập PM10).
+
+    Parameters
+    ----------
+    df_air : pd.DataFrame
+        DataFrame chất lượng không khí (đã qua làm sạch hoặc chuẩn hóa).
+    drop_target_na : bool, default False
+        Nếu True, lọc bỏ các dòng chứa giá trị khuyết ở biến mục tiêu tương ứng.
+
+    Returns
+    -------
+    Tuple[pd.DataFrame, pd.DataFrame]
+        Cặp (df_pm25, df_pm10) chứa các tập dữ liệu đã tách.
+
+    Raises
+    ------
+    ValueError
+        Nếu `df_air` là None, thiếu cột `timestamp`, hoặc không chứa ít nhất một trong hai cột `pm25` hoặc `pm10`.
+    """
+    if df_air is None:
+        raise ValueError("df_air không được là None!")
+
+    if TIMESTAMP_COLUMN not in df_air.columns:
+        raise ValueError(f"df_air thiếu cột bắt buộc '{TIMESTAMP_COLUMN}'.")
+
+    if "pm25" not in df_air.columns and "pm10" not in df_air.columns:
+        raise ValueError("df_air phải chứa ít nhất một trong hai cột 'pm25' hoặc 'pm10'.")
+
+    common_cols = [col for col in [TIMESTAMP_COLUMN, STATION_COLUMN, "location"] if col in df_air.columns]
+
+    pm25_flag_candidates = [
+        PM25_MISSING_FLAG,
+        STUCK_SENSOR_FLAG,
+        HIGH_HUMIDITY_FLAG,
+    ]
+    pm25_cols = common_cols + (["pm25"] if "pm25" in df_air.columns else [])
+    pm25_cols += [f for f in pm25_flag_candidates if f in df_air.columns and f not in pm25_cols]
+
+    pm10_flag_candidates = [HIGH_HUMIDITY_FLAG]
+    pm10_cols = common_cols + (["pm10"] if "pm10" in df_air.columns else [])
+    pm10_cols += [f for f in pm10_flag_candidates if f in df_air.columns and f not in pm10_cols]
+
+    df_pm25 = df_air[pm25_cols].copy()
+    df_pm10 = df_air[pm10_cols].copy()
+
+    if drop_target_na:
+        if "pm25" in df_pm25.columns:
+            df_pm25 = df_pm25.dropna(subset=["pm25"]).reset_index(drop=True)
+        if "pm10" in df_pm10.columns:
+            df_pm10 = df_pm10.dropna(subset=["pm10"]).reset_index(drop=True)
+
+    return df_pm25, df_pm10
+
+
+def export_split_air_quality_datasets(
+    df_air: pd.DataFrame,
+    output_dir: Union[str, Path] = Path("data/interim"),
+    drop_target_na: bool = False,
+    prefix: str = "air_quality",
+) -> Tuple[Path, Path]:
+    """Tách bộ dữ liệu chất lượng không khí và xuất ra hai tệp Parquet PM2.5 và PM10 độc lập.
+
+    Parameters
+    ----------
+    df_air : pd.DataFrame
+        DataFrame chất lượng không khí đầu vào.
+    output_dir : Union[str, Path], default Path("data/interim")
+        Thư mục lưu trữ các tệp Parquet sau khi tách.
+    drop_target_na : bool, default False
+        Nếu True, lọc bỏ các dòng có giá trị NaN ở biến mục tiêu tương ứng.
+    prefix : str, default "air_quality"
+        Tiền tố định danh tệp Parquet đầu ra (ví dụ '{prefix}_pm25.parquet').
+
+    Returns
+    -------
+    Tuple[Path, Path]
+        Đường dẫn tệp (pm25_path, pm10_path) đã xuất.
+    """
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    df_pm25, df_pm10 = split_air_quality_parameters(df_air, drop_target_na=drop_target_na)
+
+    pm25_path = out_dir / f"{prefix}_pm25.parquet"
+    pm10_path = out_dir / f"{prefix}_pm10.parquet"
+
+    df_pm25.to_parquet(pm25_path, index=False)
+    df_pm10.to_parquet(pm10_path, index=False)
+
+    logger.info(
+        f"Đã lưu tập PM2.5 ({len(df_pm25)} dòng) -> {pm25_path} "
+        f"và tập PM10 ({len(df_pm10)} dòng) -> {pm10_path}"
+    )
+
+    return pm25_path, pm10_path

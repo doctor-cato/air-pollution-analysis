@@ -42,6 +42,7 @@ from src.cleaning import (
     enforce_air_quality_physical_rules,
     enforce_pm_subset_constraint,
     enforce_weather_physical_rules,
+    export_split_air_quality_datasets,
     flag_prolonged_missing,
     flag_stuck_values,
     normalize_disguised_missing,
@@ -51,6 +52,7 @@ from src.cleaning import (
     render_cleaning_log,
     run_deterministic_cleaning,
     sort_chronologically,
+    split_air_quality_parameters,
     validate_cleaned_dataset,
 )
 
@@ -1402,6 +1404,87 @@ class TestValidatorCatchesNegativeConcentrations(unittest.TestCase):
         result = validate_cleaned_dataset(self._air(5))
         self.assertTrue(result["no_negative_values"]["passed"])
         self.assertTrue(result["all_passed"])
+
+
+class TestSplitAirQualityParameters(unittest.TestCase):
+    """Kiểm thử tính đúng đắn và an toàn của logic tách tập PM2.5 và PM10."""
+
+    def setUp(self):
+        """Khởi tạo fixture dữ liệu chất lượng không khí kiểm thử gồm cả PM2.5 và PM10."""
+        self.ts = pd.date_range("2025-01-01 00:00:00", periods=5, freq="h", tz=CANONICAL_TIMEZONE)
+        self.df = pd.DataFrame(
+            {
+                "timestamp": self.ts,
+                "station_id": ["STATION_A"] * 5,
+                "location": ["Hà Nội"] * 5,
+                "pm25": [15.0, np.nan, 25.0, 30.0, 35.0],
+                "pm10": [20.0, 22.0, np.nan, 40.0, 45.0],
+                "pm25_was_missing": [0, 1, 0, 0, 0],
+                "pm25_was_stuck": [0, 0, 0, 0, 0],
+                "is_high_humidity_fog": [0, 0, 1, 0, 0],
+            }
+        )
+
+    def test_split_produces_two_frames_with_correct_columns(self):
+        """Tách dữ liệu tạo ra 2 DataFrame độc lập với các cột đặc trưng và cờ chẩn đoán tương ứng."""
+        df_pm25, df_pm10 = split_air_quality_parameters(self.df)
+
+        # Tập PM2.5
+        self.assertIn("pm25", df_pm25.columns)
+        self.assertNotIn("pm10", df_pm25.columns)
+        self.assertIn("timestamp", df_pm25.columns)
+        self.assertIn("station_id", df_pm25.columns)
+        self.assertIn("location", df_pm25.columns)
+        self.assertIn("pm25_was_missing", df_pm25.columns)
+        self.assertIn("pm25_was_stuck", df_pm25.columns)
+        self.assertIn("is_high_humidity_fog", df_pm25.columns)
+        self.assertEqual(len(df_pm25), 5)
+
+        # Tập PM10
+        self.assertIn("pm10", df_pm10.columns)
+        self.assertNotIn("pm25", df_pm10.columns)
+        self.assertNotIn("pm25_was_missing", df_pm10.columns)
+        self.assertNotIn("pm25_was_stuck", df_pm10.columns)
+        self.assertIn("is_high_humidity_fog", df_pm10.columns)
+        self.assertEqual(len(df_pm10), 5)
+
+    def test_split_with_drop_target_na(self):
+        """Tùy chọn drop_target_na=True lọc bỏ chính xác các dòng có NaN ở biến mục tiêu."""
+        df_pm25, df_pm10 = split_air_quality_parameters(self.df, drop_target_na=True)
+
+        self.assertEqual(len(df_pm25), 4)
+        self.assertFalse(df_pm25["pm25"].isna().any())
+
+        self.assertEqual(len(df_pm10), 4)
+        self.assertFalse(df_pm10["pm10"].isna().any())
+
+    def test_split_fails_loudly_on_invalid_input(self):
+        """Hàm ném lỗi ValueError rõ ràng khi đầu vào không hợp lệ hoặc thiếu cột bắt buộc."""
+        with self.assertRaises(ValueError):
+            split_air_quality_parameters(None)
+
+        with self.assertRaises(ValueError):
+            split_air_quality_parameters(pd.DataFrame({"pm25": [10.0]}))
+
+        with self.assertRaises(ValueError):
+            split_air_quality_parameters(pd.DataFrame({"timestamp": self.ts}))
+
+    def test_export_split_datasets_writes_valid_parquet(self):
+        """Hàm export ghi ra đĩa hai tệp Parquet hợp lệ và có thể đọc lại nguyên vẹn."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            p25, p10 = export_split_air_quality_datasets(self.df, output_dir=out_dir)
+
+            self.assertTrue(p25.exists())
+            self.assertTrue(p10.exists())
+
+            read_p25 = pd.read_parquet(p25)
+            read_p10 = pd.read_parquet(p10)
+
+            self.assertEqual(len(read_p25), 5)
+            self.assertEqual(len(read_p10), 5)
+            self.assertIn("pm25", read_p25.columns)
+            self.assertIn("pm10", read_p10.columns)
 
 
 if __name__ == "__main__":
