@@ -53,7 +53,8 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 > - **Lưu ý về lịch sử merge:** #6 và #7 được triển khai cùng nhau trên nhánh `feat/issue-6-deterministic-cleaning` và merge bằng **một** PR #32 (2026-09-30). Việc tách thành hai issue là đánh số bàn giao, không phải hai thay đổi độc lập: `clean_air_quality()` phụ thuộc bảng khí tượng **đã** làm sạch, nên #6 không thể tách khỏi #7 mà không viết lại kiến trúc.
 > - **Kiểm toán lại M2 đã merge qua PR #34** (`fix/m2-audit-findings`, 2026-09-30): sửa 3 lỗi code, loại `is_high_humidity_fog` khỏi feature, công bố sự cố mất kết nối liên tục 630 giờ, và hạ giọng một tuyên bố quá tay. Bản tài liệu này phản ánh **sau** PR #34. Chi tiết: `docs/roadmap.md` §G.4.
 > - **Mô hình học máy và phân tích thống kê nâng cao (Issues #11–#13) vẫn chưa bắt đầu** — notebook `04`–`06` chưa tồn tại.
-> - **Tổng số unit test: 342** (`test_data_collection` 57, `test_data_quality` 44, `test_cleaning` 114, `test_cleaning_pipeline` 44, `test_cleaning_pipeline_guards` 43, `test_fetch_dataset` 9, `test_pipeline_runtime_log` 31). Chạy: `python -m unittest discover tests`.
+> - **Tổng số unit test: 351** (`test_data_collection` 57, `test_data_quality` 44, `test_cleaning` 114, `test_cleaning_pipeline` 44, `test_cleaning_pipeline_guards` 43, `test_fetch_dataset` 9, `test_pipeline_runtime_log` 40). Chạy: `python -m unittest discover tests`.
+>   - **Tổng là 351 trên cả hai nền tảng, nhưng số test *thực sự chạy* khác nhau:** local Windows chạy đủ **351, 0 skipped**; CI `ubuntu-latest` chạy **351 với `skipped=2`** — hai test `test_windows_separators_in_payload_are_preserved_verbatim` và `test_metadata_block_and_runtime_log_disagree_on_separators` trong `tests/test_pipeline_runtime_log.py` được `@unittest.skipUnless(os.name == "nt")` bỏ qua vì bất đẳng thứng dấu phân cách chỉ tồn tại trên Windows. Số **349** là số test đã thực thi trên CI. Đây là khác biệt môi trường, không phải sai lệch số liệu.
 > - **Guard chống rò rỉ đã được kiểm chứng bằng 43 test hồi quy** trong `tests/test_cleaning_pipeline_guards.py`, mỗi test được viết để **FAIL trên bản gốc** (xoá guard, cho target lọt vào feature, cho `transform_with_pipeline()` refit trên chính Test, thêm nhánh `ColumnTransformer` thứ hai, đảo thứ tự đối số, tự vô hiệu hóa tầng kiểm tra thứ tự thời gian).
 >
 >   > [!NOTE]
@@ -211,11 +212,11 @@ air-pollution-analysis/
    >
    > **Giới hạn cần biết:** bucket OpenAQ S3 là **kho sống** — nhà cung cấp tiếp tục nạp dữ liệu mới, nên một lần tải ở thời điểm sau có thể nhiều dòng hơn bản đã kiểm toán. Ngoài ra, định dạng Parquet **không tái lập được theo byte** giữa các máy (khối nén và metadata nội bộ phụ thuộc phiên bản thư viện), nên SHA-256 kiểm chứng được *tính toàn vẹn của tệp đã lưu* chứ không dựng lại được *tập dữ liệu*. Vì vậy `scripts/fetch_dataset.py` kiểm chứng bằng **so khớp nội dung** (số bản ghi, dải thời gian, độ phủ giao thoa) thay vì so khớp byte.
 
-6. **Chạy bộ Unit Tests kiểm định toàn trình (311 tests tất định):**
+6. **Chạy bộ Unit Tests kiểm định toàn trình (351 tests tất định):**
    ```bash
    python -m unittest discover tests -v
    ```
-   Bộ gồm **57** unit tests trong `tests/test_data_collection.py` (kiểm chứng adapter OpenAQ, Open-Meteo, AirNow, logic lọc địa lý Hà Nội, kiểm định chất lượng khí tượng `validate_weather_canonical()`, cơ chế đồng bộ thời gian động), **44** unit tests trong `tests/test_data_quality.py` (bộ kiểm toán chất lượng 6 chiều, gồm 9 test cho `temporal_grid_completeness` đa trạm), **114** unit tests trong `tests/test_cleaning.py` (làm sạch tất định: chuẩn hóa múi giờ, khử trùng lặp, ràng buộc khí động học, reindex đa trạm, kẹt cảm biến, cờ chẩn đoán, tính tất định, bảo toàn giá trị cực trị, và 20 test hồi quy cho các lỗi tìm ra khi review đối kháng), **44** unit tests trong `tests/test_cleaning_pipeline.py` (merge có guard, freeze, split thời gian, pipeline, xuất Parquet nguyên tử), **43** unit test hồi quy trong `tests/test_cleaning_pipeline_guards.py` — mỗi test trong đó **FAIL trên bản gốc** và PASS sau khi sửa, nên chúng chứng minh lỗi thật chứ không phải trang trí — và **9** unit tests trong `tests/test_fetch_dataset.py` (cơ chế thu thập & kiểm chứng tập dữ liệu) — **tổng cộng 311 test**. Tất cả độc lập với mạng Internet và thực thi tất định trong CI.
+   Bộ gồm **57** unit tests trong `tests/test_data_collection.py` (kiểm chứng adapter OpenAQ, Open-Meteo, AirNow, logic lọc địa lý Hà Nội, kiểm định chất lượng khí tượng `validate_weather_canonical()`, cơ chế đồng bộ thời gian động), **44** unit tests trong `tests/test_data_quality.py` (bộ kiểm toán chất lượng 6 chiều, gồm 9 test cho `temporal_grid_completeness` đa trạm), **114** unit tests trong `tests/test_cleaning.py` (làm sạch tất định: chuẩn hóa múi giờ, khử trùng lặp, ràng buộc khí động học, reindex đa trạm, kẹt cảm biến, cờ chẩn đoán, tính tất định, bảo toàn giá trị cực trị, và 20 test hồi quy cho các lỗi tìm ra khi review đối kháng), **44** unit tests trong `tests/test_cleaning_pipeline.py` (merge có guard, freeze, split thời gian, pipeline, xuất Parquet nguyên tử), **43** unit test hồi quy trong `tests/test_cleaning_pipeline_guards.py` — mỗi test trong đó **FAIL trên bản gốc** và PASS sau khi sửa, nên chúng chứng minh lỗi thật chứ không phải trang trí — và **9** unit tests trong `tests/test_fetch_dataset.py` (cơ chế thu thập & kiểm chứng tập dữ liệu), cùng **40** unit tests trong `tests/test_pipeline_runtime_log.py` (tách trạng thái runtime khỏi hồ sơ provenance tĩnh; gồm ghi atomic tệp log và test dựng lại hợp đồng lỗi của `write_pipeline_runtime_log()`) — **tổng cộng 351 test**. Tất cả độc lập với mạng Internet và thực thi tất định trong CI. Trên CI `ubuntu-latest` có **2 test bị skip** (chỉ Windows), nên số test thực thi ở đó là 349 — xem giải thích ở phần trên.
 
 7. **Kiểm tra cú pháp và quy chuẩn diff:**
    ```bash
@@ -244,7 +245,7 @@ air-pollution-analysis/
 git clone
   → pip install -r requirements.txt                (bước 2–3)
   → python scripts/fetch_dataset.py                (bước 5, cần mạng, có đối chiếu metadata)
-  → python -m unittest discover tests              (bước 6, 311 test, offline)
+  → python -m unittest discover tests              (bước 6, 351 test, offline)
   → jupyter nbconvert --execute notebooks/01_data_collection.ipynb
   → jupyter nbconvert --execute notebooks/02_quality_audit.ipynb
   → jupyter nbconvert --execute notebooks/03_data_cleaning.ipynb  (sinh docs/cleaning_log.md)

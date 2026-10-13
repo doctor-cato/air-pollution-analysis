@@ -1,5 +1,29 @@
 # Báo Cáo Tiến Độ & Kế Hoạch — PR #36 & Lịch Midterm
 
+> [!WARNING]
+> ## ⏳ TÀI LIỆU LỊCH SỬ — ẢNH CHỤP TẠI THỜI ĐIỂM 2026-10-12
+>
+> **Mọi con số và trạng thái trong file này là ảnh chụp tại thời điểm lập báo cáo.**
+> Chúng **KHÔNG** phản ánh trạng thái hiện tại. Dùng file này để tra cứu lịch sử quyết
+> định, **không** dùng làm nguồn cho trạng thái PR, CI hay số liệu hiện hành.
+>
+> | Mục trong file này | Ảnh chụp lúc 2026-10-12 | Trạng thái hiện tại |
+> |---|---|---|
+> | `HEAD` | `759a9c6` | đã thay đổi — xem `git log` |
+> | Số unit test | `Ran 344 tests` | **`Ran 351 tests`** (xem `README.md` §Chạy test) |
+> | PR được nói tới | #36 | #36 **đã đóng**, thay bằng **#37** |
+> | Trạng thái CI | chưa chạy trên commit mới | CI `ubuntu-latest` **pass** trên commit mới nhất |
+> | Task D4 (`D4-partial-file`) | chưa quyết định | đã triển khai atomic write |
+> | Tiêu chí #12/#14 | `⛔ chờ Câu 1` | `HELD` — giữ nguyên phạm vi, báo cáo theo tiến độ thực tế |
+>
+> **Về mốc `W08 → W11`:** đây là **đề xuất**, chưa được giảng viên xác nhận. Giảng viên mới
+> chỉ cho phép dời mốc, **chưa xác nhận phạm vi nộp**. Không có bằng chứng nào trong repo
+> cho thấy phạm vi đã được chốt — mọi mục liên quan vẫn ở trạng thái `HELD`.
+>
+> **Bản số liệu hiện hành:** xem `README.md` và `docs/TASK_LIST_M3_M6.md`.
+
+---
+
 > **Ngày:** 2026-10-12 · **Nhánh:** `docs/audit-delivery` · **HEAD:** `759a9c6`
 > **Nguyên tắc:** làm đến đâu thì báo cáo đến đó. Không trình bày việc dự kiến như đã xong,
 > không tự suy diễn yêu cầu của giảng viên.

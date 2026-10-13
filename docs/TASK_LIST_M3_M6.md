@@ -170,8 +170,22 @@ Không làm được gì nếu chưa có nền tảng sạch. 8 việc này ph�
         ⇒ Đánh dấu **số liệu chưa xác minh**, không phải kết quả thực nghiệm.
       * Giả thuyết cũ "nhãn Train/Test bị đảo chỗ" **đã bị bác bỏ**: split `2026-01-15` cho
         Train 4.682 dòng / Test 4.362 dòng — Test nhỏ hơn Train là thực tế đúng (tổng 9.044).
-      - [ ] **0.7b** ⬜ **Chốt định nghĩa nhãn cảnh báo trượt 24h VÀ mẫu số** trước khi dùng
-        trong báo cáo. Hiện tử **tử số chưa xác minh** *và* **mẫu số chưa chốt**.
+      - [ ] **0.7b** ⬜ **`UNVERIFIED` — CHƯA CHỐT định nghĩa nhãn cảnh báo trượt 24h VÀ mẫu số**
+        trước khi dùng trong báo cáo. Hiện tử **tử số chưa xác minh** *và* **mẫu số chưa chốt**.
+
+        > ⚠️ **Trạng thái: `UNVERIFIED` — KHÔNG phải kết quả thực nghiệm.**
+        >
+        > - **Tử số `986 / 669 / 1.655`** tái lập được **chỉ dưới giả định**
+        >   `rolling(window=24, min_periods=24).mean() ≥ 50`. Ba tham số này — `window`,
+        >   `min_periods`, ngưỡng — **chưa có mã nguồn nào định nghĩa** (`grep -r rolling src/`
+        >   rỗng). Độ nhạy đo được: `min_periods` 24→12 làm tổng nhãn dương nhảy 1.655→2.131;
+        >   `mp=1` là 2.355. → **không được trích dẫn là kết quả đo được.**
+        > - **Mẫu số** (`1.655/5.317` vs `1.655/9.044`) **chưa có câu hỏi nào được ghi nhận là
+        >   "câu hỏi đúng"** → giữ `UNDECIDED`, không tự chọn.
+        > - Hai vấn đề **độc lập**: chốt mẫu số không làm tử số trở thành số đã xác minh.
+        >
+        > Giữ nguyên trạng thái này cho tới khi **cả 5 tiêu chí** dưới đây được hiện thực hoá
+        > **và** kiểm chứng.
 
         **Tiêu chí hoàn thành — cần đạt ĐỦ cả 5, thiếu một là chưa xong:**
 
