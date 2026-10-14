@@ -9,14 +9,19 @@
 > **Ký hiệu ưu tiên:** 🔴 bắt buộc (thay đổi kết luận khoa học hoặc là điểm chấm) ·
 > 🟡 nên có (điểm cộng ở viva) · ⚪ housekeeping.
 
-### Tổng quan: 153 task
+### Tổng quan: 154 task
+
+> **Cột `Task` dưới đây là số checkbox `- [ ]` / `- [x]` đếm trực tiếp trong từng phase của file này**
+> (đo bằng `python -c` quét `^\s*- \[( |x)\]` theo từng mục `## Phase …`).
+> Trạng thái hiện tại: **28 đánh dấu `[x]` · 126 `[ ]`**.
+> Các phase M3–M6 (2–11) **chưa bắt đầu** — issue #8–#17 đều đang `OPEN` trên GitHub.
 
 | Phase | Nội dung | Task | Ước lượng |
 |---|---|---|---|
-| 0 | Dọn nhà trước M3 | 8 | ~40 phút |
-| 1 | Vá issue body | 27 | ~1 giờ |
+| 0 | Dọn nhà trước M3 | 9 | ~40 phút |
+| 1 | Vá issue body | 26 | ~1 giờ |
 | **1B** | **Cập nhật tài liệu đồng bộ (xen kẽ)** | **29** | **~1 buổi** |
-| 2 | #8 Thống kê mô tả | 12 | ~1–2 buổi |
+| 2 | #8 Thống kê mô tả | 13 | ~1–2 buổi |
 | 3 | #9 7 biểu đồ | 13 | ~2 buổi |
 | 4 | #10 Midterm **(nộp W11)** | 8 | ~1 buổi |
 | 5 | #11 Suy luận | 9 | ~1–2 buổi |
@@ -122,7 +127,7 @@ Prevalence cảnh báo (trung bình trượt 24h ≥ 50 µg/m³) — SỐ LIỆU
 | Mục | Ký hiệu cũ | Mới | Lý do |
 |---|---|---|---|
 | Bonferroni / multiple testing | 🔴 | 🟡 | Chỉ 3 kiểm định trên **các câu hỏi khác nhau**, không phải "đo 20 chỉ số gần giống nhau" như slide W9 cảnh báo. Hiệu ứng lớn trên n=7.372 → p-value hiệu chỉnh vẫn < 0,001. **Không thay đổi kết luận.** |
-| Base Rate Fallacy | 🔴 | 🟡 *(viết lại)* | Slide dùng ví dụ bệnh **0,1%**. Thực tế prevalence **21%** → bẫy Accuracy 99% **không nguy hiểm** (Dummy đạt ~79%). Vấn đề thật là **dịch chuyển prevalence Train → Test**. |
+| Base Rate Fallacy | 🔴 | 🟡 *(viết lại)* | Slide dùng ví dụ bệnh **0,1%**. Ở đây prevalence **chưa xác minh** — khoảng **18,3%–31,1%** tuỳ mẫu số (xem "Số liệu thực tế"), nên **DummyClassifier chưa từng được huấn luyện** và không có accuracy nào là đo được. Bẫy Accuracy 99% **không nguy hiểm**; vấn đề thật là **dịch chuyển prevalence Train → Test**. Chi tiết + điều kiện: task **1.2**. |
 | 4 sai lầm p-value, CI, Type I/II, Power | 🔴 | ⚪ *(chuyển)* | Là **kiến thức viva**, thuộc `docs/viva_qa_prep.md` (#16). Không phải deliverable của #11 — ép vào notebook là sai chỗ. |
 | 5V + ngưỡng GB | 🔴 | 🟡 *(nhẹ)* | 261 KB vs ngưỡng 10 GB — lệch 4 bậc độ lớn. Ghi thẳng con số, không diễn giải dài. |
 | Tối ưu trước khi kết luận Spark | 🔴 | 🟡 *(gộp)* | Vấn đề đạo đức học thuật có thật (slide W12 takeaway #1), nhưng thực tế 261 KB nên kết luận đã biết trước. Gộp thành **một** bảng so sánh tài nguyên. |
@@ -215,6 +220,16 @@ Không làm được gì nếu chưa có nền tảng sạch. 8 việc này ph�
 
 ## Phase 1 — Vá issue body (~1 giờ, làm TRƯỚC khi code)
 
+> ⚠️ **Ý nghĩa của `[x]` trong Phase 1 — đọc trước khi dùng làm bằng chứng tiến độ.**
+>
+> `[x]` ở phase này = **đã viết lại tiêu chí nghiệm thu (AC) trong chính file task list này**.
+> `[x]` **KHÔNG** có nghĩa là **issue body trên GitHub đã được vá** — các AC này **chưa** được
+> đẩy lên issue #8–#14 (tất cả vẫn `OPEN`). Bước còn lại là **áp dụng** chúng vào issue body,
+> và đó chính là phần việc của **Phase 1B** (còn `[ ]`).
+>
+> Nói cách khác: Phase 1 = **soạn thảo** (xong) · Phase 1B = **áp dụng + cập nhật tài liệu** (chưa).
+> Khi báo cáo tiến độ M3, phải tính **Phase 1B** là việc chưa làm.
+
 Sau khi đối chiếu số liệu thật, **5 mục 🔴 bị hạ xuống** (xem bảng ở đầu file). Còn lại **4 mục 🔴**
 đều thay đổi *kết luận khoa học*, không phải chỉ cách trình bày. Sửa issue body trước khi viết notebook,
 vì khi đã viết xong thì phải viết lại cả notebook.
@@ -225,13 +240,23 @@ vì khi đã viết xong thì phải viết lại cả notebook.
       Thêm AC *nhẹ*: báo cáo p-value thô **và** p-value hiệu chỉnh Holm cạnh nhau, ghi rõ lý do
       "hiệu chỉnh không làm thay đổi kết luận" (kiểm chứng được, không phải khẳng định suông).
 - [x] **1.2** 🟡 **Issue #11 + #13 — Base Rate / prior probability (viết lại cho đúng bối cảnh).**
-      Slide W6 dùng ví dụ bệnh **0,1%** → dương tính chỉ ~9% là thật. Ở đây prevalence thực tế là **18,3%**
-      (rolling 24h ≥ 50), DummyClassifier đã đạt ~81,7% → **bẫy Accuracy 99% không nguy hiểm**, không
-      được diễn giải quá mức. Vấn đề **thật** là **dịch chuyển prevalence Train → Test** — luôn nêu kèm mẫu số,
-      vì mẫu số khác nhau cho hai phương án (xem khối "Số liệu thực tế")
-      (chênh 5,7 điểm phần trăm): mô hình có PPV/recall khác nhau trên hai kỳ, nên **mọi chỉ số tỷ lệ
-      phải nêu mẫu số và dùng cùng một mẫu số cho cả Train lẫn Test**.
-      Thêm AC: báo cáo PPV (precision) cùng prevalence của tập, không dùng chung một con số.
+      Slide W6 dùng ví dụ bệnh **0,1%** → dương tính chỉ ~9% là thật.
+
+      > ⛔ **Con số ở task này KHÔNG được trình bày như kết quả đã đo.**
+      > - **Prevalence chưa xác minh.** Dải số liệu dưới đây chỉ tái lập được **dưới giả định**
+      >   `rolling(window=24, min_periods=24).mean() ≥ 50` — giả định này **chưa có mã nguồn**
+      >   (`grep -r rolling src/` → rỗng). Xem **task 0.7b** (5 tiêu chí) và khối "Số liệu thực tế".
+      > - **Mẫu số chưa chốt** → hai giá trị khác nhau: `1.655/5.317 = 31,13%` (dòng có rolling hợp lệ)
+      >   hoặc `1.655/9.044 = 18,30%` (toàn bộ dòng). Chênh **12,8 điểm phần trăm**.
+      > - **DummyClassifier chưa từng được huấn luyện.** `git grep DummyClassifier -- src notebooks
+      >   tests scripts` → **rỗng**. Vì vậy **không có** con số "81,7%" hay "79%" nào là *đo được*;
+      >   chúng chỉ là phép trừ `100 − prevalence` trên hai mẫu số khác nhau. **Không được viết
+      >   "đã đạt"** cho tới khi task 7.4 chạy và có output thật.
+      > - ⇒ Điểm **đã chốt được** và không phụ thuộc số liệu: **đừng diễn giải quá mức bẫy
+      >   Accuracy**, và **mọi chỉ số tỷ lệ phải nêu mẫu số + dùng chung một mẫu số cho cả Train lẫn Test**.
+
+      Thêm AC: báo cáo PPV (precision) cùng prevalence của tập, không dùng chung một con số;
+      mọi tỷ lệ phải kèm tử số/mẫu số và trạng thái xác minh.
 - [ ] **1.3** ⚪ ~~**Issue #11 — 4 sai lầm khi đọc p-value + CI + Type I/II + Power**~~ → **chuyển sang
       Phase 10, task 10.4** (`docs/viva_qa_prep.md`). Đây là **kiến thức viva**, không phải deliverable
       của notebook #11. Nội dung cần phủ: định nghĩa p-value đúng (có điều kiện $H_0$) · 4 sai lầm phổ biến ·

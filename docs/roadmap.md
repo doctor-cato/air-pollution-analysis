@@ -774,9 +774,10 @@ Chi tiết luồng thực hiện:
 >   `#12`, `#13`) **đã được mở lại** và không còn bị chặn.
 > - Các số liệu thực nghiệm nêu trong các báo cáo (#4, #5) là **kết quả của một lần thực thi cụ thể**
 >   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
-> - Bộ kiểm thử hiện gồm **57 + 44 + 114 + 44 + 43 + 9 + 31 = 342 unit test tất định**,
+> - Bộ kiểm thử hiện gồm **57 + 44 + 114 + 44 + 43 + 9 + 40 = 351 unit test tất định**,
 >   tất cả PASS (`test_data_collection` + `test_data_quality` + `test_cleaning` +
->   `test_cleaning_pipeline` + `test_cleaning_pipeline_guards` + `test_fetch_dataset`).
+>   `test_cleaning_pipeline` + `test_cleaning_pipeline_guards` + `test_fetch_dataset` +
+>   `test_pipeline_runtime_log`).
 >   Trong đó **43 test hồi quy** của #7 **FAIL trên bản gốc** và PASS sau khi sửa.
 >
 > > [!NOTE]
@@ -843,12 +844,29 @@ Chi tiết luồng thực hiện:
 
 | Cổng | Kết quả |
 |---|---|
-| `python -m pytest tests/ -q` | **311 passed** |
-| `python -m unittest discover -s tests -q` (gate của CI) | **311 tests, OK** |
-| `-W error::DeprecationWarning -W error::FutureWarning` | **311 passed** — 0 cảnh báo |
-| `python -m compileall -q src tests` | exit 0 |
+| `python -m pytest tests/ -q` | **351 passed** |
+| `python -m unittest discover -s tests -q` (gate của CI) | **351 tests, OK** |
+| `-W error::DeprecationWarning -W error::FutureWarning` | **351 passed** — 0 cảnh báo |
+| `python -m compileall -q src tests scripts` | exit 0 |
 | `notebooks/*.ipynb` (nbformat 4.5) | 6/6 hợp lệ, 0 warning |
 | `notebooks/03_transformation_pipeline.ipynb` | chạy thật qua `nbconvert --execute`, **0 error output** |
+
+> **Ngày đo:** 2026-10-14, trên nhánh `docs/audit-delivery` (PR #37), local **Windows / Python 3.13**.
+>
+> | Đã chạy lại ở lượt này | Kết quả |
+> |---|---|
+> | `python -m pytest tests/ -q` | **351 passed**, 11 subtests |
+> | `python -m unittest discover tests` (đúng lệnh gate của CI) | **Ran 351 tests … OK** |
+> | `python -m compileall -q src tests scripts` | exit 0 |
+> | `python -c "import src.*"` (4 module) | exit 0 |
+> | `nbconvert --execute notebooks/00_environment_test.ipynb` | exit 0 |
+>
+> ⚠️ **Chưa tái chạy ở lượt này:** dòng `03_transformation_pipeline.ipynb` — cần
+> `data/processed/air_pollution_final.parquet` (gitignored, không có trong clone mới).
+> ⚠️ **Lệch môi trường local:** `pyarrow` / `numpy` / `scikit-learn` / `matplotlib` cục bộ
+> **không** khớp phiên bản trong `requirements.txt`. CI cài đúng `requirements.txt` nên là
+> nguồn đáng tin; kết quả local ở trên chỉ để đối chiếu. Xem `README.md` về `skipped=2` trên
+> `ubuntu-latest`.
 
 ---
 
