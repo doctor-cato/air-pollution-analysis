@@ -282,7 +282,9 @@ vì khi đã viết xong thì phải viết lại cả notebook.
       Roadmap không có chỗ nào nhắc (grep rỗng). Đã đưa vào **task 6.7** (đánh giá trên Test ở
       Phase 6 — hồi quy, Issue #12) và vào bảng ánh xạ slide W10.
 - [x] **1.5** 🔴 **Issue #13 — Feature Selection + tuyên bố xử lý đa cộng tuyến.**
-      Issue #8 đã đo `corr(pm25, pm10) = 0,9727`, `$R^2` đơn biến = 0,9462.
+      `corr(pm25, pm10) = 0,9727`, `$R^2` đơn biến = 0,9462 đã **VERIFIED** — nhưng nguồn là
+      `scripts/verify_claims.py` đọc trực tiếp Parquet, **không phải Issue #8 đo** (notebook 04 chưa
+      tồn tại). Ở notebook phải tính lại và trích dẫn đúng nơi sinh ra số.
       Slide W11 xử lý việc này bằng Feature Selection (loại biến tương quan cao / RF importance / Lasso).
       Thêm AC: hoặc loại `pm10`, hoặc tuyên bố rõ cách xử lý và giải thích trong notebook.
 - [x] **1.6** 🔴 **Issue #13 — PR-AUC phải đối chiếu với baseline = tỷ lệ dương tính (prevalence).**
@@ -377,13 +379,16 @@ thực hiện tốt: mỗi issue đều kèm 1 tài liệu sinh ra từ code th�
       về `fog × mùa` (addendum issue #8), VIF sớm cho cặp `pm25`/`pm10`.
       **Không có tài liệu này thì báo cáo giữa kỳ sẽ phải viết lại từ notebook** — và số liệu sẽ lệch.
 - [ ] **D6** 🟡 `docs/data_dictionary.md` hoặc `docs/descriptive_findings.md` — đính chính con số
-      prevalence sau task 0.7.
+      prevalence sau task **0.7b** (không phải 0.7: 0.7 đã xong và kết luận là *"đánh dấu số liệu chưa
+      xác minh"*, nên đính chính sau 0.7 là đính chính bằng chính những con số chưa xác minh).
 - [ ] **D7** 🟡 `AGENTS.md` — cập nhật mục "Architecture Notice" (hiện ghi notebooks `04`–`06` chưa có;
       cần nói rõ thứ tự chạy sau khi thêm `04`–`07`) và mục "Notebook Execution Order".
 
 ### 1B.2 — Sau Phase 4 (Midterm)
 
 - [ ] **D8** 🔴 `docs/roadmap.md` §14 — tick trạng thái Issue #10, ghi ngày nộp thực tế thay vì "23:59 ngày quy định".
+      ⚠️ **Phụ thuộc GV** — ngày nộp chỉ có khi GV thông báo (task 0.4, `[ ]` chưa tick). Không ghi ngày
+      tạm vào tài liệu nguồn chuẩn.
 - [ ] **D9** 🔴 `scripts/build_progress_report.py` — mở rộng phạm vi sinh báo cáo tiến độ từ `M1_M2`
       sang `M1_M3`, sinh `docs/bao_cao_tien_do_M1_M3.docx`. Hiện tên file cứng `bao_cao_tien_do_M1_M2.docx`
       và nội dung chỉ đọc trạng thái M1–M2.
@@ -532,7 +537,8 @@ Input: `data/processed/air_pollution_final.parquet` (9.044 dòng × 18 cột, gi
 - [ ] **4.5** Kiểm chứng tái lập tự động: `jupyter nbconvert --to notebook --execute notebooks/00_*.ipynb
       notebooks/01_*.ipynb notebooks/02_*.ipynb notebooks/03_*.ipynb notebooks/04_*.ipynb` — Restart Kernel
       & Run All 100% không lỗi.
-- [ ] **4.6** ⚪ Kiểm tra 7 PNG tồn tại, đúng 300 DPI, tiêu đề lấy từ kết quả #8 (roadmap `:1075` yêu cầu
+- [ ] **4.6** ⚪ Kiểm tra 7 PNG tồn tại, đúng 300 DPI, tiêu đề lấy từ kết quả #8 (quy cách "tiêu đề dạng
+      kết luận rút ra từ dữ liệu" ở `roadmap.md:15` và `:277`, chi tiết từng FIG ở `roadmap.md:281–289`;
       **điều kiện thời gian**: phải chạy #8 trước, không hard-code tiêu đề).
 - [ ] **4.7** Cập nhật `README.md` §2 (trạng thái triển khai) và trạng thái issue #7 "chưa merge" nếu đã merge.
 - [ ] **4.8** Tạo & đẩy git tag `midterm-submission`.
@@ -581,14 +587,22 @@ Input: `data/processed/air_pollution_final.parquet` (9.044 dòng × 18 cột, gi
 
 ## Phase 7 — Issue #13: Phân loại cảnh báo (~2 buổi)
 
-- [ ] **7.1** Định nghĩa nhãn nhị phân tương thích toán học về chu kỳ (vd trung bình 24h `pm25 ≥ 50 µg/m³`);
-      đo tỷ lệ mất cân bằng thực tế. ⚠️ **Không dùng lại 3,08% / 6,89%** — đó là tỷ lệ *nhãn nặng* `pm25 > 100` tức thời của `roadmap.md`, khác nhãn và khác mẫu số. Task này dùng *cảnh báo* trung bình trượt 24h; **phải nêu mẫu số và dùng cùng mẫu số cho Train lẫn Test**.
+- [ ] **7.1** ⛔ **CỔNG CHẶN: chưa được chạy trước khi task 0.7b đóng.** Định nghĩa nhãn nhị phân
+      tương thích toán học về chu kỳ (vd trung bình 24h `pm25 ≥ 50 µg/m³`); đo tỷ lệ mất cân bằng
+      thực tế. ⚠️ **Không dùng lại 3,08% / 6,89%** — đó là tỷ lệ *nhãn nặng* `pm25 > 100` tức thời của
+      `roadmap.md`, khác nhãn và khác mẫu số. Task này dùng *cảnh báo* trung bình trượt 24h.
+      ⛔ `window=24 / min_periods=24 / ngưỡng 50` và **mẫu số** đều đang `UNVERIFIED` + `UNDECIDED`
+      (task 0.7b) — ví dụ ở đây là **minh hoạ định hình, KHÔNG phải tham số đã chốt**; không được
+      đóng cứng vào code trước khi 0.7b có hàm trong `src/` + test khoá tham số.
+      **Phải nêu mẫu số và dùng cùng mẫu số cho Train lẫn Test**.
 - [ ] **7.2** Đặc trưng trễ & trượt từ quá khứ: `pm25_rolling_mean_24h`, `pm25_rolling_std_24h`, `pm25_lag24`,
       nhiệt-ẩm, cờ lặng gió, sin/cos giờ & tháng. Xác nhận không truy xuất thông tin tương lai.
 - [ ] **7.3** 🔴 Xử lý đa cộng tuyến `pm25`/`pm10` **trước khi** huấn luyện (task 1.5) — hoặc loại `pm10`,
       hoặc tuyên bố rõ cách xử lý.
 - [ ] **7.4** DummyClassifier baseline + Logistic Regression (`class_weight='balanced'`) + Random Forest.
-- [ ] **7.5** PR Curve + PR-AUC, **đối chiếu với baseline = prevalence** (task 1.6).
+- [ ] **7.5** PR Curve + PR-AUC, **đối chiếu với baseline = prevalence** (task 1.6). ⛔ Baseline này phải
+      lấy từ **nhãn do task 7.1 sinh ra**, và vẫn chịu cùng cổng chặn 0.7b — **không được dùng 18,30%
+      hay 31,13%** (hai biến thể mẫu số chưa chốt) làm baseline đối chiếu.
 - [ ] **7.6** Threshold tuning trên Train/Val theo mục tiêu vận hành (maximize `$F_\beta$` với `β > 1`, hoặc
       maximize Recall dưới ràng buộc Precision tối thiểu). **Tuyệt đối không tune trên Test.**
 - [ ] **7.7** Đánh giá trên **Test** với ngưỡng đã chốt: Recall, Precision, F1/F-beta, PR-AUC, ROC-AUC,
@@ -686,7 +700,7 @@ Input: `data/processed/air_pollution_final.parquet` (9.044 dòng × 18 cột, gi
 | W6 | CLT, SE = σ/√n, 68–95–99.7 | #8 | 1.13 🟡 |
 | W6 | Mean>Median>Mode | #8 | 1.12 🟡 |
 | W6 | Pearson vs Spearman, r≈0 cảnh báo | #8 | 2.8 |
-| W6 | Nghịch lý Simpson | #8 | 2.9 ✅ |
+| W6 | Nghịch lý Simpson | #8 | 2.9 |
 | W6 | Confounder, Spurious correlation | #8 | 1.14 🟡 |
 | W6 | **Base Rate Fallacy** | #11, #13 | 1.2 🔴 |
 | W7 | OO API, Data-Ink, spines, lưới | #9 | 3.1 |
