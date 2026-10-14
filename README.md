@@ -89,8 +89,8 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 
 ### 2.2. Kế hoạch thực hiện tiếp theo (Theo `docs/roadmap.md`)
 - **Tuần 03–05 (Milestone 2):** ~~Kiểm toán 6 chiều chất lượng dữ liệu~~ ([Issue #5] — **đã xong**, PR #27), ~~làm sạch tất định & lập cleaning log~~ ([Issue #6] — **đã xong**) và ~~tích hợp dữ liệu, đóng băng, phân chia chuỗi thời gian tuyến tính, đóng gói Pipeline chống rò rỉ~~ ([Issue #7] — **đã xong**). Milestone 2 đã đủ.
-- **Tuần 06–08 (Milestone 3):** Phân tích khám phá dữ liệu (EDA), tính toán 4 họ chỉ số thống kê, thiết kế 7 biểu đồ ấn phẩm giải thích theo nguyên tắc Tufte/Cleveland, hoàn thành Báo cáo Giữa kỳ ([Issue #8, #9, #10]).
-- **Tuần 09–11 (Milestone 4):** Thực hiện kiểm định giả thuyết phi tham số, xây dựng mô hình hồi quy OLS (chẩn đoán LINE), phát triển mô hình phân loại cảnh báo ô nhiễm với điều chỉnh ngưỡng quyết định (*Threshold tuning*) ([Issue #11, #12, #13]).
+- **Tuần 06–07 (Milestone 3):** Phân tích khám phá dữ liệu (EDA), tính toán 4 họ chỉ số thống kê, thiết kế 7 biểu đồ ấn phẩm giải thích theo nguyên tắc Tufte/Cleveland ([Issue #8, #9]).
+- **Tuần 09–11 (Milestone 4):** Thực hiện kiểm định giả thuyết phi tham số, xây dựng mô hình hồi quy OLS (chẩn đoán LINE), phát triển mô hình phân loại cảnh báo ô nhiễm với điều chỉnh ngưỡng quyết định (*Threshold tuning*) ([Issue #11, #12, #13]) và **hoàn thành Báo Cáo Giữa kỳ** ([Issue #10]) — **mốc nộp W11**, theo xác nhận của GV (dời sang sau Chương 10 — Regression Analysis).
 - **Tuần 12–15 (Milestones 5 & 6):** Đánh giá định kiến dữ liệu (*Bias Audit*), đo đạc tài nguyên vs Spark, lập Datasheet for Dataset, Model Card 1 trang, hoàn thiện mã nguồn và bảo vệ đồ án cuối kỳ ([Issue #14, #15, #16, #17]).
 
 ---

@@ -117,7 +117,7 @@ khi học Chương 10** (Regression Analysis — tuần 10). Nói cách khác: m
 | W08 | *trống* — mốc nộp đã dời khỏi W08 | — | — | — |
 | W09 | Suy luận thống kê | #11 | M4 | OPEN |
 | W10 | Hồi quy OLS + LINE | #12 | M4 | OPEN |
-| **W11** | **Mốc nộp midterm** — ⬜ nội dung chưa xác định | #10 | ⬜ chưa chốt | OPEN |
+| **W11** | **Mốc nộp midterm** — ⬜ nội dung chưa xác định | #10 | **M4** | OPEN |
 | W12–15 | Phân loại · đạo đức · refactor · báo cáo · bảo vệ | #13–#17 | M5/M6 | OPEN |
 
 Cột "trạng thái" nói **tiến độ issue**, không nói tuần hoàn thành.
@@ -175,7 +175,31 @@ Milestone hiện tại: M3 `#8#9#10` (Week 6–8) · M4 `#11#12#13` (Week 9–11
 
 **Vì sao chặn:** không có câu trả lời thì không viết được thân #10, không xác định milestone
 chứa #10, không xác định chuỗi notebook nào phải chạy lại trước khi nộp.
-**Trạng thái hiện tại: ⬜ CHƯA XÁC ĐỊNH.** Tôi không tự chọn phạm vi, không tự đoán phần nào kịp.
+**Trạng thái hiện tại: ✅ ĐÃ QUYẾT ĐỊNH NỘI BỘ 2026-10-14 — KHÔNG HỎI GV.** Xem §3.1.
+
+### 3.1 Quyết định nội bộ thay cho Câu 1 — đã áp dụng
+
+> **Quyết định:** giữ nguyên **phạm vi** báo cáo giữa kỳ là **kèm phần W6–W11 đã hoàn thành
+> tính đến mốc nộp**, không tự mở rộng rubric. GV chỉ xác nhận **dời mốc nộp**, chưa xác nhận
+> đổi phạm vi (§2.3) — nên giữ nguyên tiền đề đó và đặt mốc nộp đúng W11.
+
+**Đã áp dụng trên GitHub (2026-10-14):**
+
+| Đối tượng | Trước | Sau |
+|---|---|---|
+| Issue #10 | M3 — "Báo cáo EDA Giữa kỳ (Week 6–8)" | **M4 — "Suy luận Thống kê & Mô hình hóa (Week 9–11)"** |
+| Milestone 3 | "Báo cáo EDA Giữa kỳ (Week 6–8)" · `#8 #9 #10` | **"Phân tích EDA & Trực quan hóa (Week 6–7)"** · `#8 #9` |
+| PR #37 | không gắn milestone | **M2** (bàn giao M1–M2) |
+
+**Lý do chọn M4 chứ không tạo milestone mới:** M4 có cửa sổ Week 9–11, **chứa đúng tuần nộp
+W11**. Tách thêm milestone riêng sẽ tạo ra hai milestone cùng phục vụ tuần 11.
+
+> ⚠️ **Rủi ro đã chấp nhận có ý thức — CHƯA giải được:** `docs/roadmap.md` đặt
+> *"Week 11 – Phân loại Cảnh báo"* cho Issue #13. Tức **mốc nộp trùng tuần với phân loại đang
+> chạy**. Mốc nộp W11 là điều GV đã xác nhận nên không đổi được; điều chỉnh được là **thứ tự
+> nộp**: dự kiến chốt #12 (OLS, W10) trước để có kết quả mô hình vào báo cáo, rồi #13 phụ thuộc
+> sau. Nếu GV yêu cầu #13 cũng phải có trong báo cáo thì phải dời tiến độ #13 — **ghi nhận
+> đây là rủi ro lịch, chưa phải việc đã giải quyết.**
 
 ### Vì sao không còn Câu 2 (phân loại #13)
 
@@ -545,9 +569,9 @@ docs/roadmap.md:1182  ### Week 08 – BÁO CÁO...     -> ### Week 08 → Week 1
 docs/TASK_LIST_M3_M6.md:21  #10 Midterm -> #10 Midterm (nộp W11)
 ```
 
-**Không** sửa: tên milestone, thân issue, phạm vi báo cáo, số trang, rubric, thời lượng,
-`#13`, `roadmap.md:1186` (quan hệ Phụ thuộc/Chặn — chờ Câu 1), `README.md:91`
-(tách #10 khỏi M3 là **đổi milestone** → chờ Câu 1, xem §5.2).
+**Không** sửa: thân issue, phạm vi báo cáo, số trang, rubric, thời lượng,
+`#13`, `roadmap.md:1186` (quan hệ Phụ thuộc/Chặn).
+~~`README.md:91` (tách #10 khỏi M3)~~ → ✅ **đã sửa 2026-10-14** sau khi quyết định nội bộ §3.1.
 
 Ký hiệu `W08 → W11` thay vì viết thẳng `W11`: W11 đã là tuần của #13, viết thẳng sẽ tạo
 hai dòng W11 trùng nhau mà lại đụng #13 — vốn phải giữ nguyên.
@@ -558,7 +582,7 @@ hai dòng W11 trùng nhau mà lại đụng #13 — vốn phải giữ nguyên.
 | `docs/roadmap.md:551` | Skill mapping "W8: Midterm Project → #10" | Bỏ dòng W8; chèn dòng W11 |
 | `docs/roadmap.md:573` | Dòng **W08** "MIDTERM MILESTONE" | W08 thành tuần trống/dự phòng; chèn dòng W11 = MIDTERM |
 | `docs/roadmap.md:1182–1195` | Mục "Week 08 – BÁO CÁO & ĐÁNH GIÁ GIỮA KỲ" | Sửa mốc sang W11; giữ cấu trúc nội dung hiện có |
-| `docs/roadmap.md:1191` | Verify notebook `00_`→`04_` | ⬜ **chờ Câu 1** |
+| `docs/roadmap.md:1191` | Verify notebook `00_`→`04_` | ⬜ **chờ #10 thuộc M4** — xem §3.1 |
 | `README.md:91` | "Tuần 06–08 (Milestone 3) … ([#8, #9, #10])" | Tách #10 ra khỏi M3 |
 | `docs/TASK_LIST_M3_M6.md:21` | "4 \| #10 Midterm \| 8 \| ~1 buổi" | Ghi rõ mốc W11 |
 | `.agents/skills/research-documentation/SKILL.md:14` | "Midterm Report (Week 8)" | → Week 11 |
@@ -578,15 +602,17 @@ Sau khi bỏ Câu 2, **không di chuyển #13 và không sửa các dòng liên 
 > kết luận #13 thuộc hay không thuộc phạm vi giữa kỳ — điều đó cần GV xác nhận trong Câu 1.
 > Không có câu trả lời ⇒ giữ nguyên hiện trạng.
 
-### 5.3 Phải SỬA — cần Câu 1 trước
+### 5.3 Phải SỬA — ~~cần Câu 1 trước~~ ✅ đã quyết định nội bộ 2026-10-14
 
-| File:dòng | Nội dung |
-|---|---|
-| `docs/roadmap.md:51` | Tên M3 — hiện ghi "Báo cáo Giữa kỳ Midterm (Week 6–8)" |
-| `docs/roadmap.md:1185` | "Toàn bộ kiến thức Chương 1, Chương 2, Chương 3" |
-| `docs/roadmap.md:1188` | Danh sách phần nội dung báo cáo |
-| `docs/roadmap.md:668` | "Báo cáo Giữa kỳ (Midterm EDA Report): 8–10 trang" |
-| Thân issue #10 | Toàn bộ |
+| File:dòng | Nội dung | Trạng thái |
+|---|---|---|
+| `docs/roadmap.md:51` | Tên M3 — hiện ghi "Báo cáo Giữa kỳ Midterm (Week 6–8)" | ✅ **đã sửa** → "Phân tích EDA & Trực quan hóa (Week 6–7)", phần #10 chuyển xuống dòng M4 |
+| Milestone 3 trên GitHub | Tên + issue #10 | ✅ **đã sửa** 2026-10-14 |
+| Issue #10 trên GitHub | Milestone chứa #10 | ✅ **đã chuyển sang M4** |
+| `docs/roadmap.md:1185` | "Toàn bộ kiến thức Chương 1, Chương 2, Chương 3" | ⬜ **giữ nguyên** — rubric W6–W8; xem §3.1 |
+| `docs/roadmap.md:1188` | Danh sách phần nội dung báo cáo | ⬜ **giữ nguyên** — cùng lý do |
+| `docs/roadmap.md:668` | "Báo cáo Giữa kỳ (Midterm EDA Report): 8–10 trang" | ⬜ **giữ nguyên** — độ dài không liên quan lịch |
+| Thân issue #10 | Toàn bộ | ⬜ **giữ nguyên** — không có nội dung chốt được từ GV |
 
 ### 5.4 Lỗi phát hiện thêm, không liên quan lịch
 
