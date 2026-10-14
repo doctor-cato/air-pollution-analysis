@@ -14,7 +14,10 @@ toán học mà phép kiểm chứng phải chứng minh được:
   1. Rolling riêng partition MẤT đúng `window - 1` quan sát đầu partition.
   2. Rolling trên toàn frame tại ranh giới chỉ dùng dữ liệu QUÁ KHỨ (không rò rỉ).
   3. Nhãn của hai cách tính KHÔNG trùng nhau tại vùng ranh giới.
-  4. Mẫu số (và do đó tỷ lệ/prevalence) của hai cách tính khác nhau.
+  4. Khi dữ liệu LỆCH Ở RANH GIỚI, cả tử số lẫn mẫu số — và do đó tỷ lệ
+     prevalence trên cửa sổ hợp lệ — của hai cách tính đều khác nhau. Với dữ
+     liệu đồng nhất (`pm25` hằng) hai tỷ lệ ấy tình cờ BẰNG NHAU, nên cần
+     bộ dữ liệu riêng mới chứng minh được.
   5. Khoảng NaN làm không hợp lệ đúng `window` cửa sổ chứa nó.
 
 Không test nào chạm vào `data/` — tất cả dữ liệu sinh trong bộ nhớ.
@@ -48,6 +51,54 @@ def make_frame(n: int = 6000, value: float = 60.0) -> pd.DataFrame:
     """
     idx = pd.date_range("2025-07-03 00:00", periods=n, freq="h", tz="Asia/Ho_Chi_Minh")
     return pd.DataFrame({"timestamp": idx, "pm25": value, "pm10": 70.0})
+
+
+def make_boundary_skewed_frame(n: int = 6000) -> pd.DataFrame:
+    """Dữ liệu để RÕ hiệu ứng ranh giới trên tỷ lệ:
+
+        Train = 100          → mọi cửa sổ nằm trong Train đều dương
+        Test  = 100 (24 giờ đầu) rồi 0 về sau
+
+    Nhóm 23 quan sát đầu Test mà cách "riêng partition" phải bỏ (vì thiếu
+    24h lịch sử) nằm TRỌN trong khối 100 → đều dương. Phần còn lại của Test
+    đều âm. Vì vậy mất đúng nhóm ấy làm TỬ SỐ giảm chứ không chỉ mẫu số —
+    đây mới là hiệu ứng làm prevalence trên cửa sổ hợp lệ đổi.
+    """
+    df = make_frame(n)
+    in_test = df["timestamp"] >= SPLIT
+    df.loc[in_test, "pm25"] = 0.0
+    df.loc[~in_test, "pm25"] = 100.0
+    df.loc[in_test & (df["timestamp"] < SPLIT + pd.Timedelta(hours=WINDOW)),
+           "pm25"] = 100.0
+    return df
+
+
+def reference_counts(values, lo: int = 0, hi=None,
+                     window: int = WINDOW, threshold: float = 50.0):
+    """(số cửa sổ hợp lệ, số nhãn dương) bằng VÒNG LẶP tường minh.
+
+    Cố tình không dùng `pandas.rolling()` để làm chuẩn đối chiếu độc lập.
+
+    Chỉ tính các cửa sổ KẾT THÚC trong `[lo, hi)`:
+      * `lo = 0`            → lịch sử bắt buộc nằm trong chính partition
+                             (tương đương rolling riêng từng partition).
+      * `lo = <vị trí đầu>` → được mượn lịch sử trước đó (tương đương rolling
+                             trên toàn frame, rồi lấy phần của partition).
+    """
+    if hi is None:
+        hi = len(values)
+    valid = positive = 0
+    for end in range(lo, hi):
+        start = end - window + 1
+        if start < 0:
+            continue                      # chưa đủ window -> không hợp lệ
+        chunk = values[start:end + 1]
+        if any(v != v for v in chunk):    # NaN -> cửa sổ không hợp lệ
+            continue
+        valid += 1
+        if sum(chunk) / window >= threshold:
+            positive += 1
+    return valid, positive
 
 
 class RollingBoundaryTests(unittest.TestCase):
@@ -113,8 +164,19 @@ class RollingBoundaryTests(unittest.TestCase):
         self.assertTrue(pd.isna(roll_test.loc[first]),
                         "Riêng partition: quan sát đầu Test mất nhãu (không có lịch sử).")
 
-    def test_denominators_and_prevalence_differ_between_computations(self):
-        """Mẫu số — và do đó tỷ lệ/prevalence — của hai cách tính khác nhau."""
+    def test_homogeneous_data_hides_the_difference_on_valid_windows(self):
+        """Với `pm25` HẰNG, prevalence trên cửa sổ hợp lệ của HAI cách BẰNG NHAU.
+
+        Đây là lý do dữ liệu đồng nhất KHÔNG thể chứng minh hiệu ứng ranh giới:
+        `pm25 = 60` > ngưỡng 50 nên mọi cửa sổ hợp lệ đều dương. Cả hai cách
+        mất đúng `window - 1` quan sát, mà nhóm bị mất ấy đều dương, nên tử số
+        và mẫu số cùng giảm và tỷ lệ không đổi (100%).
+
+        Chỉ mẫu số "toàn bộ dòng" mới cho ra hai con số khác nhau — vì cách
+        "riêng partition" mất quan sát ở CẢ tử số lẫn mẫu số so với cách
+        "toàn frame". Test kế tiếp dùng dữ liệu lệch ranh giới để chứng minh
+        hiệu ứng thật sự đổi cả tỷ lệ trên cửa sổ hợp lệ.
+        """
         df = make_frame()
         test = df[df["timestamp"] >= SPLIT]
         roll_all = df["pm25"].rolling(WINDOW, min_periods=WINDOW).mean()
@@ -129,18 +191,75 @@ class RollingBoundaryTests(unittest.TestCase):
         self.assertEqual(pos_all, valid_all)
         self.assertEqual(pos_alone, valid_alone)
 
-        # (a) mẫu số = cửa sổ hợp lệ
+        # (a) mẫu số = cửa sổ hợp lệ → HAI cách BẰNG NHAU trong ví dụ này.
         pct_all = 100 * pos_all / valid_all
         pct_alone = 100 * pos_alone / valid_alone
         self.assertAlmostEqual(pct_all, 100.0, places=6)
         self.assertAlmostEqual(pct_alone, 100.0, places=6)
+        self.assertAlmostEqual(pct_all, pct_alone, places=6)
 
-        # (b) mẫu số = toàn bộ dòng — đây là chỗ hai cách tính KHÁC NHAU thật.
+        # (b) mẫu số = toàn bộ dòng — chỗ hai cách tính KHÁC NHAU thật sự.
         self.assertEqual(100 * pos_all / len(test), 100.0)
         self.assertLess(
             100 * pos_alone / len(test), 100.0,
             "Mẫu số toàn-bộ-dòng của cách 'riêng partition' phải NHỎ HƠN cách "
             "'toàn frame' vì nó mất cả tử số lẫn mẫu số ở đầu partition.",
+        )
+
+    def test_boundary_skew_makes_prevalence_on_valid_windows_differ(self):
+        """Dữ liệu LỆCH Ở RANH GIỚI → prevalence trên cửa sổ hợp lệ KHÁC NHAU.
+
+        Đây là phép so sánh đúng ý nghĩa: hai cách tính trên CÙNG một tập quan
+        sát khác nhau ở cả TỬ SỐ (vì nhóm 23 quan sát đầu Test bị mất đều dương)
+        lẫn MẪU SỐ (vì thiếu 24h lịch sử) — nên tỷ lệ phải khác.
+        """
+        df = make_boundary_skewed_frame()
+        test = df[df["timestamp"] >= SPLIT]
+
+        roll_all = df["pm25"].rolling(WINDOW, min_periods=WINDOW).mean()
+        roll_test = test["pm25"].rolling(WINDOW, min_periods=WINDOW).mean()
+
+        valid_all = int(roll_all.notna()[test.index].sum())
+        valid_alone = int(roll_test.notna().sum())
+        pos_all = int((roll_all >= 50)[test.index].sum())
+        pos_alone = int((roll_test >= 50).sum())
+
+        # Đối chiếu với vòng lặp tường minh — không tin vào pandas.
+        test_start = int(test.index[0])
+        self.assertEqual(
+            (valid_all, pos_all),
+            reference_counts(df["pm25"].to_numpy(), lo=test_start),
+            "Cách 'toàn frame' phải khớp chuẩn đối chiếu (lịch sử được mượn "
+            "từ trước mốc cắt).",
+        )
+        self.assertEqual(
+            (valid_alone, pos_alone),
+            reference_counts(test["pm25"].to_numpy()),
+            "Cách 'riêng partition' phải khớp chuẩn đối chiếu (lịch sử bắt "
+            "buộc nằm trong chính partition).",
+        )
+
+        # Mẫu số khác đúng window - 1; TỬ SỐ cũng khác vì nhóm bị mất đều dương.
+        self.assertEqual(valid_all, len(test))
+        self.assertEqual(valid_alone, len(test) - WINDOW + 1)
+        self.assertGreater(
+            pos_all, pos_alone,
+            "Tử số phải KHÁC: 23 quan sát đầu Test bị mất đều dương (pm25=100).",
+        )
+
+        # Vì cả tử số lẫn mẫu số đều khác, tỷ lệ trên cửa sổ hợp lệ khác nhau.
+        pct_all = 100 * pos_all / valid_all
+        pct_alone = 100 * pos_alone / valid_alone
+        self.assertNotAlmostEqual(
+            pct_all, pct_alone, places=9,
+            msg="Prevalence trên cửa sổ hợp lệ PHẢI khác nhau khi dữ liệu lệch ở "
+                "ranh giới — đây mới là bằng chứng hiệu ứng biên, không chỉ khác "
+                "ở số lượng cửa sổ.",
+        )
+        self.assertGreater(
+            pct_all, pct_alone,
+            "Nhóm 23 quan sát bị mất có tỷ lệ dương 100%, nên thêm chúng vào "
+            "phải LÀM TĂNG tỷ lệ của cách 'toàn frame'.",
         )
 
     def test_nan_gap_invalidates_exactly_window_windows(self):

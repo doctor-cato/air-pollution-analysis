@@ -10,7 +10,7 @@
 > | Mục trong file này | Ảnh chụp lúc 2026-10-12 | Trạng thái hiện tại |
 > |---|---|---|
 > | `HEAD` | `759a9c6` | đã thay đổi — xem `git log` |
-> | Số unit test | `Ran 344 tests` | **`Ran 357 tests`** (xem `README.md` §Chạy test) |
+> | Số unit test | `Ran 344 tests` | **`Ran 358 tests`** (xem `README.md` §Chạy test) |
 > | PR được nói tới | #36 | #36 **đã đóng**, thay bằng **#37** |
 > | Trạng thái CI | chưa chạy trên commit mới | CI `ubuntu-latest` **pass** trên commit mới nhất |
 > | Task D4 (`D4-partial-file`) | chưa quyết định | đã triển khai atomic write |
