@@ -16,7 +16,7 @@
 > Tổng **154** = **125 task có số** (`0.1`, `1.2`, …) + **29 task `D*`** của Phase 1B.
 > Trong 125 task có số có **1 task lồng** duy nhất là `0.7b` (thuộc `0.7`), nên **124 việc cấp
 > cao nhất** — đó là lý do đầu Phase 0 nói "8 việc" trong khi bảng này ghi `9`.
-> Trạng thái hiện tại: **28 đánh dấu `[x]` · 126 `[ ]`**.
+> Trạng thái hiện tại: **27 đánh dấu `[x]` · 127 `[ ]`**.
 > Các phase M3–M6 (2–11) **chưa bắt đầu** — issue #8–#17 đều đang `OPEN` trên GitHub.
 
 | Phase | Nội dung | Task | Ước lượng |
@@ -279,7 +279,8 @@ vì khi đã viết xong thì phải viết lại cả notebook.
       trong bối cảnh cảnh báo sớm (bỏ lọt 1 đợt tệ hơn báo động giả).
 - [x] **1.4** 🔴 **Issue #12 — Adjusted $R^2$.**
       Slide W10 cảnh báo: `$R^2` luôn tăng khi thêm biến rác → phải dùng Adjusted `$R^2$`.
-      Roadmap không có chỗ nào nhắc (grep rỗng). Thêm vào Task 7 (đánh giá trên Test).
+      Roadmap không có chỗ nào nhắc (grep rỗng). Đã đưa vào **task 6.7** (đánh giá trên Test ở
+      Phase 6 — hồi quy, Issue #12) và vào bảng ánh xạ slide W10.
 - [x] **1.5** 🔴 **Issue #13 — Feature Selection + tuyên bố xử lý đa cộng tuyến.**
       Issue #8 đã đo `corr(pm25, pm10) = 0,9727`, `$R^2` đơn biến = 0,9462.
       Slide W11 xử lý việc này bằng Feature Selection (loại biến tương quan cao / RF importance / Lasso).
@@ -331,8 +332,17 @@ vì khi đã viết xong thì phải viết lại cả notebook.
       k-anonymity (`:44`), Fairness–Accuracy Trade-off, Anonymisation vs Pseudonymisation.
       Loại trừ là hợp lý (1 trạm, không có thuộc tính nhạy cảm) — nhưng **phải có đoạn văn giải thích trong
       `docs/datasheet.md`**, nếu không GV sẽ hỏi "sao không làm?".
-- [x] **1.25** ⚪ Sửa roadmap `:1196` — trích "Slide W7 & W14" nhưng vault không có slide W14 (tuần 14 là
-      mentoring, không có slide riêng). Trích dẫn không kiểm chứng được.
+- [ ] **1.25** ⚪ **CHƯA LÀM — tiền đề của task này sai, cần GV xác nhận.** Trước đây task ghi
+      "sửa roadmap `:1196` vì vault không có slide W14 (tuần 14 là mentoring)". Đối chiếu lại:
+      - **Tiền đề sai.** `roadmap.md:556–557` và `:1303` / `:1321` quy định **W13 = Code Refactoring
+        & Mentoring**, **W14 = Storytelling & Final Report** (SCQA, slide bảo vệ). Mentoring là
+        **W13**, không phải W14.
+      - **Dấu `[x]` trước đây là sai — không có bằng chứng.** Câu "Slide W7 & W14" **vẫn còn nguyên**
+        ở `roadmap.md:1324`; `git log -S"Slide W7 & W14" origin/main..HEAD` → **không commit nào
+        của PR #37 đụng tới chuỗi này**.
+      - **Không tự quyết.** Vault slide bài giảng nằm ngoài repo (Obsidian của GV) — không kiểm chứng
+        được từ đây. Cần GV xác nhận slide W14 có tồn tại không: nếu **không** thì sửa trích dẫn ở
+        `roadmap.md:1324`; nếu **có** thì đóng lại task này.
 - [x] **1.26** ✅ **Đã xong** — thêm `TASK_LIST_M3_M6.md` vào cây `docs/` trong `docs/roadmap.md` §12,
       và `03_processed_data_preview.ipynb` vào cây `notebooks/` (task 0.2).
 
@@ -342,8 +352,13 @@ vì khi đã viết xong thì phải viết lại cả notebook.
 
 Repo này coi tài liệu là **artifact bàn giao ngang hàng với mã nguồn**, không phải phần phụ. M1–M2 đã
 thực hiện tốt: mỗi issue đều kèm 1 tài liệu sinh ra từ code thật (`data_dictionary.md` 36,9 KB,
-`data_quality_audit.md` 30,3 KB, `cleaning_log.md` 32,3 KB, `source_profiling_decision.md` 73,5 KB).
+`data_quality_audit.md` 30,0 KB, `cleaning_log.md` 33,5 KB, `source_profiling_decision.md` 73,5 KB).
 **M3–M6 phải giữ đúng nhịp đó** — GV và hội đồng đọc docs nhiều hơn đọc notebook.
+
+> ℹ️ **Kích thước đo bằng `os.path.getsize` / 1024, cập nhật 2026-10-14.**
+> `cleaning_log.md` tăng từ 31,7 KB (trên `main`) lên **33,5 KB** vì PR #37 sửa nó (+21 −5);
+> `data_quality_audit.md` **không** bị PR này đụng tới. Các số trên là dung lượng tại HEAD, đổi theo
+> mỗi lần sửa — đừng dùng làm tiêu chí nghiệm thu, hãy đo lại nếu cần trích dẫn.
 
 ### 1B.1 — Ngay sau Phase 2–3 (M3)
 
@@ -370,7 +385,7 @@ thực hiện tốt: mỗi issue đều kèm 1 tài liệu sinh ra từ code th�
 
 - [ ] **D8** 🔴 `docs/roadmap.md` §14 — tick trạng thái Issue #10, ghi ngày nộp thực tế thay vì "23:59 ngày quy định".
 - [ ] **D9** 🔴 `scripts/build_progress_report.py` — mở rộng phạm vi sinh báo cáo tiến độ từ `M1_M2`
-      sang `M1_M3`, sinh `docs/bao_cao_tiendo_M1_M3.docx`. Hiện tên file cứng `bao_cao_tien_do_M1_M2.docx`
+      sang `M1_M3`, sinh `docs/bao_cao_tien_do_M1_M3.docx`. Hiện tên file cứng `bao_cao_tien_do_M1_M2.docx`
       và nội dung chỉ đọc trạng thái M1–M2.
       ⚠️ Lưu ý: `.docx` **không tái lập được theo byte** (`python-docx` ghi timestamp vào `docProps/core.xml`)
       → sinh lại rồi commit thẳng, không dùng `git diff` để kết luận (README:260 đã ghi nhận).
