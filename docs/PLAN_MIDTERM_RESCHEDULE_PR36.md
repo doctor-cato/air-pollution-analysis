@@ -20,6 +20,21 @@
 > chỉ cho phép dời mốc, **chưa xác nhận phạm vi nộp**. Không có bằng chứng nào trong repo
 > cho thấy phạm vi đã được chốt — mọi mục liên quan vẫn ở trạng thái `HELD`.
 >
+> **Đối chiếu số liệu kiểm thử (đo lại 2026-10-14 bằng AST trên từng commit):**
+>
+> | commit | ngày | `test_pipeline_runtime_log.py` | tổng test |
+> |---|---:|---:|---:|
+> | `2dbca74` — commit **tạo ra file này** | 2026-10-13 | **40** | **351** |
+> | `2fc242a` | 2026-10-13 | 40 | 351 |
+> | `e8740e5` | 2026-10-14 | 40 | 351 |
+> | `dc3a1f7` | 2026-10-14 | 40 | **358** *(thêm `test_verify_claims_rolling.py` 7 test)*
+>
+> ⇒ Các con số **`344`** và **`349`** ở §4.3, §8 và các bảng bên dưới là **ước lượng
+> lúc soạn thảo**, **không phải kết quả của bất kỳ commit nào**: ngay tại chính commit
+> `2dbca74` đã tạo file này, `test_pipeline_runtime_log.py` đã có **40 test** (không phải
+> 33 hay 38 như §4.3 từng ghi) ⇒ tổng đã là **351**. Giữ nguyên 344/349 để truy vết quá
+> trình; **không** dùng chúng làm số hiện tại.
+>
 > **Bản số liệu hiện hành:** xem `README.md` và `docs/TASK_LIST_M3_M6.md`.
 
 ---
@@ -34,7 +49,7 @@
 
 ## 1. Tiến độ thực tế (đã kiểm chứng 2026-10-12)
 
-### 1.1 Đã hoàn thành
+### 1.1 Đã hoàn thành *(tại thời điểm 2026-10-12)*
 
 | Hạng mục | Bằng chứng |
 |---|---|
@@ -43,11 +58,11 @@
 | Chuỗi dữ liệu đầy đủ | `data/raw/` → `data/interim/` → `data/processed/air_pollution_final.parquet` (**267.399 bytes**) đều tồn tại |
 | Mã nguồn `src/` | `data_collection.py` · `data_quality.py` · `cleaning.py` · `cleaning_pipeline.py` |
 | Notebook | 6 file: `00_environment_test` · `01_data_collection` · `02_quality_audit` · `03_data_cleaning` · `03_transformation_pipeline` · `03_processed_data_preview` |
-| Kiểm thử | `python -m unittest discover tests` → **`Ran 344 tests … OK`** (342 gốc + 2 test D4; khớp lệnh CI `ci.yml:45`) |
+| Kiểm thử | *(ước lượng lúc soạn — không phải số đo)* `python -m unittest discover tests` → **`Ran 344 tests … OK`** (342 gốc + 2 test D4) — **đo lại ở `2dbca74` cho 351**, xem §0 |
 | Tài liệu | `roadmap.md` · `data_dictionary.md` · `data_quality_audit.md` · `cleaning_log.md` · `source_profiling_decision.md` · `docs/history/` (4 file) |
 | Báo cáo tiến độ | `scripts/build_progress_report.py` + `docs/bao_cao_tien_do_M1_M2.docx` |
 
-### 1.2 Chưa bắt đầu
+### 1.2 Chưa bắt đầu *(tại thời điểm 2026-10-12)*
 
 | Hạng mục | Bằng chứng |
 |---|---|
@@ -57,11 +72,11 @@
 | Báo cáo giữa kỳ | `reports/` chỉ có `.gitkeep` → **chưa có `midterm_report.pdf`** |
 | **M4 / M5 / M6** | #11–#17 — tất cả **OPEN** |
 
-### 1.3 Đang thực hiện
+### 1.3 Đang thực hiện *(tại thời điểm 2026-10-12)*
 
 | Hạng mục | Trạng thái |
 |---|---|
-| PR #36 | **OPEN**, state `CHANGES_REQUESTED` từ `doctor-cato`, commit `759a9c6` |
+| PR #36 | *(tại 2026-10-12)* **OPEN**, state `CHANGES_REQUESTED` từ `doctor-cato`, commit `759a9c6` — **đã đóng từ sau đó**: `state=closed`, `merged=false`, `closed_at=2026-10-12T18:18:21Z`, head cuối `27618f0` |
 | Review | Đúng **1 review**, **0 inline comment**; 4 mục → xử lý ở §4 |
 
 ### 1.4 Tóm tắt tiến độ
@@ -69,7 +84,8 @@
 **M1 và M2 đã hoàn thành.** 8/19 issue CLOSED, tương ứng đúng 8 issue của hai milestone đầu:
 thu thập dữ liệu, kiểm toán chất lượng, làm sạch, tích hợp & đóng gói pipeline. Chuỗi dữ liệu
 `data/raw/` → `data/interim/` → `data/processed/air_pollution_final.parquet` đã đầy đủ, mã
-nguồn `src/` đã có 4 module, 342 unit test pass.
+nguồn `src/` đã có 4 module, 342 unit test pass *(342 là ước lượng lúc soạn; đo lại ở
+`2dbca74` là **351** — xem §0)*.
 
 **M3–M6 chưa bắt đầu.** 11/19 issue còn OPEN, không issue nào trong nhóm này đã đóng.
 `notebooks/0[4-7]` chưa có file nào, `figures/` 0/7 biểu đồ, `reports/` chưa có báo cáo.
@@ -230,6 +246,8 @@ Milestone 2 hoàn tất – chuẩn bị Milestone 3 (EDA)
 344 unit test — PASS; CI workflow; fetch script không cần API key
 344 unit test — PASS; bao gồm test hồi quy chống tái phát lỗi làm sạch
 ```
+> ⚠️ **Đây là nội dung DOCX tại thời điểm soạn (2026-10-12).** DOCX hiện tại và
+> `scripts/build_progress_report.py` đều ghi **358**; xem §0.
 
 #### 4.3 Sửa lại con số sau D4
 
@@ -475,7 +493,10 @@ except BaseException:
 | ⛔ Không đổi hợp đồng lỗi | Hàm vẫn **ném**. Không có đường `return log_path` sau khi ghi hỏng |
 | Chỉ đụng `write_pipeline_runtime_log()` | Không kéo thay đổi production nào khác vào cùng phạm vi |
 
-**Test bổ sung — 5 test mới** (tổng file này 33 → 38):
+**Test bổ sung — 5 test mới** (tổng file này 33 → 38) *(ước lượng lúc soạn)*:
+> ⚠️ **Đã đo lại 2026-10-14:** bảng ngay dưới liệt kê **7** test, và ngay tại commit
+> `2dbca74` đã tạo file này, `test_pipeline_runtime_log.py` có **40** test — không phải
+> 33 hay 38. Các con số 33/38/344 ở đây **không khớp bất kỳ commit nào**; xem §0.
 
 | Test | Phủ |
 |---|---|
@@ -487,7 +508,7 @@ except BaseException:
 | `test_success_path_writes_complete_json_and_leaves_no_temp_file` | ⭐ đường thành công: JSON đầy đủ, 4 khoá, không sót tệp tạm |
 | `test_pipeline_tolerates_runtime_log_failure` | ⭐ **ranh giới trách nhiệm**: AST khẳng định lời gọi ghi log **nằm trong `try` có `except`** → log hỏng không làm sập pipeline |
 
-Kết quả: `Ran 349 tests … OK`.
+Kết quả: `Ran 349 tests … OK`. *(Ghi lại lúc soạn. Đo lại ở `2dbca74`: **351** — xem §0.)*
 
 **Test hiện tại đã khoanh vùng đúng:** `test_write_failure_propagates_and_returns_no_success_path`
 khẳng định tệp rác là 0 byte, kèm docstring nói rõ đây là **quan sát được, chưa phải hành vi
@@ -503,7 +524,7 @@ hay không — nằm ngoài phạm vi plan, tôi **không tự sửa mã nguồn
 **✅ KHÔNG bị chặn — đã xong.**
 
 ```text
-python -m unittest discover tests   →  Ran 344 tests … OK   (342 gốc + 2 test mới)
+python -m unittest discover tests   →  Ran 344 tests … OK   (342 gốc + 2 test mới)   # ước lượng lúc soạn; đo lại ở `2dbca74` là 351
 python -m compileall -q src tests scripts  →  exit 0
 ```
 
@@ -709,19 +730,19 @@ căn cứ ước lượng cho hai việc đó.
 
 | # | Tiêu chí | Kiểm chứng | Trạng thái |
 |:--:|---|---|---|
-| 1 | D4.1–D4.3 xong | Test mới assert `OSError`; `unittest` pass | ✅ **xong** — 344 test OK |
-| 2 | D1.1–D1.4 xong | `build_progress_report.py` ghi `344` khớp `Ran 344 tests`; DOCX trích text khớp | ✅ **xong** |
+| 1 | D4.1–D4.3 xong | Test mới assert `OSError`; `unittest` pass | ✅ **xong** — 344 test OK *(số ước lượng lúc soạn; đo lại ở `2dbca74` là **351** — §0)* |
+| 2 | D1.1–D1.4 xong | `build_progress_report.py` ghi `344` khớp `Ran 344 tests`; DOCX trích text khớp | 🟡 **xong nhưng đã lỗi thời** — `297`→`342`→`344` đều đã làm, nhưng `344` **không khớp số đo thật** (đo lại `2dbca74` = **351**; hiện hành **358**). Xem §0 |
 | 3 | D2 Phase A xong | Bảng kiểm kê claim có trạng thái `VERIFIED`/`MISMATCH`/`UNVERIFIABLE` | ✅ **xong** |
 | 4 | `verify_claims.py` tái lập được claim | Chạy trên máy sạch, bảng audit trong `reports/` | ⛔ chỉ **D2 + D3** |
 | 5 | Mọi tỷ lệ prevalence dùng **cùng một định nghĩa đã chốt** | `git grep -nE "[0-9]+,[0-9]+%" docs/` → mọi kết quả truy được về định nghĩa | ⛔ chỉ **D2 + D3** |
-| 6 | Số test trong báo cáo khớp thực tế | `python -m unittest discover tests` → `Ran 349 tests` | ✅ **DONE + VERIFIED** — 349/OK, DOCX trích text khớp |
+| 6 | Số test trong báo cáo khớp thực tế | `python -m unittest discover tests` → `Ran 349 tests` | 🟡 **DONE nhưng con số trong văn bản đã lệch** — lúc soạn ghi 349/OK và DOCX khớp; đo lại ở `2dbca74` cho **351**. Tiêu chí *“khớp thực tế”* chỉ đúng khi **đo lại**, không phải với 344/349 ghi sẵn trong văn bản. Xem §0 |
 | 7 | `ROADMAP_INFO3020_Air_Pollution.md` **không đổi một byte** | `git diff --stat -- docs/ROADMAP_INFO3020_Air_Pollution.md` → **rỗng** | ✅ kiểm được ngay |
 | 8 | Không sửa dữ liệu nguồn | `git status` không có thay đổi trong `data/` | ⛔ kiểm ở mỗi checkpoint |
 | 9 | `03_processed_data_preview.ipynb` giữ nguyên | Vẫn là `M` trong `git status`, không vào commit nào | ⛔ kiểm ở mỗi checkpoint |
 | 10 | Tiến độ báo cáo khớp thực tế | §1 khớp `gh issue list` + nội dung `notebooks/` `figures/` `reports/` | ✅ **đã xác nhận** |
 | 11 | Mốc nộp trong tài liệu là W11 | `git grep -nE "Tuần 8\|Week 8\|W08" -I` → chỉ còn §5.5 | ✅ **DONE + VERIFIED** — roadmap `:517,551,573,1182`, `SKILL:14`, `TASK_LIST:21` |
 | 12 | Quan hệ dependency GitHub **thật**, không chỉ văn xuôi | `GET /issues/{n}/dependencies/blocked_by` khớp §2.4 | ⏸️ **GIỮ NGUYÊN** — dependency native của #10–#13 vẫn rỗng; **không tạo**, vì phạm vi lịch là của GV |
-| 13 | `unittest` + CI xanh | CI `Python validation` ✅ | 🟡 **`PENDING CI`** — local `Ran 349 tests … OK`; CI chưa chạy trên commit mới |
+| 13 | `unittest` + CI xanh | CI `Python validation` ✅ | ✅ **ĐÃ PASS** — nhãn `PENDING CI` ở thời điểm soạn đã được gỡ: CI `ubuntu-latest` xanh trên các commit của PR #37, lần gần nhất `Ran 358 tests … OK (skipped=2)`. Con số local 349 ghi ở đây là ước lượng lúc soạn (§0) |
 | 14 | Thân #10 khớp phạm vi GV đã xác nhận | Đối chiếu §3 | ⏸️ **GIỮ NGUYÊN** — không sửa thân issue; tiến độ báo cáo theo **tiến độ thực tế** (M1–M2 xong, M3–M6 chưa bắt đầu) |
 | 15 | Đổi lịch tách khỏi PR #36 | PR mới chỉ chứa diff lịch | ⛔ bước 12 |
 
@@ -730,7 +751,7 @@ căn cứ ước lượng cho hai việc đó.
 > | Trạng thái | Định nghĩa | Mục |
 > |---|---|---|
 > | **`DONE`** | Việc đã làm xong trong repo. | D1 · D3 · D4 (kể cả atomic write) · bước 9 (ngày tháng) · `scripts/verify_claims.py` · dọn `scratch/` |
-> | **`VERIFIED`** | Đã chạy lệnh kiểm tra và **thấy kết quả khớp**, bằng chứng nằm trong repo. | `Ran 349 tests … OK` · `verify_claims.py` 15/15 VERIFIED exit 0 · DOCX trích text · `data/` rỗng · `ROADMAP_INFO3020` rỗng · notebook 72/72 · mọi file LF |
+> | **`VERIFIED`** | Đã chạy lệnh kiểm tra và **thấy kết quả khớp**, bằng chứng nằm trong repo. | `Ran 349 tests … OK` *(con số ước lượng lúc soạn — §0)* · `verify_claims.py` 15/15 VERIFIED exit 0 · DOCX trích text · `data/` rỗng · `ROADMAP_INFO3020` rỗng · notebook 72/72 · mọi file LF |
 > | **`PENDING CI`** | Local đã xanh nhưng **CI chưa chạy trên commit mới**. Không được coi là xong. | #4 · #13 · toàn bộ cổng §8.1 |
 > | **`UNDECIDED`** | Đã đo đủ số liệu nhưng **chưa có căn cứ chọn**, nên không công bố con số cuối. | B.3 mẫu số nhãn cảnh báo · task 0.7b |
 > | **`HELD`** | Phạm vi lịch là quyết định của GV. Ở đây **giữ nguyên** issue/milestone và báo cáo theo tiến độ thực tế. | #12 · #14 |
@@ -794,7 +815,7 @@ tình trạng: *đã làm được những gì, chưa làm gì, còn vướng g�
 | `figures/` | chỉ `.gitkeep` — 0/7 biểu đồ |
 | `reports/` | chỉ `.gitkeep` — chưa có báo cáo |
 | `data/processed/air_pollution_final.parquet` | tồn tại, 267.399 bytes |
-| Số unit test | ✅ `Ran 344 tests … OK` (chạy mới 2026-10-12; 342 gốc + 2 test D4) |
+| Số unit test | ⚠️ ghi `Ran 344 tests … OK` (2026-10-12; 342 gốc + 2 test D4) là **ước lượng lúc soạn** — **đo lại ở `2dbca74` là 351**; hiện hành là **358** (xem §0) |
 | `scripts/verify_claims.py` | ✅ 15/15 VERIFIED · 0 MISMATCH · exit 0 · CSV `reports/claim_audit.csv` |
 | Line ending các file đã sửa | ✅ đều **LF**, khớp `.gitattributes` (`* text=auto eol=lf`) |
 | `git diff --stat -- src/` | ✅ **rỗng** — không sửa production code |

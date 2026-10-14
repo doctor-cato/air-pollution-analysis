@@ -82,7 +82,7 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 - [x] Làm sạch **tất định**: chuẩn hóa múi giờ UTC+7, khử trùng lặp, bóc trần missing ngụy trang, lọc giá trị âm phi lý, thực thi ràng buộc khí động học $\text{PM}_{2.5} \le \text{PM}_{10}$, reindex lưới 1 giờ liên tục **độc lập theo từng trạm** ([Issue #6], `src/cleaning.py`).
 - [x] Nhận diện lỗi kẹt cảm biến và gắn cờ chẩn đoán `is_high_humidity_fog`, `pm25_was_missing` — **không** xóa bản ghi, **không** điền khuyết ([`docs/cleaning_log.md`](docs/cleaning_log.md)).
 - [x] Biên soạn **Cleaning Log** tự động sinh từ mã nguồn, ghi nhận 100% phép biến đổi kèm số dòng bị tác động ([`docs/cleaning_log.md`](docs/cleaning_log.md)).
-- [x] Bộ **107** unit tests tất định cho lớp làm sạch (`tests/test_cleaning.py`), bao gồm kiểm chứng **không điền khuyết** và **tính tất định** (idempotent).
+- [x] Bộ **114** unit tests tất định cho lớp làm sạch (`tests/test_cleaning.py`), bao gồm kiểm chứng **không điền khuyết** và **tính tất định** (idempotent).
 
 > [!NOTE]
 > **Về dữ liệu thô:** tệp thô tải từ API **không được Git-track** — đây là chính sách kho dữ liệu của repository, không phải thiếu sót. Tính toàn vẹn được kiểm chứng bằng mã băm SHA-256 ghi trong `data/raw/metadata.json`. Xem [Mục 3.2 của roadmap](docs/roadmap.md#32-cổng-quyết-định-nguồn-dữ-liệu-issue-19-as-source-selection-gate).
@@ -145,11 +145,13 @@ air-pollution-analysis/
 │   └── cleaning_pipeline.py            # Merge, freeze, split thời gian, sklearn Pipeline chống rò rỉ, xuất Parquet [Issue #7]
 ├── tests/
 │   ├── test_data_collection.py         # 57 unit tests kiểm thử pipeline thu thập và validation [Issue #3, #4]
-│   ├── test_data_quality.py            # 14 unit tests cho bộ kiểm toán 6 chiều [Issue #5]
+│   ├── test_data_quality.py            # 44 unit tests cho bộ kiểm toán 6 chiều [Issue #5]
 │   ├── test_cleaning.py                # 114 unit tests cho lớp làm sạch tất định [Issue #6]
 │   ├── test_cleaning_pipeline.py       # 44 unit tests cho merge/freeze/split/Pipeline của #7
 │   ├── test_cleaning_pipeline_guards.py# 43 unit test hồi quy chặn rò rỉ — mỗi test FAIL trên bản gốc
-│   └── test_fetch_dataset.py           # 9 unit tests cho cơ chế thu thập & kiểm chứng tập dữ liệu
+│   ├── test_fetch_dataset.py           # 9 unit tests cho cơ chế thu thập & kiểm chứng tập dữ liệu
+│   ├── test_pipeline_runtime_log.py     # 40 unit tests — tách trạng thái runtime khởi hồ sơ provenance tỉnh
+│   └── test_verify_claims_rolling.py    # 7 unit tests — ranh giới Train/Test của nhãn cảnh báo trượt 24h
 ├── figures/                            # Thư mục lưu biểu đồ xuất bản chất lượng cao (300 DPI)
 │   └── .gitkeep
 └── reports/                            # Báo cáo giữa kỳ và báo cáo tổng kết đồ án
