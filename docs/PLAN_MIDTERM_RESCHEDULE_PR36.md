@@ -28,6 +28,7 @@
 > | `2fc242a` | 2026-10-13 | 40 | 351 |
 > | `e8740e5` | 2026-10-14 | 40 | 351 |
 > | `dc3a1f7` | 2026-10-14 | 40 | **358** *(thêm `test_verify_claims_rolling.py` 7 test)*
+> | `7937772` — **HEAD hiện hành của PR #37** | 2026-10-14 | 40 | **358** *(không đổi so với `dc3a1f7`)*
 >
 > ⇒ Các con số **`344`** và **`349`** ở §4.3, §8 và các bảng bên dưới là **ước lượng
 > lúc soạn thảo**, **không phải kết quả của bất kỳ commit nào**: ngay tại chính commit
