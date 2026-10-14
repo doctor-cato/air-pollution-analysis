@@ -82,13 +82,13 @@
 
 ### 1.4 Tóm tắt tiến độ
 
-**M1 và M2 đã hoàn thành.** 8/18 issue CLOSED, tương ứng đúng 8 issue của hai milestone đầu:
+**M1 và M2 đã hoàn thành.** 8/19 issue CLOSED, tương ứng đúng 8 issue của hai milestone đầu:
 thu thập dữ liệu, kiểm toán chất lượng, làm sạch, tích hợp & đóng gói pipeline. Chuỗi dữ liệu
 `data/raw/` → `data/interim/` → `data/processed/air_pollution_final.parquet` đã đầy đủ, mã
 nguồn `src/` đã có 4 module, 342 unit test pass *(342 là ước lượng lúc soạn; đo lại ở
 `2dbca74` là **351** — xem §0)*.
 
-**M3–M6 chưa bắt đầu.** 10/18 issue còn OPEN, không issue nào trong nhóm này đã đóng.
+**M3–M6 chưa bắt đầu.** 11/19 issue còn OPEN, không issue nào trong nhóm này đã đóng.
 `notebooks/0[4-7]` chưa có file nào, `figures/` 0/7 biểu đồ, `reports/` chưa có báo cáo.
 
 **Hệ quả đối với báo cáo giữa kỳ:** #10 phụ thuộc #8 và #9 — cả hai đều chưa bắt đầu — nên
@@ -836,8 +836,8 @@ tình trạng: *đã làm được những gì, chưa làm gì, còn vướng g�
 |---|---|
 | Branch / HEAD | `docs/audit-delivery` / `759a9c6` |
 | Working tree trước lượt này | `M notebooks/03_processed_data_preview.ipynb` (có sẵn, 72/72 dòng) |
-| Issue CLOSED | #1 #2 #19 #3 #4 #5 #6 #7 — **8/18** |
-| Issue OPEN | #8 #9 #10 #11 #12 #13 #14 #15 #16 #17 — **10/18**, gồm **toàn bộ M3–M6** |
+| Issue CLOSED | #1 #2 #19 #3 #4 #5 #6 #7 — **8/19** |
+| Issue OPEN | #8 #9 #10 #11 #12 #13 #14 #15 #16 #17 #38 — **11/19** (#38 mở trong đợt audit PR #37) |
 | Notebook `0[4-7]*` | **0 file** |
 | `figures/` | chỉ `.gitkeep` — 0/7 biểu đồ |
 | `reports/` | chỉ `.gitkeep` — chưa có báo cáo |
