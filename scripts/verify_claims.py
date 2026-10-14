@@ -442,17 +442,41 @@ def report_rolling_window(df: pd.DataFrame, out: Any) -> None:
     print(f"                  một đoạn NaN làm hỏng cửa sổ.")
     print()
 
-    print("Cửa sổ có vắt qua ranh giới chia Train/Test không?")
-    train = df[df["timestamp"] < SPLIT_TIMESTAMP]
-    test = df[df["timestamp"] >= SPLIT_TIMESTAMP]
-    for name, part in (("Train", train), ("Test", test)):
-        whole = int(valid[df["timestamp"] < SPLIT_TIMESTAMP].sum()) if name == "Train" \
-            else int(valid[df["timestamp"] >= SPLIT_TIMESTAMP].sum())
-        alone = int(part["pm25"].rolling(window=24, min_periods=24).mean().notna().sum())
-        same = "GIỐNG NHAU" if whole == alone else "KHÁC NHAU"
-        print(f"   {name:5}: tính trên toàn frame {whole} · tính riêng {alone}  → {same}")
-    print("   → Chạy rolling trên toàn frame hay riêng từng phần cho KẾT QUẢ GIỐNG NHAU:")
-    print("     không có hiệu ứng biên tại mốc cắt. Vấn đề nằm ở mẫu số, không ở cách chia.")
+    print("RẠNH GIỚI TRAIN/TEST — hai cách tính rolling KHÔNG tương đương")
+    print("   So sánh trực tiếp trên CÙNG một tập quan sát: cửa sổ hợp lệ,")
+    print("   nhãn dương, tỷ lệ và mẫu số. Không chỉ so số lượng cửa sổ.")
+    train, test = _split(df)
+
+    # Cách 1 — cách dự án ĐÃ CHỐT: rolling trên TOÀN chuỗi thời gian, rồi lấy phần
+    # của mỗi tập. Quan sát đầu Test dùng lịch sử nằm ở đoạn cuối Train: đều là
+    # quá khứ (timestamp <= t), nên KHÔNG rò rỉ dữ liệu tương lai.
+    roll_all = df["pm25"].rolling(window=24, min_periods=24).mean()
+    pos_all = roll_all >= 50
+
+    # Cách 2 — KHÔNG hợp lệ để thay thế: rolling riêng trên từng partition. Các
+    # quan sát đầu mỗi partition thiếu đủ 24 giờ lịch sử nên cửa sổ không hợp lệ →
+    # bị rớt khỏi CẢ tử số lẫn mẫu số. Đây chính là hiệu ứng biên.
+    roll_train = train["pm25"].rolling(window=24, min_periods=24).mean()
+    roll_test = test["pm25"].rolling(window=24, min_periods=24).mean()
+
+    for name, part, roll_part, pos_part in (
+        ("Train", train, roll_train, roll_train >= 50),
+        ("Test", test, roll_test, roll_test >= 50),
+    ):
+        whole_valid = int(roll_all.notna()[part.index].sum())
+        whole_pos = int(pos_all[part.index].sum())
+        alone_valid = int(roll_part.notna().sum())
+        alone_pos = int(pos_part.sum())
+        print(f"   {name:5} : toàn frame {whole_valid:5d} cửa sổ hợp lệ, "
+              f"{whole_pos:5d} dương ({_pct(whole_pos, whole_valid)})")
+        print(f"            riêng partition {alone_valid:5d} cửa sổ hợp lệ, "
+              f"{alone_pos:5d} dương ({_pct(alone_pos, alone_valid)})")
+        print(f"            → mất {whole_valid - alone_valid} quan sát do thiếu 24h lịch sử")
+
+    print("   → KẾT LUẬN: hai cách KHÔNG tương đương; ranh giới CÓ ảnh hưởng thật.")
+    print("     Dự án chốt dùng cách 'toàn frame' vì lịch sử Test nằm ở cuối Train —")
+    print("     đều quá khứ, không dữ liệu tương lai, không rò rỉ. Nhớ: 986 / 669 / 1.655")
+    print("     chỉ đúng cho cách 'toàn frame', và vẫn mang tính GIẢ ĐỊNH.")
     print()
 
     print("ĐỘ NHẠY — số nhãn dương PHỤ THUỘC tham số chưa được mã định nghĩa:")

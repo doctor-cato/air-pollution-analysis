@@ -1449,13 +1449,19 @@ class TestMetadataMutationBlockPreservesProvenance(unittest.TestCase):
 
     def test_last_updated_utc_is_not_rewritten_with_wall_clock(self):
         """
-        Trường A-3 cốt lõi: `last_updated_utc` là mốc rà soát provenance TĈNH, do
-        con người đặt, KHÔNG phải dấu vết đồng hồ của lần chạy pipeline.
+        Trường A-3 cốt lõi: `last_updated_utc` là provenance TĨNH, KHÔNG phải dấu vết
+        đồng hồ của lần chạy pipeline.
 
         `run_collection_pipeline()` KHÔNG được ghi đè nó bằng
         `datetime.now(...)`. Nếu làm vậy, mỗi lần chạy lại tạo diff chỉ chứa
         timestamp dù dữ liệu thô và provenance không đổi — đúng cái A-3 loại bỏ.
         Trạng thái wall-clock thuộc về `data/raw/<PIPELINE_RUNTIME_LOG_FILENAME>`.
+
+        NGUỒN GỐC giá trị (xác minh từ lịch sử Git): commit `8e1426a` (2026-09-30)
+        ghi giá trị này khi code vẫn còn `meta["last_updated_utc"] = datetime.now(...)`,
+        rồi `13b7bea` (2026-10-06) bỏ dòng gán đó. Nên đây là DẤU VẾT ĐỒNG HỒ của
+        một lần chạy pipeline thật, KHÔNG phải ngày review thủ công — test chỉ khóa
+        hành vi KHÔNG ghi đè, không khóa ý nghĩa "do con người đặt".
         """
         committed = self._committed_metadata()
         self.assertIn(

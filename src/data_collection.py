@@ -1417,13 +1417,31 @@ def run_collection_pipeline(
                 meta = json.load(f)
 
             meta["schema_version"] = METADATA_SCHEMA_VERSION
-            # `last_updated_utc` là trường provenance TĈNH: mốc rà soát nội dung
-            # metadata, cố ý KHÔNG bị pipeline ghi đè theo đồng hồ mỗi lần chạy.
-            # Trạng thái thực thi theo thời gian chạy nằm ở PIPELINE_RUNTIME_LOG_FILENAME.
+            # `last_updated_utc` là trường provenance TĨNH: pipeline KHÔNG ghi đè
+            # theo đồng hồ mỗi lần chạy. Trạng thái thực thi theo thời gian chạy
+            # nằm ở PIPELINE_RUNTIME_LOG_FILENAME.
+            #
+            # NGUỒN GỐC CỦA GIÁ TRỊ (xác minh được từ lịch sử Git tại `e8740e5`):
+            # commit `8e1426a` (2026-09-30) là commit cuối cùng GHI giá trị này, khi
+            # `src/data_collection.py` vẫn còn dòng
+            #     meta["last_updated_utc"] = datetime.now(timezone.utc).isoformat()
+            # và đồng thời đổi nó 2026-09-29T12:16:22 -> 2026-09-29T21:37:26.
+            # Commit `13b7bea` (2026-10-06) bỏ dòng gán đó -> giá trị đông cứng.
+            # => Giá trị là DẤU VẾT ĐỒNG HỒ của một lần chạy pipeline thật, KHÔNG phải
+            #    ngày review thủ công của tài liệu. Giữ nguyên giá trị như provenance
+            #    lịch sử; đừng đọc là mốc cập nhật tự động của pipeline.
             meta["last_updated_utc_semantics"] = (
-                "Static provenance field: last manual review date of this metadata document. "
-                "NOT rewritten by run_collection_pipeline(); per-run wall-clock state is written "
-                f"to data/raw/{PIPELINE_RUNTIME_LOG_FILENAME} (untracked)."
+                "Static provenance field, NOT rewritten by run_collection_pipeline(); per-run "
+                "wall-clock state is written to data/raw/"
+                f"{PIPELINE_RUNTIME_LOG_FILENAME} (untracked). "
+                "VALUE ORIGIN (established from git history at e8740e5): the last value was "
+                "written by commit 8e1426a (2026-09-30) while src/data_collection.py still ran "
+                "meta[\"last_updated_utc\"] = datetime.now(timezone.utc).isoformat(), changing "
+                "it 2026-09-29T12:16:22 -> 2026-09-29T21:37:26; commit 13b7bea (2026-10-06) "
+                "removed that assignment, freezing it. The value is therefore a pipeline "
+                "execution wall-clock timestamp, NOT a manual review date. Kept unchanged as "
+                "historical provenance; do not read it as a content-review timestamp or as a "
+                "pipeline auto-update time."
             )
 
             # WHY merge instead of wholesale replacement: this dict literal only

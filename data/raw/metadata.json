@@ -388,5 +388,5 @@
       "note": "Wall-clock execution state (execution_timestamp_utc, execution_time_seconds) is written here instead of this tracked provenance file, so re-running the notebook does not dirty the git working tree when the dataset and provenance are unchanged."
     }
   },
-  "last_updated_utc_semantics": "Static provenance field: last manual review date of this metadata document. NOT rewritten by run_collection_pipeline(); per-run wall-clock state is written to data/raw/pipeline_execution_runtime.json (untracked)."
+  "last_updated_utc_semantics": "Static provenance field, NOT rewritten by run_collection_pipeline(); per-run wall-clock state is written to data/raw/pipeline_execution_runtime.json (untracked). VALUE ORIGIN (established from git history at e8740e5): the last value was written by commit 8e1426a (2026-09-30) while src/data_collection.py still ran meta[\"last_updated_utc\"] = datetime.now(timezone.utc).isoformat(), changing it 2026-09-29T12:16:22 -> 2026-09-29T21:37:26; commit 13b7bea (2026-10-06) removed that assignment, freezing it. The value is therefore a pipeline execution wall-clock timestamp, NOT a manual review date. Kept unchanged as historical provenance; do not read it as a content-review timestamp or as a pipeline auto-update time."
 }

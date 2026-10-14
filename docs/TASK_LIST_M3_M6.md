@@ -77,7 +77,7 @@ Prevalence cảnh báo (trung bình trượt 24h ≥ 50 µg/m³) — SỐ LIỆU
 | Đoạn dài nhất | **630 giờ** (= 7,0% toàn bộ chuỗi 9.044 giờ) |
 | Cửa sổ `rolling(24, min_periods=24)` hợp lệ | **5.317 / 9.044** |
 | Cửa sổ hỏng | **3.727** — **không phải 23**, vì `min_periods=24` đòi cả 24 giá trị đều khác `NaN`; một đoạn `NaN` làm hỏng cửa sổ |
-| Cửa sổ vắt qua mốc cắt `2026-01-15`? | **Không ảnh hưởng** — tính trên toàn frame và tính riêng từng tập cho **cùng kết quả** (Train 2.994 · Test 2.323) |
+| Cửa sổ vắt qua mốc cắt `2026-01-15`? | **CÓ ảnh hưởng — hai cách KHÔNG tương đương.** Tính riêng từng tập mất đúng **23** quan sát đầu mỗi tập (`window − 1`) vì thiếu 24 giờ lịch sử. Con số 2.994 / 2.323 ở trên theo cách **tính trên toàn frame**: quan sát đầu Test mượn lịch sử ở đuôi Train — đều là quá khứ, không rò rỉ *(đo bằng `scripts/verify_claims.py`; test khoá hành vi ở `tests/test_verify_claims_rolling.py`)* |
 
 > ⚠️ **Giới hạn quan trọng: nhãn cảnh báo CHƯA BAO GIỜ được hiện thực hoá.**
 > `grep -r "rolling" src/*.py` → rỗng. `grep "rolling(" notebooks/*.ipynb` → rỗng.
