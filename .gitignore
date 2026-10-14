@@ -37,6 +37,14 @@ data/raw/*.parquet
 !data/raw/.gitkeep
 !data/raw/metadata.json
 
+# ── Generated reports & figures (sinh lại bằng script, không track) ──
+# scripts/verify_claims.py mặc định ghi reports/claim_audit.csv — chạy lại
+# được bất cứ lúc nào, không phải trạng thái cần bàn giao.
+reports/*
+!reports/.gitkeep
+figures/*
+!figures/.gitkeep
+
 # ── Large / generated data files ─────────────────────────────
 data/interim/*.parquet
 data/interim/*.csv
