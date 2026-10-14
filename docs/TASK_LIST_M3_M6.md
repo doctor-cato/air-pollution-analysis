@@ -12,7 +12,10 @@
 ### Tổng quan: 154 task
 
 > **Cột `Task` dưới đây là số checkbox `- [ ]` / `- [x]` đếm trực tiếp trong từng phase của file này**
-> (đo bằng `python -c` quét `^\s*- \[( |x)\]` theo từng mục `## Phase …`).
+> (đo bằng `python -c` quét `^\s*- \[( |x)\]` theo từng mục `## Phase …`), **bao gồm cả task lồng**.
+> Tổng **154** = **125 task có số** (`0.1`, `1.2`, …) + **29 task `D*`** của Phase 1B.
+> Trong 125 task có số có **1 task lồng** duy nhất là `0.7b` (thuộc `0.7`), nên **124 việc cấp
+> cao nhất** — đó là lý do đầu Phase 0 nói "8 việc" trong khi bảng này ghi `9`.
 > Trạng thái hiện tại: **28 đánh dấu `[x]` · 126 `[ ]`**.
 > Các phase M3–M6 (2–11) **chưa bắt đầu** — issue #8–#17 đều đang `OPEN` trên GitHub.
 
@@ -35,7 +38,17 @@
 ⚠️ M3 (Phase 0–4 + 1B.1) chiếm ~20% điểm rubric riêng giữa kỳ nhưng chỉ ~4 buổi — đây là mốc có deadline
 riêng, **không nên hoãn để làm M4 trước**.
 
-### Số liệu thực tế đã kiểm chứng (đọc trực tiếp từ `data/processed/air_pollution_final.parquet`)
+### Số liệu thực tế (đọc trực tiếp từ `data/processed/air_pollution_final.parquet`)
+
+> ⚠️ **Phạm vi của tiêu đề này — đọc trước khi trích dẫn.** Các dòng **số dòng / số cột / tỷ lệ NaN /
+> hệ số tương quan** bên dưới là số **đã kiểm chứng**. Riêng khối **prevalence cảnh báo** nằm trong
+> cùng khối này thì **CHƯA** — nó được đánh dấu ngay tại chỗ bằng ⛔ và xem task **0.7b**.
+>
+> ⚠️ **Vòng review 2026-10-14 KHÔNG chạy lại được** `python scripts/verify_claims.py`:
+> `data/processed/air_pollution_final.parquet` bị `.gitignore` loại trừ và **không có trong clone**.
+> Vì vậy **không số liệu Parquet nào ở đây được xác minh lại trong lượt này** — chúng được giữ
+> nguyên như đã ghi, và mọi số phụ thuộc Parquet vẫn cần chạy lại trên máy có dataset mới được
+> coi là xác minh.
 
 ```text
 9.044 dòng × 18 cột · 261 KB · 1 trạm · 1 địa điểm · 376 ngày (~12,5 tháng) · lưới giờ 24,05 dòng/ngày
@@ -136,7 +149,9 @@ Prevalence cảnh báo (trung bình trượt 24h ≥ 50 µg/m³) — SỐ LIỆU
 
 ## Phase 0 — Dọn nhà trước khi làm M3 (~30 phút)
 
-Không làm được gì nếu chưa có nền tảng sạch. 8 việc này phải xong trước M3.
+Không làm được gì nếu chưa có nền tảng sạch. **8 việc cấp cao nhất** (`0.1` → `0.8`) này phải
+xong trước M3. `0.7b` là **task lồng** thuộc `0.7`, nên phase này có **9 checkbox** nhưng
+**8 việc** — xem cột `Task` của bảng tổng quan (đếm cả task lồng).
 
 - [ ] **0.1** ⚪ Về `main`, kiểm tra đồng bộ với `origin/main`, xử lý 13 nhánh local/remote tồn đọng
       (`backup/`, `chore/`, `docs/sync-m2-state`, `feat/issue-3-…` đã merge…) — nếu không cần thì xoá sau khi
