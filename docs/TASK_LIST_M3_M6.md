@@ -472,10 +472,33 @@ Input: `data/processed/air_pollution_final.parquet` (9.044 dòng × 18 cột, gi
 
 - [ ] **2.1** ⚪ Khôi phục pipeline nếu cần: chạy `00` → `01` → `02` → `03_transformation_pipeline`.
       `03_data_cleaning` cần `data/interim/` ở trạng thái **trước** làm sạch.
-- [ ] **2.2** 🟡 Cấu hình font tiếng Việt **một lần, có kiểm chứng tự động** — đặt trong notebook `04` và
-      `src/visualizer.py`. `DejaVu Sans` (mặc định Matplotlib) **không** render được dấu tiếng Việt.
-      Máy đã có: `Segoe UI`, `Arial`, `Calibri`, `Tahoma`, `Verdana`.
-      Kiểm chứng bằng script đọc `artist.get_text()` và assert không có `\ufffd`/ô vuông — **không kiểm bằng mắt**.
+- [ ] **2.2** 🔴 **Cấu hình font tiếng Việt — một lần, kiểm chứng tự động, và PHẢI chạy được trên mọi máy.**
+      Đặt trong `src/visualizer.py`, notebook `04` chỉ import dùng lại (nguồn sự thật chỉ có một chỗ).
+
+      > ⚠️ **Đính chính 2026-10-14 — công việc này được nâng từ 🟡 lên 🔴 vì bản mô tả cũ sai theo
+      > hai hướng, và cái sai thứ hai tạo ra test luôn xanh.**
+      >
+      > 1. **`DejaVu Sans` KHÔNG thiếu dấu tiếng Việt.** Câu "mặc định Matplotlib không render
+      >    được dấu" là **sai**. Đo bằng `fontTools` trên đúng file Matplotlib đóng gói
+      >    (`mpl-data/fonts/ttf/DejaVuSans.ttf`), cmap phủ **77/77** ký tự (toàn bộ bộ chữ Việt
+      >    hoa/thường + `° µ × ÷ ± − – — …`), và `fig.canvas.draw()` không phát cảnh báo nào.
+      > 2. **`artist.get_text()` KHÔNG phát hiện được glyph thiếu.** Matplotlib giữ nguyên chuỗi
+      >    gốc và chỉ thay glyph lúc render — nên `get_text()` **không bao giờ chứa `U+FFFD`**, kể cả
+      >    khi hình vỡ. Đo lại: Arial thiếu `₂` → `get_text()` vẫn trả chuỗi đầy đủ, **0** cảnh báo
+      >    lúc `set_title`, chỉ **4** cảnh báo `"missing from font"` lúc `fig.canvas.draw()`.
+      >    ⇒ Test viết theo cách cũ **xanh 100% dù biểu đồ hỏng** — xanh giả.
+
+      **Cách làm đúng:**
+      - Font **tự dòng lúc chạy** (`font_manager`), không hard-code danh sách tên.
+      - Chuỗi fallback **xếp theo khả năng có mặt trên mọi nền tảng**:
+        `['DejaVu Sans', 'Segoe UI', 'Liberation Sans', 'DejaVu Serif', 'sans-serif']`.
+        `DejaVu Sans` đứng đầu vì Matplotlib đóng gói sẵn theo mọi nền tảng. Các font Windows-only
+        (`Calibri`, `Tahoma`, `Verdana`) chỉ được thử **sau**, không được làm lựa chọn chính.
+      - Kiểm chứng: `fig.canvas.draw()` trong `warnings.catch_warnings(record=True)`, assert **không
+        có** warning khớp `missing from font`, với chuỗi tiếng Việt chứa đủ dấu. **Không** dùng
+        `get_text()` — xem đính chính 2 ở trên.
+      - Assert font **thực sự dùng** qua `font_manager.findfont(...)` để chắc không rơi về
+        fallback im lặng.
 - [ ] **2.3** Tính 4 họ chỉ số cho `pm25` + tất cả biến khí tượng: Mean/Median/Mode; Variance/Std/IQR/Range;
       Skewness/Kurtosis; P10/P25/P50/P75/P90/P95/P99. Mỗi dòng kèm `n` và `n_missing`.
 - [ ] **2.4** Biện luận Mean vs Median dựa trên phân phối thực nghiệm (slide W6: "Shape picks the statistic").
@@ -501,9 +524,12 @@ Input: `data/processed/air_pollution_final.parquet` (9.044 dòng × 18 cột, gi
 - [ ] **3.1** Tạo `src/visualizer.py` — Matplotlib OO API (`fig, ax = plt.subplots()`), bỏ spines top/right,
       làm mờ lưới phụ, chuẩn hóa nhãn trục + đơn vị đo, bảng màu `viridis`/`colorblind`, hàm có tham số hoá.
       Bao gồm cấu hình font tiếng Việt (task 2.2).
-- [ ] **3.2** ⚪ Tạo `tests/test_visualizer.py` — mọi module `src/` hiện có đều có test; `visualizer.py` là
-      module đầu tiên không có. Test tối thiểu: mỗi hàm trả về `Figure`, DPI = 300, không có ô vuông
-      trong text, `bar chart` ylim bắt đầu từ 0.
+- [ ] **3.2** 🔴 Tạo `tests/test_visualizer.py` — mọi module `src/` hiện có đều có test; `visualizer.py` là
+      module đầu tiên không có. Test tối thiểu: mỗi hàm trả về `Figure`, DPI = 300,
+      **`fig.canvas.draw()` không phát warning `missing from font`** cho chuỗi tiếng Việt đủ dấu,
+      và `bar chart` ylim bắt đầu từ 0.
+      ⛔ **Không** viết `assert "�" not in artist.get_text()` — cách đó **luôn đúng** vì Matplotlib
+      giữ nguyên chuỗi gốc, xem đính chính ở task 2.2. Test sẽ xanh ngay cả khi biểu đồ ra ô vuông.
 - [ ] **3.3** FIG-01 — Line chart + trượt 24h & 7d, ngưỡng QCVN 24h **chỉ vẽ trên chuỗi trượt 24h**.
 - [ ] **3.4** FIG-02 — Histogram + KDE, hình dạng phân phối thực nghiệm của `pm25`.
 - [ ] **3.5** FIG-03 — Boxplot `pm25` theo tháng/mùa trong chuỗi quan sát thực tế.
@@ -534,9 +560,15 @@ Input: `data/processed/air_pollution_final.parquet` (9.044 dòng × 18 cột, gi
       dựa trên bao nhiêu dòng (task 1.10) · vì sao thiếu 2023–2024 · vì sao không dùng `pm10`.
 - [ ] **4.4** ⚪ Xác định rõ **3 file `03_`** và thứ tự chạy. Lệnh glob `notebooks/03_*.ipynb` hiện sẽ nuốt cả
       `03_processed_data_preview.ipynb`.
-- [ ] **4.5** Kiểm chứng tái lập tự động: `jupyter nbconvert --to notebook --execute notebooks/00_*.ipynb
-      notebooks/01_*.ipynb notebooks/02_*.ipynb notebooks/03_*.ipynb notebooks/04_*.ipynb` — Restart Kernel
-      & Run All 100% không lỗi.
+- [ ] **4.5** Kiểm chứng tái lập tự động (⛔ **phải chốt danh sách file ở task 4.4 trước** — dùng tên
+      tường minh, **không dùng glob `03_*.ipynb`**):
+      `jupyter nbconvert --to notebook --execute notebooks/00_environment_test.ipynb
+      notebooks/01_data_collection.ipynb notebooks/02_quality_audit.ipynb
+      notebooks/03_data_cleaning.ipynb notebooks/03_transformation_pipeline.ipynb
+      notebooks/04_descriptive_stats.ipynb` — Restart Kernel & Run All 100% không lỗi.
+      ⚠️ Glob `03_*` khớp **3 file**, trong đó `03_processed_data_preview.ipynb` **không thuộc
+      chuỗi chạy chính** theo thứ tự ở `AGENTS.md`; nếu chạy nó, lệnh kiểm chứng sẽ báo kết quả
+      của một notebook không ai dùng.
 - [ ] **4.6** ⚪ Kiểm tra 7 PNG tồn tại, đúng 300 DPI, tiêu đề lấy từ kết quả #8 (quy cách "tiêu đề dạng
       kết luận rút ra từ dữ liệu" ở `roadmap.md:15` và `:277`, chi tiết từng FIG ở `roadmap.md:281–289`;
       **điều kiện thời gian**: phải chạy #8 trước, không hard-code tiêu đề).
