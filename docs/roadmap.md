@@ -653,7 +653,7 @@ Chi tiết luồng thực hiện:
 
 ### E. Final Deliverables (Danh mục Sản phẩm Bàn giao Cuối cùng)
 1. **Repository GitHub chuẩn mực [Issue #1, #15, #17]:**
-   - Hoàn chỉnh cấu trúc thư mục CRISP-DM, mã nguồn module hóa trong `src/` (`data_loader.py`, `cleaning_pipeline.py`, `visualizer.py`).
+   - Hoàn chỉnh cấu trúc thư mục CRISP-DM, mã nguồn module hóa trong `src/` (hiện có `data_collection.py`, `data_quality.py`, `cleaning.py`, `cleaning_pipeline.py`; `visualizer.py` thuộc Issue #9).
    - Chuỗi notebooks đánh số thứ tự từ `00_` đến `07_`, bảo đảm chạy thông suốt từ đầu đến cuối không lỗi unhandled exception trong môi trường sạch.
    - File `requirements.txt` cố định phiên bản các thư viện tương thích Python 3.10+.
    - Git tag chính thức `midterm-submission` [Issue #10] và `final-defense-submission` [Issue #17].
@@ -1353,7 +1353,7 @@ Con số cần đọc đúng: tổng số hàng `pm25` bị `NaN` là **1.549**,
   7. Thực hiện bảo vệ đồ án trước Hội đồng chấm thi môn học và trả lời phản biện cá nhân (Oral Defense / Viva) [Issue #17].
 * **Deliverables:** Toàn bộ repository hoàn chỉnh, git tag `final-defense-submission`, biểu mẫu biên bản bảo vệ `reports/defense_minutes.md`.
 * **Definition of Done (Tiêu chuẩn Kỹ thuật Khách quan):** 
-  - Toàn bộ chuỗi notebook từ 00 đến 06 thực thi thông suốt từ đầu đến cuối không có lỗi unhandled exception.
+  - Toàn bộ chuỗi notebook từ 00 đến 07 thực thi thông suốt từ đầu đến cuối không có lỗi unhandled exception.
   - Cấu trúc repository hợp lệ, không có liên kết hỏng trong tài liệu.
   - Dữ liệu thô được bảo toàn nguyên trạng và có mã băm SHA-256 trong metadata; không có rò rỉ dữ liệu Train/Test.
   - Git tag `final-defense-submission` được tạo thành công và đẩy lên GitHub repository.

@@ -3,7 +3,9 @@
 > Sinh ra từ việc đối chiếu 6 slide tóm tắt trong Obsidian vault `CMC/datascience`
 > (W6, W7, W9, W10, W11, W12) với `docs/roadmap.md` và nội dung issue #8–#17 trên GitHub.
 >
-> **Ngày lập:** 2026-10-07 · **Sửa đợt 2:** 2026-10-07 (hiệu chỉnh sau khi đối chiếu số liệu thật).
+> **Ngày lập:** 2026-10-07 · **Sửa đợt 2:** 2026-10-07 · **Sửa đợt 3:** 2026-10-14
+> (đính chính trích dẫn roadmap, trạng thái M3–M6, định nghĩa nhãn cảnh báo, và bỏ các
+> khẳng định kết quả thực nghiệm chưa có bằng chứng thực thi).
 > **Trạng thái repo:** nhánh `docs/audit-delivery`.
 >
 > **Ký hiệu ưu tiên:** 🔴 bắt buộc (thay đổi kết luận khoa học hoặc là điểm chấm) ·
@@ -111,7 +113,7 @@ Prevalence cảnh báo (trung bình trượt 24h ≥ 50 µg/m³) — SỐ LIỆU
 | **(a)** | `1.655 / 5.317` | *"Trong số giờ **có thể đo được**, bao nhiêu % vượt ngưỡng?"* | Báo cáo độ nhạy / tỷ lệ **trong tập có nhãn**. Giống cách `roadmap.md:990–997` đã chốt cho nhãn nặng. |
 | **(b)** | `1.655 / 9.044` | *"Trên **toàn bộ thời gian**, bao nhiêu % thời điểm vượt ngưỡng?"* | Báo cáo tỷ lệ thời gian. Nhưng phần thời gian **không đo được** (nguồn ngừng gửi) bị tính vào mẫu số → **hạ thấp** tỷ lệ. |
 
-> Chọn (a) là đồng nhất với nguyên tắc `roadmap.md:990–997` đã ban hành cho nhãn nặng.
+> Chọn (a) là đồng nhất với nguyên tắc `roadmap.md:1015` đã ban hành cho nhãn nặng.
 > Chọn (b) lại khớp với các con số **đang được in** trong tài liệu này.
 > **Hai lựa chọn đều có tiền lệ** → **không tự chọn**, xem task **0.7b**.
 
@@ -124,14 +126,14 @@ Prevalence cảnh báo (trung bình trượt 24h ≥ 50 µg/m³) — SỐ LIỆU
 >
 > | Tài liệu | Nhãn | Ngưỡng | Mẫu số | Kết quả |
 > |---|---|---|---|---|
-> | `roadmap.md:984, :997` | **nhãn nặng** | `pm25 > 100` **tức thời theo giờ** | dòng **có nhãn** `pm25` (đã chốt tại `roadmap.md:990–997`) | Train `295/4.279` = **6,89%** · Test `99/3.216` = **3,08%** |
+> | `roadmap.md:1002, :1015` | **nhãn nặng** | `pm25 > 100` **tức thời theo giờ** | dòng **có nhãn** `pm25` (đã chốt tại `roadmap.md:990–997`) | Train `295/4.279` = **6,89%** · Test `99/3.216` = **3,08%** |
 > | `TASK_LIST_M3_M6.md` | **cảnh báo** | trung bình **trượt 24h** ≥ 50 µg/m³ | ⚠️ chưa chốt — xem trên | Train `986/2.994` · Test `669/2.323` |
 >
 > Nguồn định nghĩa: `notebooks/03_transformation_pipeline.ipynb` cell 11
 > (`gio>50` / `gio>100` trên **nồng độ tức thời theo giờ**) và cell 13 (mốc cắt `2026-01-15`).
 >
 > ⚠️ **Giới hạn còn lại:** con số cuối cùng cho nhãn cảnh báo **chưa xác định** cho tới khi
-> mẫu số được chốt. `docs/roadmap.md:990–997` đã cảnh báo đúng cái bẫy này cho nhãn nặng
+> mẫu số được chốt. `docs/roadmap.md:1011` đã cảnh báo đúng cái bẫy này cho nhãn nặng
 > (*"một tỷ lệ không nên chia cho các dòng mà nó không đo được"*) nhưng chưa áp cho nhãn
 > trượt 24h. Xem task **0.7** và `docs/PLAN_MIDTERM_RESCHEDULE_PR36.md` §4 D2 Phase B.
 
@@ -139,7 +141,7 @@ Prevalence cảnh báo (trung bình trượt 24h ≥ 50 µg/m³) — SỐ LIỆU
 
 | Mục | Ký hiệu cũ | Mới | Lý do |
 |---|---|---|---|
-| Bonferroni / multiple testing | 🔴 | 🟡 | Chỉ 3 kiểm định trên **các câu hỏi khác nhau**, không phải "đo 20 chỉ số gần giống nhau" như slide W9 cảnh báo. Hiệu ứng lớn trên n=7.372 → p-value hiệu chỉnh vẫn < 0,001. **Không thay đổi kết luận.** |
+| Bonferroni / multiple testing | 🔴 | 🟡 | Chỉ 3 kiểm định trên **các câu hỏi khác nhau**, không phải "đo 20 chỉ số gần giống nhau" như slide W9 cảnh báo. **Hiệu ứng hiệu chưa đo** — 3 kiểm định của #11 (task 5.1–5.6) còn `[ ]`, `notebooks/05_statistical_inference.ipynb` chưa tồn tại, và không có script nào tính p-value. ⇒ **Không khẳng định "hiệu chỉnh không làm thay đổi kết luận"** cho tới khi có output thật; chỉ chốt được AC là *báo cáo p-value thô và p-value hiệu chỉnh cạnh nhau*. |
 | Base Rate Fallacy | 🔴 | 🟡 *(viết lại)* | Slide dùng ví dụ bệnh **0,1%**. Ở đây prevalence **chưa xác minh** — khoảng **18,3%–31,1%** tuỳ mẫu số (xem "Số liệu thực tế"), nên **DummyClassifier chưa từng được huấn luyện** và không có accuracy nào là đo được. Bẫy Accuracy 99% **không nguy hiểm**; vấn đề thật là **dịch chuyển prevalence Train → Test**. Chi tiết + điều kiện: task **1.2**. |
 | 4 sai lầm p-value, CI, Type I/II, Power | 🔴 | ⚪ *(chuyển)* | Là **kiến thức viva**, thuộc `docs/viva_qa_prep.md` (#16). Không phải deliverable của #11 — ép vào notebook là sai chỗ. |
 | 5V + ngưỡng GB | 🔴 | 🟡 *(nhẹ)* | 261 KB vs ngưỡng 10 GB — lệch 4 bậc độ lớn. Ghi thẳng con số, không diễn giải dài. |
@@ -179,10 +181,11 @@ xong trước M3. `0.7b` là **task lồng** thuộc `0.7`, nên phase này có 
       scikit-learn **đã có sẵn** trong `requirements.txt`. Thêm `shap` (dự phòng ~60 MB + phụ thuộc) chỉ để
       lấy cùng một thông tin là YAGNI. Nếu sau này cần SHAP cho mô hình hộp đen thì thêm lúc đó.
 - [ ] **0.6** ✅ **Đã kiểm chứng** — `nbclient`, `nbconvert`, `nbformat` đều có trong env.
+      ⬜ **Vẫn chưa tick** vì còn phần "kiểm tra *Restart Kernel & Run All* sạch" của task 4.5 chưa chạy.
       Lệnh `nbconvert --execute` của task 4.5 chạy được ngay.
 - [x] **0.7** ✅ **Đã kiểm chứng 2026-10-12** bằng `python scripts/verify_claims.py`.
       Kết quả: **không có sai lệch ~7×** — `roadmap.md` và task list đo **hai nhãn khác nhau**.
-      * `roadmap.md:984` = nhãn nặng `pm25 > 100` **tức thời theo giờ**, mẫu số dòng có nhãn
+      * `roadmap.md:1002` = nhãn nặng `pm25 > 100` **tức thời theo giờ**, mẫu số dòng có nhãn
         → Train `295/4.279` = **6,89%**, Test `99/3.216` = **3,08%**. Tái lập khớp **từng con số**.
       * Task list = cảnh báo trung bình **trượt 24h** ≥ 50 → **tử số 986 / 669 / 1.655 chỉ
         tái lập được DƯỚI GIẢ ĐỊNH** `rolling(24, min_periods=24)`, mà giả định này không có mã.
@@ -219,7 +222,7 @@ xong trước M3. `0.7b` là **task lồng** thuộc `0.7`, nên phase này có 
            đơn vị, và cách xử lý `NaN` — đủ để người khác tái lập đúng.
         4. **Ghi rõ mẫu số được chọn kèm lý do** trong báo cáo, theo đúng câu chữ ở bảng
            "Ý nghĩa của hai mẫu số" phía trên. Mọi tỷ lệ khác trong tài liệu phải dùng
-           **cùng một mẫu số** (quy tắc đã có tại `roadmap.md:997`).
+           **cùng một mẫu số** (quy tắc đã có tại `roadmap.md:1015`).
         5. **`python scripts/verify_claims.py` chạy exit 0** và in ra đúng con số đã chốt —
            với nhãn lấy từ **hàm trong `src/`**, không phải từ phép tính trong script.
 
@@ -306,7 +309,7 @@ vì khi đã viết xong thì phải viết lại cả notebook.
       `sklearn.inspection.permutation_importance` (đo trên **tập Test**). Deliverable:
       `figures/feature_importance.png` + bảng xếp hạng trong `docs/classification_findings.md` (task D13).
 - [x] **1.10** 🟡 **Issue #8** — mỗi chỉ số phải kèm `n` quan sát + `n_missing`.
-      Roadmap `:1038`: `pm25` còn NaN ở **1.549 hàng** (1.289 khối dài + 260 khối ngắn). Không có AC nào nói
+      Roadmap `:1146` và `:1155`: `pm25` còn NaN ở **1.549 hàng** (1.289 khối dài + 260 khối ngắn). Không có AC nào nói
       thống kê mô tả dựa trên 7.495 dòng hay 5.946 dòng.
 - [x] **1.11** 🟡 **Issue #8** — báo cáo độ bao phủ từng biến khí tượng trước khi tính tương quan.
       Ma trận Pearson/Spearman trên tập thiếu dữ liệu không phải ma trận trên Parquet đã đóng băng.
@@ -393,7 +396,7 @@ thực hiện tốt: mỗi issue đều kèm 1 tài liệu sinh ra từ code th�
       sang `M1_M3`, sinh `docs/bao_cao_tien_do_M1_M3.docx`. Hiện tên file cứng `bao_cao_tien_do_M1_M2.docx`
       và nội dung chỉ đọc trạng thái M1–M2.
       ⚠️ Lưu ý: `.docx` **không tái lập được theo byte** (`python-docx` ghi timestamp vào `docProps/core.xml`)
-      → sinh lại rồi commit thẳng, không dùng `git diff` để kết luận (README:260 đã ghi nhận).
+      → sinh lại rồi commit thẳng, không dùng `git diff` để kết luận (README:269 đã ghi nhận).
 - [ ] **D10** ⚪ `README.md` §7 — kiểm tra tuyên bố AI còn khớp thực tế sau khi dùng AI viết
       notebook #4–#7 và tài liệu M3–M5.
 

@@ -44,7 +44,7 @@ Mọi `data/raw/*.parquet` và `data/processed/*.parquet` đều gitignore →
 | `src/data_quality.py` | 724 | Kiểm toán 6 chiều, taxonomy missingness | `run_quality_audit_pipeline()`, `audit_six_dimensions()` |
 | `src/cleaning.py` | 1805 | 16 bước làm sạch tất định | `run_deterministic_cleaning()`, `assert_no_imputation()` |
 | `src/cleaning_pipeline.py` | 1069 | Merge AQ↔WX, split thời gian, sklearn pipeline chống rò rỉ | `freeze_dataset_with_audit()`, `validate_no_leakage()` |
-| **Tổng** | **4832** | | |
+| **Tổng** | **4831** | | |
 
 ### 6 file test (311 test)
 

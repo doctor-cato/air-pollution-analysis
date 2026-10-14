@@ -302,6 +302,6 @@ Select-String -Path .agents/workflows/notebook.md -Pattern '0[0-9]_'
 | PR đang mở | #35 (docs sync, chưa review) |
 | Test suite | 311 test, 6.534s, OK |
 | Coverage tool | **không có** |
-| LOC `src/` | 4832 (cleaning 1805 · data_collection 1233 · cleaning_pipeline 1069 · data_quality 724) |
+| LOC `src/` | 4831 (cleaning 1805 · data_collection 1233 · cleaning_pipeline 1069 · data_quality 724) |
 | LOC `tests/` | 3923 |
 | Issue | 18 (8 đóng, 10 mở) · PR 18 (13 merged, 3 closed, 1 open, 1 chưa có nội dung) |

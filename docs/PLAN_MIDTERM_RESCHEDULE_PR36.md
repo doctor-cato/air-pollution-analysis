@@ -82,13 +82,13 @@
 
 ### 1.4 Tóm tắt tiến độ
 
-**M1 và M2 đã hoàn thành.** 8/19 issue CLOSED, tương ứng đúng 8 issue của hai milestone đầu:
+**M1 và M2 đã hoàn thành.** 8/18 issue CLOSED, tương ứng đúng 8 issue của hai milestone đầu:
 thu thập dữ liệu, kiểm toán chất lượng, làm sạch, tích hợp & đóng gói pipeline. Chuỗi dữ liệu
 `data/raw/` → `data/interim/` → `data/processed/air_pollution_final.parquet` đã đầy đủ, mã
 nguồn `src/` đã có 4 module, 342 unit test pass *(342 là ước lượng lúc soạn; đo lại ở
 `2dbca74` là **351** — xem §0)*.
 
-**M3–M6 chưa bắt đầu.** 11/19 issue còn OPEN, không issue nào trong nhóm này đã đóng.
+**M3–M6 chưa bắt đầu.** 10/18 issue còn OPEN, không issue nào trong nhóm này đã đóng.
 `notebooks/0[4-7]` chưa có file nào, `figures/` 0/7 biểu đồ, `reports/` chưa có báo cáo.
 
 **Hệ quả đối với báo cáo giữa kỳ:** #10 phụ thuộc #8 và #9 — cả hai đều chưa bắt đầu — nên
@@ -286,7 +286,7 @@ Milestone 2 hoàn tất – chuẩn bị Milestone 3 (EDA)
 
 | Nguồn | Nhãn | Ngưỡng | Mẫu số | Train | Test |
 |---|---|---|---|---|---|
-| `roadmap.md:984`, `:997` | **nhãn nặng** | `pm25 > 100` tức thời theo giờ | dòng **có nhãn** `pm25` | `295/4.279` = 6,89% | `99/3.216` = 3,08% |
+| `roadmap.md:1002`, `:1015` | **nhãn nặng** | `pm25 > 100` tức thời theo giờ | dòng **có nhãn** `pm25` | `295/4.279` = 6,89% | `99/3.216` = 3,08% |
 | `TASK_LIST_M3_M6.md:42–43` | **cảnh báo** | trung bình **trượt 24h** `≥ 50 µg/m³` | dòng rolling hợp lệ | `986/2.994` | `669/2.323` |
 
 **Bằng chứng nguồn gốc:** `notebooks/03_transformation_pipeline.ipynb` cell 11 tính
@@ -298,10 +298,10 @@ Milestone 2 hoàn tất – chuẩn bị Milestone 3 (EDA)
 
 ```text
 A) nhan nang = pm25 > 100 (tu thoi theo gio), mau so = dong co nhan
-   Train  295/4279 = 6.89%   ← khớp roadmap:984 (6,89%)
-   Test    99/3216 = 3.08%   ← khớp roadmap:984 (3,08%)
+   Train  295/4279 = 6.89%   ← khớp roadmap:1002 (6,89%)
+   Test    99/3216 = 3.08%   ← khớp roadmap:1002 (3,08%)
    (mẫu số toàn bộ dòng: Train 295/4682 = 6.30%, Test 99/4362 = 2.27%
-    ← khớp luôn dòng thứ hai của roadmap:985)
+    ← khớp luôn dòng kế tiếp, roadmap:1003)
 
 B) trung binh truot 24h >= 50
    Train  986/2994 = 32.93%   ← TASK_LIST ghi 21,06%  ❌
@@ -326,7 +326,7 @@ B) trung binh truot 24h >= 50
 → Tài liệu **viết** phân số theo mẫu số rolling-hợp-lệ nhưng **tính** phần trăm theo mẫu số
 toàn bộ dòng. Tử số và mẫu số viết ra **đều tái lập đúng**; sai là **phần trăm**.
 
-Đây đúng là cái bẫy mà `roadmap.md:990–997` đã cảnh báo: *"một tỷ lệ không nên chia cho các
+Đây đúng là cái bẫy mà `roadmap.md:1011` đã cảnh báo: *"một tỷ lệ không nên chia cho các
 dòng mà nó không đo được"*.
 
 **Phase A — kiểm kê claim sơ bộ** *(làm được ngay)*
@@ -355,7 +355,7 @@ dòng mà nó không đo được"*.
 | **B3-a** | mẫu số = **toàn bộ dòng** (kể cả dòng không đo được) | `986/4.682` = 21,06% | `669/4.362` = 15,34% | con số **hiện đang in** trong `TASK_LIST_M3_M6.md:42–43` |
 | **B3-b** | mẫu số = **dòng rolling hợp lệ** | `986/2.994` = 32,93% | `669/2.323` = 28,80% | phân số **đang viết** trong cùng tài liệu |
 
-`roadmap.md:990–997` đã cảnh báo chính cái bẫy này và chọn mẫu số "dòng đo được" cho
+`roadmap.md:1011` đã cảnh báo chính cái bẫy này và chọn mẫu số "dòng đo được" cho
 **nhãn nặng**. Nhưng đó là cho nhãn `>100`, chưa áp cho nhãn trượt 24h.
 → **Không tự chọn.** Cần GV xác nhận khi phát triển #13, vì nó quyết định cách báo cáo Recall.
 
@@ -390,7 +390,7 @@ dòng mà nó không đo được"*.
       đã kiểm chứng. **Không thay bộ này bằng bộ kia khi chưa rõ nguyên nhân.**
 - [ ] **D.2** Ghi sai lệch + cách giải quyết vào `docs/history/03_audit_findings.md`, kèm **cả
       hai** giá trị trước/sau.
-- [ ] **D.3** Mọi tỷ lệ được trích phải có tử số + mẫu số + công thức (theo `roadmap.md:997`).
+- [ ] **D.3** Mọi tỷ lệ được trích phải có tử số + mẫu số + công thức (theo `roadmap.md:1015`).
 - [ ] **D.4** Thêm test giữ claim cốt lõi. ⚠️ **Cấm làm claim "đúng" chỉ bằng cách đổi giá trị
       kỳ vọng trong test.**
 
@@ -428,7 +428,7 @@ MISMATCH  "5 bien khi tuong" -> Parquet co 6 cot: temperature, relative_humidity
 
 ### D4 — Độ bao phủ test runtime log
 
-✅ Đã kiểm chứng trên `tests/test_pipeline_runtime_log.py` (31 test):
+✅ Đã kiểm chứng trên `tests/test_pipeline_runtime_log.py` (40 test):
 
 | Trường hợp GV nêu | Trạng thái | Test hiện có |
 |---|---|---|
@@ -836,8 +836,8 @@ tình trạng: *đã làm được những gì, chưa làm gì, còn vướng g�
 |---|---|
 | Branch / HEAD | `docs/audit-delivery` / `759a9c6` |
 | Working tree trước lượt này | `M notebooks/03_processed_data_preview.ipynb` (có sẵn, 72/72 dòng) |
-| Issue CLOSED | #1 #2 #19 #3 #4 #5 #6 #7 — **8/19** |
-| Issue OPEN | #8 #9 #10 #11 #12 #13 #14 #15 #16 #17 — **11/19**, gồm **toàn bộ M3–M6** |
+| Issue CLOSED | #1 #2 #19 #3 #4 #5 #6 #7 — **8/18** |
+| Issue OPEN | #8 #9 #10 #11 #12 #13 #14 #15 #16 #17 — **10/18**, gồm **toàn bộ M3–M6** |
 | Notebook `0[4-7]*` | **0 file** |
 | `figures/` | chỉ `.gitkeep` — 0/7 biểu đồ |
 | `reports/` | chỉ `.gitkeep` — chưa có báo cáo |

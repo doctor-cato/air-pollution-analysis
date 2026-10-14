@@ -237,8 +237,8 @@ UNVERIFIABLE_CLAIMS: List[tuple] = []
 DENOMINATOR_CONFLICTS = [
     {
         "label": "nhãn nặng  pm25 > 100 (tức thời)",
-        "source": "docs/roadmap.md:984, :997",
-        "reason": "Tài liệu đã CHỐT mẫu số = dòng có nhãn pm25, kèm lý do tại roadmap.md:990-997.",
+        "source": "docs/roadmap.md:1002, :1015",
+        "reason": "Tài liệu đã CHỐT mẫu số = dòng có nhãn pm25, kèm lý do tại roadmap.md:1011 và :1015.",
         "decided": True,
         "variants": [
             ("denominator_labelled", "dòng có nhãn pm25"),
@@ -305,9 +305,9 @@ def report_prevalence(df: pd.DataFrame, out: Any) -> None:
         print(f"[nhãn nặng pm25>100] {part_name}")
         print(f"   tử số                       : {s['numerator']}")
         print(f"   {_pct(s['numerator'], s['denominator_labelled'])}   "
-              f"(mẫu số = dòng có nhãn)  ← roadmap.md:984 dùng mẫu số này")
+              f"(mẫu số = dòng có nhãn)  ← roadmap.md:1002 dùng mẫu số này")
         print(f"   {_pct(s['numerator'], s['denominator_all'])}   "
-              f"(mẫu số = toàn bộ dòng) ← roadmap.md:985 nêu để phân biệt")
+              f"(mẫu số = toàn bộ dòng) ← roadmap.md:1003 nêu để phân biệt")
         print()
 
     for part_name, part in (("Train", train), ("Test", test)):

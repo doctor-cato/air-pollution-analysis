@@ -28,6 +28,14 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 3. **Mô hình hóa hồi quy giải thích:** Định lượng mức độ liên hệ của nhiệt độ, độ ẩm, tốc độ gió, áp suất lên nồng độ bụi thông qua hồi quy OLS (kèm chẩn đoán 4 giả định LINE).
 4. **Mô hình phân loại cảnh báo sớm:** Xây dựng bài toán phân loại cảnh báo đợt ô nhiễm dựa trên nồng độ $\text{PM}_{2.5}$ trung bình 24 giờ tổng hợp (tham chiếu ngưỡng quy chuẩn QCVN 05:2023/BTNMT là $45\,\mu\text{g/Nm}^3$ áp dụng từ 01/01/2026, kèm bước chuẩn hóa tương thích giữa đơn vị quan trắc $\mu\text{g/m}^3$ thực tế và $\mu\text{g/Nm}^3$ quy chuẩn), tối ưu hóa Recall và PR-AUC theo mục tiêu vận hành bảo vệ sức khỏe cộng đồng.
 
+> ⛔ **Ngưỡng cảnh báo CHƯA CHỐT — `UNVERIFIED`.** Câu trên trích **45 µg/Nm³ từ 01/01/2026**,
+> trong khi `docs/roadmap.md` (FIG-01, §7.1 quy tắc 2, §8.3, §10.1, Week 11) dùng **50 µg/m³**.
+> Hai nguồn chuẩn trong cùng repo đang định nghĩa **hai ngưỡng khác nhau** — và mốc cắt chuỗi là
+> `2026-01-15`, tức phần lớn tập Test nằm **sau** 01/01/2026, nên ngưỡng nào áp dụng thay đổi
+> kết quả. **Không dùng con số nào làm căn cứ kết luận** cho tới khi task
+> **`0.7b`** (`docs/TASK_LIST_M3_M6.md`) chốt được định nghĩa nhãn: window · `min_periods` · ngưỡng ·
+> đơn vị $\mu\text{g/m}^3$ vs $\mu\text{g/Nm}^3$ · và mẫu số.
+
 ---
 
 ## 2. Hiện trạng Triển khai vs. Kế hoạch Lộ trình
