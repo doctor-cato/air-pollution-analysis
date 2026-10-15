@@ -232,7 +232,10 @@ Theo tiêu chuẩn phân tích dữ liệu thực nghiệm, mọi biến liên t
 3. **Shape (Hình dạng phân phối):**  
    - *Skewness:* Hệ số bất đối xứng Fisher-Pearson hiệu chỉnh cỡ mẫu ($g_1$). Giá trị $> 1,0$ chỉ ra phân phối lệch phải nghiêm trọng.
    - *Kurtosis:* Hệ số độ nhọn Fisher excess kurtosis ($g_2$, trong đó phân phối Chuẩn có Kurtosis $= 0$). Giá trị $> 0$ khẳng định đuôi dày (leptokurtic).
-4. **Quantiles (Phân vị chuẩn tắc):** $P_{10}, P_{25}, P_{50}, P_{75}, P_{90}, P_{95}, P_{99}$. Trong đó $P_{50}$ phải trùng khớp toán học với Median.""")
+4. **Quantiles (Phân vị chuẩn tắc):** $P_{10}, P_{25}, P_{50}, P_{75}, P_{90}, P_{95}, P_{99}$. Trong đó $P_{50}$ phải trùng khớp toán học với Median.
+
+> [!WARNING] **Lưu ý Đặc biệt về Biến Hướng Gió (`wind_direction` — Circular Variable):**  
+> `wind_direction` là biến góc tuần hoàn trên đường tròn đơn vị $\\mathbb{S}^1$ ($0^\\circ \\equiv 360^\\circ$). Phép tính trung bình số học tuyến tính (Linear Mean) sẽ tạo ra sai số bản chất: ví dụ hai hướng gió $350^\\circ$ (Bắc - Tây Bắc) và $10^\\circ$ (Bắc - Đông Bắc) có trung bình tuyến tính là $180^\\circ$ (hướng Nam — ngược $180^\\circ$!), trong khi trung bình hướng thực tế là $0^\\circ$ (Bắc). Do đó, chúng tôi bổ sung **Circular Mean** và **Circular Standard Deviation** (theo Thống kê Hướng học — Mardia & Jupp, 2000), đồng thời ghi chú rõ ràng giới hạn của các thống kê tuyến tính.""")
 
 # ---------------------------------------------------------------------------
 # CELL 9: 4 Families Code
@@ -291,6 +294,21 @@ for var in CONTINUOUS_VARIABLES:
     p95 = float(series.quantile(0.95))
     p99 = float(series.quantile(0.99))
     
+    # 5. Circular Statistics (Chuyên biệt cho biến góc chu kỳ)
+    if var == "wind_direction":
+        circ_mean_val = float(stats.circmean(series, high=360, low=0))
+        circ_std_val = float(stats.circstd(series, high=360, low=0))
+        var_notes = (
+            "Biến góc chu kỳ (0°≡360°). Mean/std tuyến tính (147.18°/95.36°) có độ lệch lớn "
+            "so với circular mean (107.12° - hướng ESE) và circular std (82.32°). "
+            "Các thống kê tuyến tính (median, quantiles, skewness, kurtosis) phụ thuộc điểm cắt 0° quy ước "
+            "nên chỉ mang tính tham khảo hình thức, không phản ánh đúng hướng luồng gió thực tế."
+        )
+    else:
+        circ_mean_val = np.nan
+        circ_std_val = np.nan
+        var_notes = ""
+    
     profile_records.append({
         "variable": var,
         "n": n_valid,
@@ -316,24 +334,119 @@ for var in CONTINUOUS_VARIABLES:
         "p90": p90,
         "p95": p95,
         "p99": p99,
+        "circular_mean": circ_mean_val,
+        "circular_std": circ_std_val,
+        "notes": var_notes,
     })
 
 profile_df = pd.DataFrame(profile_records)
 
 # Định dạng bảng hiển thị trực quan
-pd.set_option("display.max_columns", 25)
+pd.set_option("display.max_columns", 30)
 display(profile_df)
 """)
 
 # ---------------------------------------------------------------------------
-# CELL 10: Export Markdown
+# CELL 10: Circular Statistics Deep Dive Markdown
+# ---------------------------------------------------------------------------
+add_md("""### 3.1. Phân tích Chuyên biệt: Thống kê Hướng học cho Biến Hướng Gió (`wind_direction` — Circular Statistics)
+
+> [!WARNING] **Bản chất Hình học của Biến Hướng Gió trên Đường tròn Đơn vị $\\mathbb{S}^1$:**
+> Hướng gió là đại lượng góc tuần hoàn ($0^\\circ \\equiv 360^\\circ$). Thống kê số học thông thường xem các số đo như nằm trên trục số thực $\\mathbb{R}$, dẫn đến sự sai lệch nghiêm trọng khi góc dao động qua mốc $0^\\circ$ (hướng Bắc).
+>
+> **Giải pháp Thống kê Hướng học (Directional Statistics - Mardia & Jupp, 2000):**
+> 1. Chuyển đổi từng góc quan sát $\\theta_i$ thành vector đơn vị $(\\cos \\theta_i, \\sin \\theta_i)$.
+> 2. Tính tọa độ trung bình trọng tâm: $\\bar{C} = \\frac{1}{n}\\sum \\cos \\theta_i$, $\\bar{S} = \\frac{1}{n}\\sum \\sin \\theta_i$.
+> 3. Độ dài vector kết quả trung bình: $\\bar{R} = \\sqrt{\\bar{C}^2 + \\bar{S}^2} \\in [0, 1]$. Đại lượng $\\bar{R}$ đo lường mức độ tập trung định hướng: $\\bar{R} \\to 1$ nghĩa là gió tập trung tuyệt đối vào một hướng, còn $\\bar{R} \\to 0$ nghĩa là gió phân tán hỗn loạn đồng đều mọi hướng.
+> 4. **Circular Mean:** $\\bar{\\theta}_{\\text{circ}} = \\text{atan2}(\\bar{S}, \\bar{C}) \\pmod{360^\\circ}$.
+> 5. **Circular Standard Deviation:** $\\sigma_{\\text{circ}} = \\sqrt{-2 \\ln(\\bar{R})} \\times \\frac{180^\\circ}{\\pi}$ (hoặc thông qua `scipy.stats.circstd(high=360, low=0)`).""")
+
+# ---------------------------------------------------------------------------
+# CELL 11: Circular Wind Direction Code & Wind Rose Visualization
+# ---------------------------------------------------------------------------
+add_code("""wd_series = df["wind_direction"].dropna()
+linear_mean_wd = float(wd_series.mean())
+linear_std_wd = float(wd_series.std())
+circ_mean_wd = float(stats.circmean(wd_series, high=360, low=0))
+circ_std_wd = float(stats.circstd(wd_series, high=360, low=0))
+
+# Tính Mean Resultant Vector Length R
+rad = np.radians(wd_series)
+S = np.sin(rad).mean()
+C = np.cos(rad).mean()
+R_mean = float(np.hypot(S, C))
+
+# Phân bố tần suất theo 16 hướng la bàn chính
+compass_labels = [
+    "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+    "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"
+]
+bins_16 = np.linspace(0, 360, 17)
+# Đổi góc sao cho bin đầu tiên tập trung quanh 0° (Bắc): [-11.25, 11.25)
+shifted_wd = (wd_series + 11.25) % 360
+counts, _ = np.histogram(shifted_wd, bins=bins_16)
+
+# Vẽ biểu đồ Polar Wind Rose
+fig, ax = plt.subplots(figsize=(8, 8), subplot_kw={"projection": "polar"})
+ax.set_theta_direction(-1)  # Chiều kim đồng hồ
+ax.set_theta_zero_location("N")  # 0° ở hướng Bắc
+
+# Góc cho từng thanh (16 hướng)
+theta_centers = np.radians(np.linspace(0, 360 - 22.5, 16))
+width = np.radians(22.5)
+
+bars = ax.bar(
+    theta_centers, counts, width=width, bottom=0.0,
+    color="#2b5c8f", alpha=0.75, edgecolor="white"
+)
+ax.set_xticks(theta_centers)
+ax.set_xticklabels(compass_labels, fontsize=10, fontweight="bold")
+
+# Vẽ vector Circular Mean
+circ_mean_rad = np.radians(circ_mean_wd)
+ax.annotate(
+    "", xy=(circ_mean_rad, counts.max() * 0.95), xytext=(0, 0),
+    arrowprops=dict(facecolor="#d62728", edgecolor="#d62728", width=3, headwidth=10)
+)
+
+# Vẽ vector Linear Mean để đối chiếu sự sai lệch
+linear_mean_rad = np.radians(linear_mean_wd)
+ax.annotate(
+    "", xy=(linear_mean_rad, counts.max() * 0.75), xytext=(0, 0),
+    arrowprops=dict(facecolor="#ff7f0e", edgecolor="#ff7f0e", width=2, headwidth=8, linestyle="--")
+)
+
+ax.set_title(
+    f"Phân bố Hướng gió & So sánh Trọng tâm Góc (N = {len(wd_series):,})\\n"
+    f"Circular Mean = {circ_mean_wd:.1f}° (ESE) vs Linear Mean = {linear_mean_wd:.1f}° (SSE) — Lệch {abs(linear_mean_wd - circ_mean_wd):.1f}°\\n"
+    f"Mean Resultant Vector R = {R_mean:.3f} | Circular Std = {circ_std_wd:.1f}°",
+    fontsize=11, fontweight="bold", pad=15
+)
+
+plt.tight_layout()
+plt.show()
+
+print("BẢNG ĐỐI CHIẾU THỐNG KÊ HƯỚNG GIÓ (WIND DIRECTION):")
+print(f"  1. Linear Mean:               {linear_mean_wd:.2f}° (Nam Đông Nam - SSE)")
+print(f"  2. Circular Mean (circmean):   {circ_mean_wd:.2f}° (Đông Đông Nam - ESE)")
+print(f"     -> Sai lệch do trung bình số học: {abs(linear_mean_wd - circ_mean_wd):.2f}° (gây sai lệch nhận định luồng gió)")
+print(f"  3. Circular Std (circstd):     {circ_std_wd:.2f}°")
+print(f"  4. Linear Std:                 {linear_std_wd:.2f}°")
+print(f"  5. Mean Resultant Length (R):  {R_mean:.4f} (Độ định hướng tập trung của gió tại trạm)")
+print("  6. CẢNH BÁO GIỚI HẠN: Các chỉ số tuyến tính (median, quantiles, skewness, kurtosis) của wind_direction")
+print("     phụ thuộc hoàn toàn vào điểm cắt nhân tạo 0° nên không có ý nghĩa vật lý; chỉ có Circular Mean")
+print("     phản ánh chính xác hướng gió thổi trung bình.")
+""")
+
+# ---------------------------------------------------------------------------
+# CELL 12: Export Markdown
 # ---------------------------------------------------------------------------
 add_md("""## 4. Xuất & Kiểm chứng Hồ sơ Thống kê (`reports/statistical_profile.csv`)
 
 Chúng tôi xuất bảng hồ sơ 4 họ chỉ số ra tệp CSV chuẩn hóa `reports/statistical_profile.csv`, sau đó đọc lại độc lập và kiểm tra tính nhất quán toán học nghiêm ngặt theo Acceptance Criteria Section 33.""")
 
 # ---------------------------------------------------------------------------
-# CELL 11: Export & Verification Code
+# CELL 13: Export & Verification Code
 # ---------------------------------------------------------------------------
 add_code("""# Đảm bảo thư mục reports tồn tại
 REPORT_CSV_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -349,11 +462,12 @@ readback_df = pd.read_csv(REPORT_CSV_PATH)
 assert len(readback_df) == 8, f"Số dòng không đúng: {len(readback_df)} != 8"
 assert len(readback_df["variable"].unique()) == 8, "Số biến không đủ 8 biến"
 
-# 2. Kiểm tra các cột bắt buộc
+# 2. Kiểm tra các cột bắt buộc (bao gồm 24 cột gốc + 3 cột bổ sung circular & notes)
 REQUIRED_PROFILE_COLS = [
     "variable", "n", "n_missing", "missing_rate", "mean", "median", "mode",
     "variance", "std", "q1", "q3", "iqr", "range", "min", "max",
-    "skewness", "kurtosis", "p10", "p25", "p50", "p75", "p90", "p95", "p99"
+    "skewness", "kurtosis", "p10", "p25", "p50", "p75", "p90", "p95", "p99",
+    "circular_mean", "circular_std", "notes"
 ]
 for col_req in REQUIRED_PROFILE_COLS:
     assert col_req in readback_df.columns, f"Thiếu cột bắt buộc: {col_req}"
@@ -375,7 +489,20 @@ for _, row in readback_df.iterrows():
         f"Vi phạm thứ tự phân vị tại biến {row['variable']}"
     )
 
-print("✓ Toàn bộ 5 phép kiểm tra tính toàn vẹn toán học của statistical_profile.csv ĐỀU ĐẠT CHUẨN.")
+# 6. Kiểm tra các thống kê góc (Circular Statistics) cho wind_direction
+wd_row = readback_df[readback_df["variable"] == "wind_direction"].iloc[0]
+assert not pd.isna(wd_row["circular_mean"]), "Thiếu circular_mean cho wind_direction"
+assert not pd.isna(wd_row["circular_std"]), "Thiếu circular_std cho wind_direction"
+assert abs(wd_row["circular_mean"] - 107.12) < 0.5, f"circular_mean lệch: {wd_row['circular_mean']}"
+assert abs(wd_row["circular_std"] - 82.32) < 0.5, f"circular_std lệch: {wd_row['circular_std']}"
+assert len(str(wd_row["notes"])) > 20, "Thiếu ghi chú cảnh báo cho wind_direction"
+
+# Các biến không phải circular phải có circular_mean và circular_std là NaN
+non_circ = readback_df[readback_df["variable"] != "wind_direction"]
+assert non_circ["circular_mean"].isna().all(), "circular_mean của biến tuyến tính không phải NaN"
+assert non_circ["circular_std"].isna().all(), "circular_std của biến tuyến tính không phải NaN"
+
+print("✓ Toàn bộ 6 phép kiểm tra tính toàn vẹn toán học và thống kê góc của statistical_profile.csv ĐỀU ĐẠT CHUẨN.")
 """)
 
 # ---------------------------------------------------------------------------
@@ -1021,10 +1148,11 @@ add_md("""## 10. Tổng hợp Phát hiện EDA & Định hướng (Key Findings 
 ### 3. Hạn chế của Nghiên cứu (Study Limitations)
 - **Dữ liệu Đơn trạm (Single Station):** Dữ liệu chỉ phản ánh trạm NCEM 556 Nguyễn Văn Cừ (quận Long Biên, gần trục giao thông cửa ngõ), không đại diện hoàn toàn cho vi khí hậu toàn thành phố Hà Nội.
 - **Gián đoạn Dữ liệu Quan sát:** Chuỗi thời gian bị mất $1.549$ giờ ($17,13\\%$), trong đó có đợt đứt gãy liên tục $630$ giờ (Tháng 6–7/2026), đòi hỏi các phân tích chuỗi thời gian phải kiểm soát cẩn trọng.
+- **Bản chất Dữ liệu Hướng Gió (Circular Wind Direction):** `wind_direction` là biến góc có tính chu kỳ ($0^\\circ \\equiv 360^\\circ$). Thống kê tuyến tính và tương quan Pearson/Spearman tuyến tính chỉ mang tính tham khảo hình thức. Trong các mô hình hồi quy và phân loại tiếp theo (Issue #12, #13), cần sử dụng các thành phần vector trực giao $(u, v)$ hoặc đặc trưng lượng giác $(\\sin \\theta, \\cos \\theta)$ thay vì góc độ thô.
 - **Dữ liệu Quan sát Thực nghiệm:** Mọi tương quan và chênh lệch nhóm chỉ mang tính kết hợp quan sát (observational associations), không thể giải thích cơ chế nhân quả độc lập nếu thiếu mô hình hóa can thiệp.""")
 
 # ---------------------------------------------------------------------------
-# CELL 35: Final Verification Code
+# CELL 37: Final Verification Code
 # ---------------------------------------------------------------------------
 add_code("""# Kiểm tra cuối cùng toàn bộ deliverables của Issue #8
 assert REPORT_CSV_PATH.exists(), "Tệp reports/statistical_profile.csv chưa được tạo!"
@@ -1034,7 +1162,7 @@ print("="*70)
 print("✓ HOÀN THÀNH TOÀN BỘ YÊU CẦU CỦA GITHUB ISSUE #8.")
 print(f"  - Notebook:          notebooks/04_descriptive_stats.ipynb")
 print(f"  - Bảng thống kê CSV: {REPORT_CSV_PATH.relative_to(REPO_ROOT)} ({REPORT_CSV_PATH.stat().st_size:,} bytes)")
-print("  - Toàn bộ 4 họ chỉ số, chu kỳ thời gian đa tầng và tương tác cờ đã được kiểm toán đầy đủ.")
+print("  - Toàn bộ 4 họ chỉ số, chu kỳ thời gian đa tầng, thống kê góc và tương tác cờ đã được kiểm toán đầy đủ.")
 print("="*70)
 """)
 
@@ -1069,4 +1197,18 @@ notebook_json = {
 with open(NOTEBOOK_PATH, "w", encoding="utf-8") as f:
     json.dump(notebook_json, f, indent=1, ensure_ascii=False)
 
-print(f"✓ Đã tạo thành công {NOTEBOOK_PATH} với {len(cells)} cells.")
+print(f"✓ Đã tạo thành công cấu trúc {NOTEBOOK_PATH} với {len(cells)} cells.")
+
+# ---------------------------------------------------------------------------
+# Tự động thực thi notebook từ đầu đến cuối để đảm bảo tính đồng bộ & tái tạo
+# ---------------------------------------------------------------------------
+print("Đang thực thi notebook từ đầu đến cuối (Restart Kernel & Run All)...")
+import nbformat
+from nbclient import NotebookClient
+
+nb_obj = nbformat.read(NOTEBOOK_PATH, as_version=4)
+client = NotebookClient(nb_obj, timeout=600, kernel_name="python3")
+client.execute()
+nbformat.write(nb_obj, NOTEBOOK_PATH)
+print("✓ Notebook đã thực thi 100% không lỗi và đã lưu toàn bộ outputs mới nhất.")
+

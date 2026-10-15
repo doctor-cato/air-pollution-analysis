@@ -48,18 +48,48 @@ check("CSV exists", csv_path.exists())
 check("Parquet exists", parquet_path.exists())
 check("Generator script exists", gen_script.exists())
 
-# ─── 2. Raw data integrity ──────────────────────────────────────────
-print("\n═══ 2. Raw Data Integrity ═══")
+# ─── 2. Provenance & Artifact Integrity ─────────────────────────────
+print("\n═══ 2. Provenance & Artifact Integrity ═══")
 meta_path = ROOT / "data" / "raw" / "metadata.json"
+check("metadata.json exists", meta_path.exists())
 if meta_path.exists():
-    with open(meta_path) as f:
+    with open(meta_path, encoding="utf-8") as f:
         meta = json.load(f)
-    for entry in meta.get("files", meta) if isinstance(meta, list) else [meta]:
-        # Try to find SHA checks
-        pass
-    check("metadata.json exists", True)
+    
+    # Kiểm tra schema version và địa điểm
+    check("metadata.json schema_version is 1.3.0", meta.get("schema_version") == "1.3.0")
+    check("metadata.json target_city is 'Hanoi, Vietnam'", meta.get("target_city") == "Hanoi, Vietnam")
+    
+    # Kiểm tra hợp đồng kích thước artifact đã đăng ký
+    artifact_shapes = (
+        meta.get("collection_pipeline_execution", {})
+        .get("artifact_dtypes", {})
+        .get("shape", {})
+    )
+    expected_processed_shape = artifact_shapes.get("data/processed/air_pollution_final.parquet")
+    check("Registered processed shape in metadata is [9044, 18]", expected_processed_shape == [9044, 18])
+    
+    # Kiểm tra hash SHA-256 của tập dữ liệu phân tích processed
+    if parquet_path.exists():
+        with open(parquet_path, "rb") as f_p:
+            p_sha256 = hashlib.sha256(f_p.read()).hexdigest()
+        check(f"Processed dataset SHA-256 computed ({p_sha256[:16]}...)", len(p_sha256) == 64)
+    
+    # Kiểm tra các tệp raw thô và ghi nhận tính toàn vẹn minh bạch
+    # (data/raw/*.parquet và *.json thuộc .gitignore, lưu ý Parquet không byte-reproducible theo docs/history/02)
+    rec_exec = meta.get("collection_pipeline_execution", {})
+    raw_aq = rec_exec.get("openaq_ingestion", {})
+    raw_aq_file = ROOT / raw_aq.get("raw_file", "")
+    raw_aq_expected_sha = raw_aq.get("raw_sha256")
+    
+    if raw_aq_file.exists():
+        with open(raw_aq_file, "rb") as f_raw:
+            actual_aq_sha = hashlib.sha256(f_raw.read()).hexdigest()
+        print(f"  ℹ Raw OpenAQ payload on disk SHA-256: {actual_aq_sha[:16]}... (recorded in metadata: {raw_aq_expected_sha[:16]}...)")
+    else:
+        print(f"  ℹ Raw OpenAQ payload ({raw_aq.get('raw_file')}) is gitignored and not present on disk.")
 else:
-    warn("metadata.json not found", "cannot verify raw data integrity")
+    warn("metadata.json not found", "cannot verify data provenance")
 
 # ─── 3. CSV structure ───────────────────────────────────────────────
 print("\n═══ 3. CSV Structure ═══")
@@ -71,6 +101,7 @@ if csv_path.exists():
         "q1", "q3", "iqr", "range", "min", "max",
         "skewness", "kurtosis",
         "p10", "p25", "p50", "p75", "p90", "p95", "p99",
+        "circular_mean", "circular_std", "notes"
     ]
     for col in required_cols:
         check(f"CSV has column '{col}'", col in csv.columns, f"missing from {list(csv.columns)}")
@@ -195,6 +226,23 @@ if csv_path.exists() and parquet_path.exists():
         csv_rate = row["missing_rate"]
         check(f"{var}: missing_rate matches", abs(csv_rate - computed_rate) < 0.001,
               f"csv={csv_rate:.4f}, computed={computed_rate:.4f}")
+        
+        # Circular statistics validation
+        if var == "wind_direction":
+            from scipy import stats
+            computed_cmean = float(stats.circmean(series, high=360, low=0))
+            computed_cstd = float(stats.circstd(series, high=360, low=0))
+            csv_cmean = float(row["circular_mean"])
+            csv_cstd = float(row["circular_std"])
+            check(f"{var}: circular_mean matches (csv={csv_cmean:.2f}°, computed={computed_cmean:.2f}°)",
+                  abs(csv_cmean - computed_cmean) < 0.1)
+            check(f"{var}: circular_std matches (csv={csv_cstd:.2f}°, computed={computed_cstd:.2f}°)",
+                  abs(csv_cstd - computed_cstd) < 0.1)
+            check(f"{var}: notes contains circular warning",
+                  isinstance(row["notes"], str) and len(row["notes"]) > 20)
+        else:
+            check(f"{var}: circular_mean is NaN for linear variable", pd.isna(row["circular_mean"]))
+            check(f"{var}: circular_std is NaN for linear variable", pd.isna(row["circular_std"]))
 
 # ─── 5. Dataset sanity ──────────────────────────────────────────────
 print("\n═══ 5. Dataset Sanity ═══")
@@ -227,21 +275,21 @@ if gitignore_path.exists():
           "!reports/statistical_profile.csv" in content,
           "exception line not found")
 
-# ─── 7. Notebook structure ──────────────────────────────────────────
-print("\n═══ 7. Notebook Structure ═══")
+# ─── 7. Notebook structure & Synchronization ─────────────────────────
+print("\n═══ 7. Notebook Structure & Generator Synchronization ═══")
 if nb_path.exists():
     import json
     with open(nb_path, "r", encoding="utf-8") as f:
         nb = json.load(f)
     
     cells = nb.get("cells", [])
-    check(f"Notebook has {len(cells)} cells (≥30)", len(cells) >= 30)
+    check(f"Notebook has {len(cells)} cells (== 37)", len(cells) == 37)
     
     # Check for outputs — notebook should have been executed
     code_cells = [c for c in cells if c["cell_type"] == "code"]
     cells_with_output = [c for c in code_cells if c.get("outputs")]
     check(f"{len(cells_with_output)}/{len(code_cells)} code cells have outputs",
-          len(cells_with_output) > len(code_cells) * 0.5)
+          len(cells_with_output) == len(code_cells))
     
     # Check no error outputs
     error_cells = []
@@ -252,6 +300,12 @@ if nb_path.exists():
     check("No error outputs in notebook", len(error_cells) == 0,
           f"errors in code cells: {error_cells}")
     
+    # Check code content for circular statistics
+    code_text = "\n".join("".join(c["source"]) for c in code_cells)
+    check("Notebook code contains 'stats.circmean'", "stats.circmean" in code_text)
+    check("Notebook code contains 'stats.circstd'", "stats.circstd" in code_text)
+    check("Notebook code contains Polar Wind Rose plot", "projection\": \"polar\"" in code_text or "polar" in code_text)
+    
     # Check markdown content for required sections
     md_cells = [c for c in cells if c["cell_type"] == "markdown"]
     md_text = "\n".join("".join(c["source"]) for c in md_cells)
@@ -259,6 +313,7 @@ if nb_path.exists():
     required_sections = [
         ("Dataset Overview", ["dataset", "overview", "shape"]),
         ("Descriptive Statistics", ["descriptive", "statistic"]),
+        ("Circular Statistics for Wind Direction", ["circular", "hướng gió", "direction"]),
         ("Temporal / Diurnal", ["hour", "diurnal", "temporal"]),
         ("Correlation", ["correlation", "pearson", "spearman"]),
         ("Season", ["season", "mùa"]),
@@ -270,6 +325,12 @@ if nb_path.exists():
     # Check kernel spec
     kernelspec = nb.get("metadata", {}).get("kernelspec", {})
     check("Notebook has kernelspec", bool(kernelspec), "no kernelspec found")
+    
+    # Check synchronization with scripts/generate_04_notebook.py
+    if gen_script.exists():
+        gen_text = gen_script.read_text(encoding="utf-8")
+        check("Generator script defines 37 cells", "CELL 37" in gen_text or "with {len(cells)} cells" in gen_text)
+        check("Generator script has automated execution block", "NotebookClient" in gen_text)
 
 # ─── Summary ────────────────────────────────────────────────────────
 print(f"\n{'='*60}")
