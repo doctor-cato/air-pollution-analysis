@@ -215,7 +215,8 @@ def build_cover(doc: Document) -> None:
             ["Cơ sở dữ liệu thực nghiệm", "OpenAQ S3 (loc 4946811) + Open-Meteo ERA5"],
             ["Giai đoạn", "Milestone 2 hoàn tất – chuẩn bị Milestone 3 (EDA)"],
             ["Issues đã đóng", "#1, #2, #3, #4, #5, #6, #7, #19"],
-            ["Kiểm thử tự động", "393 unit test — PASS; CI workflow; fetch script không cần API key"],
+            ["Kiểm thử tự động", "402 unit test — PASS (local, có data/); CI chạy 398 với "
+                                  "skipped=4 vì repo không commit data/; fetch script không cần API key"],
             ["Tài liệu chuẩn", "docs/roadmap.md, data_dictionary.md, source_profiling_decision.md, "
                               "data_quality_audit.md, cleaning_log.md"],
         ],
@@ -525,7 +526,7 @@ def build_m2_section(doc: Document) -> None:
             "pm25_was_missing bị loại vì rò rỉ target theo cấu trúc; is_high_humidity_fog bị loại "
             "vì chưa có bằng chứng về giá trị dự báo marginal; còn lại là pm25_was_stuck. "
             "Module tự ném lỗi nếu target lọt vào danh sách đặc trưng.",
-# Issue #38: trước đây khối số này là chuỗi hằng kèm nhãn
+            # Issue #38: trước đây khối số này là chuỗi hằng kèm nhãn
             # "⚠️ UNVERIFIED — chưa có mã tái lập". Nay nó được SINH RA từ
             # `src/flag_evidence.fog_flag_evidence()` — fit lại OLS trên dữ liệu
             # thật — nên không còn là hằng, và nhãn UNVERIFIED chỉ còn áp cho
@@ -619,7 +620,7 @@ def build_appendix(doc: Document) -> None:
                          "src/cleaning_pipeline.py, scripts/fetch_dataset.py"],
             ["Notebook", "notebooks/00 (khảo sát), 01 (thu thập), 02 (kiểm toán), "
                         "03 (làm sạch + pipeline biến đổi)"],
-            ["Kiểm thử", "393 unit test — PASS; bao gồm test hồi quy chống tái phát lỗi làm sạch"],
+            ["Kiểm thử", "402 unit test — PASS (local, có data/); bao gồm test hồi quy chống tái phát lỗi làm sạch"],
             ["CI", "GitHub Actions workflow kiểm tra tự động trên mỗi pull request"],
             ["Tái lập dữ liệu", "python scripts/fetch_dataset.py — tải lại từ OpenAQ S3 (ODC-BY) và "
                                 "Open-Meteo ERA5 (CC BY 4.0) không cần API key; cờ --skip-fetch để "

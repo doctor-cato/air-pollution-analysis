@@ -774,12 +774,23 @@ Chi tiết luồng thực hiện:
 >   `#12`, `#13`) **đã được mở lại** và không còn bị chặn.
 > - Các số liệu thực nghiệm nêu trong các báo cáo (#4, #5) là **kết quả của một lần thực thi cụ thể**
 >   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
-> - Bộ kiểm thử hiện gồm **57 + 44 + 114 + 44 + 43 + 9 + 35 + 40 + 7 = 393 unit test tất định**
->   (**393 là số *phát hiện*, giống nhau trên mọi nền tảng**). Số *thực sự thực thi* thì
->   khác: **Windows (có `data/`) 393 chạy / 0 skip**; **Ubuntu CI 393 chạy / `skipped=6` → 387
->   thực thi** (2 test `@unittest.skipUnless(os.name == "nt")` trong
->   `tests/test_pipeline_runtime_log.py`, cộng 4 test trong
->   `tests/test_flag_evidence.py::TestDocumentedReproduction` vì repo **không** commit `data/`).
+> - Bộ kiểm thử hiện gồm **57 + 44 + 114 + 44 + 43 + 9 + 44 + 40 + 7 = 402 unit test tất định**.
+>   Số mà unittest **thực sự chạy và báo cáo** phụ thuộc cả nền tảng lẫn việc có
+>   `data/` hay không — **không phải con số 402 trên mọi nền tảng**:
+>   - **Windows local (có `data/interim/*.parquet`)**: `Ran 402 tests` + `OK` → **402 pass, 0 skip**.
+>   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`)**: `Ran 398 tests` + `OK (skipped=4)`
+>     → **394 pass, 4 skip**.
+>
+>   CI báo **398 chứ không phải 402** vì `TestDocumentedReproduction.setUpClass` ném
+>   `unittest.SkipTest` khi thiếu `data/interim/*.parquet` → cả lớp bị bỏ qua và **4 phương
+>   thức của nó không chạy, không được tính vào "Ran"**. Bốn skip CI báo gồm: `setUpClass`
+>   đó; `TestScriptsUseTheComputation.test_progress_report_bullet_carries_the_computed_f_statistic`
+>   (cùng lý do thiếu dữ liệu); và hai test `@unittest.skipUnless(os.name == "nt")` trong
+>   `tests/test_pipeline_runtime_log.py`.
+>
+>   ⚠️ **CI xanh KHÔNG đồng nghĩa F-test của Issue #38 đã được tái lập** — CI không có
+>   `data/`. Chỉ lần chạy local có dữ liệu mới ghim được `F = 16,78` / `p = 7,4·10⁻¹¹`
+>   vào một lần fit thật (`tests/test_flag_evidence.py::TestDocumentedReproduction`).
 >   Cả hai nền tảng đều `OK`, **0 fail** (`test_data_collection` + `test_data_quality` + `test_cleaning` +
 >   `test_cleaning_pipeline` + `test_cleaning_pipeline_guards` + `test_fetch_dataset` +
 >   `test_flag_evidence` + `test_pipeline_runtime_log` + `test_verify_claims_rolling`).
@@ -849,22 +860,27 @@ Chi tiết luồng thực hiện:
 
 | Cổng | Kết quả |
 |---|---|
-| `python -m pytest tests/ -q` | **393 collected** → Windows **393 passed**; Ubuntu **387 passed, 6 skipped** |
-| `python -m unittest discover -s tests -q` (gate của CI, Ubuntu) | **`Ran 393 tests` + `OK (skipped=6)`** → 387 thực thi, 0 fail |
-| `-W error::DeprecationWarning -W error::FutureWarning` | **393 tests, 0 cảnh báo** (chạy trên Windows local; CI chưa tái chạy lệch này — xem bảng bằng chứng bên dưới) |
+| `python -m pytest tests/ -q` | **402 collected** → local Windows (có `data/`): **402 passed**, 0 skipped, 11 subtests. CI `ubuntu-latest`: **chưa tái chạy lệch này** — xem dòng unittest bên dưới cho số CI đã đo |
+| `python -m unittest discover -s tests -q` (gate của CI, Ubuntu) | **`Ran 398 tests` + `OK (skipped=4)`** → **394 thực thi**, 0 fail (đọc từ log CI thật) |
+| `python -m unittest discover tests` (local Windows, có `data/`) | **`Ran 402 tests` + `OK`** → **402 pass, 0 skip** |
+| `-W error::DeprecationWarning -W error::FutureWarning` | **402 tests, 0 cảnh báo** (chạy trên Windows local; CI chưa tái chạy lệch này — xem bảng bằng chứng bên dưới) |
 | `python -m compileall -q src tests scripts` | exit 0 |
 | `notebooks/*.ipynb` (nbformat 4.5) | 6/6 hợp lệ, 0 warning |
 | `notebooks/03_transformation_pipeline.ipynb` | ⚠️ **CHƯA TÁI CHẠY ở lượt này** — cần `data/processed/air_pollution_final.parquet` (gitignored). Lần chạy trước đó qua `nbconvert --execute` không có error, nhưng **không được tính là bằng chứng của HEAD hiện tại** |
 
 > **Ngày đo:** 2026-10-14, trên nhánh `docs/audit-delivery` (PR #37), local **Windows / Python 3.13**.
-> **Tái chạy 2026-10-15 tại `a9a617e`:** `python -m unittest discover tests` → `Ran 393 tests … OK`
-> (Windows, **0 skipped**); `compileall` exit 0; `verify_claims.py` exit 0. CI `ubuntu-latest`
-> cùng commit: `Ran 393 tests … OK (skipped=6)` → **387 thực thi**, 0 fail.
+> **Tái chạy 2026-10-15 tại `37374fe` (PR #39):** `python -m unittest discover tests` → `Ran 402 tests … OK`
+> (Windows, **0 skipped**); `pytest tests/ -q` → `402 passed`; `compileall` exit 0;
+> `verify_claims.py` exit 0 (`37 VERIFIED, 0 MISMATCH, 1 UNVERIFIABLE`).
+> CI `ubuntu-latest` cùng commit: `Ran 398 tests … OK (skipped=4)` → **394 thực thi**, 0 fail.
+> *(Lượt trước ghi `Ran 393 … skipped=6 → 387` là **sai**: `setUpClass` của
+> `TestDocumentedReproduction` skip cả lớp nên 4 phương thức không chạy và không được
+> tính vào "Ran", còn số skip CI thật là 4, không phải 6.)*
 >
 > | Đã chạy lại ở lượt này | Kết quả |
 > |---|---|
-> | `python -m pytest tests/ -q` | **393 passed** *(Windows, 0 skip)*, 11 subtests |
-> | `python -m unittest discover tests` | **Ran 393 tests … OK** *(Windows: 393 thực thi, 0 skip)* |
+> | `python -m pytest tests/ -q` | **402 passed** *(Windows, có `data/`, 0 skip)*, 11 subtests |
+> | `python -m unittest discover tests` | **Ran 402 tests … OK** *(Windows, có `data/`: 402 thực thi, 0 skip)* |
 > | `python -m compileall -q src tests scripts` | exit 0 |
 > | `python -c "import src.*"` (4 module) | exit 0 |
 > | `nbconvert --execute notebooks/00_environment_test.ipynb` | exit 0 |

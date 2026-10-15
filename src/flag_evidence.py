@@ -271,15 +271,25 @@ def select_analysis_sample(df: pd.DataFrame) -> pd.DataFrame:
         )
 
     counts = sample.groupby([SEASON_COLUMN, FOG_ALIAS]).size()
-    thin = {
-        f"{SEASON_LABELS_VI.get(str(s), s)} × fog={int(f)}": int(n)
-        for (s, f), n in counts.items()
-        if int(n) < MIN_CELL_OBSERVATIONS
-    }
+
+    # Mọi ô của lưới `mùa × fog` phải ĐỦ quan sát. Kiểm tra theo lưới đầy đủ
+    # (4 mùa × 2 trạng thái) chứ không theo những ô groupby trả về: một ô bị
+    # THIẾU HOÀN TOÀN sẽ không xuất hiện trong `counts`, và mô hình sẽ âm thầm
+    # rút bớt hệ số tương tác — biến F-test thành một phép kiểm định KHÁC mà
+    # vẫn mang nhãn `F(., .)`. Xoá trọn ô `Đông × fog=1` (ô của mức tham chiếu)
+    # từng làm ma trận hạng thấp và trả về F = 3,73 / p = 0,054, tức kết luận
+    # ngược hẳn so với F = 16,78 — chỉ kèm một `ValueWarning` trôi qua.
+    thin: Dict[str, int] = {}
+    for season in SEASON_DISPLAY_ORDER:
+        for flag in (0, 1):
+            n = int(counts.get((season, flag), 0))
+            if n < MIN_CELL_OBSERVATIONS:
+                thin[f"{SEASON_LABELS_VI[season]} × fog={flag}"] = n
     if thin:
         raise ValueError(
             f"Các ô fog × mùa sau có dưới {MIN_CELL_OBSERVATIONS} quan sát: {thin}. "
-            "Mô hình tương tác không ước lượng được — không được âm thầm bỏ qua ô."
+            "Mô hình tương tác không ước lượng được — không được âm thầm bỏ qua ô, "
+            "vì bỏ ô làm F-test kiểm định ít hệ số hơn và cho ra con số khác hẳn."
         )
     return sample
 
@@ -387,6 +397,29 @@ def fog_flag_evidence(df: pd.DataFrame) -> Dict[str, Any]:
     full = _fit_interaction_model(sample)
     names = list(full.params.index)
     terms = _interaction_terms(full)
+
+    # Ma trận thiết kế phải ĐỦ HẠNG. Khi hạng thấp, các hệ số không xác định
+    # duy nhất, `f_test()` vẫn trả về con số và kèm `ValueWarning` — con số đó
+    # không có nghĩa và không được phép lan ra báo cáo.
+    exog = np.asarray(full.model.exog, dtype=float)
+    rank = int(np.linalg.matrix_rank(exog))
+    if rank != exog.shape[1]:
+        raise ValueError(
+            f"Ma trận thiết kế hạng {rank} < {exog.shape[1]} cột — mô hình không "
+            "xác định duy nhất các hệ số. Thường do một ô fog × mùa rỗng. "
+            "Phải sửa dữ liệu, không được đọc F/p từ mô hình này."
+        )
+
+    # F-test phải phủ ĐÚNG 3 hệ số tương tác (4 mùa → 3 mức không phải mức
+    # tham chiếu). Ít hơn nghĩa là mất một mùa; nhiều hơn nghĩa là công thức
+    # đã đổi so với định nghĩa đóng băng.
+    expected_terms = len(SEASON_DISPLAY_ORDER) - 1
+    if len(terms) != expected_terms:
+        raise ValueError(
+            f"Mô hình sinh {len(terms)} hệ số tương tác, cần đúng {expected_terms} "
+            f"(4 mùa → 3 mức không phải mức tham chiếu). Tìm thấy: {terms}. "
+            "F-test sẽ kiểm định sai tập hệ số nếu tiếp tục."
+        )
 
     # F-test ĐỒNG THỜI các hệ số tương tác (null: cả 3 tương tác = 0).
     f_test = full.f_test(terms)

@@ -522,9 +522,11 @@ assert (df.groupby('station_id')['timestamp'].diff().dropna() == np.timedelta64(
 > Loại khỏi *tập feature* ≠ loại khỏi *dataset* — cả ba cột vẫn còn nguyên trong
 > `data/interim/*.parquet` và `data/processed/air_pollution_final.parquet`.
 
-> ⛔ **Các con số trong khối đính chính dưới đây là `UNVERIFIED`** — đo tay năm 2026-09-30,
-> không có mã nguồn tái lập được. `verify_claims.py` không kiểm chứng chúng. Xem
-> [Issue #38](https://github.com/doctor-cato/air-pollution-analysis/issues/38).
+> ✅ **Khối đính chính dưới đây đã được TÁI LẬP BẰNG MÃ** (Issue #38). Trước đây nó gắn
+> nhãn `⛔ UNVERIFIED` vì đo tay năm 2026-09-30 và không script nào tính được; nay
+> `src/flag_evidence.py` fit lại trên dữ liệu thật và `verify_claims.py` kiểm chứng
+> từng số (`37 VERIFIED, 0 MISMATCH, 1 UNVERIFIABLE`). **Ngoại lệ duy nhất còn giữ
+> nhãn `UNVERIFIED` là `MI = 0,0024`** — xem ghi chú cuối khối.
 >
 > **Đính chính ngữ nghĩa `is_high_humidity_fog` (2026-09-30, audit M2).** Bản log này từng mô tả cờ
 > là *sương mù quang học khiến cảm biến đọc sai*. Đo trên dữ liệu thật thì cờ **bắt đúng** nhóm ẩm
