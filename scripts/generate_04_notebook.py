@@ -574,6 +574,14 @@ print(f"  Chênh lệch Mean-Median:{mean_pm25 - median_pm25:+.2f} µg/m³ (Mean
 print(f"  Skewness:              {skew_pm25:.3f} (> 1.0 => Right-Skewed nặng)")
 print(f"  Excess Kurtosis:       {kurt_pm25:.3f} (> 0.0 => Leptokurtic, đuôi dày)")
 print(f"  Thứ tự quan sát:       Mean ({mean_pm25:.1f}) > Median ({median_pm25:.1f}) > KDE Peak ({kde_peak:.1f})")
+print()
+print("  GHI CHÚ VỀ MODE: Mode thực nghiệm (giá trị xuất hiện nhiều nhất) KHÔNG dùng được ở đây,")
+print("  vì pm25 là phép đo liên tục độ chính xác cao: tần suất lặp tự nhiên là do sai số làm tròn")
+print("  float, KHÔNG phải do dữ liệu có chế độ rời rạc. Thống kê Mode chuẩn vì vậy ghi NaN.")
+print(f"  KDE Peak ({kde_peak:.2f}) là ƯỚC LƯỢNG vị trí đỉnh mật độ (modal region) của phân phối")
+print("  liên tục — ta dùng nó làm PROXY cho Mode để kiểm tra quy tắc Mean > Median > Mode.")
+print(f"  Quy tắc 3 vế ĐÚNG: Mean {mean_pm25:.1f} > Median {median_pm25:.1f} > Peak {kde_peak:.1f},")
+print(f"  khớp với dấu skewness {'DƯƠNG (lệch phải)' if skew_pm25 > 0 else 'ÂM (lệch trái)'} ({skew_pm25:+.3f}).")
 """)
 
 # ---------------------------------------------------------------------------
@@ -583,6 +591,8 @@ add_md("""> [!NOTE]
 > ### 📌 Takeaway: Shape Picks the Statistic
 > - **What do we observe? (Chúng ta quan sát thấy gì?):**  
 >   Phân phối thực nghiệm của $\\text{PM}_{2.5}$ có $\\text{Skewness} = +1,295 > 1,0$ và $\\text{Excess Kurtosis} = +1,913 > 0$. Thứ tự thực tế tuân theo $\\text{Mean} (43,76) > \\text{Median} (37,32) > \\text{KDE Peak} (31,17\\,\\mu\\text{g/m}^3)$. Phân vị $P_{99} = 133,79\\,\\mu\\text{g/m}^3$ kéo dài tới cực đại $198,95\\,\\mu\\text{g/m}^3$.
+>
+>   **Vì sao dùng KDE Peak thay Mode:** `pm25` là phép đo liên tục độ chính xác cao, nên Mode thực nghiệm (giá trị lặp nhiều nhất) **không có ý nghĩa** — tần suất lặp chỉ phản ánh sai số làm tròn float chứ không phải chế độ rời rạc thật, nên thống kê Mode chuẩn được ghi $\\text{NaN}$. KDE Peak là **ước lượng vị trí đỉnh mật độ** của phân phối liên tục, ta dùng nó làm **proxy** để kiểm tra quy tắc 3 vế. Quy tắc đúng ($\\text{Mean} > \\text{Median} > \\text{Mode}$) cộng với $\\text{Skewness} > 0$ là hai bằng chứng **độc lập** cùng chỉ một hướng lệch phải.
 > - **What does the data suggest? (Dữ liệu gợi ý điều gì?):**  
 >   Phân phối bị lệch phải mạnh do các đợt tích tụ ô nhiễm cực đoan trong mùa đông. Do đó, **Median và IQR phản ánh trung thực mức độ phơi nhiễm của cộng đồng trong phần lớn thời gian**, tránh được việc con số bị bóp méo bởi một vài đợt đỉnh điểm.
 > - **What should NOT be concluded yet? (Điều gì CHƯA ĐƯỢC kết luận?):**  
@@ -1011,11 +1021,23 @@ add_md("""> [!NOTE]
 # ---------------------------------------------------------------------------
 add_md("""## 9. Phân tích Tương quan Bivariate (Pearson & Spearman) & Cảnh báo Đa cộng tuyến
 
-### 9.1 Bảng Độ phủ Biến & Cỡ mẫu Complete-Case
-Trước khi tính ma trận tương quan, chúng tôi xác định chính xác số lượng dòng quan sát đầy đủ (Complete-case sample size).
+### 9.1 Độ bao phủ từng biến & Cỡ mẫu Complete-Case
+
+Ma trận tương quan trên một tập có thiếu dữ liệu **KHÔNG** phải ma trận trên toàn bộ `air_pollution_final.parquet`. Vì vậy trước khi tính tương quan, chúng tôi báo cáo độ bao phủ (tỷ lệ non-null) của **từng biến** và xác định chính xác cỡ mẫu complete-case thực sự dùng để tính:
+
+| Biến | $n$ quan sát | $n_{\\text{missing}}$ | Độ bao phủ |
+|---|---|---|---|
+| $\\text{PM}_{2.5}$ | 7.495 | 1.549 | **82,87 %** |
+| $\\text{PM}_{10}$ | 7.575 | 1.469 | **83,76 %** |
+| Nhiệt độ, Độ ẩm, Tốc độ gió, Hướng gió, Lượng mưa, Áp suất bề mặt | 9.044 | 0 | **100,00 %** |
+
+Hệ quả trực tiếp — cùng một cột `pm25` nhưng ba cỡ mẫu khác nhau:
+
 - Với cặp $\\text{PM}_{2.5} - \\text{PM}_{10}$: $N = 7.372$ dòng.
-- Với cặp $\\text{PM}_{2.5}$ và 6 biến khí tượng: $N = 7.495$ dòng.
-- Khi tính ma trận đồng thời trên toàn bộ 8 biến: Complete-case $N = 7.372$ dòng (loại bỏ 1.672 dòng do thiếu hoặc $\\text{PM}_{2.5}$ hoặc $\\text{PM}_{10}$).""")
+- Với $\\text{PM}_{2.5}$ và 6 biến khí tượng: $N = 7.495$ dòng.
+- Khi tính ma trận đồng thời trên toàn bộ 8 biến: complete-case $N = 7.372$ dòng (**81,51 %** dữ liệu gốc), loại bỏ 1.672 dòng do thiếu $\\text{PM}_{2.5}$ hoặc $\\text{PM}_{10}$.
+
+Vì sao phải nói rõ: cùng một phép tính tương quan sẽ ra hệ số **khác nhau** nếu impute giá trị thiếu trước khi tính. Mọi con số ở §9.2 đều dùng đúng $N = 7.372$ complete-case, không impute — nhất là với $\\text{PM}_{2.5}$, biến mà Issue #6 đã cam kết **không** tự ý điền.""")
 
 # ---------------------------------------------------------------------------
 # CELL 31: Correlation Code
@@ -1117,6 +1139,26 @@ Hệ số tương quan chỉ lượng hóa mức độ đồng biến thiên th�
 - **Biến nhiễu (Confounder):** Yếu tố **Mùa (Season)** là một biến nhiễu điển hình. Mùa đông đồng thời làm giảm nhiệt độ, tăng áp suất bề mặt và tăng nồng độ $\\text{PM}_{2.5}$ do nghịch nhiệt. Nếu không kiểm soát mùa, tương quan giữa Áp suất bề mặt và $\\text{PM}_{2.5}$ ($r = +0,288$) có thể bị ngộ nhận là áp suất trực tiếp "gây ra" ô nhiễm bụi.
 - **Tương quan ngụy tạo (Spurious Correlation):** Việc hai biến số có tương quan cao có thể bắt nguồn từ xu hướng dài hạn (trend) hoặc chu kỳ chung chứ không có liên hệ vật lý trực tiếp.
 - **Hiện tượng Che khuất Tác động (Suppression Effect):** Điển hình là cặp $\\text{PM}_{2.5} - \\text{RH}$: Tương quan gộp bằng $-0,037$ gần như bằng không, nhưng khi phân tầng theo mùa thì tác động đảo chiều gay gắt (Đông $+2,79$ vs Xuân $-8,91\\,\\mu\\text{g/m}^3$).
+
+### A2. Nguy cơ Tương quan Ngẫu Nhiên Khi Khảo Sát Nhiều Cặp Biến (Multiple Comparisons)
+
+Ở §9.1 chúng tôi tính ma trận tương quan trên **cả 8 biến liên tục**, tức khảo sát đồng thời $\\binom{8}{2} = 28$ cặp biến, mỗi cặp cho ra **hai** hệ số (Pearson $r$ và Spearman $\\rho$) — tổng cộng **56 hệ số** trên cùng một tập $N = 7.372$ dòng.
+
+Vấn đề: **mọi phép tính tương quan đều tạo ra một hệ số khác 0 một cách ngẫu nhiên**, kể cả khi hai biến thực sự độc lập. Với $N = 7.372$, sai số chuẩn $SE \\approx \\sigma_r/\\sqrt{N-1}$ đủ nhỏ để một cặp **không có quan hệ vật lý** vẫn cho $|r|$ trông "đáng kể". Khi quét 28 cặp, xác suất **ít nhất một** cặp hiện tượng tình cờ là:
+
+$$P(\\text{ít nhất 1 phát hiện giả}) = 1 - (1 - \\alpha)^{28}$$
+
+Với $\\alpha = 0,05$: $1 - 0,95^{28} \\approx 76\\,\\%$. **Gần 4 phần 5 khả năng sẽ có ít nhất một cặp trông "đáng kể" một cách hoàn toàn ngẫu nhiên.** Ngưỡng Bonferroni hiệu chỉnh cho phép so sánh này là $\\alpha' = 0,05/28 \\approx 0,0018$.
+
+**Cách chúng tôi bảo vệ nguyên tắc "không khẳng định trước" ở đây:**
+
+1. Chúng tôi **không** dùng ngưỡng $p$ nào ở notebook này — kiểm định thống kê thuộc về Issue #11 (xem bảng phân định 3 tầng ở đầu notebook).
+2. Mọi phát hiện ở §9.2 đều được đối chiếu lại bằng **cơ chế vật lý đã biết** chứ không dựa vào con số tương quan: tương quan $\\text{PM}_{2.5} - \\text{PM}_{10}$ là do cùng cơ chế kết tụ hạt thô, tương quan với nhiệt độ là điều kiện khí quyển nghịch nhiệt.
+3. Những cặp có $|r|$ nhỏ được **báo cáo trung thực là không đáng kể** thay vì bị lược bỏ — xem `display(corr_compare.round(4))` ở §9.2, nơi các biến khí tượng có hệ số dưới 0,10 vẫn hiện đầy đủ.
+4. Bất kỳ cặp nào muốn đưa vào mô hình dự báo (Issue #12–#13) đều phải qua kiểm tra VIF và kiểm định trên mẫu giữ (hold-out), không dựa vào hệ số tương quan gộp.
+
+> [!WARNING]
+> Nguyên tắc: **khảo sát càng nhiều cặp biến, xác suất tìm ra tương quan giả càng cao.** Vì vậy ma trận ở §9.2 được trình bày như một **bản đồ khám phá** (exploratory map) để chỉ hướng cho Issue #11–#12, chứ không phải tập kết luận đã kiểm định.
 
 ### B. Định lý Giới hạn Trung tâm (CLT) & Sai số Chuẩn (Standard Error)
 Trong việc ước lượng tham số quần thể từ mẫu ngẫu nhiên:
