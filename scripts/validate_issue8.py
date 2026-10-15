@@ -45,6 +45,73 @@ def warn(label: str, detail: str = ""):
     print(f"  ⚠ WARN: {label} — {detail}")
 
 
+#: Mọi trạng thái mà `verify_file_checksum` có thể trả về. Danh sách này là hợp
+#: đồng bắt buộc: `checksum_verdict` xử lý TÁT CẢ các trạng thái ở đây, nên không
+#: thể có nhánh nào bị bỏ qua im lặng.
+CHECKSUM_STATUSES = ("MATCH", "MISMATCH", "NOT_FOUND", "NO_EXPECTED_HASH")
+
+
+def checksum_verdict(result: dict, mismatch_severity: str = "WARN") -> tuple:
+    """
+    Chuẩn hoá kết quả `verify_file_checksum` thành một phán quyết có thể kiểm thử.
+
+    Hợp đồng quan trọng: **chỉ** `MISMATCH` với `mismatch_severity='FAIL'` và
+    `MATCH` là 'FAIL'; `NOT_FOUND` và `NO_EXPECTED_HASH` LUÔN là 'WARN'. Như vậy
+    việc thiếu checksum kỳ vọng (hoặc thiếu tệp) không bao giờ bị báo nhầm là
+    "đã xác minh tính toàn vẹn dữ liệu".
+
+    Trả về tuple ``(kind, label, detail)`` với ``kind`` thuộc {'PASS','WARN','FAIL'}.
+    """
+    status = result.get("status")
+    message = result.get("message", "")
+
+    if status == "MATCH":
+        return ("PASS", "checksum verified (MATCH)", message)
+
+    if status == "MISMATCH":
+        if mismatch_severity == "FAIL":
+            return ("FAIL", "checksum MISMATCH", message)
+        return (
+            "WARN",
+            "checksum differs from metadata provenance (MISMATCH)",
+            message + " — KHÔNG được tính là đã xác minh tính toàn vẹn dữ liệu.",
+        )
+
+    if status == "NOT_FOUND":
+        return (
+            "WARN",
+            "file not found on disk (NOT_FOUND)",
+            message + " — KHÔNG có gì để hash, không thể xác minh tính toàn vẹn.",
+        )
+
+    if status == "NO_EXPECTED_HASH":
+        return (
+            "WARN",
+            "checksum verification skipped (NO_EXPECTED_HASH)",
+            message + (
+                " — KHÔNG có checksum kỳ vọng để đối chiếu, nên bước này "
+                "KHÔNG được tính là một kiểm tra checksum thành công."
+            ),
+        )
+
+    raise ValueError(
+        "verify_file_checksum trả về trạng thái lạ '%s'; "
+        "mọi trạng thái phải nằm trong CHECKSUM_STATUSES=%s"
+        % (status, list(CHECKSUM_STATUSES))
+    )
+
+
+def report_checksum(result: dict, label: str, mismatch_severity: str = "WARN"):
+    """Gọi `checksum_verdict` rồi in kết quả bằng `check`/`warn` tương ứng."""
+    kind, _auto_label, detail = checksum_verdict(result, mismatch_severity)
+    if kind == "PASS":
+        check(label, True, detail)
+    elif kind == "FAIL":
+        check(label, False, detail)
+    else:
+        warn(label, detail)
+
+
 def verify_file_checksum(file_path: Path | str, expected_sha: str | None) -> dict:
     """
     Xác minh tính toàn vẹn tệp qua SHA-256 đối chiếu với checksum kỳ vọng.
@@ -57,7 +124,10 @@ def verify_file_checksum(file_path: Path | str, expected_sha: str | None) -> dic
         - message: thông báo giải thích chi tiết
     """
     p = Path(file_path)
-    if not p.exists():
+    # Dùng is_file() chứ không phải exists(): nếu metadata thiếu khóa 'raw_file'
+    # thì Path(ROOT / "") hội tụ về chính thư mục repo — thư mục tồn tại nên
+    # exists() trả True và read_bytes() ném IsADirectoryError, làm script chết.
+    if not p.is_file():
         return {
             "status": "NOT_FOUND",
             "actual_sha": None,
@@ -176,24 +246,18 @@ def main():
             .get("processed_sha256")
         )
         res_proc = verify_file_checksum(parquet_path, expected_proc_sha)
-        if res_proc["status"] == "MATCH":
-            check("Processed dataset SHA-256 matches metadata.json", True)
-        elif res_proc["status"] == "MISMATCH":
-            check("Processed dataset SHA-256 matches metadata.json", False, res_proc["message"])
-        elif res_proc["status"] == "NOT_FOUND":
+        report_checksum(
+            res_proc,
+            "Processed artifact SHA-256 vs metadata.json provenance",
+        )
+        if res_proc["status"] == "NO_EXPECTED_HASH":
+            # processed artifact không có hash chuẩn trong provenance: hợp đồng
+            # toàn vẹn chỉ dựa trên shape [9044, 18] + 18 cột schema.
             warn(
-                "Processed dataset not found on disk (NOT_FOUND)",
-                res_proc["message"],
+                "  └ integrity contract for processed artifact",
+                "Metadata không định nghĩa hash chuẩn cho processed artifact; "
+                "hợp đồng toàn vẹn dựa trên shape [9044, 18] và 18 cột schema.",
             )
-        elif res_proc["status"] == "NO_EXPECTED_HASH":
-            warn(
-                "Processed dataset checksum verification skipped (NO_EXPECTED_HASH)",
-                (
-                    f"{res_proc['message']} — Metadata không định nghĩa hash chuẩn cho processed artifact; "
-                    "hợp đồng toàn vẹn dựa trên shape [9044, 18] và 18 cột schema."
-                ),
-            )
-
 
         # 2.4 Raw OpenAQ payload checksum verification
         rec_exec = meta.get("collection_pipeline_execution", {})
@@ -202,17 +266,20 @@ def main():
         raw_aq_expected_sha = raw_aq.get("raw_sha256")
 
         res_aq = verify_file_checksum(raw_aq_file, raw_aq_expected_sha)
-        if res_aq["status"] == "MATCH":
-            check("Raw OpenAQ SHA-256 matches metadata.json", True)
-        elif res_aq["status"] == "MISMATCH":
+        report_checksum(res_aq, "Raw OpenAQ payload SHA-256 vs metadata.json provenance")
+        if res_aq["status"] == "MISMATCH":
+            # Parquet không byte-reproducible qua các lần nạp S3 khác nhau
+            # (docs/history/02) -> hạ xuống WARN, không tính là đã xác minh.
             warn(
-                "Raw OpenAQ SHA-256 differs from metadata provenance",
-                f"{res_aq['message']} (Lưu ý: Parquet không byte-reproducible qua các lần nạp S3 khác nhau theo docs/history/02)",
+                "  └ why MISMATCH is expected here",
+                "Parquet không byte-reproducible qua các lần nạp S3 khác nhau "
+                "theo docs/history/02.",
             )
         elif res_aq["status"] == "NOT_FOUND":
             warn(
-                "Raw OpenAQ payload not found on disk (gitignored per project policy)",
-                res_aq["message"],
+                "  └ raw payload location",
+                "data/raw/*.parquet bị .gitignore loại khỏi repository theo Three-tier "
+                "Raw Data Policy; tệp chỉ tồn tại trên máy đã chạy pipeline.",
             )
 
         # 2.5 Raw Open-Meteo payload checksum verification
@@ -221,17 +288,17 @@ def main():
         raw_wx_expected_sha = raw_wx.get("raw_sha256")
 
         res_wx = verify_file_checksum(raw_wx_file, raw_wx_expected_sha)
-        if res_wx["status"] == "MATCH":
-            check("Raw Open-Meteo SHA-256 matches metadata.json", True)
-        elif res_wx["status"] == "MISMATCH":
+        report_checksum(res_wx, "Raw Open-Meteo payload SHA-256 vs metadata.json provenance")
+        if res_wx["status"] == "MISMATCH":
             warn(
-                "Raw Open-Meteo SHA-256 differs from metadata provenance",
-                f"{res_wx['message']} (Lưu ý: Open-Meteo API trả về generationtime_ms thay đổi theo từng lần request)",
+                "  └ why MISMATCH is expected here",
+                "Open-Meteo API trả về generationtime_ms thay đổi theo từng lần request.",
             )
         elif res_wx["status"] == "NOT_FOUND":
             warn(
-                "Raw Open-Meteo payload not found on disk (gitignored per project policy)",
-                res_wx["message"],
+                "  └ raw payload location",
+                "data/raw/*.json bị .gitignore loại khỏi repository theo Three-tier "
+                "Raw Data Policy; tệp chỉ tồn tại trên máy đã chạy pipeline.",
             )
     else:
         warn("metadata.json not found", "cannot verify data provenance")
@@ -386,7 +453,11 @@ def main():
     print("\n═══ 6. .gitignore ═══")
     gitignore_path = ROOT / ".gitignore"
     if gitignore_path.exists():
-        content = gitignore_path.read_text()
+        # Bắt buộc chỉ định encoding="utf-8": read_text() mặc định dùng locale của
+        # hệ điều hành (cp1252 trên Windows) và sẽ ném UnicodeDecodeError khi
+        # .gitignore chứa byte không thuộc ASCII — khiến script chết giữa chừng
+        # trên Windows trong khi vẫn chạy bình thường trên Ubuntu CI.
+        content = gitignore_path.read_text(encoding="utf-8")
         check("reports/statistical_profile.csv is NOT ignored",
               "!reports/statistical_profile.csv" in content)
 

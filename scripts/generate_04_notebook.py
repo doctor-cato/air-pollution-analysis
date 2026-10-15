@@ -51,7 +51,7 @@ add_md(r"""# 04 – Thống kê Mô tả 4 Họ Chỉ số & Phân tích Chu k�
    - *Shape (Hình dạng phân phối):* Skewness (Hệ số bất đối xứng), Kurtosis (Fisher excess kurtosis).
    - *Quantiles (Phân vị chuẩn tắc):* $P_{10}, P_{25}, P_{50}, P_{75}, P_{90}, P_{95}, P_{99}$.
 2. **Chứng minh Khách quan Nguyên tắc "Shape Picks the Statistic":**
-   - Đánh giá hình dạng lệch phải (right-skewed) và đuôi nặng (leptokurtic) của $\\text{PM}_{2.5}$.
+   - Đánh giá hình dạng lệch phải (right-skewed) và đuôi nặng (leptokurtic) của $\text{PM}_{2.5}$.
    - Biện luận toán học và khí quyển lý giải vì sao **Median** và **IQR** là thước đo trung tâm phù hợp hơn **Mean** và **Std**.
 3. **Giải mã Biến thiên Chu kỳ Thời gian Đa tầng (Multi-tier Temporal EDA):**
    - Chu kỳ ngày đêm (Diurnal cycle, 24 giờ).
@@ -60,10 +60,10 @@ add_md(r"""# 04 – Thống kê Mô tả 4 Họ Chỉ số & Phân tích Chu k�
    - Đường xu hướng trượt 24h (`rolling_24h`) và 7 ngày (`rolling_7d`).
 4. **Kiểm tra Tương tác Phân tầng giữa Cờ Chẩn đoán và Mùa (Diagnostic Flag × Season Interaction):**
    - Đánh giá `is_high_humidity_fog`, `pm25_was_stuck`, `pm25_was_missing`.
-   - Chứng minh vì sao tương quan marginal $\\text{corr}(\\text{PM}_{2.5}, \\text{RH}) \\approx 0$ là hệ quả của việc triệt tiêu giữa các mùa, chứ không phải độc lập.
+   - Chứng minh vì sao tương quan marginal $\text{corr}(\text{PM}_{2.5}, \text{RH}) \approx 0$ là hệ quả của việc triệt tiêu giữa các mùa, chứ không phải độc lập.
 5. **Phân tích Tương quan Kép (Pearson vs Spearman) & Cảnh báo Đa cộng tuyến:**
-   - Đối chiếu tương quan tuyến tính ($r$) và đơn điệu ($\\rho$).
-   - Đưa ra cảnh báo đa cộng tuyến nghiêm trọng giữa $\\text{PM}_{2.5}$ và $\\text{PM}_{10}$ ($r \\approx 0,9727$).
+   - Đối chiếu tương quan tuyến tính ($r$) và đơn điệu ($\rho$).
+   - Đưa ra cảnh báo đa cộng tuyến nghiêm trọng giữa $\text{PM}_{2.5}$ và $\text{PM}_{10}$ ($r \approx 0,9727$).
 
 ---
 
@@ -73,7 +73,7 @@ Trong phân tích dữ liệu khoa học, việc nhầm lẫn giữa mô tả m�
 
 | Tầng Phân tích | Phạm vi & Trách nhiệm | Những gì ĐƯỢC làm | Những gì BỊ CẤM trong Issue #8 |
 |---|---|---|---|
-| **A. Descriptive Analysis (Mô tả Thống kê)** | Đo lường và tóm tắt trung thực các thuộc tính của mẫu quan sát hiện có. | Tính mean, median, IQR, vẽ histogram, scatter plot, tính tương quan $r$ và $\\rho$. | Không được gán nhãn "quan hệ nhân quả" (causal claims). |
+| **A. Descriptive Analysis (Mô tả Thống kê)** | Đo lường và tóm tắt trung thực các thuộc tính của mẫu quan sát hiện có. | Tính mean, median, IQR, vẽ histogram, scatter plot, tính tương quan $r$ và $\rho$. | Không được gán nhãn "quan hệ nhân quả" (causal claims). |
 | **B. Hypothesis Generation (Sinh Giả thuyết)** | Đề xuất các giả thuyết khoa học nảy sinh từ các quy luật hình học/thống kê quan sát được. | Gợi ý: *"Chênh lệch median mùa đông và mùa hè gợi ý khả năng nghịch nhiệt khí quyển cần kiểm định ở Issue #11."* | Không được biến giả thuyết thành kết luận đã được kiểm chứng. |
 | **C. Statistical Inference (Suy luận Thống kê)** | Kiểm định giả thuyết, tính $p$-value, effect size ($r_{rb}$), Bootstrap CI. | **Thuộc phạm vi Issue #11.** | **TUYỆT ĐỐI KHÔNG** chạy Mann-Whitney, t-test, ANOVA hay dùng $p$-value để kết luận ở notebook này. |
 """)
@@ -739,7 +739,7 @@ print(f"So sánh thực nghiệm: Median Ngày thường = {wd_med:.2f} µg/m³ 
 add_md("""> [!NOTE]
 > ### 📌 Takeaway: Day-of-Week Effect
 > - **What do we observe? (Chúng ta quan sát thấy gì?):**  
->   Trong tập mẫu này, nồng độ $\\text{PM}_{2.5}$ vào cuối tuần có trung vị cao hơn ngày thường ($39,48$ so với $36,56\\,\\mu\\text{g/m}^3$, chênh lệch $+2,92\\,\\mu\\text{g/m}^3$). Thứ Bảy là ngày có trung vị cao nhất ($40,23\\,\\mu\\text{g/m}^3$).
+>   Trong tập mẫu này, nồng độ $\\text{PM}_{2.5}$ vào cuối tuần có trung vị cao hơn ngày thường ($39,48$ so với $36,56\\,\\mu\\text{g/m}^3$, chênh lệch $+2,91\\,\\mu\\text{g/m}^3$). Thứ Bảy là ngày có trung vị cao nhất ($40,23\\,\\mu\\text{g/m}^3$).
 > - **What does the data suggest? (Dữ liệu gợi ý điều gì?):**  
 >   Mẫu dữ liệu thực tế tại trạm 556 Nguyễn Văn Cừ không xuất hiện hiện tượng "Weekend Effect" truyền thống (nơi cuối tuần sạch hơn do giảm xe công sở). Hiện tượng này có thể phản ánh hoạt động giao thông giải trí/chợ đêm tăng cao gần trục đường Nguyễn Văn Cừ, hoặc do ảnh hưởng của các đợt tích tụ gió lặng trùng hợp vào các ngày cuối tuần trong mùa đông.
 > - **What should NOT be concluded yet? (Điều gì CHƯA ĐƯỢC kết luận?):**  
