@@ -111,6 +111,15 @@ jobs:
       # sau khi chạy 01 (cần network). Thay vào đó, logic của 03 nằm hoàn toàn trong
       # src/cleaning.py và được kiểm thử offline đầy đủ bằng tests/test_cleaning.py,
       # vốn chạy ở job `validate` phía trên.
+      #
+      # 04_descriptive_stats.ipynb (Issue #8) CỐ TÌNH không chạy trong CI: nó cần
+      # data/processed/air_pollution_final.parquet, cũng bị .gitignore loại bỏ.
+      # Khả năng THỰC THI của nó vẫn được CI kiểm tra, nhưng trên dữ liệu TỔNG HỢP:
+      # TestNotebookFixtureSmoke trong tests/test_validate_issue8.py (job `validate`)
+      # dựng một fixture tất định (seed 42, 1.344 dòng, schema 18 cột canonical)
+      # rồi chạy cả 37 cell trong thư mục tạm. Fixture đó chỉ chứng minh notebook
+      # chạy được — KHÔNG chứng minh bất kỳ con số nào trong markdown hay CSV là
+      # đúng. Việc đó chỉ kiểm được ở local với dataset thật.
       - name: Thực thi 00_environment_test.ipynb
         env:
           MPLBACKEND: Agg

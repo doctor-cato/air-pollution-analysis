@@ -471,5 +471,255 @@ class TestNotebookMarkdownLaTeX(unittest.TestCase):
         )
 
 
+# ---------------------------------------------------------------------------
+# Smoke test trên fixture tổng hợp — chạy được trên CI KHÔNG cần dataset thật
+# ---------------------------------------------------------------------------
+#
+# `test_live_restart_kernel_and_run_all` là bước DUY NHẤT thực sự thực thi
+# notebook 04, và nó skip khi máy không có `data/processed/…parquet`. CI không
+# có dataset → CI xanh KHÔNG chứng minh được notebook 04 chạy được. Đây chính
+# là lỗ hổng reviewer nêu ở PR #40.
+#
+# Test dưới đây đóng lỗ hổng bằng một fixture nhỏ, xác định trước (seed cố định,
+# 4 cửa sổ 14 ngày theo 4 mùa): chạy TOÀN BỘ 37 cell trong một thư mục tạm có
+# bản sao `src/`, rồi đòi 0 cell lỗi và CSV đầu ra phải được sinh ra.
+#
+# ⚠ KHÔNG phải bản thay thế cho việc xác minh trên dữ liệu thật. Fixture này
+# chỉ chứng minh "notebook chạy được"; nó KHÔNG chứng minh bất kỳ con số nào
+# trong markdown takeaway hay trong `reports/statistical_profile.csv` là đúng.
+# Việc đó thuộc về `test_live_restart_kernel_and_run_all` + `scripts/validate_issue8.py`
+# chạy trên dataset canonical 9.044 dòng.
+#
+# Bốn assert ghim giá trị dataset canonical (1.549 / 1.469 giờ thiếu, circular
+# mean 107,12° / std 82,32°) không thể tái tạo từ dữ liệu tổng hợp, nên chúng bị
+# vô hiệu hoá. Test khẳng định ĐÚNG 4 dòng bị vô hiệu hoá — nếu notebook thay đổi
+# làm các assert đó biến mất hoặc đổi chữ, test FAIL chứ không im lặng bỏ qua.
+
+#: Seed cố định: cùng code → cùng fixture, trên mọi máy và mọi lần chạy.
+FIXTURE_SEED = 42
+
+#: (ngày bắt đầu, hệ số nền PM2.5) — mỗi cửa sổ 14 ngày liên tục thuộc một mùa.
+#: Đủ 24 giờ, đủ 7 thứ trong tuần, đủ 4 mùa, và >= 168 quan số cho cửa sổ trượt
+#: 7 ngày — tất cả với chỉ 1.344 dòng.
+FIXTURE_WINDOWS = (
+    ("2025-12-15", 1.9),   # Đông — nền cao nhất
+    ("2026-03-15", 1.1),   # Xuân
+    ("2026-06-15", 0.7),   # Hè — nền thấp nhất
+    ("2026-09-15", 1.0),   # Thu
+)
+FIXTURE_HOURS_PER_WINDOW = 336
+FIXTURE_TZ = "Asia/Ho_Chi_Minh"
+
+#: Schema 18 cột của `air_pollution_final.parquet`, ghim cứng theo đúng thứ tự
+#: để fixture không trôi khỏi hợp đồng dữ liệu khi ai đó thêm/bớt cột.
+CANONICAL_COLUMNS = (
+    "timestamp", "station_id", "location",
+    "pm25", "pm10",
+    "pm25_was_stuck", "pm25_was_missing", "is_high_humidity_fog",
+    "temperature", "relative_humidity", "wind_speed", "wind_direction",
+    "precipitation", "surface_pressure",
+    "hour_sin", "hour_cos", "month_sin", "month_cos",
+)
+
+#: Regex các assert ghim giá trị của dataset canonical.
+CANONICAL_VALUE_ASSERT_PATTERNS = (
+    r'assert audit_df\.loc\[.*\] == \d+',
+    r'assert abs\(wd_row\[.*?\] - \d+\.\d+\) < 0\.5',
+)
+EXPECTED_NEUTRALIZED_ASSERT_COUNT = 4
+
+
+def build_fixture_frame() -> pd.DataFrame:
+    """
+    Dựng khung dữ liệu tổng hợp đúng schema của `air_pollution_final.parquet`.
+
+    Schema bám theo artifact canonical (18 cột, cùng dtype, cùng múi giờ) để
+    notebook 04 chạy hết mọi nhánh code: mùa, giờ trong ngày, thứ trong tuần,
+    cờ chẩn đoán có biến thiên (`is_high_humidity_fog`), và khoảng trống NaN ở
+    `pm25` để `seasonal_decompose` thất bại đúng như trên dữ liệu thật.
+    """
+    rng = np.random.default_rng(FIXTURE_SEED)
+    frames = []
+
+    for start, level in FIXTURE_WINDOWS:
+        ts = pd.date_range(
+            start=start, periods=FIXTURE_HOURS_PER_WINDOW, freq="h", tz=FIXTURE_TZ
+        )
+        hour = ts.hour.to_numpy()
+        month = ts.month.to_numpy()
+        n = len(ts)
+
+        # Chu kỳ ngày đêm + nền mùa + nhiễu lệch phải (gamma) -> có "đuôi nặng".
+        diurnal = np.sin(2 * np.pi * (hour - 8) / 24)
+        pm25 = level * (28.0 + 9.0 * diurnal) + rng.gamma(2.0, 9.0, n)
+
+        # Độ ẩm cao hơn về đêm và trong mùa lạnh -> cờ sương mù có biến thiên.
+        humidity = np.clip(
+            74.0 + 10.0 * level + 8.0 * np.sin(2 * np.pi * (hour - 4) / 24)
+            + rng.normal(0, 4.0, n),
+            30.0, 100.0,
+        )
+
+        frames.append(pd.DataFrame({
+            "timestamp": ts,
+            "station_id": "FIXTURE-STATION",
+            "location": "Fixture Hanoi",
+            "pm25": np.round(pm25, 2),
+            "temperature": np.round(17.0 + 6.0 * level + 3.5 * diurnal, 2),
+            "relative_humidity": np.round(humidity, 2),
+            "wind_speed": np.round(np.abs(rng.gamma(2.0, 1.3, n)), 2),
+            # Trải đều 0..360 => có cả giá trị sát 0°/360°, đúng biên nguy hiểm
+            # mà thống kê circular sinh ra để xử lý.
+            "wind_direction": np.round(rng.uniform(0.0, 360.0, n), 2),
+            "precipitation": np.round(rng.gamma(0.4, 0.9, n), 2),
+            "surface_pressure": np.round(1008.0 - 4.0 * level + rng.normal(0, 3.0, n), 2),
+        }))
+
+    df = pd.concat(frames, ignore_index=True)
+
+    # `pm10` và 3 cờ chẩn đoán được tính sau, rồi sắp lại theo CANONICAL_COLUMNS.
+    df["pm10"] = np.round(df["pm25"] * 1.5 + rng.normal(0, 5.0, len(df)), 2)
+    # Khoảng trống NaN ở cả hai chỉ số bụi -> complete-case khác 0,
+    # và `seasonal_decompose` thất bại đúng như trên dataset canonical.
+    df["pm25"] = df["pm25"].mask(rng.random(len(df)) < 0.12)
+    df["pm10"] = df["pm10"].mask(rng.random(len(df)) < 0.10)
+
+    # Cờ chẩn đoán: `pm25_was_stuck` hằng số 0 như dữ liệu thật (không biến thiên),
+    # `pm25_was_missing` là hàm xác định của target, `is_high_humidity_fog` thì có.
+    df["pm25_was_stuck"] = np.zeros(len(df), dtype="int64")
+    df["pm25_was_missing"] = df["pm25"].isna().astype("int64")
+    df["is_high_humidity_fog"] = (df["relative_humidity"] > 85.0).astype("int64")
+
+    hour = df["timestamp"].dt.hour
+    month = df["timestamp"].dt.month
+    df["hour_sin"] = np.sin(2 * np.pi * hour / 24)
+    df["hour_cos"] = np.cos(2 * np.pi * hour / 24)
+    df["month_sin"] = np.sin(2 * np.pi * month / 12)
+    df["month_cos"] = np.cos(2 * np.pi * month / 12)
+
+    # Sắp lại đúng thứ tự cột của artifact canonical.
+    df = df[list(CANONICAL_COLUMNS)]
+    return df.sort_values("timestamp").reset_index(drop=True)
+
+
+def neutralize_canonical_asserts(nb) -> int:
+    """
+    Vô hiệu hoá, IN RA, và trả về số assert ghim giá trị dataset canonical.
+
+    Dòng khớp regex được thay bằng dòng `pass` kèm chú thích. Không dòng nào khác
+    bị đụng tới — các assert còn lại (8 dòng CSV, 8 biến, monotonic quantile,
+    timestamp sort, CSV đã sinh…) vẫn chạy thật trên fixture.
+    """
+    stripped = 0
+    for cell in nb.cells:
+        if cell.cell_type != "code":
+            continue
+        new_lines = []
+        for line in cell.source.splitlines():
+            if any(re.search(pattern, line) for pattern in CANONICAL_VALUE_ASSERT_PATTERNS):
+                stripped += 1
+                new_lines.append("pass  # fixture smoke test: assert ghim giá trị dataset canonical")
+            else:
+                new_lines.append(line)
+        cell.source = "\n".join(new_lines) + "\n"
+    return stripped
+
+
+class TestNotebookFixtureSmoke(unittest.TestCase):
+    """Smoke test: notebook 04 phải chạy hết 37 cell trên fixture tổng hợp."""
+
+    def test_fixture_frame_matches_canonical_schema(self):
+        """Fixture phải cùng tên cột, cùng thứ tự và cùng dtype với artifact canonical."""
+        fixture = build_fixture_frame()
+        self.assertEqual(list(fixture.columns), list(CANONICAL_COLUMNS))
+
+        real_path = REPO_ROOT / "data" / "processed" / "air_pollution_final.parquet"
+        if real_path.exists():
+            real = pd.read_parquet(real_path)
+            self.assertEqual(list(fixture.columns), list(real.columns))
+            for col in CANONICAL_COLUMNS:
+                self.assertEqual(
+                    fixture[col].dtype, real[col].dtype,
+                    f"Fixture lệch dtype ở cột '{col}' so với dataset canonical",
+                )
+
+    def test_fixture_frame_is_small_and_seed_stable(self):
+        """Fixture phải nhỏ, tất định, và phủ đủ 4 mùa + NaN + cờ biến thiên."""
+        from src.flag_evidence import SEASON_DISPLAY_ORDER, add_season
+
+        first = build_fixture_frame()
+        second = build_fixture_frame()
+
+        self.assertEqual(len(first), len(FIXTURE_WINDOWS) * FIXTURE_HOURS_PER_WINDOW)
+        self.assertEqual(len(first.columns), 18)
+        pd.testing.assert_frame_equal(first, second)  # cùng seed => cùng fixture
+
+        self.assertTrue(first["timestamp"].is_monotonic_increasing)
+        self.assertEqual(int(first["timestamp"].duplicated().sum()), 0)
+        self.assertGreater(int(first["pm25"].isna().sum()), 0)
+        self.assertGreater(first["is_high_humidity_fog"].nunique(), 1)
+        self.assertEqual(first["pm25_was_stuck"].nunique(), 1)
+
+        # `add_season()` phải gán đủ 4 mùa, nếu không nhánh phân tầng theo mùa
+        # trong notebook sẽ chạy trên một mùa rỗng và che mất lỗi thật.
+        seasons = add_season(first)["season"]
+        self.assertEqual(
+            set(seasons.tolist()), set(SEASON_DISPLAY_ORDER),
+            "Fixture phải phủ đủ 4 mùa để nhánh phân tầng theo mùa chạy được",
+        )
+
+    def test_notebook_runs_end_to_end_on_the_fixture(self):
+        """Chạy Restart Kernel & Run All trong thư mục tạm: 0 cell lỗi, CSV được sinh."""
+        import shutil
+
+        import nbformat
+        from nbclient import NotebookClient
+
+        nb_path = REPO_ROOT / "notebooks" / "04_descriptive_stats.ipynb"
+        self.assertTrue(nb_path.exists(), "Notebook không tồn tại trên đĩa")
+
+        nb = nbformat.read(nb_path, as_version=4)
+        stripped = neutralize_canonical_asserts(nb)
+        self.assertEqual(
+            stripped, EXPECTED_NEUTRALIZED_ASSERT_COUNT,
+            "Số assert ghim giá trị dataset canonical đã thay đổi — cập nhật "
+            "CANONICAL_VALUE_ASSERT_PATTERNS và EXPECTED_NEUTRALIZED_ASSERT_COUNT "
+            "thay vì để test im lặng bỏ qua.",
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            workdir = Path(tmp)
+            # Notebook tự dò REPO_ROOT = Path.cwd() rồi `sys.path.insert` và
+            # import `src.*`, nên thư mục làm việc cần một bản sao `src/`.
+            shutil.copytree(REPO_ROOT / "src", workdir / "src")
+            (workdir / "data" / "processed").mkdir(parents=True)
+            (workdir / "reports").mkdir(parents=True)
+            build_fixture_frame().to_parquet(
+                workdir / "data" / "processed" / "air_pollution_final.parquet",
+                index=False,
+            )
+
+            client = NotebookClient(
+                nb,
+                timeout=900,
+                kernel_name="python3",
+                resources={"metadata": {"path": str(workdir)}},
+            )
+            executed = client.execute()
+
+            errors = []
+            for idx, cell in enumerate(c for c in executed.cells if c.cell_type == "code"):
+                for out in cell.get("outputs", []):
+                    if out.get("output_type") == "error":
+                        errors.append((idx, out.get("ename"), out.get("evalue")))
+            self.assertEqual(errors, [], f"Fixture smoke test gặp cell lỗi: {errors}")
+
+            # Chạy tới cell cuối = CSV đầu ra đã được sinh trong thư mục tạm.
+            csv_out = workdir / "reports" / "statistical_profile.csv"
+            self.assertTrue(csv_out.exists(), "Notebook không sinh reports/statistical_profile.csv")
+            self.assertGreater(csv_out.stat().st_size, 0)
+            self.assertEqual(len(pd.read_csv(csv_out)), 8)
+
+
 if __name__ == "__main__":
     unittest.main()
