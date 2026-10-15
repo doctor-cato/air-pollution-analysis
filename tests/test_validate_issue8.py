@@ -18,6 +18,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import nbformat
+
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -623,6 +625,56 @@ def neutralize_canonical_asserts(nb) -> int:
                 new_lines.append(line)
         cell.source = "\n".join(new_lines) + "\n"
     return stripped
+
+
+class TestNotebooksAreSerializationStable(unittest.TestCase):
+    """
+    Mọi notebook phải byte-identical với đường lưu thật của Jupyter.
+
+    Vì sao: `nbformat` serialize JSON với khoá theo thứ tự chữ cái và KHÔNG
+    xuất newline cuối. Notebook commit từ máy khác (kernel 3.10) có `id` nằm ở
+    cuối object và `language_info.version` cũ, nên mỗi lần mở lại trên máy này
+    là sinh diff thuần hình thức — 72 dòng đổi mà không cell nào đổi nội dung.
+
+    Test này dùng `nbformat.write()` — ĐÚNG hàm Jupyter gọi khi lưu — rồi so
+    byte. Không dùng `nbformat.writes()` vì hàm đó bỏ newline cuối và sẽ cho
+    kết quả sai: file thiếu newline cuối thì git cảnh báo "\\ No newline at end
+    of file" ở mọi lần diff, tức là churn vĩnh viễn dù đã chuẩn hoá.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            import nbformat  # noqa: F401,F811
+        except ImportError as exc:  # pragma: no cover
+            raise unittest.SkipTest(f"Thiếu nbformat: {exc}")
+
+    def test_notebooks_match_what_jupyter_writes(self):
+        offenders = []
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            for path in sorted((REPO_ROOT / "notebooks").glob("*.ipynb")):
+                nb = nbformat.read(path, as_version=4)
+                roundtrip = tmp_path / "roundtrip.ipynb"
+                nbformat.write(nb, str(roundtrip))
+                if roundtrip.read_text(encoding="utf-8") != path.read_text(encoding="utf-8"):
+                    offenders.append(path.name)
+
+        self.assertEqual(
+            offenders, [],
+            "Các notebook sau không khớp byte với đường lưu của Jupyter — mở lại "
+            "chúng sẽ sinh diff thuần hình thức:\n  " + "\n  ".join(offenders),
+        )
+
+    def test_every_notebook_ends_with_a_single_newline(self):
+        """`.gitattributes` khai `eol=lf`; thiếu newline cuối là churn vĩnh viễn."""
+        offenders = [
+            path.name
+            for path in sorted((REPO_ROOT / "notebooks").glob("*.ipynb"))
+            if not path.read_bytes().endswith(b"\n")
+            or path.read_bytes().endswith(b"\n\n")
+        ]
+        self.assertEqual(offenders, [], f"Notebook thiếu newline cuối: {offenders}")
 
 
 class TestNotebookFixtureSmoke(unittest.TestCase):
