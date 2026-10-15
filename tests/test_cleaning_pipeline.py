@@ -588,31 +588,16 @@ class TestIntegrationWithIssueSixOutput(unittest.TestCase):
         """Cờ bị loại vì **chưa có bằng chứng về giá trị dự báo marginal** — KHÔNG
         phải vì "chứng minh được là không dự báo được".
 
-        Số đo trên `data/interim/air_quality_canonical.parquet` (7.495 dòng có cả
-        `pm25` và RH):
+        Lập luận loại cờ dựa trên hai phép đo đã tái lập được từ dữ liệu thật
+        (xem `tests/test_flag_evidence.py` và `python scripts/verify_claims.py`):
 
-          - `corr(pm25, RH)` = **-0,0365**.
-          - PM2.5 TB nhóm có cờ = **41,65** (n=2.384); nhóm không cờ = **44,75**
-            (n=5.111).
-          - Mutual information (8 nhân pm25) = **0,0024** — thấp nhất trong số các
-            biến khí tượng (so sánh: tốc độ gió 0,048; nhiệt độ 0,084).
+          - ở mức **marginal**: `corr(pm25, RH)` ≈ −0,04 và PM2.5 trung bình ở
+            nhóm có cờ **thấp hơn** nhóm không cờ → chưa có bằng chứng dự báo;
+          - ở mức **theo mùa**: hiệu ứng **đổi dấu** giữa các mùa và F-test đồng
+            thời các hệ số tương tác bác bỏ giả thuyết "không tương tác".
 
-        **Lưu ý quan trọng — cờ CÓ tương tác theo mùa**, nên không được viết quá
-        tay rằng nó "không dự báo được":
-
-        | Mùa  | Chênh lệch (có cờ − không cờ) |
-        |------|------------------------------|
-        | Đông |  **+2,79** µg/m³ (p = 0,024) |
-        | Xuân |  **−8,91** µg/m³             |
-        | Hè   |  +0,28 µg/m³                 |
-        | Thu  |  **−2,72** µg/m³             |
-
-        F-test đồng thời các hệ số tương tác: **F = 16,78, p = 7,4·10⁻¹¹**. Tức
-        `corr ≈ 0` là hệ quả của việc **trung bình qua các mùa**, nơi hiệu ứng đổi
-        dấu — không phải bằng chứng không có quan hệ.
-
-        Vì vậy test này chỉ bảo vệ hành vi *mặc định loại khỏi feature*, không khẳng
-        định cờ vô dụng. Khai thác phát hiện theo mùa thuộc Issue #8 (EDA).
+        Vì vậy test này chỉ bảo vệ hành vi *mặc định loại khỏi feature*, không
+        khẳng định cờ vô dụng. Khai thác phát hiện theo mùa thuộc Issue #8 (EDA).
         """
         self.assertIn("is_high_humidity_fog", cp.NON_PREDICTIVE_FLAGS)
         self.assertNotIn(
@@ -627,21 +612,52 @@ class TestIntegrationWithIssueSixOutput(unittest.TestCase):
         self.assertNotIn("is_high_humidity_fog", features)
 
     def test_the_flag_group_documents_the_seasonal_interaction(self):
-        """Ghi nhớ tương tác theo mùa phải nằm ngay cạnh quyết định loại cờ.
+        """Quyết định loại cờ phải dựa trên bằng chứng **tính được**, không trên văn bản.
 
-        Nếu chỉ ghi `corr ≈ 0` mà không kèm tương tác, lập luận sẽ trông như đã
-        chứng minh cờ không dự báo được — trong khi thực tế hiệu ứng đổi dấu theo
-        mùa (F = 16,78, p = 7e-11). Đây là test chống lặp lại lỗi diễn đạt.
+        Trước Issue #38 test này đọc source bằng `inspect.getsource` rồi `assertIn`
+        cho `"F = 16,78"` — tức khoá *chuỗi*, không khoá *hành vi*: xoá hẳn dòng
+        số liệu và thay bằng câu mơ hồ thì test vẫn xanh.
+
+        Nay khối giải thích `NON_PREDICTIVE_FLAGS` **không chép con số nào**; số
+        do `src/flag_evidence.py` fit lại từ dữ liệu thật và được kiểm chứng bởi
+        `scripts/verify_claims.py`. Test này vì vậy bảo vệ đúng thứ cần bảo vệ:
+
+          1. khối giải thích vẫn nêu hai điều kiện tách bạch (marginal vs mùa);
+          2. khối giải thích **không còn** phát ra con số chưa kiểm chứng — nếu ai
+             đó chép lại `F = 16,78` vào source, test này đỏ;
+          3. mutual information được gắn nhãn chưa xác minh.
+
+        Phép tính thật được kiểm ở `tests/test_flag_evidence.py`.
         """
         import inspect
 
         src = inspect.getsource(cp)
-        block = src[src.index("NON_PREDICTIVE_FLAGS: List[str]") - 6000:
-                    src.index("NON_PREDICTIVE_FLAGS: List[str]")]
-        for needle in ("marginal", "F = 16,78", "tương tác"):
+        anchor = src.index("NON_PREDICTIVE_FLAGS: List[str]")
+        block = src[max(0, anchor - 8000):anchor]
+
+        for needle in ("marginal", "tương tác"):
             self.assertIn(
                 needle, block,
                 f"khối giải thích `NON_PREDICTIVE_FLAGS` phải nhắc {needle!r}",
+            )
+
+        self.assertIn(
+            "src/flag_evidence", block,
+            "khối giải thích phải trỏ tới nơi thực sự tính ra các con số",
+        )
+        self.assertIn(
+            "CHƯA XÁC MINH", block,
+            "mutual information phải được gắn nhãn chưa xác minh",
+        )
+
+        # Khoá chặt: KHÔNG được phát ra lại kết quả F-test dưới dạng chuỗi hằng.
+        # (`MI = 0,0024` được phép xuất hiện vì khối này gắn nhãn CHƯA XÁC MINH
+        # cho chính con số đó — nói rõ số nào bị từ chối, còn im lặng thì không.)
+        for needle in ("F = 16,78", "16,78", "7,4·10⁻¹¹", "7e-11", "7.4e-11"):
+            self.assertNotIn(
+                needle, block,
+                f"{needle!r} là kết quả tính, không phải hằng — chép vào khối "
+                "comment này sẽ quay lại tình trạng Issue #38.",
             )
 
     def test_non_predictive_flag_is_still_kept_in_the_dataset(self):

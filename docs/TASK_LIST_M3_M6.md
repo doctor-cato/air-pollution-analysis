@@ -36,7 +36,8 @@
 > | PR-AUC / Recall / F1 (task 7.5–7.7) | **`NOT IMPLEMENTED`** | Phụ thuộc nhãn ở 0.7b, chưa có mô hình nào được huấn luyện |
 > | Tỷ lệ nhãn cảnh báo `31,13%` / `18,30%` | **`UNVERIFIED`** | Phép tính **tái lập được**, nhưng **định nghĩa nhãn chưa chốt** — xem task 0.7b |
 > | Nhãn cảnh báo trượt 24h (window · `min_periods` · ngưỡng · mẫu số) | **`UNVERIFIED`** | Không có hàm trong `src/`; `rg rolling src/` → rỗng |
-> | `F = 16,78`, `p = 7,4·10⁻¹¹` (tương tác `fog × mùa`) | **`UNVERIFIED`** | Chỉ nằm trong comment/docstring; không script nào tính — Issue #38 |
+> | `F = 16,78`, `p = 7,4·10⁻¹¹` (tương tác `fog × mùa`) | **`VERIFIED`** (Issue #38) | **Đã tái lập bằng mã**: `src/flag_evidence.fog_flag_evidence()` fit `pm25 ~ C(fog) + C(season) + C(fog):C(season)` trên 7.495 dòng → `F(3, 7487) = 16,7754`, `p = 7,3817·10⁻¹¹`. `verify_claims.py` kiểm chứng lại từng số; test hành vi ở `tests/test_flag_evidence.py`, phần ghim vào dữ liệu thật ở `TestDocumentedReproduction` (CI không chạy được vì repo không commit `data/`) |
+> | Mutual information `MI = 0,0024` | **`UNVERIFIED`** | Định nghĩa ước lượng **chưa đóng băng**: `mutual_info_score` cho `0,0024` khi chia `pm25` thành 7, 8 **hoặc** 10 nhóm phân vị (trùng hợp), `mutual_info_regression` cho `0,0081`, `mutual_info_classif` cho `0,0105`. **Không** dùng làm căn cứ kết luận — xem Issue #38 |
 >
 > ⚠️ **Mọi con số trong tài liệu này thuộc Phase 2–11 là số *kỳ vọng* hoặc *giả định*, không
 > phải kết quả thực nghiệm đã đo.** Khi viết notebook, phải tính lại và trích dẫn đúng nơi sinh ra
@@ -563,6 +564,12 @@ Input: `data/processed/air_pollution_final.parquet` (9.044 dòng × 18 cột, gi
 - [ ] **2.9** 🟡 Xử lý tương tác `fog × mùa` theo addendum của Issue #8: kiểm tra tương tác cho **mọi cờ
       chẩn đoán**; nếu dùng thì dùng dạng tương tác, không dùng cờ trần (marginal `corr(pm25, RH) = −0,0365` rất
       dễ gây kết luận sai). Ghi rõ `pm25_was_stuck` là hằng số 0 → không phân biệt thông tin.
+      **Nền đã có sẵn (Issue #38):** `src/flag_evidence.fog_flag_evidence()` đã fit `pm25 ~ C(fog) + C(season) +
+      C(fog):C(season)` trên 7.495 dòng và trả về `F(3, 7487) = 16,78`, `p = 7,4·10⁻¹¹` cùng chênh lệch theo
+      mùa (Đông +2,79 · Xuân −8,91 · Hè +0,28 · Thu −2,72 µg/m³); `python scripts/verify_claims.py` kiểm
+      chứng lại từng số. Task này **mở rộng** sang các cờ còn lại, không cần tính lại cờ này.
+      **⛔ Mutual information (`0,0024`) là UNVERIFIED** — định nghĩa ước lượng chưa đóng băng, không dùng
+      làm căn cứ kết luận.
 - [ ] **2.10** 🟡 Kiểm tra VIF sớm cho cặp `pm25`/`pm10` (`r = 0,9727`) để chuẩn bị cho #12–#13.
 - [ ] **2.11** Xuất `reports/statistical_profile.csv` — khớp **chính xác** với kết quả trong notebook.
 - [ ] **2.12** Phân định rõ 3 tầng: mô tả / sinh giả thuyết / suy luận (suy luận → #11).

@@ -126,34 +126,44 @@ TARGET_DERIVED_FLAGS: List[str] = [
 # `TARGET_DERIVED_FLAGS` vốn là rò rỉ *chắc chắn* — hai lý do phải tách bạch, gộp
 # chung sẽ khiến người đọc tưởng mọi cờ bị loại đều vì rò rỉ.
 #
-# ── Cách đo và kết quả ────────────────────────────────────────────────────────
-# Trên `data/interim/air_quality_canonical.parquet` (7.495 dòng có cả `pm25` và RH):
+# ── Cách đo: KHÔNG chép con số vào đây ────────────────────────────────────────
 #
-#   - `corr(pm25, RH)`                  = -0,0365
-#   - PM2.5 TB nhóm có cờ             = 41,65   (n = 2.384)
-#   - PM2.5 TB nhóm không cờ          = 44,75   (n = 5.111)
-#   - Mutual information (8 nhân pm25) = 0,0024  — thấp nhất trong các biến khí tượng
+# Trước Issue #38 khối giải thích này in ra hệ số tương tác, chênh lệch theo mùa và
+# kết quả F-test dưới dạng **comment và chuỗi hằng** — không chỗ nào trong repo
+# thực sự tính ra chúng, nên chúng là những con số không có mã sinh ra. Nay:
 #
-# Nên ở mức **marginal**, cờ gần như không mang thông tin dự báo.
+#   * `src/flag_evidence.fog_flag_evidence()` là **một** chỗ duy nhất fit mô hình
+#     `pm25 ~ C(fog) + C(season) + C(fog):C(season)` trên dữ liệu thật và trả về
+#     F, p, bậc tự do, chênh lệch theo mùa, CI Welch và các phương án mutual
+#     information;
+#   * `python scripts/verify_claims.py` kiểm chứng từng con số đó và báo
+#     VERIFIED / MISMATCH / UNVERIFIABLE;
+#   * `scripts/build_progress_report.py` **sinh ra** câu mô tả trong báo cáo
+#     `.docx` từ kết quả đó, không hard-code.
+#
+# Bản trích có số (kèm lệnh tái lập) nằm ở `docs/roadmap.md` §"Vì sao loại
+# is_high_humidity_fog" và `docs/cleaning_log.md` §6.
+#
+# Ở mức **marginal** cờ gần như không mang thông tin dự báo.
 #
 # ── NHƯNG: cờ CÓ tương tác thật với mùa, và đây là lý do không nên viết quá tay ──
 #
-# Hồi quy `pm25 ~ fog + season + fog:season` cho ra tương tác rất mạnh:
-#
-#   | Mùa       | Chênh lệch (có cờ − không cờ) | Kết luận         |
-#   |-----------|------------------------------|------------------|
-#   | Đông      |  **+2,79** µg/m³ (p = 0,024)  | có, yếu         |
-#   | Xuân      |  **−8,91** µg/m³              | có, mạnh         |
-#   | Hè        |  +0,28 µg/m³                  | không            |
-#   | Thu       |  **−2,72** µg/m³              | có               |
-#
-#   F-test đồng thời các hệ số tương tác: **F = 16,78, p = 7,4·10⁻¹¹**.
-#   Khác biệt kép giữa Đông và Xuân+Hè: **+7,77 µg/m³**.
+# Chênh lệch PM2.5 (có cờ − không cờ) **đổi dấu giữa các mùa**: Đông dương yếu,
+# Xuân âm mạnh, Hè gần 0, Thu âm; và F-test đồng thời các hệ số tương tác bác bỏ
+# giả thuyết "không tương tác" với p rất nhỏ.
 #
 # Tức là `corr(pm25, RH) ≈ 0` **không phải** bằng chứng "không có quan hệ" — nó là
 # hệ quả của việc **trung bình qua các mùa**, nơi hiệu ứng đổi dấu. Đây chính là
 # lý do review buộc phải hạ giọng từ "không dự báo được" (phủ định tuyệt đối, không
 # chứng minh được bằng tương quan) xuống "chưa có bằng chứng về giá trị marginal".
+#
+# ── Mutual information: CHƯA XÁC MINH, không dùng làm căn cứ kết luận ────────
+#
+# `MI = 0,0024` từng được nêu ở đây và ở tài liệu. Nay nó bị gắn `UNVERIFIABLE` vì
+# MI phụ thuộc ước lượng mà không có định nghĩa nào được đóng băng trong repo: cùng
+# một tập dữ liệu cho 0,0024 với `mutual_info_score` khi chia `pm25` thành 7, 8
+# **hoặc** 10 nhóm phân vị (trùng hợp), 0,0081 với `mutual_info_regression` và
+# 0,0105 với `mutual_info_classif`. `scripts/verify_claims.py` in ra mọi phương án.
 #
 # ── Vì sao vẫn loại khỏi feature MẶC ĐỊNH ───────────────────────────────────
 #
@@ -853,13 +863,18 @@ def freeze_dataset(
                 TARGET_DERIVED_FLAGS,
             )
         if any(c in df.columns for c in NON_PREDICTIVE_FLAGS):
+            # KHÔNG in con số ở đây. Trước Issue #38 dòng log này liệt kê tương
+            # quan, mutual information và kết quả F-test dưới dạng **chuỗi hằng**
+            # — không ai tính ra. Nay mọi số đó do `src/flag_evidence.py` fit lại
+            # từ dữ liệu thật; muốn xem số thì chạy
+            # `python scripts/verify_claims.py`.
             logger.info(
-                "freeze_dataset: loại %s khỏi feature mặc định vì chưa có bằng chứng về "
-                "giá trị dự báo MARGINAL trên dữ liệu thật (corr(pm25, RH) ~ -0,04; "
-                "mutual information 0,0024 — thấp nhất trong các biến khí tượng). Lưu ý: "
-                "cờ CÓ tương tác với mùa (F = 16,78, p = 7e-11; Đông +2,79 so với Xuân "
-                "-8,91 µg/m³), nên nếu muốn khai thác thì phải dùng dạng tương tác "
-                "fog × mùa — thuộc Issue #8. Xem NON_PREDICTIVE_FLAGS.",
+                "freeze_dataset: loại %s khỏi feature mặc định vì chưa có bằng "
+                "chứng về giá trị dự báo MARGINAL trên dữ liệu thật. Lưu ý: cờ "
+                "CÓ tương tác theo mùa, nên nếu muốn khai thác thì phải dùng dạng "
+                "tương tác fog × mùa — thuộc Issue #8. Số đo tái lập bằng "
+                "`python scripts/verify_claims.py` (xem src/flag_evidence.py). "
+                "Xem NON_PREDICTIVE_FLAGS.",
                 NON_PREDICTIVE_FLAGS,
             )
 

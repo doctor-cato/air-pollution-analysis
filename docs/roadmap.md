@@ -774,13 +774,26 @@ Chi tiết luồng thực hiện:
 >   `#12`, `#13`) **đã được mở lại** và không còn bị chặn.
 > - Các số liệu thực nghiệm nêu trong các báo cáo (#4, #5) là **kết quả của một lần thực thi cụ thể**
 >   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
-> - Bộ kiểm thử hiện gồm **57 + 44 + 114 + 44 + 43 + 9 + 40 + 7 = 358 unit test tất định**
->   (**358 là số *phát hiện*, giống nhau trên mọi nền tảng**). Số *thực sự thực thi* thì
->   khác: **Windows 358 chạy / 0 skip**; **Ubuntu CI 358 chạy / `skipped=2` → 356 thực thi**
->   (2 test `@unittest.skipUnless(os.name == "nt")` trong `tests/test_pipeline_runtime_log.py`).
+> - Bộ kiểm thử hiện gồm **57 + 44 + 114 + 44 + 43 + 9 + 44 + 40 + 7 = 402 unit test tất định**.
+>   Số mà unittest **thực sự chạy và báo cáo** phụ thuộc cả nền tảng lẫn việc có
+>   `data/` hay không — **không phải con số 402 trên mọi nền tảng**:
+>   - **Windows local (có `data/interim/*.parquet`)**: `Ran 402 tests` + `OK` → **402 pass, 0 skip**.
+>   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`)**: `Ran 398 tests` + `OK (skipped=4)`
+>     → **394 pass, 4 skip**.
+>
+>   CI báo **398 chứ không phải 402** vì `TestDocumentedReproduction.setUpClass` ném
+>   `unittest.SkipTest` khi thiếu `data/interim/*.parquet` → cả lớp bị bỏ qua và **4 phương
+>   thức của nó không chạy, không được tính vào "Ran"**. Bốn skip CI báo gồm: `setUpClass`
+>   đó; `TestScriptsUseTheComputation.test_progress_report_bullet_carries_the_computed_f_statistic`
+>   (cùng lý do thiếu dữ liệu); và hai test `@unittest.skipUnless(os.name == "nt")` trong
+>   `tests/test_pipeline_runtime_log.py`.
+>
+>   ⚠️ **CI xanh KHÔNG đồng nghĩa F-test của Issue #38 đã được tái lập** — CI không có
+>   `data/`. Chỉ lần chạy local có dữ liệu mới ghim được `F = 16,78` / `p = 7,4·10⁻¹¹`
+>   vào một lần fit thật (`tests/test_flag_evidence.py::TestDocumentedReproduction`).
 >   Cả hai nền tảng đều `OK`, **0 fail** (`test_data_collection` + `test_data_quality` + `test_cleaning` +
 >   `test_cleaning_pipeline` + `test_cleaning_pipeline_guards` + `test_fetch_dataset` +
->   `test_pipeline_runtime_log` + `test_verify_claims_rolling`).
+>   `test_flag_evidence` + `test_pipeline_runtime_log` + `test_verify_claims_rolling`).
 >   Trong đó **43 test hồi quy** của #7 **FAIL trên bản gốc** và PASS sau khi sửa.
 >
 > > [!NOTE]
@@ -827,7 +840,7 @@ Chi tiết luồng thực hiện:
 |---|---|---|
 | 1 | Dropout là **MỘT sự cố liên tục 630 giờ** (`2026-06-19 11:00 → 2026-07-15 16:00`), không phải rơi rải rác. Cả hai kênh cùng mất 630/630 giờ → trạm ngừng phát | Đóng khung lại theo **khoảng liên tục**; công bố độ phủ nhãn **Train 91,4% vs Test 73,7%**. Thêm ô đo trong `notebooks/03_transformation_pipeline.ipynb` để số liệu **tái lập được** |
 | 2 | `is_high_humidity_fog` **chưa có bằng chứng** dự báo marginal PM2.5 | Tách nhóm `NON_PREDICTIVE_FLAGS`, loại khỏi feature mặc định; sửa lập luận "hợp lệ làm dự báo" |
-| 3 | Nhận định khái niệm: `corr(pm25, RH) ≈ 0` bị viết thành **"không dự báo được"** — phủ định tuyệt đối mà tương quan không chứng minh được | Kiểm tra thêm: cờ **có** tương tác theo mùa, hiệu ứng **đảo chiều** (F-test p = 7,4·10⁻¹¹). Đổi wording sang **"chưa có bằng chứng về giá trị marginal"**; ghi phát hiện vào Issue #8 |
+| 3 | Nhận định khái niệm: `corr(pm25, RH) ≈ 0` bị viết thành **"không dự báo được"** — phủ định tuyệt đối mà tương quan không chứng minh được | Kiểm tra thêm: cờ **có** tương tác theo mùa, hiệu ứng **đảo chiều** (F-test p = 7,4·10⁻¹¹ — **đã tái lập được** từ Issue #38, xem §"Vì sao loại `is_high_humidity_fog`" và `python scripts/verify_claims.py`). Đổi wording sang **"chưa có bằng chứng về giá trị marginal"**; ghi phát hiện vào Issue #8 |
 | 4 | Con số **"mutation score 21/21 = 100%"** không tái lập được (đếm tay, không có công cụ/CI/artifact) | Hạ xuống thành ghi chú trung thực ở `README.md`; **gỡ khỏi roadmap** |
 
 #### G.4.3. Chưa sửa — đã chuyển Issue #8 (EDA)
@@ -847,22 +860,27 @@ Chi tiết luồng thực hiện:
 
 | Cổng | Kết quả |
 |---|---|
-| `python -m pytest tests/ -q` | **358 collected** → Windows **358 passed**; Ubuntu **356 passed, 2 skipped** |
-| `python -m unittest discover -s tests -q` (gate của CI, Ubuntu) | **`Ran 358 tests` + `OK (skipped=2)`** → 356 thực thi, 0 fail |
-| `-W error::DeprecationWarning -W error::FutureWarning` | **358 tests, 0 cảnh báo** (chạy trên Windows local; CI chưa tái chạy lệch này — xem bảng bằng chứng bên dưới) |
+| `python -m pytest tests/ -q` | **402 collected** → local Windows (có `data/`): **402 passed**, 0 skipped, 11 subtests. CI `ubuntu-latest`: **chưa tái chạy lệch này** — xem dòng unittest bên dưới cho số CI đã đo |
+| `python -m unittest discover -s tests -q` (gate của CI, Ubuntu) | **`Ran 398 tests` + `OK (skipped=4)`** → **394 thực thi**, 0 fail (đọc từ log CI thật) |
+| `python -m unittest discover tests` (local Windows, có `data/`) | **`Ran 402 tests` + `OK`** → **402 pass, 0 skip** |
+| `-W error::DeprecationWarning -W error::FutureWarning` | **402 tests, 0 cảnh báo** (chạy trên Windows local; CI chưa tái chạy lệch này — xem bảng bằng chứng bên dưới) |
 | `python -m compileall -q src tests scripts` | exit 0 |
 | `notebooks/*.ipynb` (nbformat 4.5) | 6/6 hợp lệ, 0 warning |
 | `notebooks/03_transformation_pipeline.ipynb` | ⚠️ **CHƯA TÁI CHẠY ở lượt này** — cần `data/processed/air_pollution_final.parquet` (gitignored). Lần chạy trước đó qua `nbconvert --execute` không có error, nhưng **không được tính là bằng chứng của HEAD hiện tại** |
 
 > **Ngày đo:** 2026-10-14, trên nhánh `docs/audit-delivery` (PR #37), local **Windows / Python 3.13**.
-> **Tái chạy 2026-10-15 tại `a9a617e`:** `python -m unittest discover tests` → `Ran 358 tests … OK`
-> (Windows, **0 skipped**); `compileall` exit 0; `verify_claims.py` exit 0. CI `ubuntu-latest`
-> cùng commit: `Ran 358 tests … OK (skipped=2)` → **356 thực thi**, 0 fail.
+> **Tái chạy 2026-10-15 tại `37374fe` (PR #39):** `python -m unittest discover tests` → `Ran 402 tests … OK`
+> (Windows, **0 skipped**); `pytest tests/ -q` → `402 passed`; `compileall` exit 0;
+> `verify_claims.py` exit 0 (`37 VERIFIED, 0 MISMATCH, 1 UNVERIFIABLE`).
+> CI `ubuntu-latest` cùng commit: `Ran 398 tests … OK (skipped=4)` → **394 thực thi**, 0 fail.
+> *(Lượt trước ghi `Ran 393 … skipped=6 → 387` là **sai**: `setUpClass` của
+> `TestDocumentedReproduction` skip cả lớp nên 4 phương thức không chạy và không được
+> tính vào "Ran", còn số skip CI thật là 4, không phải 6.)*
 >
 > | Đã chạy lại ở lượt này | Kết quả |
 > |---|---|
-> | `python -m pytest tests/ -q` | **358 passed** *(Windows, 0 skip)*, 11 subtests |
-> | `python -m unittest discover tests` | **Ran 358 tests … OK** *(Windows: 358 thực thi, 0 skip)* |
+> | `python -m pytest tests/ -q` | **402 passed** *(Windows, có `data/`, 0 skip)*, 11 subtests |
+> | `python -m unittest discover tests` | **Ran 402 tests … OK** *(Windows, có `data/`: 402 thực thi, 0 skip)* |
 > | `python -m compileall -q src tests scripts` | exit 0 |
 > | `python -c "import src.*"` (4 module) | exit 0 |
 > | `nbconvert --execute notebooks/00_environment_test.ipynb` | exit 0 |
@@ -1120,31 +1138,43 @@ Tỷ lệ 51,8/48,2 trông "lệch chuẩn" nhưng là **hệ quả tất yếu*
 >
 > **Vì sao loại `is_high_humidity_fog`.** Bản gốc ghi chú "đây là điều kiện khí quyển nên hợp
 > lệ làm dự báo". Số đo trên chính bộ dữ liệu dự án **không ủng hộ** lập luận đó ở mức
-> marginal:
+> marginal. Tập quan sát: **7.495 dòng** có cả `pm25` và `relative_humidity` sau khi ghép
+> `air_quality_canonical` + `weather_canonical` (cột RH nằm ở tập khí tượng, không có trong
+> tệp ô nhiễm):
 >
 > | Số đo | Kết quả |
 > |---|---|
-> ⛔ **Bảng dưới đây là `UNVERIFIED` — chưa có mã nguồn tái lập.**
-> `rg -n 'p_value|ttest|anova|f_oneway|mutual_info' src/ scripts/` → **rỗng**; không notebook
-> nào sinh ra khối số này. Nguồn duy nhất là `docs/history/02` — tức kết quả chạy tay.
-> Xem [Issue #38](https://github.com/doctor-cato/air-pollution-analysis/issues/38).
->
 > | `corr(pm25, RH)` | $-0{,}0365$ |
-> | PM2.5 TB nhóm có cờ / không cờ | 41,65 / 44,75 |
-> | Mutual information (8 nhân pm25) | 0,0024 — **thấp nhất** trong các biến khí tượng |
+> | PM2.5 TB nhóm có cờ / không cờ | 41,65 (n = 2.384) / 44,75 (n = 5.111) |
+> | Mutual information | ⛔ **CHƯA XÁC MINH** — xem ghi chú bên dưới |
 >
-> **Nhưng cờ CÓ tương tác theo mùa**, và hiệu ứng **đảo chiều** (cũng `UNVERIFIED`):
+> **Nhưng cờ CÓ tương tác theo mùa**, và hiệu ứng **đảo chiều** (OLS
+> `pm25 ~ C(fog) + C(season) + C(fog):C(season)`):
 >
 > | Mùa | Chênh lệch PM2.5 (có cờ − không cờ) |
 > |---|---|
-> | Đông | $+2{,}79\,\mu\text{g/m}^3$ (p = 0,024) |
-> | Xuân | $-8{,}91\,\mu\text{g/m}^3$ |
+> | Đông | $+2{,}79\,\mu\text{g/m}^3$ (p = 0,024 — p-value hệ số của mô hình) |
+> | Xuân | $-8{,}91\,\mu\text{g/m}^3$ (CI 95% Welch $[-10{,}44;\ -7{,}38]$) |
 > | Hè | $+0{,}28\,\mu\text{g/m}^3$ |
-> | Thu | $-2{,}72\,\mu\text{g/m}^3$ |
+> | Thu | $-2{,}72\,\mu\text{g/m}^3$ (CI 95% Welch $[-4{,}93;\ -0{,}51]$) |
 >
-> F-test đồng thời các hệ số tương tác: **F = 16,78, p = 7,4·10⁻¹¹** (`UNVERIFIED`). Nghĩa là
+> F-test đồng thời ba hệ số tương tác: $F(3,\,7487) = 16{,}78$, $p = 7{,}4\cdot10^{-11}$.
+> Khác biệt kép Đông so với (Xuân + Hè) gộp: $+7{,}77\,\mu\text{g/m}^3$. Nghĩa là
 > `corr ≈ 0` là hệ quả của việc **trung bình qua các mùa**, chứ **không** phải bằng chứng
 > không có quan hệ.
+>
+> **Tái lập:** `python scripts/verify_claims.py` fit lại mô hình trên dữ liệu thật và báo
+> `VERIFIED` cho các số trên; phép tính nằm ở `src/flag_evidence.py`, test hành vi ở
+> `tests/test_flag_evidence.py`. Trước Issue #38 những số này chỉ tồn tại dưới dạng comment
+> và chuỗi hằng, không có mã nào sinh ra chúng.
+>
+> **⛔ Mutual information — CHƯA XÁC MINH, không dùng làm căn cứ kết luận.** Con số
+> `0,0024` từng được nêu ở đây nhưng **không** có định nghĩa đóng băng trong repo: cùng một
+> tập dữ liệu cho `0,0024` với `mutual_info_score` khi chia `pm25` thành **7, 8 hoặc 10** nhóm
+> phân vị (trùng hợp, không phải định nghĩa duy nhất), `0,0081` với `mutual_info_regression`
+> và `0,0105` với `mutual_info_classif`. `verify_claims.py` in ra mọi phương án và báo
+> `UNVERIFIABLE`. Vì vậy câu "MI thấp nhất trong các biến khí tượng" **không** được dùng làm
+> lập luận; lập luận loại cờ dựa vào `corr`, trung bình nhóm và tương tác theo mùa.
 >
 > **Hệ quả phương pháp luận:** tuyệt đối **không** kết luận "không tương quan" chỉ từ hệ số
 > tương quan, và **không** dùng từ "không dự báo được" cho phủ định tuyệt đối. Cờ còn giữ

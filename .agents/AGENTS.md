@@ -15,8 +15,7 @@ This repository is an **academic data-science project**, not an enterprise distr
 - **Current State:** **Milestone 2 (Week 05)** — Issues #6 and #7 implemented; modelling Issues #11–#13 not started.
   - Authoritative requirements are in [`docs/roadmap.md`](../docs/roadmap.md).
   - An interactive landing page lives on branch `gh-pages` (`index.html`, `styles.css`, `script.js`).
-  - **Implemented:** `src/data_collection.py`, `src/data_quality.py` (6-dimension audit, Issue #3), `src/cleaning.py` (deterministic cleaning, Issue #6), `src/cleaning_pipeline.py` (leakage-safe preprocessing, Issue #7), `scripts/fetch_dataset.py`, the CI workflow (`.github/workflows/ci.yml`), and notebooks `00`–`03`.
-  - **Not yet implemented (NOT IMPLEMENTED):** notebooks `04`–`07` (modelling & evaluation, Issues #11–#13). The classification notebook was renumbered from `06_` to `07_` in task 0.3, so the missing range is 04 through 07, not 04 through 06. Everything under `data/processed/` is a gitignored artifact that notebook `03` regenerates.
+  - **Implemented:** `src/data_collection.py`, `src/data_quality.py` (6-dimension audit, Issue #3), `src/cleaning.py` (deterministic cleaning, Issue #6), `src/cleaning_pipeline.py` (leakage-safe preprocessing, Issue #7), `src/flag_evidence.py` (reproducible evidence for `is_high_humidity_fog`, Issue #38), `scripts/fetch_dataset.py`, `scripts/verify_claims.py`, the CI workflow (`.github/workflows/ci.yml`), and notebooks `00`–`03`.
   - **Roadmap vs. Reality:** Always inspect the filesystem to verify what exists versus what is planned.
 
 ---

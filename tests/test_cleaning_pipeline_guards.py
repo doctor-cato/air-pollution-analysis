@@ -370,12 +370,16 @@ class B7TargetDerivedFlagIsNotAFeature(unittest.TestCase):
         """`DIAGNOSTIC_FEATURES` giờ chỉ còn `pm25_was_stuck`.
 
         `is_high_humidity_fog` bị chuyển sang `NON_PREDICTIVE_FLAGS` vì ở mức
-        **marginal** chưa có bằng chứng dự báo được: `corr(pm25, RH) = -0,0365`,
-        mutual information 0,0024 (thấp nhất trong các biến khí tượng).
+        **marginal** chưa có bằng chứng dự báo được: `corr(pm25, RH)` gần 0 và
+        PM2.5 trung bình nhóm có cờ thấp hơn nhóm không cờ. Mutual information
+        **chưa xác minh** (định nghĩa ước lượng chưa đóng băng) nên không được
+        dùng làm căn cứ.
 
-        Cờ **không** bị khẳng định là vô dụng: nó có tương tác rõ với mùa (Đông
-        +2,79; Xuân −8,91 µg/m³; F-test p = 7,4·10⁻¹¹). Review đã đúng khi yêu cầu
-        hạ giọng từ "không dự báo được" sang "chưa có bằng chứng marginal".
+        Cờ **không** bị khẳng định là vô dụng: nó có tương tác rõ với mùa (hiệu
+        ứng đổi dấu, F-test p rất nhỏ). Review đã đúng khi yêu cầu hạ giọng từ
+        "không dự báo được" sang "chưa có bằng chứng marginal".
+
+        Số đo cụ thể tái lập ở `tests/test_flag_evidence.py`.
         """
         self.assertIn("pm25_was_stuck", cp.DIAGNOSTIC_FEATURES)
         self.assertNotIn("is_high_humidity_fog", cp.DIAGNOSTIC_FEATURES)
