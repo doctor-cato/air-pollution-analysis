@@ -522,6 +522,10 @@ assert (df.groupby('station_id')['timestamp'].diff().dropna() == np.timedelta64(
 > Loại khỏi *tập feature* ≠ loại khỏi *dataset* — cả ba cột vẫn còn nguyên trong
 > `data/interim/*.parquet` và `data/processed/air_pollution_final.parquet`.
 
+> ⛔ **Các con số trong khối đính chính dưới đây là `UNVERIFIED`** — đo tay năm 2026-09-30,
+> không có mã nguồn tái lập được. `verify_claims.py` không kiểm chứng chúng. Xem
+> [Issue #38](https://github.com/doctor-cato/air-pollution-analysis/issues/38).
+>
 > **Đính chính ngữ nghĩa `is_high_humidity_fog` (2026-09-30, audit M2).** Bản log này từng mô tả cờ
 > là *sương mù quang học khiến cảm biến đọc sai*. Đo trên dữ liệu thật thì cờ **bắt đúng** nhóm ẩm
 > cao (RH trung bình 94,99% so với 74,06% ở nhóm không cờ) — nên là một *cờ độ ẩm* đúng đắn —
@@ -531,7 +535,7 @@ assert (df.groupby('station_id')['timestamp'].diff().dropna() == np.timedelta64(
 >
 > Cờ **có** tương tác theo mùa với hiệu ứng **đảo chiều**: Đông $+2{,}79\,\mu\text{g/m}^3$
 > (p = 0,024), Xuân $-8{,}91\,\mu\text{g/m}^3$; F-test đồng thời các hệ số tương tác
-> **F = 16,78, p = 7,4·10⁻¹¹**. Nên `corr ≈ 0` là hệ quả của việc trung bình qua các mùa, **không**
+> **F = 16,78, p = 7,4·10⁻¹¹** (`UNVERIFIED`). Nên `corr ≈ 0` là hệ quả của việc trung bình qua các mùa, **không**
 > phải bằng chứng không có quan hệ — và vì vậy tuyệt đối **không** được viết "không dự báo được".
 > Khai thác phát hiện theo mùa cần dạng **tương tác `fog × mùa`**, thuộc **Issue #8 (EDA)**.
 > Xem `NON_PREDICTIVE_FLAGS` trong `src/cleaning_pipeline.py`.

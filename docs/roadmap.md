@@ -1124,11 +1124,16 @@ Tỷ lệ 51,8/48,2 trông "lệch chuẩn" nhưng là **hệ quả tất yếu*
 >
 > | Số đo | Kết quả |
 > |---|---|
+> ⛔ **Bảng dưới đây là `UNVERIFIED` — chưa có mã nguồn tái lập.**
+> `rg -n 'p_value|ttest|anova|f_oneway|mutual_info' src/ scripts/` → **rỗng**; không notebook
+> nào sinh ra khối số này. Nguồn duy nhất là `docs/history/02` — tức kết quả chạy tay.
+> Xem [Issue #38](https://github.com/doctor-cato/air-pollution-analysis/issues/38).
+>
 > | `corr(pm25, RH)` | $-0{,}0365$ |
 > | PM2.5 TB nhóm có cờ / không cờ | 41,65 / 44,75 |
 > | Mutual information (8 nhân pm25) | 0,0024 — **thấp nhất** trong các biến khí tượng |
 >
-> **Nhưng cờ CÓ tương tác theo mùa**, và hiệu ứng **đảo chiều**:
+> **Nhưng cờ CÓ tương tác theo mùa**, và hiệu ứng **đảo chiều** (cũng `UNVERIFIED`):
 >
 > | Mùa | Chênh lệch PM2.5 (có cờ − không cờ) |
 > |---|---|
@@ -1137,7 +1142,7 @@ Tỷ lệ 51,8/48,2 trông "lệch chuẩn" nhưng là **hệ quả tất yếu*
 > | Hè | $+0{,}28\,\mu\text{g/m}^3$ |
 > | Thu | $-2{,}72\,\mu\text{g/m}^3$ |
 >
-> F-test đồng thời các hệ số tương tác: **F = 16,78, p = 7,4·10⁻¹¹**. Nghĩa là
+> F-test đồng thời các hệ số tương tác: **F = 16,78, p = 7,4·10⁻¹¹** (`UNVERIFIED`). Nghĩa là
 > `corr ≈ 0` là hệ quả của việc **trung bình qua các mùa**, chứ **không** phải bằng chứng
 > không có quan hệ.
 >
