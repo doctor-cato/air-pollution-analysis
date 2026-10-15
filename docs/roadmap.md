@@ -855,11 +855,14 @@ Chi tiết luồng thực hiện:
 | `notebooks/03_transformation_pipeline.ipynb` | ⚠️ **CHƯA TÁI CHẠY ở lượt này** — cần `data/processed/air_pollution_final.parquet` (gitignored). Lần chạy trước đó qua `nbconvert --execute` không có error, nhưng **không được tính là bằng chứng của HEAD hiện tại** |
 
 > **Ngày đo:** 2026-10-14, trên nhánh `docs/audit-delivery` (PR #37), local **Windows / Python 3.13**.
+> **Tái chạy 2026-10-15 tại `a9a617e`:** `python -m unittest discover tests` → `Ran 358 tests … OK`
+> (Windows, **0 skipped**); `compileall` exit 0; `verify_claims.py` exit 0. CI `ubuntu-latest`
+> cùng commit: `Ran 358 tests … OK (skipped=2)` → **356 thực thi**, 0 fail.
 >
 > | Đã chạy lại ở lượt này | Kết quả |
 > |---|---|
-> | `python -m pytest tests/ -q` | **358 passed**, 11 subtests |
-> | `python -m unittest discover tests` (đúng lệnh gate của CI) | **Ran 358 tests … OK** |
+> | `python -m pytest tests/ -q` | **358 passed** *(Windows, 0 skip)*, 11 subtests |
+> | `python -m unittest discover tests` | **Ran 358 tests … OK** *(Windows: 358 thực thi, 0 skip)* |
 > | `python -m compileall -q src tests scripts` | exit 0 |
 > | `python -c "import src.*"` (4 module) | exit 0 |
 > | `nbconvert --execute notebooks/00_environment_test.ipynb` | exit 0 |
