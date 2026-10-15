@@ -1167,48 +1167,72 @@ print("="*70)
 """)
 
 # ---------------------------------------------------------------------------
-# Ghi tệp notebook định dạng ipynb chuẩn
+# Các hàm sinh và thực thi notebook chuẩn mực (Modular Notebook Generator)
 # ---------------------------------------------------------------------------
-notebook_json = {
-    "cells": cells,
-    "metadata": {
-        "kernelspec": {
-            "display_name": "Python 3",
-            "language": "python",
-            "name": "python3"
-        },
-        "language_info": {
-            "codemirror_mode": {
-                "name": "ipython",
-                "version": 3
+def build_notebook_dict() -> dict:
+    """Xây dựng và trả về từ điển cấu trúc notebook chuẩn nbformat 4.5."""
+    return {
+        "cells": cells,
+        "metadata": {
+            "kernelspec": {
+                "display_name": "Python 3",
+                "language": "python",
+                "name": "python3"
             },
-            "file_extension": ".py",
-            "mimetype": "text/x-python",
-            "name": "python",
-            "nbconvert_exporter": "python",
-            "pygments_lexer": "ipython3",
-            "version": "3.14.6"
-        }
-    },
-    "nbformat": 4,
-    "nbformat_minor": 5
-}
+            "language_info": {
+                "codemirror_mode": {
+                    "name": "ipython",
+                    "version": 3
+                },
+                "file_extension": ".py",
+                "mimetype": "text/x-python",
+                "name": "python",
+                "nbconvert_exporter": "python",
+                "pygments_lexer": "ipython3",
+                "version": "3.14.6"
+            }
+        },
+        "nbformat": 4,
+        "nbformat_minor": 5
+    }
 
-with open(NOTEBOOK_PATH, "w", encoding="utf-8") as f:
-    json.dump(notebook_json, f, indent=1, ensure_ascii=False)
+def generate_and_execute(output_path: Path = NOTEBOOK_PATH, execute: bool = True) -> dict:
+    """
+    Sinh file notebook và tùy chọn thực thi toàn bộ cell qua NotebookClient.
+    
+    Nếu môi trường thiếu dataset (như Ubuntu CI không commit data/),
+    script sẽ thông báo và bỏ qua bước execute mà không gây lỗi.
+    """
+    notebook_json = build_notebook_dict()
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(notebook_json, f, indent=1, ensure_ascii=False)
+    
+    code_count = len([c for c in cells if c["cell_type"] == "code"])
+    md_count = len([c for c in cells if c["cell_type"] == "markdown"])
+    print(f"✓ Đã tạo thành công cấu trúc {output_path} với {len(cells)} cells ({code_count} code, {md_count} markdown).")
+    
+    if execute:
+        parquet_path = REPO_ROOT / "data" / "processed" / "air_pollution_final.parquet"
+        if not parquet_path.exists():
+            print(f"  ℹ Không tìm thấy {parquet_path} (môi trường CI không commit data/). Bỏ qua bước execute.")
+            return notebook_json
+        
+        print("Đang thực thi notebook từ đầu đến cuối (Restart Kernel & Run All)...")
+        import nbformat
+        from nbclient import NotebookClient
+        
+        nb_obj = nbformat.read(output_path, as_version=4)
+        client = NotebookClient(nb_obj, timeout=600, kernel_name="python3")
+        client.execute()
+        nbformat.write(nb_obj, output_path)
+        print("✓ Notebook đã thực thi 100% không lỗi và đã lưu toàn bộ outputs mới nhất.")
+    
+    return notebook_json
 
-print(f"✓ Đã tạo thành công cấu trúc {NOTEBOOK_PATH} với {len(cells)} cells.")
+if __name__ == "__main__":
+    generate_and_execute()
 
-# ---------------------------------------------------------------------------
-# Tự động thực thi notebook từ đầu đến cuối để đảm bảo tính đồng bộ & tái tạo
-# ---------------------------------------------------------------------------
-print("Đang thực thi notebook từ đầu đến cuối (Restart Kernel & Run All)...")
-import nbformat
-from nbclient import NotebookClient
-
-nb_obj = nbformat.read(NOTEBOOK_PATH, as_version=4)
-client = NotebookClient(nb_obj, timeout=600, kernel_name="python3")
-client.execute()
-nbformat.write(nb_obj, NOTEBOOK_PATH)
-print("✓ Notebook đã thực thi 100% không lỗi và đã lưu toàn bộ outputs mới nhất.")
 
