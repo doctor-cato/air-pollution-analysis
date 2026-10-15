@@ -167,6 +167,43 @@ class TestNotebookExecutionOutputs(unittest.TestCase):
                     f"Code cell #{idx} gặp lỗi: {out.get('ename')}: {out.get('evalue')}",
                 )
 
+    def test_live_restart_kernel_and_run_all(self):
+        """
+        Kiểm chứng khả năng tái tạo thực tế: chạy Restart Kernel & Run All trực tiếp.
+
+        Nếu chạy trên môi trường CI không có data/processed/air_pollution_final.parquet,
+        test này sẽ skip (unittest.SkipTest) với thông điệp rõ ràng:
+        'Môi trường CI không có data/processed/air_pollution_final.parquet (bước chưa được xác minh trong CI)'.
+
+        Nếu có dataset (local Windows hoặc môi trường có data), test sẽ thực sự khởi chạy
+        NotebookClient và xác nhận notebook thực thi 100% không phát sinh bất kỳ cell lỗi nào.
+        """
+        parquet_path = REPO_ROOT / "data" / "processed" / "air_pollution_final.parquet"
+        if not parquet_path.exists():
+            self.skipTest(
+                "Môi trường CI không có data/processed/air_pollution_final.parquet "
+                "(bước thực thi notebook chưa được xác minh trong CI)"
+            )
+
+        nb_path = REPO_ROOT / "notebooks" / "04_descriptive_stats.ipynb"
+        self.assertTrue(nb_path.exists(), "Notebook không tồn tại trên đĩa")
+
+        import nbformat
+        from nbclient import NotebookClient
+
+        nb_obj = nbformat.read(nb_path, as_version=4)
+        client = NotebookClient(nb_obj, timeout=600, kernel_name="python3")
+        executed_nb = client.execute()
+
+        error_cells = []
+        code_cells = [c for c in executed_nb.cells if c.cell_type == "code"]
+        for idx, cell in enumerate(code_cells):
+            for out in cell.get("outputs", []):
+                if out.get("output_type") == "error":
+                    error_cells.append((idx, out.get("ename"), out.get("evalue")))
+
+        self.assertEqual(len(error_cells), 0, f"Phát hiện cell lỗi khi chạy Restart Kernel: {error_cells}")
+
 
 if __name__ == "__main__":
     unittest.main()

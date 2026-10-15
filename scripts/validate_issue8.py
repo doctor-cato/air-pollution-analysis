@@ -170,14 +170,30 @@ def main():
             )
 
         # 2.3 Processed dataset checksum verification
-        if parquet_path.exists():
-            res_proc = verify_file_checksum(parquet_path, expected_sha=None)
-            check("Processed dataset checksum calculated", res_proc["actual_sha"] is not None)
-            print(
-                f"  ℹ Processed dataset SHA-256: {res_proc['actual_sha'][:16]}... "
-                "(Không có SHA-256 kỳ vọng trong metadata.json; hợp đồng được bảo đảm qua kích thước [9044, 18] "
-                "và 18 cột schema)"
+        expected_proc_sha = (
+            meta.get("collection_pipeline_execution", {})
+            .get("artifact_dtypes", {})
+            .get("processed_sha256")
+        )
+        res_proc = verify_file_checksum(parquet_path, expected_proc_sha)
+        if res_proc["status"] == "MATCH":
+            check("Processed dataset SHA-256 matches metadata.json", True)
+        elif res_proc["status"] == "MISMATCH":
+            check("Processed dataset SHA-256 matches metadata.json", False, res_proc["message"])
+        elif res_proc["status"] == "NOT_FOUND":
+            warn(
+                "Processed dataset not found on disk (NOT_FOUND)",
+                res_proc["message"],
             )
+        elif res_proc["status"] == "NO_EXPECTED_HASH":
+            warn(
+                "Processed dataset checksum verification skipped (NO_EXPECTED_HASH)",
+                (
+                    f"{res_proc['message']} — Metadata không định nghĩa hash chuẩn cho processed artifact; "
+                    "hợp đồng toàn vẹn dựa trên shape [9044, 18] và 18 cột schema."
+                ),
+            )
+
 
         # 2.4 Raw OpenAQ payload checksum verification
         rec_exec = meta.get("collection_pipeline_execution", {})
@@ -431,6 +447,37 @@ def main():
 
             is_synced, sync_msg = check_notebook_sync(nb_path, gen_cells)
             check(f"Notebook source 100% in sync with generator: {sync_msg}", is_synced)
+
+        # Live notebook execution check (Restart Kernel & Run All)
+        if parquet_path.exists():
+            print("  Đang kiểm chứng thực thi thực tế (Restart Kernel & Run All)...")
+            try:
+                import nbformat
+                from nbclient import NotebookClient
+
+                nb_to_run = nbformat.read(nb_path, as_version=4)
+                client = NotebookClient(nb_to_run, timeout=600, kernel_name="python3")
+                executed_nb = client.execute()
+
+                exec_errors = []
+                for idx, cell in enumerate(c for c in executed_nb.cells if c.cell_type == "code"):
+                    for out in cell.get("outputs", []):
+                        if out.get("output_type") == "error":
+                            exec_errors.append((idx, out.get("ename"), out.get("evalue")))
+
+                check(
+                    "Live notebook execution (Restart Kernel & Run All) succeeded with 0 errors",
+                    len(exec_errors) == 0,
+                    f"Cell errors: {exec_errors}",
+                )
+            except Exception as exc:
+                check("Live notebook execution (Restart Kernel & Run All) succeeded with 0 errors", False, str(exc))
+        else:
+            warn(
+                "Live notebook execution SKIPPED in CI",
+                "Môi trường CI không có data/processed/air_pollution_final.parquet (bước chưa được xác minh trong CI).",
+            )
+
 
     # ─── Summary ────────────────────────────────────────────────────────
     print(f"\n{'='*60}")

@@ -12,20 +12,25 @@ NOTEBOOK_PATH = REPO_ROOT / "notebooks" / "04_descriptive_stats.ipynb"
 cells = []
 
 def add_md(source: str):
+    idx = len(cells) + 1
     cells.append({
         "cell_type": "markdown",
+        "id": f"cell_{idx:02d}",
         "metadata": {},
         "source": [line + "\n" for line in source.strip().split("\n")]
     })
 
 def add_code(source: str):
+    idx = len(cells) + 1
     cells.append({
         "cell_type": "code",
         "execution_count": None,
+        "id": f"cell_{idx:02d}",
         "metadata": {},
         "outputs": [],
         "source": [line + "\n" for line in source.strip().split("\n")]
     })
+
 
 # ---------------------------------------------------------------------------
 # CELL 1: Title & Purpose
