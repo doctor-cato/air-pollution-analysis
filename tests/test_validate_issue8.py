@@ -631,16 +631,54 @@ class TestDocumentedTestCounts(unittest.TestCase):
     """
     Số liệu kiểm thử trong tài liệu phải khớp mã nguồn.
 
-    Regression cụ thể: `AGENTS.md` từng ghi "423" rồi "426" trong khi suite thật
-    đã lớn hơn — số đếm trôi dần vì không ai kiểm. Bài học: một con số ghi tay
-    trong tài liệu mà không có test canh thì sẽ sai, và sai lặng lẽ.
+    Regression cụ thể 1: `AGENTS.md` từng ghi "423" rồi "426" trong khi suite thật
+    đã lớn hơn — số đếm trôi dần vì không ai kiểm.
 
-    Vì vậy số liệu chi tiết được dời sang `docs/TEST_SUITE.md` và con số ở đây
-    được sinh từ mã nguồn thật.
+    Regression cụ thể 2 (lần này tệ hơn): `README.md` và `docs/roadmap.md` vẫn
+    ghi "402 / 398 / 394" trong khi suite đã có 430. Chúng **không nằm trong**
+    `DOCS` nên guard cũ bỏ lọt — chứng minh chỉ kiểm "con số đúng có mặt" là
+    không đủ. Vì vậy nay guard chặn CẢ HAI chiều:
+
+    * mọi file trong `DOCS` phải nhắc tới con số thật, và
+    * không file nào được phép nhắc tới con số đã lỗi thời.
+
+    Chiều thứ hai mới là thứ bắt được `402`.
     """
 
     #: File tài liệu mang số liệu kiểm thử phải được canh.
-    DOCS = ("AGENTS.md", "docs/TEST_SUITE.md")
+    DOCS = (
+        "AGENTS.md",
+        "docs/TEST_SUITE.md",
+        "README.md",
+        "docs/roadmap.md",
+    )
+
+    #: File ngoài danh sách trên: chỉ cần có số đúng, KHÔNG chặn số cũ.
+    #:
+    #: `docs/roadmap.md` §G.4.4 là **bản ghi đo có ngày và commit SHA**. `Ran 402
+    #: tests` tại `37374fe` là bằng chứng đúng cho đúng commit đó — viết lại
+    #: thành con số hôm nay là **bịa dữ liệu**, tệ hơn là để số cũ nằm đó. Vì vậy
+    #: roadmap vẫn phải nhắc số hiện hành, nhưng các bản ghi lịch sử được giữ
+    #: nguyên và có nhãn "bản ghi tại commit …" ngay trên bảng.
+    STALE_CHECK_EXEMPT = ("docs/roadmap.md",)
+
+    #: Số từng được ghi sai trong tài liệu. Mỗi phần tử là một regex tìm trong
+    #: ngữ cảnh "nói về số test", để không vô tình bắt nhầm con số khác (ví dụ
+    #: "394 giờ" là thời lượng, không phải số test).
+    #:
+    #: CHỈ liệt kê số **cố định và sai**, không liệt kê số CI-reported. Số CI
+    #: (defined − 4) thay đổi mỗi khi thêm test, nên đưa nó vào danh sách cấm
+    #: sẽ bắt nhầm chính dòng đúng trong `docs/TEST_SUITE.md`.
+    STALE_COUNT_PATTERNS = (
+        r"Tổng số unit test:\s*402",
+        r"\b402\s+(?:unit\s+)?test",
+        r"\b402\s+phương thức",
+        r"Ran 402 tests",
+        r"\b398\s+tests?\b",
+        r"Ran 398 tests",
+        r"\b394\s+pass\b",
+        r"\b358\s+(?:unit\s+)?test",
+    )
 
     @staticmethod
     def _defined_test_count() -> int:
@@ -662,6 +700,49 @@ class TestDocumentedTestCounts(unittest.TestCase):
                 f"{name} không nhắc tới {actual} — số test method thật. "
                 f"Cập nhật hoặc xoá con số cũ.",
             )
+
+    @staticmethod
+    def _is_dated_snapshot(line: str) -> bool:
+        """
+        Dòng thuộc bản ghi đo LỊCH SỬ (có ngày hoặc commit SHA) thì miễn nhiễm.
+
+        `docs/roadmap.md` §G.4.4 là nhật ký kiểm chứng: mỗi lượt ghi kèm ngày và
+        SHA, nên `Ran 402 tests` tại `37374fe` là **bằng chứng đúng** — sửa nó
+        thành con số hôm nay là bịa dữ liệu. Guard chỉ canh phần **trạng thái
+        hiện tại**, tức dòng không gắn mốc thời gian.
+        """
+        return bool(re.search(r"`[0-9a-f]{7,40}`", line)) or bool(
+            re.search(r"\b20\d{2}-\d{2}-\d{2}\b", line)
+        )
+
+    def test_no_doc_repeats_a_retired_test_count(self):
+        """
+        Không tài liệu nào được phép nhắc lại số test đã lỗi thời.
+
+        Chiều bổ sung của test trên: `README.md` từng giữ cả "431" lẫn "402" cùng
+        lúc, nên chỉ kiểm sự hiện diện của con số đúng không bắt được lỗi.
+
+        Miễn trừ `STALE_CHECK_EXEMPT` và các dòng đã gắn mốc thời gian
+        (`_is_dated_snapshot`) — xem lý do ở từng nơi.
+        """
+        offenders = []
+        for name in self.DOCS:
+            if name in self.STALE_CHECK_EXEMPT:
+                continue
+            path = REPO_ROOT / name
+            if not path.exists():
+                continue
+            for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if self._is_dated_snapshot(line):
+                    continue
+                for pattern in self.STALE_COUNT_PATTERNS:
+                    if re.search(pattern, line):
+                        offenders.append(f"{name}:{lineno}  khớp /{pattern}/  →  {line.strip()[:110]}")
+        self.assertEqual(
+            offenders, [],
+            "Tài liệu còn nhắc số test đã lỗi thời. Số đúng nằm ở docs/TEST_SUITE.md:\n  "
+            + "\n  ".join(offenders),
+        )
 
     def test_per_module_breakdown_matches_each_file(self):
         """Bảng breakdown trong `docs/TEST_SUITE.md` phải đúng từng dòng."""
