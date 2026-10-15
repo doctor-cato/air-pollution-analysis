@@ -422,8 +422,11 @@ thực hiện tốt: mỗi issue đều kèm 1 tài liệu sinh ra từ code th�
 - [ ] **D6** 🟡 `docs/data_dictionary.md` hoặc `docs/descriptive_findings.md` — đính chính con số
       prevalence sau task **0.7b** (không phải 0.7: 0.7 đã xong và kết luận là *"đánh dấu số liệu chưa
       xác minh"*, nên đính chính sau 0.7 là đính chính bằng chính những con số chưa xác minh).
-- [ ] **D7** 🟡 `AGENTS.md` — cập nhật mục "Architecture Notice" (hiện ghi notebooks `04`–`06` chưa có;
-      cần nói rõ thứ tự chạy sau khi thêm `04`–`07`) và mục "Notebook Execution Order".
+- [ ] **D7** 🟡 `AGENTS.md` — ~~cập nhật mục "Architecture Notice" (hiện ghi notebooks `04`–`06` chưa có)~~
+      ✅ **đã làm 2026-10-15**: dải thiếu đã đổi `04`–`06` → **`04`–`07`** ở cả `AGENTS.md` và
+      `.agents/AGENTS.md`, kèm nhãn `NOT IMPLEMENTED`. ⬜ **Còn lại:** nói rõ thứ tự chạy sau khi
+      thêm `04`–`07` — phần này phụ thuộc danh sách file ở task 4.4 nên chưa chốt được, và mục
+      "Notebook Execution Order" hiện chỉ mô tả chuỗi `00`–`03`.
 
 ### 1B.2 — Sau Phase 4 (Midterm)
 
