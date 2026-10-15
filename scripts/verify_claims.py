@@ -8,6 +8,13 @@ không có cách nào chạy lại để kiểm chứng. Script này là cơ ch�
 
     python scripts/verify_claims.py
 
+Nhóm claim của cờ `is_high_humidity_fog` (Issue #38) được tái lập bằng cách gọi
+`src/flag_evidence.fog_flag_evidence()` — tức **fit lại mô hình trên dữ liệu thật**,
+không phải so chuỗi `F = 16,78` trong source. Khung phân tích mặc định được dựng
+lại từ `data/interim/*.parquet` (chạy lại làm sạch tất định Issue #6 + ghép của
+Issue #7) vì cột `relative_humidity` và cờ `is_high_humidity_fog` không cùng nằm
+trong tệp Canonical gốc.
+
 Mỗi claim được tái lập theo **đúng định nghĩa mà chính tài liệu đang nêu**, in ra
 tử số, mẫu số, công thức và kết quả, rồi phân loại:
 
@@ -26,6 +33,8 @@ Nguyên tắc bất di bất dịch
    `UNDECIDED` — không tự chọn. Xem `DENOMINATOR_CONFLICTS` bên dưới.
 4. **Dừng rõ ràng.** Thiếu tệp, thiếu cột, hoặc mẫu số bằng 0 → ném lỗi tường minh,
    không chia cho 0 và không im lặng trả 0.
+5. **Số cực nhỏ so TƯƠNG ĐỐI.** p-value được so bằng `rtol`; nếu dùng dung sai
+   tuyệt đối `FLOAT_TOL` thì mọi p < 5e-4 đều bị coi là khớp.
 
 Exit code
 ---------
@@ -51,6 +60,12 @@ from typing import Any, Callable, Dict, List, Optional
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Chạy `python scripts/verify_claims.py` đặt sys.path[0] = scripts/, nên `src.*`
+# không import được. Thêm REPO_ROOT để nhóm claim của cờ sương mù gọi được
+# `src.flag_evidence`.
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 DEFAULT_DATASET = REPO_ROOT / "data" / "processed" / "air_pollution_final.parquet"
 DEFAULT_REPORTS = REPO_ROOT / "reports"
@@ -97,6 +112,8 @@ class Claim:
         fmt: str = "{}",
         blocking: bool = True,
         note: str = "",
+        rtol: Optional[float] = None,
+        atol: Optional[float] = None,
     ) -> None:
         self.key = key
         self.source = source
@@ -105,11 +122,29 @@ class Claim:
         self.fmt = fmt
         self.blocking = blocking
         self.note = note
+        #: Dung sai TƯƠNG ĐỐI. Bắt buộc cho đại lượng rất nhỏ như p-value:
+        #: `FLOAT_TOL = 5e-4` tuyệt đối sẽ coi mọi p-value < 5e-4 là "khớp".
+        #: `None` = hành vi cũ (so số tuyệt đối).
+        self.rtol = rtol
+        #: Dung sai TUYỆT ĐỐI tường minh. Dùng cho số tài liệu chỉ trích đến 2
+        #: chữ số thập phân: mọi sai khác ≤ 0,01 là do quy tắc làm tròn khi đứng
+        #: đúng mốc x,xx5, không phải do tài liệu sai.
+        self.atol = atol
 
     def run(self, df: pd.DataFrame) -> "ClaimResult":
         actual = self.compute(df)
         if isinstance(self.documented, float):
-            ok = abs(float(actual) - self.documented) < FLOAT_TOL
+            if self.rtol is not None:
+                reference = float(self.documented)
+                denominator = abs(reference) if reference else 1.0
+                ok = (
+                    abs(float(actual) - reference) / denominator
+                    <= self.rtol
+                )
+            elif self.atol is not None:
+                ok = abs(float(actual) - self.documented) <= self.atol
+            else:
+                ok = abs(float(actual) - self.documented) < FLOAT_TOL
         elif isinstance(self.documented, int):
             ok = int(actual) == self.documented
         else:
@@ -224,10 +259,192 @@ CLAIMS: List[Claim] = [
 ]
 
 #: Claim ghi trong tài liệu nhưng **không tái lập được** vì công thức không rõ.
-#: Danh sách trống: mọi claim đã ghi đều có định nghĩa đủ rõ để tái lập.
-#: Nếu về sau gặp claim không tái lập được, thêm mục `(key, source, value, lý do)`
-#: vào đây — mục đích là GHI NHẬN chứ không phải điền số dự kiến.
-UNVERIFIABLE_CLAIMS: List[tuple] = []
+#: Danh sách này là GHI NHẬN chứ không phải chỗ điền số dự kiến.
+UNVERIFIABLE_CLAIMS: List[tuple] = [
+    (
+        "fog_mutual_information",
+        "src/cleaning_pipeline.py::NON_PREDICTIVE_FLAGS, "
+        "docs/roadmap.md §'Vì sao loại is_high_humidity_fog', "
+        "docs/cleaning_log.md §6, README.md",
+        "0,0024",
+        (
+            "MI phụ thuộc ước lượng và CHƯA có định nghĩa nào được đóng băng trong "
+            "repo. Trên đúng tập 7.495 dòng: mutual_info_score(pm25, cờ) cho "
+            "0,0024 khi chia pm25 thành 7, 8 HOẶC 10 nhóm phân vị (cả ba đều làm "
+            "tròn thành 0,0024 → trùng hợp, không định nghĩa duy nhất); "
+            "mutual_info_regression (liên tục, tiêu chuẩn scikit-learn) cho "
+            "0,0081; mutual_info_classif trên cùng 8 nhóm cho 0,0105. Không được "
+            "chọn một cách để khớp 0,0024. Xem "
+            "src.flag_evidence.MUTUAL_INFORMATION_UNVERIFIED_REASON."
+        ),
+    ),
+]
+
+
+# ---------------------------------------------------------------------------
+# Nhóm claim của cờ `is_high_humidity_fog` (Issue #38)
+# ---------------------------------------------------------------------------
+#
+# Trước Issue #38, `F = 16,78` / `p = 7,4·10⁻¹¹` chỉ là comment và chuỗi hằng ở
+# 6 chỗ — không nơi nào thực sự tính ra. Nay **mọi** con số dưới đây được fit
+# lại từ dữ liệu thật bởi `src/flag_evidence.fog_flag_evidence()`.
+#
+# `source` ghi đúng nơi tài liệu đang công bố con số (theo mục, không theo số
+# dòng — số dòng trôi theo mọi lần sửa văn xuôi), để khi MISMATCH thì người đọc
+# biết phải sửa tài liệu nào.
+
+_FOG_SOURCE = (
+    "src/cleaning_pipeline.py::NON_PREDICTIVE_FLAGS / "
+    "docs/roadmap.md §'Vì sao loại is_high_humidity_fog' / "
+    "docs/cleaning_log.md §6"
+)
+
+#: Khoá claim dùng nhãn mùa ASCII của `src.flag_evidence` (Dong/Xuan/He/Thu) để
+#: cột `claim` trong CSV không phụ thuộc bảng mã.
+SEASON_CODES = ("Dong", "Xuan", "He", "Thu")
+
+#: Chênh lệch PM2.5 theo mùa đang được công bố (µg/m³), theo nhãn ASCII.
+_DOCUMENTED_SEASON_EFFECT = {
+    "Dong": 2.79, "Xuan": -8.91, "He": 0.28, "Thu": -2.72,
+}
+
+#: CI 95% Welch đang được công bố — nhãn ASCII × ("low" | "high").
+_DOCUMENTED_WELCH_CI = {
+    ("Dong", "low"): -0.42, ("Dong", "high"): 6.01,
+    ("Xuan", "low"): -10.44, ("Xuan", "high"): -7.38,
+    ("Thu", "low"): -4.93, ("Thu", "high"): -0.51,
+}
+
+
+from src.flag_evidence import SEASON_LABELS_VI
+
+
+def fog_claims(evidence: Dict[str, Any]) -> List[Claim]:
+    """Sinh nhóm claim định lượng của cờ sương mù từ kết quả đã fit."""
+    marginal = evidence["marginal"]
+    seasonal = evidence["seasonal"]
+    raw = seasonal["raw_mean_difference"]
+    welch = seasonal["welch"]
+    model = seasonal["model_contrast"]
+
+    claims: List[Claim] = [
+        Claim(
+            "fog_analysis_rows", _FOG_SOURCE, 7495,
+            lambda d: evidence["n_rows_used"],
+            note=(
+                "Dòng có CẢ pm25 và relative_humidity sau khi ghép "
+                "air_quality_canonical + weather_canonical. Cột RH nằm ở tập "
+                "khí tượng, không có trong tập ô nhiễm."
+            ),
+        ),
+        Claim(
+            "corr_pm25_rh", _FOG_SOURCE, -0.0365,
+            lambda d: round(marginal["corr_pm25_rh"], 4), "{:.4f}",
+        ),
+        Claim(
+            "pm25_mean_flag_1", _FOG_SOURCE, 41.65,
+            lambda d: round(marginal["mean_pm25_by_flag"][1], 2), "{:.2f}",
+        ),
+        Claim(
+            "n_pm25_flag_1", _FOG_SOURCE, 2384,
+            lambda d: marginal["n_pm25_by_flag"][1],
+        ),
+        Claim(
+            "pm25_mean_flag_0", _FOG_SOURCE, 44.75,
+            lambda d: round(marginal["mean_pm25_by_flag"][0], 2), "{:.2f}",
+        ),
+        Claim(
+            "n_pm25_flag_0", _FOG_SOURCE, 5111,
+            lambda d: marginal["n_pm25_by_flag"][0],
+        ),
+    ]
+
+    # Khoá claim dùng nhãn mùa ASCII (Dong/Xuan/He/Thu) để CSV kiểm kê không
+    # phụ thuộc bảng mã — giá trị hiển thị vẫn là tiếng Việt.
+    for season in SEASON_CODES:
+        claims.append(
+            Claim(
+                f"fog_effect_{season.lower()}", _FOG_SOURCE,
+                _DOCUMENTED_SEASON_EFFECT[season],
+                lambda d, s=season: round(raw[SEASON_LABELS_VI[s]], 2), "{:.2f}",
+                note="TB PM2.5 nhóm có cờ − TB nhóm không cờ, trong riêng mùa đó.",
+            )
+        )
+
+    claims += [
+        Claim(
+            "fog_interaction_f", _FOG_SOURCE, 16.78,
+            lambda d: round(seasonal["f_statistic"], 2), "{:.2f}",
+            note=(
+                "F-test đồng thời 3 hệ số tương tác của OLS "
+                f"`{seasonal['formula']}`."
+            ),
+        ),
+        Claim(
+            "fog_interaction_p", _FOG_SOURCE, 7.4e-11,
+            lambda d: seasonal["f_p_value"],
+            "{:.2e}",
+            rtol=0.05,
+            note=(
+                "p-value của F-test. So sánh TƯƠNG ĐỐI (rtol=5%): nếu dùng dung "
+                "sai tuyệt đối 5e-4 thì MỌI p-value < 5e-4 đều bị coi là khớp."
+            ),
+        ),
+        Claim(
+            "fog_interaction_df_num", _FOG_SOURCE, 3,
+            lambda d: seasonal["f_df_num"],
+            note="Số hệ số tương tác bị kiểm định đồng thời (4 mùa → 3 tương tác).",
+        ),
+        Claim(
+            "fog_interaction_df_denom", _FOG_SOURCE, 7487,
+            lambda d: int(seasonal["f_df_denom"]),
+            note="n − 8 tham số = 7.495 − 8.",
+        ),
+        Claim(
+            "fog_double_difference", _FOG_SOURCE, 7.77,
+            lambda d: round(seasonal["double_difference_dong_vs_xuan_he"], 2),
+            "{:.2f}",
+            note=(
+                "Khác biệt kép: chênh lệch Đông − chênh lệch (Xuân + Hè gộp) "
+                "= +2,79 − (−4,98)."
+            ),
+        ),
+        Claim(
+            "fog_effect_dong_p_model", _FOG_SOURCE, 0.024,
+            lambda d: round(model["Đông"]["p_value"], 3), "{:.3f}",
+            blocking=False,
+            note=(
+                "p = 0,024 trong tài liệu là p-value hệ số của MÔ HÌNH tương "
+                f"tác (CI 95% [{model['Đông']['ci_low']:.2f}, "
+                f"{model['Đông']['ci_high']:.2f}]). Kiểm định Welch trên trung "
+                f"bình thô cho p = {welch['Đông']['p_value']:.3f} — KHÁC định "
+                "nghĩa, in ra ở phần báo cáo để không lẫn."
+            ),
+        ),
+    ]
+
+    # Khoảng tin cậy 95% mà `build_progress_report.py` và `docs/history/02` công bố
+    # đến từ kiểm định Welch trên trung bình thô — khác CI của tương phản mô hình.
+    for season in ("Dong", "Xuan", "Thu"):
+        for edge, key in (("low", "ci_low"), ("high", "ci_high")):
+            label = SEASON_LABELS_VI[season]
+            claims.append(
+                Claim(
+                    f"fog_welch_{season.lower()}_ci_{edge}",
+                    "scripts/build_progress_report.py :: fog_flag_evidence_bullet, "
+                    "docs/history/02 §PR #34 review vòng 2",
+                    _DOCUMENTED_WELCH_CI[(season, edge)],
+                    lambda d, s=label, k=key: round(welch[s][k], 2), "{:.2f}",
+                    blocking=False, atol=0.011,
+                    note=(
+                        "CI 95% của kiểm định t Welch trên trung bình nhóm thô. "
+                        "Tài liệu trích 2 chữ số thập phân nên dung sai 0,011 cho "
+                        "trường hợp đứng đúng mốc làm tròn x,xx5."
+                    ),
+                )
+            )
+
+    return claims
 
 
 # ---------------------------------------------------------------------------
@@ -333,15 +550,15 @@ def report_prevalence(df: pd.DataFrame, out: Any) -> None:
     out.write("\n")
 
 
-def report_claims(df: pd.DataFrame, out: Any) -> int:
-    print()
-    print("=" * 78)
-    print("CLAIM ĐỊNH NGHĨA ĐƯỢC — tái lập từ Parquet")
-    print("=" * 78)
+def _emit_claims(
+    claims: List[Claim],
+    df: pd.DataFrame,
+    out: Any,
+    rows: List[Dict[str, Any]],
+) -> int:
+    """Chạy từng claim, in kết quả và ghi vào bảng kiểm kê. Trả về số MISMATCH chặn."""
     blocking_mismatch = 0
-    rows: List[Dict[str, Any]] = []
-
-    for claim in CLAIMS:
+    for claim in claims:
         try:
             res = claim.run(df)
         except Exception as exc:  # noqa: BLE001 — báo lỗi cụ thể, không nuốt
@@ -365,6 +582,21 @@ def report_claims(df: pd.DataFrame, out: Any) -> int:
         })
         if res.status == MISMATCH and claim.blocking:
             blocking_mismatch += 1
+    return blocking_mismatch
+
+
+def report_claims(
+    df: pd.DataFrame,
+    out: Any,
+    rows: Optional[List[Dict[str, Any]]] = None,
+) -> int:
+    print()
+    print("=" * 78)
+    print("CLAIM ĐỊNH NGHĨA ĐƯỢC — tái lập từ Parquet")
+    print("=" * 78)
+    if rows is None:
+        rows = []
+    blocking_mismatch = _emit_claims(CLAIMS, df, out, rows)
 
     print("-" * 78)
     print("CLAIM CHƯA TÁI LẬP ĐƯỢC")
@@ -381,19 +613,137 @@ def report_claims(df: pd.DataFrame, out: Any) -> int:
             "status": UNVERIFIABLE,
             "blocking": True,
         })
+    return blocking_mismatch
 
+
+def _write_claim_csv(out: Any, rows: List[Dict[str, Any]]) -> None:
     out.write("claim,source,documented,reproduced,status,blocking\n")
     for r in rows:
         out.write(
             f'"{r["claim"]}","{r["source"]}","{r["documented"]}",'
             f'"{r["reproduced"]}","{r["status"]}",{str(r["blocking"]).lower()}\n'
         )
+
+
+def _print_summary(rows: List[Dict[str, Any]]) -> None:
     print()
     print(f"Tổng: {len(rows)} claim — "
           f"{sum(1 for r in rows if r['status'] == VERIFIED)} VERIFIED, "
           f"{sum(1 for r in rows if r['status'] == MISMATCH)} MISMATCH, "
           f"{sum(1 for r in rows if r['status'] == UNVERIFIABLE)} UNVERIFIABLE")
-    return blocking_mismatch
+
+
+# ---------------------------------------------------------------------------
+# Nhóm cờ `is_high_humidity_fog` — Issue #38
+# ---------------------------------------------------------------------------
+
+
+def resolve_flag_frame(df: pd.DataFrame, explicit: Optional[Path]) -> pd.DataFrame:
+    """
+    Chọn khung phân tích cho cờ sương mù.
+
+    Thứ tự ưu tiên:
+      1. `--flag-dataset` nếu người dùng chỉ định;
+      2. chính frame `--dataset` nếu nó đã có đủ cột (tập đã đóng băng);
+      3. dựng lại từ `data/interim/*.parquet` bằng làm sạch tất định Issue #6.
+
+    Raises
+    ------
+    FileNotFoundError / KeyError
+        Không dựng được khung — ném lõi để `main()` báo lỗi đầu vào (exit 2).
+    """
+    from src import flag_evidence
+
+    if explicit is not None:
+        return flag_evidence.analysis_frame_from(load_dataset(explicit))
+
+    required = [flag_evidence.TIMESTAMP_COLUMN, flag_evidence.TARGET_COLUMN,
+                flag_evidence.HUMIDITY_COLUMN, flag_evidence.FLAG_COLUMN]
+    missing = [c for c in required if c not in df.columns]
+    if not missing:
+        return flag_evidence.analysis_frame_from(df)
+
+    if missing:
+        print(f"[GHI CHÚ] Tập --dataset thiếu {missing} → dựng lại khung phân "
+              "tích từ data/interim/*.parquet (làm sạch tất định Issue #6).")
+    return flag_evidence.build_analysis_frame(
+        REPO_ROOT / "data" / "interim" / "air_quality_canonical.parquet",
+        REPO_ROOT / "data" / "interim" / "weather_canonical.parquet",
+    )
+
+
+def report_flag_evidence(
+    flag_frame: pd.DataFrame,
+    out: Any,
+    rows: List[Dict[str, Any]],
+) -> int:
+    """
+    Kiểm chứng nhóm claim của cờ `is_high_humidity_fog` (Issue #38).
+
+    F, p, bậc tự do và các chênh lệch theo mùa ở đây **được fit lại từ dữ liệu
+    thật** bởi `src/flag_evidence.fog_flag_evidence()` — không phải so chuỗi
+    trong source. Claim nào tính không được sẽ báo `UNVERIFIABLE`, không đoán.
+    """
+    from src import flag_evidence
+
+    seasonal_codes = flag_evidence.SEASON_DISPLAY_ORDER
+    if tuple(seasonal_codes) != SEASON_CODES:  # pragma: no cover - chống lệch định nghĩa
+        raise ValueError(
+            f"Thứ tự mùa trong src.flag_evidence ({seasonal_codes}) lệch với "
+            f"bảng khoá claim ở đây ({SEASON_CODES})."
+        )
+    print()
+    print("=" * 78)
+    print("CỜ `is_high_humidity_fog` — tái lập từ dữ liệu (Issue #38)")
+    print("=" * 78)
+
+    try:
+        evidence = flag_evidence.fog_flag_evidence(flag_frame)
+    except Exception as exc:  # noqa: BLE001 — báo lỗi cụ thể, không nuốt
+        print(f"[{UNVERIFIABLE:11}] fog_flag_evidence")
+        print(f"              lý do: {type(exc).__name__}: {exc}")
+        rows.append({
+            "claim": "fog_flag_evidence",
+            "source": _FOG_SOURCE,
+            "documented": "F = 16,78; p = 7,4e-11",
+            "reproduced": "",
+            "status": UNVERIFIABLE,
+            "blocking": True,
+        })
+        return 0
+
+    marginal = evidence["marginal"]
+    seasonal = evidence["seasonal"]
+
+    print(f"Tập dùng   : {evidence['n_rows_used']} dòng "
+          f"(từ {evidence['n_rows_input']} dòng khung đầu vào)")
+    print(f"Công thức  : {seasonal['formula']}")
+    print(f"Bậc tự do  : F({int(seasonal['f_df_num'])}, "
+          f"{int(seasonal['f_df_denom'])}) trên n = {seasonal['n_obs']}")
+    print(f"Số dòng mỗi ô fog × mùa: {evidence['cell_counts']}")
+    print()
+    print("Chênh lệch PM2.5 (có cờ − không cờ) — điểm ước lượng, CI Welch, "
+          "và p của tương phản mô hình:")
+    print(f"   {'mùa':<6}{'điểm ước lượng':>16}{'CI 95% Welch':>24}"
+          f"{'p Welch':>10}{'p mô hình':>12}")
+    for season in ("Đông", "Xuân", "Hè", "Thu"):
+        w = seasonal["welch"][season]
+        m = seasonal["model_contrast"][season]
+        ci_text = f"[{w['ci_low']:.2f}; {w['ci_high']:.2f}]"
+        print(f"   {season:<6}{w['difference']:>16.2f}{ci_text:>24}"
+              f"{w['p_value']:>10.3f}{m['p_value']:>12.3f}")
+    print()
+    print(f"Khác biệt kép Đông so với Xuân+Hè: "
+          f"{seasonal['double_difference_dong_vs_xuan_he']:+.2f} µg/m³")
+    print()
+    print("Mutual information — IN MỌI PHƯƠNG ÁN, KHÔNG tự chọn:")
+    for name, value in marginal["mutual_information_variants"].items():
+        print(f"   {name:<40} {value:.5f}")
+    print(f"   → {flag_evidence.MUTUAL_INFORMATION_UNVERIFIED_REASON}")
+    out.write("\n")
+
+    print()
+    return _emit_claims(fog_claims(evidence), flag_frame, out, rows)
 
 
 def report_rolling_window(df: pd.DataFrame, out: Any) -> None:
@@ -527,6 +877,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         description="Tái lập các claim định lượng trong tài liệu từ dữ liệu thật.",
     )
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
+    parser.add_argument(
+        "--flag-dataset", type=Path, default=None,
+        help=(
+            "Tệp Parquet chứa pm25 + relative_humidity + is_high_humidity_fog để "
+            "kiểm chứng nhóm claim của cờ sương mù. Mặc định: dùng chính "
+            "--dataset nếu đã đủ cột, nếu không thì dựng lại từ "
+            "data/interim/*.parquet bằng làm sạch tất định của Issue #6."
+        ),
+    )
     parser.add_argument("--reports-dir", type=Path, default=DEFAULT_REPORTS)
     parser.add_argument(
         "--out", type=Path, default=None,
@@ -536,6 +895,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     try:
         df = load_dataset(args.dataset)
+        flag_frame = resolve_flag_frame(df, args.flag_dataset)
     except (FileNotFoundError, KeyError) as exc:
         print(f"LỖI ĐẦU VÀO: {exc}", file=sys.stderr)
         return 2
@@ -546,13 +906,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     print(f"Tập dữ liệu : {args.dataset}")
     print(f"Số dòng x cột: {df.shape[0]} x {df.shape[1]}")
     print(f"Dải thời gian: {df['timestamp'].min()} -> {df['timestamp'].max()}")
+    print(f"Khung cờ sương mù: {flag_frame.shape[0]} x {flag_frame.shape[1]}")
     print(f"Bảng kiểm kê : {out_path}")
     print()
 
+    rows: List[Dict[str, Any]] = []
     with out_path.open("w", encoding="utf-8", newline="") as out:
-        blocking = report_claims(df, out)
+        blocking = report_claims(df, out, rows)
+        blocking += report_flag_evidence(flag_frame, out, rows)
         report_prevalence(df, out)
         report_rolling_window(df, out)
+        _write_claim_csv(out, rows)
+        _print_summary(rows)
 
     if blocking:
         print(f"\n==> {blocking} claim MISMATCH mức chặn merge.")

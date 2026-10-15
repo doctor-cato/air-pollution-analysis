@@ -2,13 +2,20 @@
 
 Nguồn sự thật: docs/roadmap.md, docs/data_dictionary.md, docs/source_profiling_decision.md,
 docs/data_quality_audit.md, docs/cleaning_log.md và data/raw/metadata.json.
-Script chỉ đọc tài liệu, không sửa dữ liệu.
+Script chỉ đọc tài liệu và dữ liệu, không sửa gì.
+
+Ngoài ra (Issue #38): phần lưu ý về cờ `is_high_humidity_fog` được SINH RA từ
+`src/flag_evidence.fog_flag_evidence()` — tức fit lại mô hình
+`pm25 ~ C(fog) + C(season) + C(fog):C(season)` trên `data/interim/*.parquet` — chứ
+không phải chuỗi hằng trong source. Vì vậy script **cần** `data/interim/*.parquet`
+và sẽ ném `FileNotFoundError` nếu thiếu, thay vì in ra số liệu không kèm mã sinh ra.
 
 Chạy: python scripts/build_progress_report.py
 """
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from docx import Document
@@ -21,10 +28,52 @@ from docx.shared import Cm, Pt, RGBColor
 REPO_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_PATH = REPO_ROOT / "docs" / "bao_cao_tien_do_M1_M2.docx"
 
+# Script chay truc tiep (`python scripts/build_progress_report.py`) nen sys.path[0]
+# la `scripts/`, khong import duoc `src.*`. Them REPO_ROOT de goi
+# `src/flag_evidence` — noi sinh ra cac so lieu cua LUU y ve
+# `is_high_humidity_fog` (Issue #38).
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 ACCENT = RGBColor(0x1F, 0x3B, 0x57)
 MUTED = RGBColor(0x55, 0x5F, 0x6B)
 BASELINE_FONT = "Calibri"
 UNICODE_FONT = "Cambria"
+
+
+# --------------------------------------------------------------------------- #
+# Bang chung dinh luong cho co is_high_humidity_fog (Issue #38)
+# --------------------------------------------------------------------------- #
+def fog_flag_evidence_bullet() -> str:
+    """
+    Sinh cau ve `is_high_humidity_fog` tu ket qua tinh truc tiep tren du lieu.
+
+    KHONG hard-code bat ky con so nao. Script nay KHONG tu dinh dang — no goi
+    `src/flag_evidence.format_evidence_sentence()`, cung mot nguon sinh van ban
+    duy nhat, tren ket qua cua `fog_flag_evidence()` tuc la fit lai mo hinh
+    `pm25 ~ C(fog) + C(season) + C(fog):C(season)` tren data/interim. Truoc Issue
+    #38 cau nay la mot chuoi constant trong source, nen doi du lieu thi bao cao
+    van in ra so cu — dung nghia la bao cao khong con dung nguon su that.
+
+    Raises
+    ------
+    FileNotFoundError
+        Thieu `data/interim/*.parquet`. Script dung `fail loudly` thay vi in
+        cau rong de khong cong bo so lieu khong kiem chung duoc.
+    """
+    from src import flag_evidence
+
+    frame = flag_evidence.build_analysis_frame(
+        REPO_ROOT / "data" / "interim" / "air_quality_canonical.parquet",
+        REPO_ROOT / "data" / "interim" / "weather_canonical.parquet",
+    )
+    evidence = flag_evidence.fog_flag_evidence(frame)
+    return (
+        "Lưu ý về is_high_humidity_fog — không viết là 'không dự báo được'. "
+        + flag_evidence.format_evidence_sentence(evidence)
+        + " Toàn bộ số trên đây do src/flag_evidence.py fit lại từ dữ liệu thật "
+          "và được kiểm chứng bằng `python scripts/verify_claims.py`."
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -166,7 +215,7 @@ def build_cover(doc: Document) -> None:
             ["Cơ sở dữ liệu thực nghiệm", "OpenAQ S3 (loc 4946811) + Open-Meteo ERA5"],
             ["Giai đoạn", "Milestone 2 hoàn tất – chuẩn bị Milestone 3 (EDA)"],
             ["Issues đã đóng", "#1, #2, #3, #4, #5, #6, #7, #19"],
-            ["Kiểm thử tự động", "358 unit test — PASS; CI workflow; fetch script không cần API key"],
+            ["Kiểm thử tự động", "393 unit test — PASS; CI workflow; fetch script không cần API key"],
             ["Tài liệu chuẩn", "docs/roadmap.md, data_dictionary.md, source_profiling_decision.md, "
                               "data_quality_audit.md, cleaning_log.md"],
         ],
@@ -476,14 +525,12 @@ def build_m2_section(doc: Document) -> None:
             "pm25_was_missing bị loại vì rò rỉ target theo cấu trúc; is_high_humidity_fog bị loại "
             "vì chưa có bằng chứng về giá trị dự báo marginal; còn lại là pm25_was_stuck. "
             "Module tự ném lỗi nếu target lọt vào danh sách đặc trưng.",
-            "Lưu ý về is_high_humidity_fog — không viết là 'không dự báo được'. Tương quan "
-            "marginal corr(pm25, RH) = −0,0365 và mutual information = 0,0024 (thấp nhất trong "
-            "các biến khí tượng) chỉ chứng minh chưa có bằng chứng ở dạng cộng dồn. Tách theo mùa thì "
-            "dấu đảo chiều: Đông +2,79 µg/m³ (p = 0,024), Xuân −8,91 (CI [−10,44; −7,38]), "
-            "Hè +0,28, Thu −2,72. Hồi quy pm25 ~ fog + mùa + tương tác: F = 16,78, p = 7,4·10⁻¹¹ "
-            "(⚠️ UNVERIFIED — chưa có mã tái lập, xem Issue #38: không script nào tính con số này). "
-            "Tức corr ≈ 0 là hệ quả của trung bình qua các mùa nơi tác dụng ngược nhau triệt tiêu. "
-            "Khai thác được cần dạng mô hình tương tác fog × mùa — thuộc phạm vi Issue #8.",
+# Issue #38: trước đây khối số này là chuỗi hằng kèm nhãn
+            # "⚠️ UNVERIFIED — chưa có mã tái lập". Nay nó được SINH RA từ
+            # `src/flag_evidence.fog_flag_evidence()` — fit lại OLS trên dữ liệu
+            # thật — nên không còn là hằng, và nhãn UNVERIFIED chỉ còn áp cho
+            # mutual information (bên trong `format_evidence_sentence`).
+            fog_flag_evidence_bullet(),
         ],
     )
     add_callout(
@@ -572,7 +619,7 @@ def build_appendix(doc: Document) -> None:
                          "src/cleaning_pipeline.py, scripts/fetch_dataset.py"],
             ["Notebook", "notebooks/00 (khảo sát), 01 (thu thập), 02 (kiểm toán), "
                         "03 (làm sạch + pipeline biến đổi)"],
-            ["Kiểm thử", "358 unit test — PASS; bao gồm test hồi quy chống tái phát lỗi làm sạch"],
+            ["Kiểm thử", "393 unit test — PASS; bao gồm test hồi quy chống tái phát lỗi làm sạch"],
             ["CI", "GitHub Actions workflow kiểm tra tự động trên mỗi pull request"],
             ["Tái lập dữ liệu", "python scripts/fetch_dataset.py — tải lại từ OpenAQ S3 (ODC-BY) và "
                                 "Open-Meteo ERA5 (CC BY 4.0) không cần API key; cờ --skip-fetch để "

@@ -563,6 +563,12 @@ Input: `data/processed/air_pollution_final.parquet` (9.044 dòng × 18 cột, gi
 - [ ] **2.9** 🟡 Xử lý tương tác `fog × mùa` theo addendum của Issue #8: kiểm tra tương tác cho **mọi cờ
       chẩn đoán**; nếu dùng thì dùng dạng tương tác, không dùng cờ trần (marginal `corr(pm25, RH) = −0,0365` rất
       dễ gây kết luận sai). Ghi rõ `pm25_was_stuck` là hằng số 0 → không phân biệt thông tin.
+      **Nền đã có sẵn (Issue #38):** `src/flag_evidence.fog_flag_evidence()` đã fit `pm25 ~ C(fog) + C(season) +
+      C(fog):C(season)` trên 7.495 dòng và trả về `F(3, 7487) = 16,78`, `p = 7,4·10⁻¹¹` cùng chênh lệch theo
+      mùa (Đông +2,79 · Xuân −8,91 · Hè +0,28 · Thu −2,72 µg/m³); `python scripts/verify_claims.py` kiểm
+      chứng lại từng số. Task này **mở rộng** sang các cờ còn lại, không cần tính lại cờ này.
+      **⛔ Mutual information (`0,0024`) là UNVERIFIED** — định nghĩa ước lượng chưa đóng băng, không dùng
+      làm căn cứ kết luận.
 - [ ] **2.10** 🟡 Kiểm tra VIF sớm cho cặp `pm25`/`pm10` (`r = 0,9727`) để chuẩn bị cho #12–#13.
 - [ ] **2.11** Xuất `reports/statistical_profile.csv` — khớp **chính xác** với kết quả trong notebook.
 - [ ] **2.12** Phân định rõ 3 tầng: mô tả / sinh giả thuyết / suy luận (suy luận → #11).

@@ -530,15 +530,28 @@ assert (df.groupby('station_id')['timestamp'].diff().dropna() == np.timedelta64(
 > là *sương mù quang học khiến cảm biến đọc sai*. Đo trên dữ liệu thật thì cờ **bắt đúng** nhóm ẩm
 > cao (RH trung bình 94,99% so với 74,06% ở nhóm không cờ) — nên là một *cờ độ ẩm* đúng đắn —
 > nhưng **không** có bằng chứng là chỉ báo sương mù quang học trên bộ dữ liệu này:
-> `corr(pm25, RH) = −0,0365`, PM2.5 trung bình ở nhóm có cờ (41,65) **thấp hơn** nhóm không cờ
-> (44,75), và mutual information chỉ 0,0024 — thấp nhất trong các biến khí tượng.
+> `corr(pm25, RH) = −0,0365`, PM2.5 trung bình ở nhóm có cờ (41,65, n = 2.384) **thấp hơn** nhóm
+> không cờ (44,75, n = 5.111).
 >
 > Cờ **có** tương tác theo mùa với hiệu ứng **đảo chiều**: Đông $+2{,}79\,\mu\text{g/m}^3$
-> (p = 0,024), Xuân $-8{,}91\,\mu\text{g/m}^3$; F-test đồng thời các hệ số tương tác
-> **F = 16,78, p = 7,4·10⁻¹¹** (`UNVERIFIED`). Nên `corr ≈ 0` là hệ quả của việc trung bình qua các mùa, **không**
-> phải bằng chứng không có quan hệ — và vì vậy tuyệt đối **không** được viết "không dự báo được".
-> Khai thác phát hiện theo mùa cần dạng **tương tác `fog × mùa`**, thuộc **Issue #8 (EDA)**.
-> Xem `NON_PREDICTIVE_FLAGS` trong `src/cleaning_pipeline.py`.
+> (p = 0,024 — p-value hệ số của mô hình), Xuân $-8{,}91\,\mu\text{g/m}^3$; OLS
+> `pm25 ~ C(fog) + C(season) + C(fog):C(season)` cho F-test đồng thời ba hệ số tương tác
+> $F(3,\,7487) = 16{,}78$, $p = 7{,}4\cdot10^{-11}$. Nên `corr ≈ 0` là hệ quả của việc trung bình
+> qua các mùa, **không** phải bằng chứng không có quan hệ — và vì vậy tuyệt đối **không** được
+> viết "không dự báo được". Khai thác phát hiện theo mùa cần dạng **tương tác `fog × mùa`**, thuộc
+> **Issue #8 (EDA)**. Xem `NON_PREDICTIVE_FLAGS` trong `src/cleaning_pipeline.py`.
+>
+> **Tái lập (Issue #38).** Toàn bộ số trên được `src/flag_evidence.py` fit lại từ dữ liệu thật
+> (7.495 dòng có cả `pm25` và `relative_humidity` sau khi ghép `air_quality_canonical` +
+> `weather_canonical`) và được `python scripts/verify_claims.py` kiểm chứng. Trước Issue #38 các
+> số này chỉ nằm trong comment và chuỗi hằng — không mã nào sinh ra chúng — nên bản ghi này từng
+> gắn nhãn `UNVERIFIED` cho chúng; nhãn đó được gỡ sau khi phép tính thực sự ra số.
+>
+> **⛔ Mutual information — VẪN CHƯA XÁC MINH.** Bản log này từng nêu `MI = 0,0024` như bằng
+> chứng bổ trợ. Con số đó **không** có định nghĩa đóng băng: cùng một tập dữ liệu cho `0,0024`
+> với `mutual_info_score` khi chia `pm25` thành 7, 8 **hoặc** 10 nhóm phân vị (trùng hợp),
+> `0,0081` với `mutual_info_regression`, `0,0105` với `mutual_info_classif`. `verify_claims.py`
+> gắn `UNVERIFIABLE` và in ra mọi phương án. **Không** dùng MI làm căn cứ kết luận.
 
 > **Vì sao cần tách `pm25_was_stuck` khỏi `pm25_was_missing`:** cả hai đều khiến `pm25` bằng
 > `NaN` nhưng nguyên nhân vật lý khác nhau. `pm25_was_missing` = trạm không phát tín hiệu;
