@@ -774,8 +774,11 @@ Chi tiết luồng thực hiện:
 >   `#12`, `#13`) **đã được mở lại** và không còn bị chặn.
 > - Các số liệu thực nghiệm nêu trong các báo cáo (#4, #5) là **kết quả của một lần thực thi cụ thể**
 >   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
-> - Bộ kiểm thử hiện gồm **57 + 44 + 114 + 44 + 43 + 9 + 40 + 7 = 358 unit test tất định**,
->   tất cả PASS (`test_data_collection` + `test_data_quality` + `test_cleaning` +
+> - Bộ kiểm thử hiện gồm **57 + 44 + 114 + 44 + 43 + 9 + 40 + 7 = 358 unit test tất định**
+>   (**358 là số *phát hiện*, giống nhau trên mọi nền tảng**). Số *thực sự thực thi* thì
+>   khác: **Windows 358 chạy / 0 skip**; **Ubuntu CI 358 chạy / `skipped=2` → 356 thực thi**
+>   (2 test `@unittest.skipUnless(os.name == "nt")` trong `tests/test_pipeline_runtime_log.py`).
+>   Cả hai nền tảng đều `OK`, **0 fail** (`test_data_collection` + `test_data_quality` + `test_cleaning` +
 >   `test_cleaning_pipeline` + `test_cleaning_pipeline_guards` + `test_fetch_dataset` +
 >   `test_pipeline_runtime_log` + `test_verify_claims_rolling`).
 >   Trong đó **43 test hồi quy** của #7 **FAIL trên bản gốc** và PASS sau khi sửa.
@@ -844,12 +847,12 @@ Chi tiết luồng thực hiện:
 
 | Cổng | Kết quả |
 |---|---|
-| `python -m pytest tests/ -q` | **358 passed** |
-| `python -m unittest discover -s tests -q` (gate của CI) | **358 tests, OK** |
-| `-W error::DeprecationWarning -W error::FutureWarning` | **358 passed** — 0 cảnh báo |
+| `python -m pytest tests/ -q` | **358 collected** → Windows **358 passed**; Ubuntu **356 passed, 2 skipped** |
+| `python -m unittest discover -s tests -q` (gate của CI, Ubuntu) | **`Ran 358 tests` + `OK (skipped=2)`** → 356 thực thi, 0 fail |
+| `-W error::DeprecationWarning -W error::FutureWarning` | **358 tests, 0 cảnh báo** (chạy trên Windows local; CI chưa tái chạy lệch này — xem bảng bằng chứng bên dưới) |
 | `python -m compileall -q src tests scripts` | exit 0 |
 | `notebooks/*.ipynb` (nbformat 4.5) | 6/6 hợp lệ, 0 warning |
-| `notebooks/03_transformation_pipeline.ipynb` | chạy thật qua `nbconvert --execute`, **0 error output** |
+| `notebooks/03_transformation_pipeline.ipynb` | ⚠️ **CHƯA TÁI CHẠY ở lượt này** — cần `data/processed/air_pollution_final.parquet` (gitignored). Lần chạy trước đó qua `nbconvert --execute` không có error, nhưng **không được tính là bằng chứng của HEAD hiện tại** |
 
 > **Ngày đo:** 2026-10-14, trên nhánh `docs/audit-delivery` (PR #37), local **Windows / Python 3.13**.
 >

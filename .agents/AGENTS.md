@@ -16,7 +16,7 @@ This repository is an **academic data-science project**, not an enterprise distr
   - Authoritative requirements are in [`docs/roadmap.md`](../docs/roadmap.md).
   - An interactive landing page lives on branch `gh-pages` (`index.html`, `styles.css`, `script.js`).
   - **Implemented:** `src/data_collection.py`, `src/data_quality.py` (6-dimension audit, Issue #3), `src/cleaning.py` (deterministic cleaning, Issue #6), `src/cleaning_pipeline.py` (leakage-safe preprocessing, Issue #7), `scripts/fetch_dataset.py`, the CI workflow (`.github/workflows/ci.yml`), and notebooks `00`–`03`.
-  - **Not yet implemented:** notebooks `04`–`06` (modelling & evaluation, Issues #11–#13). Everything under `data/processed/` is a gitignored artifact that notebook `03` regenerates.
+  - **Not yet implemented (NOT IMPLEMENTED):** notebooks `04`–`07` (modelling & evaluation, Issues #11–#13). The classification notebook was renumbered from `06_` to `07_` in task 0.3, so the missing range is 04 through 07, not 04 through 06. Everything under `data/processed/` is a gitignored artifact that notebook `03` regenerates.
   - **Roadmap vs. Reality:** Always inspect the filesystem to verify what exists versus what is planned.
 
 ---

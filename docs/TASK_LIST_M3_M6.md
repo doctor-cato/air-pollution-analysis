@@ -18,8 +18,30 @@
 > Tổng **154** = **125 task có số** (`0.1`, `1.2`, …) + **29 task `D*`** của Phase 1B.
 > Trong 125 task có số có **1 task lồng** duy nhất là `0.7b` (thuộc `0.7`), nên **124 việc cấp
 > cao nhất** — đó là lý do đầu Phase 0 nói "8 việc" trong khi bảng này ghi `9`.
-> Trạng thái hiện tại: **27 đánh dấu `[x]` · 127 `[ ]`**.
+> Trạng thái hiện tại: **30 đánh dấu `[x]` · 124 `[ ]`** (đếm bằng `^\s*- \[( |x)\]` theo công thức ở dòng trên, **bao gồm task lồng** `0.7b`).
 > Các phase M3–M6 (2–11) **chưa bắt đầu** — issue #8–#17 đều đang `OPEN` trên GitHub.
+
+> ### `NOT IMPLEMENTED` — trạng thái chung của toàn bộ M3–M6
+>
+> Mọi task thuộc Phase 2–11 đều ở trạng thái **`NOT IMPLEMENTED`** (planned, not built) cho tới khi
+> có bằng chứng cụ thể. Cụ thể:
+>
+> | Việc | Trạng thái | Bằng chứng hiện có |
+> |---|---|---|
+> | `notebooks/04`–`07` | **`NOT IMPLEMENTED`** | Chưa tồn tại. Repo chỉ có `00`–`03` (đã đổi tiền tố phân loại `06_`→`07_` ở task 0.3) |
+> | `src/visualizer.py`, `tests/test_visualizer.py` | **`NOT IMPLEMENTED`** | Chưa tồn tại — task 3.1 / 3.2 còn `[ ]` |
+> | `figures/FIG-01`…`FIG-07` | **`NOT IMPLEMENTED`** | `figures/` chỉ có `.gitkeep` |
+> | Kiểm định giả thuyết của Issue #11 (task 5.1–5.6) | **`NOT IMPLEMENTED`** | Không có notebook, không có script, không có p-value nào được tính |
+> | `DummyClassifier` baseline (task 7.4) | **`NOT IMPLEMENTED`** | `git grep DummyClassifier -- src notebooks tests scripts` → rỗng |
+> | PR-AUC / Recall / F1 (task 7.5–7.7) | **`NOT IMPLEMENTED`** | Phụ thuộc nhãn ở 0.7b, chưa có mô hình nào được huấn luyện |
+> | Tỷ lệ nhãn cảnh báo `31,13%` / `18,30%` | **`UNVERIFIED`** | Phép tính **tái lập được**, nhưng **định nghĩa nhãn chưa chốt** — xem task 0.7b |
+> | Nhãn cảnh báo trượt 24h (window · `min_periods` · ngưỡng · mẫu số) | **`UNVERIFIED`** | Không có hàm trong `src/`; `rg rolling src/` → rỗng |
+> | `F = 16,78`, `p = 7,4·10⁻¹¹` (tương tác `fog × mùa`) | **`UNVERIFIED`** | Chỉ nằm trong comment/docstring; không script nào tính — Issue #38 |
+>
+> ⚠️ **Mọi con số trong tài liệu này thuộc Phase 2–11 là số *kỳ vọng* hoặc *giả định*, không
+> phải kết quả thực nghiệm đã đo.** Khi viết notebook, phải tính lại và trích dẫn đúng nơi sinh ra
+> số; không sao chép con số ở đây vào báo cáo.
+
 
 | Phase | Nội dung | Task | Ước lượng |
 |---|---|---|---|
@@ -175,7 +197,7 @@ xong trước M3. `0.7b` là **task lồng** thuộc `0.7`, nên phase này có 
       làm cùng task D2/D7.
 - [ ] **0.4** ⚪ Chốt ngày nộp midterm và deadline nộp Project Charter theo thông báo GV
       (roadmap có nhắc "23:59 ngày quy định" nhưng không ghi ngày).
-- [ ] **0.5** ✅ **Đã giải quyết — KHÔNG thêm `shap`.** Kiểm tra env cho thấy `shap` chưa cài, nhưng
+- [x] **0.5** ✅ **Đã giải quyết — KHÔNG thêm `shap`.** Kiểm tra env cho thấy `shap` chưa cài, nhưng
       **không cần thêm**. Issue #13 dùng `RandomForestClassifier` — `feature_importances_` kèm
       `sklearn.inspection.permutation_importance` đã cho biến quan trọng có giải thích được, mà
       scikit-learn **đã có sẵn** trong `requirements.txt`. Thêm `shap` (dự phòng ~60 MB + phụ thuộc) chỉ để
@@ -206,6 +228,22 @@ xong trước M3. `0.7b` là **task lồng** thuộc `0.7`, nên phase này có 
         > - **Mẫu số** (`1.655/5.317` vs `1.655/9.044`) **chưa có câu hỏi nào được ghi nhận là
         >   "câu hỏi đúng"** → giữ `UNDECIDED`, không tự chọn.
         > - Hai vấn đề **độc lập**: chốt mẫu số không làm tử số trở thành số đã xác minh.
+        >
+        > **Đã kiểm chứng lại 2026-10-15 — phân biệt rõ cái nào ĐÃ kiểm chứng và cái nào chưa:**
+        >
+        > | Phần | Trạng thái | Bằng chứng |
+        > |---|---|---|
+        > | **Phép tính** `rolling(24, mp=24).mean() ≥ 50` trên `air_pollution_final.parquet` | ✅ **TÁI LẬP ĐỘC LẬP** | Tính lại không dùng `verify_claims.py`: `1.655/5.317 = 31,13%` · `1.655/9.044 = 18,30%` · Train `986/4.682` · Test `669/4.362` — khớp từng số |
+        > | **Quy tắc thiếu dữ liệu** của cửa sổ 24h | ✅ **TÁI LẬP ĐỘC LẬP** | `min_periods=24` → `5.317/9.044` dòng hợp lệ; `3.727` cửa sổ hỏng. Rolling theo `station_id` cho `5.317` — tương đương vì chỉ 1 trạm |
+        > | **Độ nhạy tham số** | ✅ **ĐO ĐƯỢC** | `mp=12`→2.131 · `mp=6`→2.316 · `mp=1`→2.355 · ngưỡng 35→3.133 |
+        > | **Nhãn nặng** `pm25 > 100` tức thời, mẫu số = dòng có nhãn | ✅ **TÁI LẬP ĐỘC LẬP** | Train `295/4.279 = 6,89%` · Test `99/3.216 = 3,08%`; biến thể toàn bộ dòng `6,30%`/`2,27%`; `1.146` dòng Test không nhãn — khớp `roadmap.md:1002–1004` |
+        > | **ĐỊNH NGHĨA** `window` · `min_periods` · ngưỡng · đơn vị µg/m³ vs µg/Nm³ | ❌ **`UNVERIFIED`** | Không có hàm trong `src/`; `rg rolling src/` → rỗng. Ba tham số trên **chưa ai chốt** |
+        > | **MẪU SỐ** `5.317` hay `9.044` | ❌ **`UNDECIDED`** | Không có câu hỏi nào trong repo ghi "câu hỏi đúng" |
+        > | **`DummyClassifier` baseline 81,7%** | ❌ **`NOT IMPLEMENTED`** | `git grep DummyClassifier -- src notebooks tests scripts` → rỗng. `81,7%` chỉ là `100 − 18,3`, **không phải** accuracy đo được |
+        >
+        > ⇒ **Kết luận:** phần *số học* đã kiểm chứng và có thể trích dẫn **kèm nhãn "giả định
+        > `rolling(24, min_periods=24)`, ngưỡng 50"**. Phần *định nghĩa nhãn* và *mẫu số* thì
+        > **chưa** — và cả hai đều là tiền đề của mọi con số phân loại trong Issue #13.
         >
         > Giữ nguyên trạng thái này cho tới khi **cả 5 tiêu chí** dưới đây được hiện thực hoá
         > **và** kiểm chứng.
@@ -310,7 +348,7 @@ vì khi đã viết xong thì phải viết lại cả notebook.
       `figures/feature_importance.png` + bảng xếp hạng trong `docs/classification_findings.md` (task D13).
 - [x] **1.10** 🟡 **Issue #8** — mỗi chỉ số phải kèm `n` quan sát + `n_missing`.
       Roadmap `:1146` và `:1155`: `pm25` còn NaN ở **1.549 hàng** (1.289 khối dài + 260 khối ngắn). Không có AC nào nói
-      thống kê mô tả dựa trên 7.495 dòng hay 5.946 dòng.
+      thống kê mô tả dựa trên 7.495 dòng. ⚠️ Trước đây dòng này còn nhắc một phương án `5.946 dòng` — **con số đó không truy được về nguồn nào** (không phải 9.044−1.549=7.495, không phải complete-case 7.372, cũng không phải 9.044−1.469=7.575) nên đã **xoá khỏi tài liệu**. Nếu sau này GV chốt mẫu số khác thì viết kèm công thức và script sinh ra nó.
 - [x] **1.11** 🟡 **Issue #8** — báo cáo độ bao phủ từng biến khí tượng trước khi tính tương quan.
       Ma trận Pearson/Spearman trên tập thiếu dữ liệu không phải ma trận trên Parquet đã đóng băng.
 - [x] **1.12** 🟡 **Issue #8** — quy tắc 3 vế `Mean > Median > Mode` để đọc chiều lệch (slide W6 §BLOCK 2).
@@ -452,20 +490,29 @@ thực hiện tốt: mỗi issue đều kèm 1 tài liệu sinh ra từ code th�
 
 ### 1B.7 — Vấn đề kỹ thuật về `.gitignore`
 
-- [ ] **D28** 🔴 **Quyết định tracking cho artifact M3–M6.** `.gitignore` hiện **không có mục nào** cho
-      `reports/` hay `figures/` (grep rỗng). Đây là câu hỏi bắt buộc trả lời, không phải tuỳ chọn:
+- [x] **D28** 🔴 **Quyết định tracking cho artifact M3–M6.** ~~`.gitignore` hiện **không có mục nào** cho
+      `reports/` hay `figures/` (grep rỗng)~~ → **đã áp dụng 2026-10-15**, xem bảng quyết định bên dưới.
 
-      | Artifact | Nên track? | Lý do |
+      | Artifact | Quyết định | Lý do |
       |---|---|---|
-      | `figures/FIG-01…07.png` | ✅ **CÓ** | Là bằng chứng chấm điểm (20% rubric). Hội đồng cần mở repo xem được. 7 file 300 DPI ≈ 2–4 MB — chấp nhận được. |
-      | `figures/*_diagnostics.png`, `feature_importance.png` | ✅ **CÓ** | Cùng lý do, và là bằng chứng chẩn đoán LINE. |
-      | `reports/statistical_profile.csv` | ✅ **CÓ** | Nhỏ, là deliverable trực tiếp của #8. |
-      | `reports/*.pdf` | ⚠️ **tùy** | `midterm_report.pdf` / `final_report.pdf` nên commit vì là bài nộp — nhưng nếu nặng thì link release. |
-      | `reports/*_minutes.md` | ✅ **CÓ** | Biên bản bảo vệ là artifact học thuật. |
-      | `docs/*.docx` | ⚠️ **tùy** | Đã commit `bao_cao_tien_do_M1_M2.docx`. Nhất quán thì giữ, nhưng nhớ giới hạn byte-tái-lập ở D9. |
-- [ ] **D29** ⚪ Nếu chọn **không** track `reports/` hoặc `figures/` → phải ghi rõ trong `README.md` và
-      `docs/data_dictionary.md` cách tái tạo (vì policy dữ liệu 3 tầng của roadmap chỉ áp dụng cho `data/`,
-      không áp dụng cho artifact phân tích).
+      | `figures/FIG-01…07.png` | ✅ **TRACK** | Bằng chứng chấm điểm (20% rubric). Hội đồng cần mở repo xem được. 7 file 300 DPI ≈ 2–4 MB — chấp nhận được. `.gitignore` **không** chặn `figures/` |
+      | `figures/*_diagnostics.png`, `feature_importance.png` | ✅ **TRACK** | Cùng lý do, và là bằng chứng chẩn đoán LINE |
+      | `reports/statistical_profile.csv` | ✅ **TRACK** | Nhỏ, là deliverable trực tiếp của #8. Cần **ngoại lệ** dưới rule `reports/*` |
+      | `reports/claim_audit.csv` | ❌ **KHÔNG track** | Sinh tự động bởi `scripts/verify_claims.py` mỗi lần chạy; tái lập được, không phải trạng thái bàn giao. Bị `reports/*` chặn |
+      | `reports/*.pdf` | ⚠️ **tùy** | `midterm_report.pdf` / `final_report.pdf` nên commit vì là bài nộp — nhưng nếu nặng thì link release |
+      | `reports/*_minutes.md` | ✅ **TRACK** | Biên bản bảo vệ là artifact học thuật. Cần **ngoại lệ** dưới rule `reports/*` |
+      | `docs/*.docx` | ⚠️ **tùy** | Đã commit `bao_cao_tien_do_M1_M2.docx`. Nhất quán thì giữ, nhưng nhớ giới hạn byte-tái-lập ở D9 |
+
+      > ⚠️ **Phần còn lại của D28 chưa đóng:** hai dòng `⚠️ tùy` và ba ngoại lệ cần thêm vào
+      > `.gitignore` khi artifact đó thực sự được tạo ở Issue #8–#16. Hiện `.gitignore` chỉ có
+      > `reports/*` + `!reports/.gitkeep`; **chưa** thêm ngoại lệ cho `statistical_profile.csv` /
+      > `*_minutes.md` vì hai file đó chưa tồn tại.
+- [x] **D29** ⚪ ~~Nếu chọn **không** track `reports/` hoặc `figures/` → phải ghi rõ trong `README.md`
+      và `docs/data_dictionary.md` cách tái tạo~~ → **áp dụng một phần**: `figures/` **không** bị
+      ignore nên không phát sinh nghĩa vụ tái tạo. `reports/claim_audit.csv` thì **có** bị ignore và
+      cách tái tạo đã ghi ngay trong `.gitignore` cùng lệnh `python scripts/verify_claims.py`.
+      Phần còn lại (dành cho `reports/statistical_profile.csv` và `*_minutes.md` khi chúng tồn tại)
+      sẽ bổ sung ở D28.
 
 ---
 

@@ -60,7 +60,7 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 >     - Cả hai cờ **vẫn được giữ nguyên trong dataset** như tài liệu chẩn đoán; chỉ không làm feature.
 > - **Lưu ý về lịch sử merge:** #6 và #7 được triển khai cùng nhau trên nhánh `feat/issue-6-deterministic-cleaning` và merge bằng **một** PR #32 (2026-09-30). Việc tách thành hai issue là đánh số bàn giao, không phải hai thay đổi độc lập: `clean_air_quality()` phụ thuộc bảng khí tượng **đã** làm sạch, nên #6 không thể tách khỏi #7 mà không viết lại kiến trúc.
 > - **Kiểm toán lại M2 đã merge qua PR #34** (`fix/m2-audit-findings`, 2026-09-30): sửa 3 lỗi code, loại `is_high_humidity_fog` khỏi feature, công bố sự cố mất kết nối liên tục 630 giờ, và hạ giọng một tuyên bố quá tay. Bản tài liệu này phản ánh **sau** PR #34. Chi tiết: `docs/roadmap.md` §G.4.
-> - **Mô hình học máy và phân tích thống kê nâng cao (Issues #11–#13) vẫn chưa bắt đầu** — notebook `04`–`06` chưa tồn tại.
+> - **Mô hình học máy và phân tích thống kê nâng cao (Issues #11–#13) vẫn chưa bắt đầu** — `NOT IMPLEMENTED`: `notebooks/04`–`07` chưa tồn tại (đã đổi tiền tố phân loại từ `06_` sang `07_` ở task 0.3; hiện chỉ có `00`–`03`).
 > - **Tổng số unit test: 358** (`test_data_collection` 57, `test_data_quality` 44, `test_cleaning` 114, `test_cleaning_pipeline` 44, `test_cleaning_pipeline_guards` 43, `test_fetch_dataset` 9, `test_pipeline_runtime_log` 40, `test_verify_claims_rolling` 7). Chạy: `python -m unittest discover tests`.
 >   - **Tổng là 358 trên cả hai nền tảng, nhưng số test *thực sự chạy* khác nhau:** local Windows chạy đủ **358, 0 skipped**; CI `ubuntu-latest` chạy **358 với `skipped=2`** — hai test `test_windows_separators_in_payload_are_preserved_verbatim` và `test_metadata_block_and_runtime_log_disagree_on_separators` trong `tests/test_pipeline_runtime_log.py` được `@unittest.skipUnless(os.name == "nt")` bỏ qua vì bất đẳng thứng dấu phân cách chỉ tồn tại trên Windows. Số **356** là số test đã thực thi trên CI. Đây là khác biệt môi trường, không phải sai lệch số liệu.
 > - **Guard chống rò rỉ đã được kiểm chứng bằng 43 test hồi quy** trong `tests/test_cleaning_pipeline_guards.py`, mỗi test được viết để **FAIL trên bản gốc** (xoá guard, cho target lọt vào feature, cho `transform_with_pipeline()` refit trên chính Test, thêm nhánh `ColumnTransformer` thứ hai, đảo thứ tự đối số, tự vô hiệu hóa tầng kiểm tra thứ tự thời gian).
@@ -137,13 +137,16 @@ air-pollution-analysis/
 │   ├── cleaning_log.md                 # Nhật ký làm sạch tất định (sinh tự động) [Issue #6]
 │   └── air_quality_project_overview.md # Tài liệu tổng quan định hướng đề tài
 ├── notebooks/
-│   ├── 00_environment_test.ipynb       # Notebook kiểm thử môi trường và nạp thư viện [Issue #1]
-│   ├── 01_data_collection.ipynb        # Thực thi pipeline thu thập & kiểm định dữ liệu [Issue #3, #4]
-│   ├── 02_quality_audit.ipynb          # Trình bày kết quả kiểm toán 6 chiều [Issue #5]
-│   ├── 03_data_cleaning.ipynb         # Thực thi làm sạch tất định & sinh Cleaning Log [Issue #6]
-│   └── 03_transformation_pipeline.ipynb # Merge → freeze → split → fit chống rò rỉ [Issue #7]
+│   ├── 00_environment_test.ipynb       # Kiểm thử môi trường và nạp thư viện [Issue #1]
+│   ├── 01_data_collection.ipynb        # Pipeline thu thập & kiểm định dữ liệu [Issue #3, #4]
+│   ├── 02_quality_audit.ipynb          # Trình bày kiểm toán chất lượng 6 chiều [Issue #5]
+│   ├── 03_data_cleaning.ipynb          # Làm sạch tất định & sinh Cleaning Log [Issue #6]
+│   ├── 03_transformation_pipeline.ipynb# Merge → freeze → split → fit chống rò rỉ [Issue #7]
+│   └── 03_processed_data_preview.ipynb # Kiểm tra artifact đã đóng băng — KHÔNG thuộc chuỗi chạy chính
+│                                        # ⚠️ NOT IMPLEMENTED: 04–07 chưa tồn tại (Issues #8–#13)
 ├── scripts/
 │   ├── fetch_dataset.py                # Tải & kiểm chứng tập dữ liệu từ nguồn công khai (không cần API key)
+│   ├── verify_claims.py                # Kiểm chứng 15 claim khối lượng dữ liệu + độ nhạy nhãn cảnh báo (exit 0)
 │   └── build_progress_report.py        # Sinh docs/bao_cao_tien_do_M1_M2.docx từ 6 nguồn sự thật (chỉ đọc)
 ├── src/
 │   ├── __init__.py
@@ -160,10 +163,17 @@ air-pollution-analysis/
 │   ├── test_fetch_dataset.py           # 9 unit tests cho cơ chế thu thập & kiểm chứng tập dữ liệu
 │   ├── test_pipeline_runtime_log.py     # 40 unit tests — tách trạng thái runtime khởi hồ sơ provenance tỉnh
 │   └── test_verify_claims_rolling.py    # 7 unit tests — ranh giới Train/Test của nhãn cảnh báo trượt 24h
-├── figures/                            # Thư mục lưu biểu đồ xuất bản chất lượng cao (300 DPI)
+├── docs/
+│   ├── roadmap.md                     # Kế hoạch tổng thể (nguồn chuẩn) — Week 01→15
+│   ├── TASK_LIST_M3_M6.md             # Task list M3–M6: 154 checkbox, có trạng thái UNVERIFIED
+│   ├── PLAN_MIDTERM_RESCHEDULE_PR36.md# Lịch dời midterm sang W11 + xử lý review PR #36
+│   ├── bao_cao_tien_do_M1_M2.docx     # Báo cáo tiến độ sinh tự động (không tái lập byte-for-byte)
+│   ├── history/                       # 4 file nhật ký lịch sử issue / PR / audit
+│   └── data_dictionary.md · cleaning_log.md · data_quality_audit.md · source_profiling*.md
+├── figures/                            # Biểu đồ xuất bản 300 DPI — sẽ TRACK (bằng chứng 20% rubric, task D28)
 │   └── .gitkeep
-└── reports/                            # Báo cáo giữa kỳ và báo cáo tổng kết đồ án
-    └── .gitkeep
+└── reports/                            # claim_audit.csv sinh tự động, KHÔNG track (task D28)
+    └── .gitkeep                        # statistical_profile.csv / *_minutes.md sẽ track khi sinh ra
 ```
 
 ---

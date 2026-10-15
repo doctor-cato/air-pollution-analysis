@@ -480,7 +480,8 @@ def build_m2_section(doc: Document) -> None:
             "marginal corr(pm25, RH) = −0,0365 và mutual information = 0,0024 (thấp nhất trong "
             "các biến khí tượng) chỉ chứng minh chưa có bằng chứng ở dạng cộng dồn. Tách theo mùa thì "
             "dấu đảo chiều: Đông +2,79 µg/m³ (p = 0,024), Xuân −8,91 (CI [−10,44; −7,38]), "
-            "Hè +0,28, Thu −2,72. Hồi quy pm25 ~ fog + mùa + tương tác cho F = 16,78, p = 7,4·10⁻¹¹. "
+            "Hè +0,28, Thu −2,72. Hồi quy pm25 ~ fog + mùa + tương tác: F = 16,78, p = 7,4·10⁻¹¹ "
+            "(⚠️ UNVERIFIED — chưa có mã tái lập, xem Issue #38: không script nào tính con số này). "
             "Tức corr ≈ 0 là hệ quả của trung bình qua các mùa nơi tác dụng ngược nhau triệt tiêu. "
             "Khai thác được cần dạng mô hình tương tác fog × mùa — thuộc phạm vi Issue #8.",
         ],
