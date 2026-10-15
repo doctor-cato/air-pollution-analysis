@@ -16,7 +16,7 @@ Execute statistically sound inferential analyses on environmental time-series da
 
 ## Preconditions
 - Cleaned observational dataset in `data/processed/air_pollution_final.parquet`.
-- Explicit research hypotheses ($H_0, H_1$) defined in [`docs/roadmap.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/roadmap.md) (RQ2, SQ2).
+- Explicit research hypotheses ($H_0, H_1$) defined in [`docs/roadmap.md`](../../../docs/roadmap.md) (RQ2, SQ2).
 
 ## Procedure
 

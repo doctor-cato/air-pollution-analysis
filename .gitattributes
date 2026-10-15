@@ -1,0 +1,6 @@
+# Giữ LF cho các file text nên commit để tránh chênh lệch line-ending
+# giữa các máy (Windows CRLF vs Linux/macOS LF).
+* text=auto eol=lf
+*.png binary
+*.parquet binary
+*.ipynb text eol=lf

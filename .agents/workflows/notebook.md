@@ -43,7 +43,7 @@ Review diff (git diff check, scrub oversized raw printouts before saving)
 - Review current cell outputs, imports, and structure.
 
 ### Step 2: Identify Current Analysis
-- Cross-reference the notebook with the relevant milestone in [`docs/roadmap.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/roadmap.md):
+- Cross-reference the notebook with the relevant milestone in [`docs/roadmap.md`](../../docs/roadmap.md):
   - `01_data_collection.ipynb` $\to$ Milestone 1 (API ingestion)
   - `02_quality_audit_cleaning.ipynb` $\to$ Milestone 2 (Quality audit, imputation, pipeline)
   - `03_exploratory_data_analysis.ipynb` $\to$ Milestone 3 (4 families of stats, 7 headline charts)
@@ -52,8 +52,8 @@ Review diff (git diff check, scrub oversized raw printouts before saving)
   - `06_classification_alerts.ipynb` $\to$ Milestone 4 (Random Forest, Recall & PR-AUC, Threshold)
 
 ### Step 3: Load Governing Rules & Skills
-- Review [`notebooks.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/.agents/rules/notebooks.md) and [`analysis.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/.agents/rules/analysis.md).
-- Activate corresponding skills (e.g. [`data-visualization`](file:///C:/Users/Admin/Documents/code_workspace/khdl/.agents/skills/data-visualization/SKILL.md) for plotting).
+- Review [`notebooks.md`](../rules/notebooks.md) and [`analysis.md`](../rules/analysis.md).
+- Activate corresponding skills (e.g. [`data-visualization`](../skills/data-visualization/SKILL.md) for plotting).
 
 ### Step 4: Make Minimal, Focused Modifications
 - Keep cell changes targeted. Do not rewrite functioning cells unnecessarily.

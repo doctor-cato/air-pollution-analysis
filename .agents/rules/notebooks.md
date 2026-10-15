@@ -1,7 +1,7 @@
 # Jupyter Notebook Rules & Standards
 
 > **Scope:** Notebook development, reproducibility, output handling, and refactoring.  
-> **Source Document:** [`docs/roadmap.md`](file:///C:/Users/Admin/Documents/code_workspace/khdl/docs/roadmap.md) (Sections 12.2 & 13.E).
+> **Source Document:** [`docs/roadmap.md`](../../docs/roadmap.md) (Sections 12.2 & 13.E).
 
 ---
 

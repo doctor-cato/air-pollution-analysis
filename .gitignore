@@ -37,6 +37,16 @@ data/raw/*.parquet
 !data/raw/.gitkeep
 !data/raw/metadata.json
 
+# ── Generated reports (sinh lại bằng script, không track) ──
+# scripts/verify_claims.py mặc định ghi reports/claim_audit.csv — chạy lại
+# được bất cứ lúc nào, không phải trạng thái cần bàn giao.
+reports/*
+!reports/.gitkeep
+
+# ⚠️ figures/ CỐ Ý KHÔNG bị ignore: FIG-01…FIG-07 là bằng chứng chấm điểm
+# (mục "biểu đồ ấn phẩm" 20% rubric) và hội đồng cần mở repo xem được.
+# Xem task D28 trong docs/TASK_LIST_M3_M6.md.
+
 # ── Large / generated data files ─────────────────────────────
 data/interim/*.parquet
 data/interim/*.csv
@@ -54,6 +64,12 @@ data/processed/*.csv
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ── OpenCode agent runtime ────────────────────────────────────
+# Agent definitions, slash command, skills và tool config đều là trạng
+# thái cục bộ, không thuộc phạm vi bàn giao học thuật.
+.opencode/
+
 
 # ── Build / dist ─────────────────────────────────────────────
 *.egg-info/

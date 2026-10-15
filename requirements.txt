@@ -27,3 +27,7 @@ scikit-learn==1.7.2
 
 # ── Môi trường Notebook ──────────────────────────────────────
 jupyter==1.1.1
+
+# ── Sinh tài liệu ────────────────────────────────────────────
+# scripts/build_progress_report.py tạo docs/bao_cao_tien_do_M1_M2.docx
+python-docx==1.2.0
