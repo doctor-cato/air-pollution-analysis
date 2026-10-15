@@ -502,22 +502,25 @@ air-pollution-analysis/
 │   ├── 03_transformation_pipeline.ipynb# Tích hợp, đóng băng, split và đóng gói Pipeline [Issue #7]
 │   ├── 03_processed_data_preview.ipynb # Kiểm tra artifact đã đóng băng trước khi M3 đọc [Issue #7]
 │   ├── 04_descriptive_stats.ipynb      # Thống kê mô tả 4 họ chỉ số & phân tích chu kỳ [Issue #8]
-│   ├── 05_statistical_inference.ipynb  # Kiểm định phi tham số, Effect Size, Bootstrap CI [Issue #11]
-│   ├── 06_regression_modeling.ipynb    # Hồi quy OLS, chẩn đoán LINE, Ridge/Lasso [Issue #12]
-│   └── 07_classification_alerts.ipynb  # Phân loại cảnh báo sớm, PR-AUC, Threshold tuning [Issue #13]
+│   ├── 05_statistical_inference.ipynb  # Kế hoạch — Kiểm định phi tham số, Effect Size, Bootstrap CI [Issue #11]
+│   ├── 06_regression_modeling.ipynb    # Kế hoạch — Hồi quy OLS, chẩn đoán LINE, Ridge/Lasso [Issue #12]
+│   └── 07_classification_alerts.ipynb  # Kế hoạch — Phân loại cảnh báo sớm, PR-AUC, Threshold tuning [Issue #13]
 ├── src/
 │   ├── __init__.py
-│   ├── data_loader.py                  # Module nạp file Parquet, adapter dữ liệu [Issue #3, #4, #15]
-│   ├── cleaning_pipeline.py            # Scikit-Learn Pipeline đóng gói tiền xử lý [Issue #7, #15]
-│   └── visualizer.py                   # Hàm vẽ biểu đồ chuẩn phong cách Tufte/Cleveland [Issue #9, #15]
-├── figures/                            # 7 Biểu đồ ấn phẩm giải thích (FIG-01 đến FIG-07, PNG 300 DPI) [Issue #9]
+│   ├── data_collection.py              # Adapter OpenAQ / Open-Meteo / AirNow + validation [Issue #3, #4]
+│   ├── data_quality.py                 # Kiểm toán chất lượng 6 chiều & phân tích khuyết thiếu [Issue #5]
+│   ├── cleaning.py                     # Làm sạch tất định, kẹt cảm biến, reindex, sinh Cleaning Log [Issue #6]
+│   ├── cleaning_pipeline.py            # Merge, freeze, split tuần tự, sklearn Pipeline chống rò rỉ [Issue #7]
+│   ├── flag_evidence.py                 # Tái lập số cho cờ is_high_humidity_fog từ dữ liệu thật [Issue #38]
+│   └── visualizer.py                   # Kế hoạch — Hàm vẽ biểu đồ chuẩn Tufte/Cleveland [Issue #9, #15]
+├── figures/                            # Kế hoạch — 7 biểu đồ ấn phẩm giải thích FIG-01→FIG-07, PNG 300 DPI [Issue #9]
 │   └── .gitkeep
 └── reports/
     ├── statistical_profile.csv         # Bảng hồ sơ thống kê mô tả 4 họ chỉ số [Issue #8]
-    ├── midterm_report.pdf              # Báo cáo giữa kỳ EDA (8–10 trang, Tuần 11) [Issue #10]
-    ├── final_report.pdf                # Báo cáo đồ án cuối kỳ SCQA (Tuần 14–15) [Issue #16]
-    ├── defense_minutes.md              # Biểu mẫu biên bản đánh giá bảo vệ đồ án [Issue #17]
-    └── .gitkeep
+    ├── midterm_report.pdf              # Kế hoạch — Báo cáo giữa kỳ EDA (8–10 trang, Tuần 11) [Issue #10]
+    ├── final_report.pdf                # Kế hoạch — Báo cáo đồ án cuối kỳ SCQA (Tuần 14–15) [Issue #16]
+    ├── defense_minutes.md              # Kế hoạch — Biểu mẫu biên bản đánh giá bảo vệ đồ án [Issue #17]
+    └── .gitkeep                        # *_minutes.md sẽ track khi sinh ra (task D28)
 ```
 
 ---
@@ -774,27 +777,34 @@ Chi tiết luồng thực hiện:
 >   `#12`, `#13`) **đã được mở lại** và không còn bị chặn.
 > - Các số liệu thực nghiệm nêu trong các báo cáo (#4, #5) là **kết quả của một lần thực thi cụ thể**
 >   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
-> - Bộ kiểm thử hiện gồm **57 + 44 + 114 + 44 + 43 + 9 + 44 + 40 + 7 = 402 unit test tất định**.
+> - Bộ kiểm thử hiện gồm **431 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
+>   [`docs/TEST_SUITE.md`](TEST_SUITE.md) — nguồn chuẩn duy nhất cho số liệu kiểm thử).
 >   Số mà unittest **thực sự chạy và báo cáo** phụ thuộc cả nền tảng lẫn việc có
->   `data/` hay không — **không phải con số 402 trên mọi nền tảng**:
->   - **Windows local (có `data/interim/*.parquet`)**: `Ran 402 tests` + `OK` → **402 pass, 0 skip**.
->   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`)**: `Ran 398 tests` + `OK (skipped=4)`
->     → **394 pass, 4 skip**.
+>   `data/` hay không — **không phải con số 431 trên mọi nền tảng**:
+>   - **Windows local (có `data/interim/*.parquet`)**: `Ran 431 tests` + `OK` → **431 pass, 0 skip**.
+>   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`)**: `Ran 427 tests` + `OK (skipped=5)`
+>     → **422 pass, 5 skip**.
 >
->   CI báo **398 chứ không phải 402** vì `TestDocumentedReproduction.setUpClass` ném
+>   CI báo **427 chứ không phải 431** vì `TestDocumentedReproduction.setUpClass` ném
 >   `unittest.SkipTest` khi thiếu `data/interim/*.parquet` → cả lớp bị bỏ qua và **4 phương
->   thức của nó không chạy, không được tính vào "Ran"**. Bốn skip CI báo gồm: `setUpClass`
->   đó; `TestScriptsUseTheComputation.test_progress_report_bullet_carries_the_computed_f_statistic`
->   (cùng lý do thiếu dữ liệu); và hai test `@unittest.skipUnless(os.name == "nt")` trong
->   `tests/test_pipeline_runtime_log.py`.
+>   thức của nó không chạy, không được tính vào "Ran"**. Danh sách **5** skip CI báo gồm:
+>   `setUpClass` đó; `TestScriptsUseTheComputation.test_progress_report_bullet_carries_the_computed_f_statistic`
+>   (cùng lý do thiếu dữ liệu); hai test `@unittest.skipUnless(os.name == "nt")` trong
+>   `tests/test_pipeline_runtime_log.py`; và `test_live_restart_kernel_and_run_all` trong
+>   `tests/test_validate_issue8.py` (thiếu `data/processed/…parquet`). Nguyên nhân từng cái:
+>   [`docs/TEST_SUITE.md`](TEST_SUITE.md) §4.
 >
 >   ⚠️ **CI xanh KHÔNG đồng nghĩa F-test của Issue #38 đã được tái lập** — CI không có
 >   `data/`. Chỉ lần chạy local có dữ liệu mới ghim được `F = 16,78` / `p = 7,4·10⁻¹¹`
 >   vào một lần fit thật (`tests/test_flag_evidence.py::TestDocumentedReproduction`).
->   Cả hai nền tảng đều `OK`, **0 fail** (`test_data_collection` + `test_data_quality` + `test_cleaning` +
->   `test_cleaning_pipeline` + `test_cleaning_pipeline_guards` + `test_fetch_dataset` +
->   `test_flag_evidence` + `test_pipeline_runtime_log` + `test_verify_claims_rolling`).
->   Trong đó **43 test hồi quy** của #7 **FAIL trên bản gốc** và PASS sau khi sửa.
+>   Cả hai nền tảng đều `OK`, **0 fail**. Trong đó **43 test hồi quy** của #7 **FAIL trên
+>   bản gốc** và PASS sau khi sửa.
+>
+> > [!NOTE]
+> > **Số liệu kiểm thử trong tài liệu này không được sửa tay.** `TestDocumentedTestCounts`
+> > đọc số `def test_` thật trong `tests/` rồi đối chiếu với bảng ở `docs/TEST_SUITE.md`
+> > và với `AGENTS.md`, đồng thời **chặn** mọi tài liệu nhắc lại số đã lỗi thời. Thêm test mà
+> > quên cập nhật → CI fail, có chủ đích.
 >
 > > [!NOTE]
 > > **Về con số "mutation score 21/21 = 100%" từng xuất hiện ở đây:** đã **bị gỡ bỏ**.
@@ -858,6 +868,11 @@ Chi tiết luồng thực hiện:
 
 #### G.4.4. Kiểm chứng
 
+> [!NOTE]
+> **Bảng dưới là bản ghi tại commit `37374fe` / `docs/audit-delivery`, ngày 2026-10-14–15.**
+> Giữ nguyên số đã đo — chúng đúng **cho commit được nêu**, không phải cho `HEAD`.
+> Số liệu **hiện hành** nằm ở [`docs/TEST_SUITE.md`](TEST_SUITE.md); lượt đo mới nhất ở cuối mục này.
+
 | Cổng | Kết quả |
 |---|---|
 | `python -m pytest tests/ -q` | **402 collected** → local Windows (có `data/`): **402 passed**, 0 skipped, 11 subtests. CI `ubuntu-latest`: **chưa tái chạy lệch này** — xem dòng unittest bên dưới cho số CI đã đo |
@@ -877,7 +892,7 @@ Chi tiết luồng thực hiện:
 > `TestDocumentedReproduction` skip cả lớp nên 4 phương thức không chạy và không được
 > tính vào "Ran", còn số skip CI thật là 4, không phải 6.)*
 >
-> | Đã chạy lại ở lượt này | Kết quả |
+> | Đã chạy lại ở lượt này (2026-10-15, tại `37374fe`) | Kết quả |
 > |---|---|
 > | `python -m pytest tests/ -q` | **402 passed** *(Windows, có `data/`, 0 skip)*, 11 subtests |
 > | `python -m unittest discover tests` | **Ran 402 tests … OK** *(Windows, có `data/`: 402 thực thi, 0 skip)* |
@@ -891,6 +906,26 @@ Chi tiết luồng thực hiện:
 > **không** khớp phiên bản trong `requirements.txt`. CI cài đúng `requirements.txt` nên là
 > nguồn đáng tin; kết quả local ở trên chỉ để đối chiếu. Xem `README.md` về `skipped=2` trên
 > `ubuntu-latest`.
+>
+> > [!IMPORTANT]
+> > **Bảng trên là bản ghi LỊCH SỬ tại `docs/audit-delivery` — giữ nguyên theo đúng những gì
+> > đã đo, không sửa lại thành con số hôm nay.** Các con số ở đó đúng **cho commit được nêu**,
+> > không đúng cho `HEAD`. Lượt đo mới nhất xem bên dưới; số liệu kiểm thử **hiện hành** nằm ở
+> > [`docs/TEST_SUITE.md`](TEST_SUITE.md) và được canh tự động bởi
+> > `tests/test_validate_issue8.py::TestDocumentedTestCounts`.
+>
+> **Lượt đo 2026-10-16, nhánh `feat/issue-8-descriptive-stats` (PR #40), local Windows / Python 3.14:**
+>
+> | Đã chạy | Kết quả |
+> |---|---|
+> | `python -m unittest discover tests` | **Ran 431 tests … OK** *(có `data/`: 431 thực thi, 0 skip)* |
+> | `python -m compileall -q src tests scripts` | exit 0 |
+> | `python scripts/validate_issue8.py` | **215 passed, 0 failed, 2 warnings** — gồm live Restart Kernel & Run All của notebook 04 với **0 cell lỗi** |
+> | CI `ubuntu-latest` (run #82, tại commit `18889f3`) | **Ran 426 tests … OK (skipped=5)** — con số này đúng cho commit `18889f3`; `HEAD` của PR #40 đã thêm 1 test guard nên CI sẽ báo **427** |
+>
+> ⚠️ **CI không chạy được notebook 04 trên dữ liệu thật** — `data/` bị `.gitignore` loại khỏi
+> repo. CI chỉ chứng minh notebook *thực thi được* qua `TestNotebookFixtureSmoke` (fixture tổng
+> hợp tất định), **không** chứng minh con số nào trong markdown hay CSV là đúng.
 
 ---
 

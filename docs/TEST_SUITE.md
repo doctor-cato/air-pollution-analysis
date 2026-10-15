@@ -37,9 +37,9 @@ Không test nào gọi mạng. Không test nào phụ thuộc thứ tự chạy.
 | `tests/test_fetch_dataset.py` | 9 | `scripts/fetch_dataset.py` |
 | `tests/test_flag_evidence.py` | 44 | Bằng chứng tái lập được cho `is_high_humidity_fog` |
 | `tests/test_pipeline_runtime_log.py` | 40 | Nhật ký thực thi pipeline, dấu phân cách Windows |
-| `tests/test_validate_issue8.py` | 28 | Checksum, đồng bộ generator, circular stats, smoke fixture, canh số liệu tài liệu |
+| `tests/test_validate_issue8.py` | 29 | Checksum, đồng bộ generator, circular stats, smoke fixture, canh số liệu tài liệu |
 | `tests/test_verify_claims_rolling.py` | 7 | Biên rolling 24h — dữ liệu đồng nhất che lỗi |
-| **Tổng** | **430** | |
+| **Tổng** | **431** | |
 
 Đếm lại sau mỗi thay đổi:
 
@@ -55,20 +55,20 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 | Con số | Ý nghĩa |
 |---|---|
-| **430** | Số **test method được định nghĩa** trong mã nguồn |
-| **426** | Số unittest **thực sự chạy và báo cáo** trên CI (thiếu `data/`) |
-| **421** | Số **pass thực sự** trên CI (426 − 5 skip) |
+| **431** | Số **test method được định nghĩa** trong mã nguồn |
+| **427** | Số unittest **thực sự chạy và báo cáo** trên CI (thiếu `data/`) |
+| **422** | Số **pass thực sự** trên CI (427 − 5 skip) |
 
 ### Kết quả thực tế theo môi trường
 
 | Môi trường | Lệnh | Kết quả |
 |---|---|---|
-| Windows local, **có `data/`** | `python -m unittest discover tests` | `Ran 430 tests` + `OK` → **430 pass, 0 skip** |
-| Ubuntu CI `ubuntu-latest`, **không `data/`** | `python -m unittest discover tests -v` | `Ran 426 tests` + `OK (skipped=5)` → **421 pass, 5 skip** |
+| Windows local, **có `data/`** | `python -m unittest discover tests` | `Ran 431 tests` + `OK` → **431 pass, 0 skip** |
+| Ubuntu CI `ubuntu-latest`, **không `data/`** | `python -m unittest discover tests -v` | `Ran 427 tests` + `OK (skipped=5)` → **422 pass, 5 skip** |
 
 > `data/` bị `.gitignore` loại khỏi repository, nên **CI không bao giờ có dataset**.
 
-### Vì sao 430 − 426 = 4
+### Vì sao 431 − 427 = 4
 
 `TestDocumentedReproduction.setUpClass` trong `tests/test_flag_evidence.py` raise
 `unittest.SkipTest` khi thiếu `data/interim/*.parquet`. unittest bỏ qua **cả class**,

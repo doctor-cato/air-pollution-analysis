@@ -12,10 +12,12 @@
 This repository is an **academic data-science project**, not an enterprise distributed-data system or a commercial cloud microservice.
 - **Goal:** Analyze multi-year temporal variations of urban fine particulate matter ($\text{PM}_{2.5}$), quantify meteorological drivers, and develop an interpretable early alert classification model following CRISP-DM methodology.
 - **Dataset:** Time series integrating OpenAQ NCEM/VEA station 4946811 (556 Nguyễn Văn Cừ, Hanoi; 07/2025–07/2026) with Open-Meteo ERA5 surface weather dynamically synchronized (8,022 air records, 9,072 weather records, 100% temporal overlap). AirNow DOS Hanoi serves as historical fallback.
-- **Current State:** **Milestone 2 (Week 05)** — Issues #6 and #7 implemented; modelling Issues #11–#13 not started.
+- **Current State:** **Between Milestone 2 and Milestone 3 (Week 05+)** — Issues #1–#7 merged; Issue #8 (descriptive EDA) implemented and awaiting review in PR #40; modelling Issues #11–#13 not started.
   - Authoritative requirements are in [`docs/roadmap.md`](../docs/roadmap.md).
   - An interactive landing page lives on branch `gh-pages` (`index.html`, `styles.css`, `script.js`).
-  - **Implemented:** `src/data_collection.py`, `src/data_quality.py` (6-dimension audit, Issue #3), `src/cleaning.py` (deterministic cleaning, Issue #6), `src/cleaning_pipeline.py` (leakage-safe preprocessing, Issue #7), `src/flag_evidence.py` (reproducible evidence for `is_high_humidity_fog`, Issue #38), `scripts/fetch_dataset.py`, `scripts/verify_claims.py`, the CI workflow (`.github/workflows/ci.yml`), and notebooks `00`–`03`.
+  - **Implemented:** `src/data_collection.py`, `src/data_quality.py` (6-dimension audit, Issue #3), `src/cleaning.py` (deterministic cleaning, Issue #6), `src/cleaning_pipeline.py` (leakage-safe preprocessing, Issue #7), `src/flag_evidence.py` (reproducible evidence for `is_high_humidity_fog`, Issue #38), `scripts/fetch_dataset.py`, `scripts/verify_claims.py`, `scripts/generate_04_notebook.py` + `scripts/validate_issue8.py` (Issue #8), the CI workflow (`.github/workflows/ci.yml`), and notebooks `00`–`04`.
+  - **`NOT IMPLEMENTED`:** `notebooks/05`–`07` (Issues #11–#13), `src/visualizer.py`, `figures/FIG-01`…`FIG-07`.
+  - **Test counts:** never hard-code them. Read [`docs/TEST_SUITE.md`](../docs/TEST_SUITE.md) — it is the single source of truth and is pinned by `tests/test_validate_issue8.py::TestDocumentedTestCounts`.
   - **Roadmap vs. Reality:** Always inspect the filesystem to verify what exists versus what is planned.
 
 ---

@@ -19,16 +19,15 @@
 > Trong 125 task có số có **1 task lồng** duy nhất là `0.7b` (thuộc `0.7`), nên **124 việc cấp
 > cao nhất** — đó là lý do đầu Phase 0 nói "8 việc" trong khi bảng này ghi `9`.
 > Trạng thái hiện tại: **30 đánh dấu `[x]` · 124 `[ ]`** (đếm bằng `^\s*- \[( |x)\]` theo công thức ở dòng trên, **bao gồm task lồng** `0.7b`).
-> Các phase M3–M6 (2–11) **chưa bắt đầu** — issue #8–#17 đều đang `OPEN` trên GitHub.
+> Các phase M3–M6 (3–11) **chưa bắt đầu**. **Phase 2 (Issue #8) đã triển khai** — đang chờ review trong PR #40, chưa merge. Issue #9–#17 vẫn `OPEN` trên GitHub.
 
-> ### `NOT IMPLEMENTED` — trạng thái chung của toàn bộ M3–M6
->
-> Mọi task thuộc Phase 2–11 đều ở trạng thái **`NOT IMPLEMENTED`** (planned, not built) cho tới khi
-> có bằng chứng cụ thể. Cụ thể:
+> ### Trạng thái triển khai — đọc phần này trước khi tick checkbox
 >
 > | Việc | Trạng thái | Bằng chứng hiện có |
 > |---|---|---|
-> | `notebooks/04`–`07` | **`NOT IMPLEMENTED`** | Chưa tồn tại. Repo chỉ có `00`–`03` (đã đổi tiền tố phân loại `06_`→`07_` ở task 0.3) |
+> | `notebooks/04_descriptive_stats.ipynb` | **đã có** (chờ review, PR #40) | Sinh từ `scripts/generate_04_notebook.py`; `scripts/validate_issue8.py` 215 assertion, live kernel 0 lỗi |
+> | `reports/statistical_profile.csv` | **đã có** | 8 biến × 27 cột; đối chiếu lại từ Parquet trong `validate_issue8.py` §4 |
+> | `notebooks/05`–`07` | **`NOT IMPLEMENTED`** | Chưa tồn tại (đã đổi tiền tố phân loại `06_`→`07_` ở task 0.3). Tương ứng Issue #11–#13 |
 > | `src/visualizer.py`, `tests/test_visualizer.py` | **`NOT IMPLEMENTED`** | Chưa tồn tại — task 3.1 / 3.2 còn `[ ]` |
 > | `figures/FIG-01`…`FIG-07` | **`NOT IMPLEMENTED`** | `figures/` chỉ có `.gitkeep` |
 > | Kiểm định giả thuyết của Issue #11 (task 5.1–5.6) | **`NOT IMPLEMENTED`** | Không có notebook, không có script, không có p-value nào được tính |
@@ -356,6 +355,11 @@ vì khi đã viết xong thì phải viết lại cả notebook.
 - [x] **1.13** 🟡 **Issue #8** — CLT, `SE = σ/√n`, quy tắc thực nghiệm 68–95–99.7 (slide W6 §BLOCK 1).
 - [x] **1.14** 🟡 **Issue #8** — Spurious correlation & Confounders (slide W6 §BLOCK 3). Nghịch lý Simpson đã có
       trong phần addendum (fog × mùa đảo dấu) — giữ nguyên.
+- [x] **1.15** 🔴 **Issue #8** — phải nêu nguy cơ **tương quan ngẫu nhiên khi khảo sát nhiều cặp biến cùng lúc.**
+      Phát hiện khi đối chiếu Issue #8 gốc với notebook, 2026-10-16. Ma trận §9.2 khảo sát `C(8,2) = 28` cặp
+      → **56 hệ số** trên cùng tập `N = 7.372`. Với N lớn, một cặp không có quan hệ vật lý vẫn cho `|r|`
+      trông đáng kể; xác suất có ít nhất một phát hiện giả là `1 − 0,95²⁸ ≈ 76 %`. Bonferroni `α' = 0,0018`.
+      → Đã thêm §A2 vào notebook (commit `7a1ccf8`). **Không** đưa p-value vào EDA — thuộc Issue #11.
 - [x] **1.15** 🟡 **Issue #9** — thang đo (Nominal/Ordinal/Interval/Ratio) quyết định loại biểu đồ (slide W7 §BLOCK 1).
 - [x] **1.16** 🟡 **Issue #9** — thứ bậc kênh thị giác Cleveland–McGill (vị trí > độ dài > hướng > góc >
       diện tích > thể tích > màu). Kèm **câu trả lời sẵn** cho câu hỏi "vì sao chọn heatmap (dùng màu,
@@ -406,11 +410,19 @@ thực hiện tốt: mỗi issue đều kèm 1 tài liệu sinh ra từ code th�
 
 ### 1B.1 — Ngay sau Phase 2–3 (M3)
 
-- [ ] **D1** 🔴 `docs/roadmap.md` — cập nhật §2 trạng thái triển khai: đánh dấu Issue #8, #9 DONE,
-      sửa mục "notebooks 04–06 chưa hiện thực hoá", thêm tên notebook mới sau task 0.3.
-- [ ] **D2** 🔴 `README.md` §2 — cập nhảy trạng thái từ "Milestone 2" sang "Milestone 3"; bổ sung
-      `notebooks/04_descriptive_stats.ipynb`, `src/visualizer.py`, `figures/FIG-01…07.png`,
-      `reports/statistical_profile.csv` vào cây thư mục; sửa trạng thái issue #7 "chưa merge" nếu đã merge.
+- [x] **D1** 🟡 `docs/roadmap.md` — cập nhật trạng thái triển khai cho Issue #8.
+      **⚠️ Tiền đề trong task này SAI và đã sửa:** `roadmap` **§2 là "RESEARCH QUESTIONS"**, không phải
+      mục trạng thái; trạng thái triển khai nằm ở **§13.G**, và chuỗi `"notebooks 04–06 chưa hiện
+      thực hoá"` **không tồn tại** trong `roadmap.md`. Đã sửa §13.G: thêm bản ghi đo mới nhất tại
+      commit HEAD của PR #40 và gắn nhãn "bản ghi lịch sử" cho bảng cũ (2026-10-16).
+      **Chưa làm:** thêm hàng `#8` vào bảng trạng thái §13.G.2 — làm khi PR #40 merge.
+- [x] **D2** 🔴 `README.md` §2 — cập nhảy trạng thái, bổ sung cây thư mục.
+      Đã làm 2026-10-16 (nhánh `feat/issue-8-descriptive-stats`, PR #40): trạng thái chuyển sang
+      "giữa Milestone 2 và Milestone 3"; thêm `04_descriptive_stats.ipynb`,
+      `generate_04_notebook.py`, `validate_issue8.py`, `test_validate_issue8.py`,
+      `reports/statistical_profile.csv`, `docs/TEST_SUITE.md` vào cây thư mục;
+      sửa nhãn `NOT IMPLEMENTED` thành `05`–`07` (vì `04` đã tồn tại); sửa số test 402 → 431.
+      **Chưa làm:** `src/visualizer.py` + `figures/FIG-01…07.png` — thuộc Issue #9, chưa tới.
 - [ ] **D3** 🔴 `README.md` — thêm mục thống kê chuỗi dữ liệu thật vào phần mô tả: 9.044 dòng × 18 cột ·
       1 trạm (`556 Nguyễn Văn Cừ`) · 376 ngày (2025-07-03 → 2026-07-15) · lưới giờ 24,05 dòng/ngày ·
       `pm25` NaN 17,1%. Hiện README chủ yếu mô tả *quy trình*, chưa mô tả *đặc tính chuỗi*.
