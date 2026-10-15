@@ -627,6 +627,56 @@ def neutralize_canonical_asserts(nb) -> int:
     return stripped
 
 
+class TestDocumentedTestCounts(unittest.TestCase):
+    """
+    Số liệu kiểm thử trong tài liệu phải khớp mã nguồn.
+
+    Regression cụ thể: `AGENTS.md` từng ghi "423" rồi "426" trong khi suite thật
+    đã lớn hơn — số đếm trôi dần vì không ai kiểm. Bài học: một con số ghi tay
+    trong tài liệu mà không có test canh thì sẽ sai, và sai lặng lẽ.
+
+    Vì vậy số liệu chi tiết được dời sang `docs/TEST_SUITE.md` và con số ở đây
+    được sinh từ mã nguồn thật.
+    """
+
+    #: File tài liệu mang số liệu kiểm thử phải được canh.
+    DOCS = ("AGENTS.md", "docs/TEST_SUITE.md")
+
+    @staticmethod
+    def _defined_test_count() -> int:
+        """Đếm `def test_` trong mọi `tests/test_*.py`."""
+        total = 0
+        for path in sorted((REPO_ROOT / "tests").glob("test_*.py")):
+            src = path.read_text(encoding="utf-8")
+            total += len(re.findall(r"^\s+def test_", src, flags=re.MULTILINE))
+        return total
+
+    def test_docs_state_the_real_number_of_test_methods(self):
+        actual = self._defined_test_count()
+        for name in self.DOCS:
+            path = REPO_ROOT / name
+            self.assertTrue(path.exists(), f"{name} không tồn tại")
+            text = path.read_text(encoding="utf-8")
+            self.assertIn(
+                str(actual), text,
+                f"{name} không nhắc tới {actual} — số test method thật. "
+                f"Cập nhật hoặc xoá con số cũ.",
+            )
+
+    def test_per_module_breakdown_matches_each_file(self):
+        """Bảng breakdown trong `docs/TEST_SUITE.md` phải đúng từng dòng."""
+        doc = (REPO_ROOT / "docs" / "TEST_SUITE.md").read_text(encoding="utf-8")
+        for path in sorted((REPO_ROOT / "tests").glob("test_*.py")):
+            src = path.read_text(encoding="utf-8")
+            n = len(re.findall(r"^\s+def test_", src, flags=re.MULTILINE))
+            row = f"`tests/{path.name}` | {n} |"
+            self.assertIn(
+                row, doc,
+                f"docs/TEST_SUITE.md thiếu hoặc sai dòng cho {path.name} "
+                f"(mong đợi: {row!r})",
+            )
+
+
 class TestNotebooksAreSerializationStable(unittest.TestCase):
     """
     Mọi notebook phải byte-identical với đường lưu thật của Jupyter.
