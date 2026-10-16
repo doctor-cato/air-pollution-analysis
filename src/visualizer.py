@@ -21,11 +21,14 @@ maximization principles and William Cleveland's perceptual accuracy hierarchy:
 - FIG-06: Dual Correlation Matrix Heatmap (Pearson r & Spearman rho) across
   pollutant and meteorological variables, highlighting PM2.5–PM10 collinearity
   and circular-variable caveats for wind_direction.
-- FIG-07: Air Quality Category Frequency Distribution Bar Chart computed on
-  mathematically compatible causal 24-hour rolling averages against WHO 2021
-  (24h AQG & Interim Targets) and QCVN 05:2023/BTNMT (24h limit = 50 µg/m³),
-  enforcing a strict zero baseline (ylim bottom = 0) and dual-denominator
-  reporting (valid 24h windows vs. total study hours).
+- FIG-07: Dual-panel Air Quality Category Frequency Distribution Bar Chart:
+  (Panel A) mathematically compatible causal 24-hour rolling windows (for
+  continuous trend analysis, explicitly distinguished from calendar days because
+  hourly rolling windows overlap) and (Panel B) calendar-day 24-hour means
+  (with explicit daily completeness criteria, no interpolation, and the 99th
+  percentile P99 descriptive statistic referenced to WHO 2021 24h AQG = 15 µg/m³
+  and QCVN 05:2023/BTNMT 24h reference = 50 µg/m³), enforcing a strict zero
+  baseline (ylim bottom = 0) and separate denominators throughout.
 """
 
 from __future__ import annotations
@@ -33,7 +36,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 import matplotlib
 import matplotlib.dates as mdates
@@ -83,15 +86,17 @@ FONT_FALLBACK_ORDER: Tuple[str, ...] = (
     "sans-serif",
 )
 
-# Regulatory thresholds (µg/m³) with explicit averaging periods and standards.
+# Regulatory reference levels (µg/m³) with explicit averaging periods and standards.
 # Note: QCVN 05:2023/BTNMT defines limits at standard reference conditions
 # (25 °C, 760 mmHg, µg/Nm³), whereas OpenAQ stations report ambient µg/m³.
+# WHO 2021 24-hour AQG (15 µg/m³) is defined statistically via the 99th percentile
+# of daily 24-hour mean concentrations over a full calendar year (3–4 exceedance days/year).
 QCVN_2023_PM25_24H_LIMIT: float = 50.0
 QCVN_2023_PM25_ANNUAL_LIMIT: float = 25.0
 WHO_2021_PM25_24H_AQG: float = 15.0
 WHO_2021_PM25_ANNUAL_AQG: float = 5.0
 
-# WHO 2021 24-hour Interim Targets & AQG boundaries (µg/m³)
+# WHO 2021 24-hour Interim Targets & AQG concentration brackets (µg/m³)
 WHO_QCVN_24H_BINS: Tuple[float, ...] = (0.0, 15.0, 25.0, 37.5, 50.0, 75.0, float("inf"))
 
 # Default causal rolling window parameters
@@ -99,6 +104,15 @@ DEFAULT_ROLLING_24H_WINDOW: int = 24
 DEFAULT_ROLLING_24H_MIN_PERIODS: int = 24
 DEFAULT_ROLLING_7D_WINDOW: int = 168
 DEFAULT_ROLLING_7D_MIN_PERIODS: int = 126
+
+# Technical completeness criterion for calendar-day 24-hour average calculation:
+# >= 18 valid hourly observations out of 24 hours (75% daily data capture).
+# Documented explicitly as a project technical completeness criterion (aligned
+# with standard 75% daily capture practice in ambient monitoring), NOT claimed
+# as a statutory WHO rule.
+DEFAULT_MIN_VALID_HOURS_PER_DAY: int = 18
+HOURS_PER_DAY: int = 24
+ANNUAL_COMPLIANCE_MIN_VALID_DAYS: int = 329  # 90% of 365 days in a single calendar year
 
 # Colorblind-safe Okabe-Ito & Viridis-derived semantic palette
 PALETTE: Dict[str, str] = {
@@ -403,6 +417,290 @@ def _find_missing_spans(
     return spans
 
 
+def compute_daily_pm25_statistics(
+    df: pd.DataFrame,
+    *,
+    min_hours_per_day: int = DEFAULT_MIN_VALID_HOURS_PER_DAY,
+    percentile_method: str = "linear",
+) -> Dict[str, Any]:
+    """Compute calendar-day 24-hour PM2.5 averages, completeness counts, and WHO P99 statistics.
+
+    Methodology & Anti-Conflation Rules
+    -----------------------------------
+    1. **Calendar Days vs. Rolling Windows:** Hourly 24-hour rolling windows
+       (``rolling_24h``) overlap by 23 hours between consecutive steps, so
+       window counts never equal calendar-day counts. This function aggregates
+       non-overlapping calendar days in local time ``Asia/Ho_Chi_Minh`` (UTC+7).
+    2. **Duplicate & Unsorted Timestamp Safety:** Input rows are converted to
+       ``Asia/Ho_Chi_Minh``, sorted chronologically, and deduplicated on
+       ``(station_id, timestamp)`` (or ``timestamp``) before daily aggregation
+       so duplicate records never inflate ``n_valid_hours`` above 24 or bias
+       the daily arithmetic mean.
+    3. **Continuous Calendar Grid & Missingness Without Interpolation:** For each
+       station, the daily table is reindexed across the full continuous calendar
+       date range ``[min_date, max_date]`` (``freq="D"``). Days completely absent
+       from the input DataFrame or containing 24 ``NaN`` hours are recorded with
+       ``n_valid_hours = 0`` and ``day_status = "no_obs"``. Days with
+       ``0 < n_valid_hours < min_hours_per_day`` (including partial boundary days
+       at the start or end of the dataset) are recorded with
+       ``day_status = "incomplete_obs"`` and ``daily_mean = NaN``. Missing hourly
+       values are NEVER interpolated to turn an incomplete day into a valid day.
+    4. **Technical Completeness Criterion:** By default, a calendar day is valid
+       only if it contains ``min_hours_per_day >= 18`` valid hourly observations
+       (>= 75% of 24 hours). This is documented as a project technical data
+       completeness criterion, not an official WHO rule.
+    5. **WHO 2021 99th Percentile (P99) & Compliance Caveat:** WHO 2021 defines
+       the 24-hour PM2.5 AQG level (15 µg/m³) via the 99th percentile of daily
+       24-hour mean concentrations across a full year. This function computes the
+       empirical 99th percentile (``p99_daily_pm25``) on valid calendar days in
+       the available time span and explicitly flags whether the dataset satisfies
+       full single-calendar-year coverage required for formal compliance claims.
+    """
+    if min_hours_per_day < 1 or min_hours_per_day > HOURS_PER_DAY:
+        raise ValueError(
+            f"min_hours_per_day must be in [1, {HOURS_PER_DAY}], got {min_hours_per_day}."
+        )
+
+    work = _validate_and_prepare_df(
+        df,
+        [TIMESTAMP_COLUMN, TARGET_COLUMN],
+        require_timestamp=True,
+        require_valid_pm25=False,
+    )
+    work[TARGET_COLUMN] = pd.to_numeric(work[TARGET_COLUMN], errors="coerce")
+
+    has_multi_station = (
+        STATION_COLUMN in work.columns and work[STATION_COLUMN].nunique(dropna=True) > 1
+    )
+    dedup_cols = (
+        [STATION_COLUMN, TIMESTAMP_COLUMN]
+        if STATION_COLUMN in work.columns
+        else [TIMESTAMP_COLUMN]
+    )
+    n_before_dedup = len(work)
+    work = work.drop_duplicates(subset=dedup_cols, keep="first").reset_index(drop=True)
+    n_duplicate_timestamps_dropped = n_before_dedup - len(work)
+
+    work["local_date"] = work[TIMESTAMP_COLUMN].dt.date
+
+    def _aggregate_station_days(grp: pd.DataFrame, station_val: Optional[str]) -> pd.DataFrame:
+        min_d = grp["local_date"].min()
+        max_d = grp["local_date"].max()
+        full_dates = pd.date_range(min_d, max_d, freq="D").date
+
+        daily_grp = (
+            grp.groupby("local_date", sort=True)
+            .agg(
+                n_rows=(TARGET_COLUMN, "size"),
+                n_valid_hours=(TARGET_COLUMN, lambda s: int(s.notna().sum())),
+                daily_mean_raw=(TARGET_COLUMN, "mean"),
+            )
+            .reindex(full_dates)
+        )
+        daily_grp.index.name = "local_date"
+        daily_grp = daily_grp.reset_index()
+        daily_grp["n_rows"] = daily_grp["n_rows"].fillna(0).astype(int)
+        daily_grp["n_valid_hours"] = daily_grp["n_valid_hours"].fillna(0).astype(int)
+        daily_grp["n_missing_hours"] = (
+            HOURS_PER_DAY - daily_grp["n_valid_hours"].clip(upper=HOURS_PER_DAY)
+        ).astype(int)
+
+        is_edge_date = (daily_grp["local_date"] == min_d) | (daily_grp["local_date"] == max_d)
+        daily_grp["is_boundary_day"] = is_edge_date & (daily_grp["n_rows"] < HOURS_PER_DAY)
+        daily_grp["is_valid_day"] = daily_grp["n_valid_hours"] >= min_hours_per_day
+
+        status = np.where(
+            daily_grp["is_valid_day"],
+            "valid",
+            np.where(daily_grp["n_valid_hours"] == 0, "no_obs", "incomplete_obs"),
+        )
+        daily_grp["day_status"] = status
+        daily_grp["daily_mean"] = np.where(
+            daily_grp["is_valid_day"],
+            daily_grp["daily_mean_raw"],
+            np.nan,
+        )
+        if station_val is not None:
+            daily_grp.insert(0, STATION_COLUMN, station_val)
+        return daily_grp
+
+    if has_multi_station:
+        station_parts = [
+            _aggregate_station_days(grp, str(st_id))
+            for st_id, grp in work.groupby(STATION_COLUMN, sort=False)
+        ]
+        daily_df = pd.concat(station_parts, ignore_index=True)
+    else:
+        st_val = (
+            str(work[STATION_COLUMN].iloc[0])
+            if STATION_COLUMN in work.columns and not work.empty
+            else None
+        )
+        daily_df = _aggregate_station_days(work, st_val)
+
+    n_total_days = len(daily_df)
+    valid_series = daily_df.loc[daily_df["is_valid_day"], "daily_mean"].dropna()
+    n_valid_days = len(valid_series)
+    n_zero_obs_days = int((daily_df["day_status"] == "no_obs").sum())
+    n_incomplete_days = int((daily_df["day_status"] == "incomplete_obs").sum())
+    n_excluded_days = n_total_days - n_valid_days
+    n_boundary_partial_days = int(daily_df["is_boundary_day"].sum())
+
+    valid_day_coverage_pct = (
+        (n_valid_days / n_total_days) * 100.0 if n_total_days > 0 else 0.0
+    )
+
+    tier_short_keys = ["<15", "15-<25", "25-<37.5", "37.5-<50", "50-<75", ">=75"]
+    if n_valid_days > 0:
+        cats_daily = pd.cut(
+            valid_series,
+            bins=list(WHO_QCVN_24H_BINS),
+            labels=tier_short_keys,
+            right=False,
+            include_lowest=True,
+        )
+        tier_counts_daily = (
+            cats_daily.value_counts(sort=False)
+            .reindex(tier_short_keys, fill_value=0)
+            .astype(int)
+        )
+        tier_pct_valid_days = (tier_counts_daily / n_valid_days) * 100.0
+        tier_pct_all_days = (tier_counts_daily / n_total_days) * 100.0
+
+        n_days_exceed_qcvn_ref = int((valid_series >= QCVN_2023_PM25_24H_LIMIT).sum())
+        pct_days_exceed_qcvn_valid = (n_days_exceed_qcvn_ref / n_valid_days) * 100.0
+        pct_days_exceed_qcvn_all = (n_days_exceed_qcvn_ref / n_total_days) * 100.0
+
+        n_days_below_who_ref = int((valid_series < WHO_2021_PM25_24H_AQG).sum())
+        pct_days_below_who_valid = (n_days_below_who_ref / n_valid_days) * 100.0
+        pct_days_below_who_all = (n_days_below_who_ref / n_total_days) * 100.0
+
+        n_days_above_who_ref = int((valid_series >= WHO_2021_PM25_24H_AQG).sum())
+        pct_days_above_who_valid = (n_days_above_who_ref / n_valid_days) * 100.0
+        pct_days_above_who_all = (n_days_above_who_ref / n_total_days) * 100.0
+
+        n_days_strictly_gt_who_ref = int((valid_series > WHO_2021_PM25_24H_AQG).sum())
+
+        p99_daily_pm25 = float(
+            np.percentile(valid_series.to_numpy(dtype=float), 99, method=percentile_method)
+        )
+        daily_max_pm25 = float(valid_series.max())
+        daily_median_pm25 = float(valid_series.median())
+        daily_mean_pm25 = float(valid_series.mean())
+    else:
+        tier_counts_daily = pd.Series(0, index=tier_short_keys, dtype=int)
+        tier_pct_valid_days = pd.Series(0.0, index=tier_short_keys, dtype=float)
+        tier_pct_all_days = pd.Series(0.0, index=tier_short_keys, dtype=float)
+        n_days_exceed_qcvn_ref = 0
+        pct_days_exceed_qcvn_valid = 0.0
+        pct_days_exceed_qcvn_all = 0.0
+        n_days_below_who_ref = 0
+        pct_days_below_who_valid = 0.0
+        pct_days_below_who_all = 0.0
+        n_days_above_who_ref = 0
+        pct_days_above_who_valid = 0.0
+        pct_days_above_who_all = 0.0
+        n_days_strictly_gt_who_ref = 0
+        p99_daily_pm25 = float("nan")
+        daily_max_pm25 = float("nan")
+        daily_median_pm25 = float("nan")
+        daily_mean_pm25 = float("nan")
+
+    # Check whether any single calendar year has >= 329 valid days (90% of 365)
+    valid_dates_series = pd.to_datetime(daily_df.loc[daily_df["is_valid_day"], "local_date"])
+    if not valid_dates_series.empty:
+        max_valid_days_in_single_year = int(valid_dates_series.dt.year.value_counts().max())
+        years_spanned = sorted(int(y) for y in pd.to_datetime(daily_df["local_date"]).dt.year.unique())
+    else:
+        max_valid_days_in_single_year = 0
+        years_spanned = sorted(int(y) for y in pd.to_datetime(daily_df["local_date"]).dt.year.unique())
+
+    is_sufficient_for_annual_compliance = (
+        max_valid_days_in_single_year >= ANNUAL_COMPLIANCE_MIN_VALID_DAYS
+        and len(years_spanned) == 1
+        and n_excluded_days <= (365 - ANNUAL_COMPLIANCE_MIN_VALID_DAYS)
+    )
+
+    start_date_str = str(daily_df["local_date"].min())
+    end_date_str = str(daily_df["local_date"].max())
+
+    if n_valid_days == 0:
+        compliance_limitation_note = (
+            "Không có ngày lịch hợp lệ đạt tiêu chí độ phủ tối thiểu; "
+            "không thể tính phân vị 99 hay đối chiếu ngưỡng 24h theo ngày."
+        )
+    elif not is_sufficient_for_annual_compliance:
+        compliance_limitation_note = (
+            f"Thống kê mô tả trên {n_valid_days}/{n_total_days} ngày hợp lệ ({start_date_str} đến {end_date_str}; "
+            f"loại {n_excluded_days} ngày thiếu dữ liệu, vắt qua {len(years_spanned)} năm lịch, "
+            f"số ngày hợp lệ cao nhất trong 1 năm lịch là {max_valid_days_in_single_year} < {ANNUAL_COMPLIANCE_MIN_VALID_DAYS} ngày). "
+            "Chỉ số P99 và số ngày vượt ngưỡng là thống kê mô tả thực nghiệm, KHÔNG đủ cơ sở kết luận tuân thủ năm chính thức."
+        )
+    else:
+        compliance_limitation_note = (
+            f"Thống kê mô tả trên {n_valid_days}/{n_total_days} ngày hợp lệ; "
+            "lưu ý dữ liệu OpenAQ đo ở điều kiện thực tế (µg/m³), trong khi QCVN 05:2023/BTNMT quy định điều kiện chuẩn (µg/Nm³)."
+        )
+
+    return {
+        "daily_df": daily_df,
+        "min_hours_per_day": min_hours_per_day,
+        "percentile_method": percentile_method,
+        "start_date": start_date_str,
+        "end_date": end_date_str,
+        "years_spanned": years_spanned,
+        "max_valid_days_in_single_year": max_valid_days_in_single_year,
+        "n_total_calendar_days": n_total_days,
+        "n_valid_days": n_valid_days,
+        "n_excluded_days": n_excluded_days,
+        "n_zero_obs_days": n_zero_obs_days,
+        "n_incomplete_days": n_incomplete_days,
+        "n_boundary_partial_days": n_boundary_partial_days,
+        "n_duplicate_timestamps_dropped": n_duplicate_timestamps_dropped,
+        "valid_day_coverage_pct": valid_day_coverage_pct,
+        "n_days_exceed_qcvn_ref": n_days_exceed_qcvn_ref,
+        "pct_days_exceed_qcvn_valid": pct_days_exceed_qcvn_valid,
+        "pct_days_exceed_qcvn_all_calendar": pct_days_exceed_qcvn_all,
+        "n_days_below_who_ref": n_days_below_who_ref,
+        "pct_days_below_who_valid": pct_days_below_who_valid,
+        "pct_days_below_who_all_calendar": pct_days_below_who_all,
+        "n_days_above_who_ref": n_days_above_who_ref,
+        "pct_days_above_who_valid": pct_days_above_who_valid,
+        "pct_days_above_who_all_calendar": pct_days_above_who_all,
+        "n_days_strictly_gt_who_ref": n_days_strictly_gt_who_ref,
+        "p99_daily_pm25": p99_daily_pm25,
+        "daily_max_pm25": daily_max_pm25,
+        "daily_median_pm25": daily_median_pm25,
+        "daily_mean_pm25": daily_mean_pm25,
+        "tier_counts_daily": tier_counts_daily,
+        "tier_pct_valid_days": tier_pct_valid_days,
+        "tier_pct_all_days": tier_pct_all_days,
+        "is_sufficient_for_annual_compliance": is_sufficient_for_annual_compliance,
+        "compliance_limitation_note": compliance_limitation_note,
+    }
+
+
+def _compliance_caveat_vi(daily_stats: Dict[str, Any]) -> str:
+    """Return a data-driven caveat that never overstates regulatory compliance.
+
+    Even with full single-year coverage the result stays *descriptive*:
+    OpenAQ reports ambient µg/m³ while QCVN 05:2023/BTNMT is defined in µg/Nm³.
+    """
+    if daily_stats["n_valid_days"] == 0:
+        return "Không có ngày lịch hợp lệ — không thể đối chiếu theo ngày hay tính P99"
+    if not daily_stats["is_sufficient_for_annual_compliance"]:
+        return (
+            f"Thống kê mô tả — chưa đủ cơ sở kết luận tuân thủ năm "
+            f"(loại {daily_stats['n_excluded_days']}/{daily_stats['n_total_calendar_days']} ngày, "
+            f"tối đa {daily_stats['max_valid_days_in_single_year']} ngày hợp lệ/năm lịch "
+            f"< {ANNUAL_COMPLIANCE_MIN_VALID_DAYS}; OpenAQ đo µg/m³ thực tế vs QCVN µg/Nm³)"
+        )
+    return (
+        "Thống kê mô tả — đủ độ phủ 1 năm lịch nhưng chưa phải đánh giá tuân thủ chính thức "
+        "(OpenAQ đo µg/m³ thực tế vs QCVN µg/Nm³)"
+    )
+
+
 # ---------------------------------------------------------------------------
 # FIG-01: Multi-Scale Time Series & Regulatory Reference Lines
 # ---------------------------------------------------------------------------
@@ -414,32 +712,26 @@ def plot_fig01_time_series(
     *,
     min_periods_24h: int = DEFAULT_ROLLING_24H_MIN_PERIODS,
     min_periods_7d: int = DEFAULT_ROLLING_7D_MIN_PERIODS,
+    min_hours_per_day: int = DEFAULT_MIN_VALID_HOURS_PER_DAY,
     dpi: int = DEFAULT_DPI,
 ) -> Figure:
-    """Generate FIG-01: Hourly PM2.5, causal 24h & 7d rolling trends, and 24h limits.
+    """Generate FIG-01: Hourly PM2.5, causal 24h & 7d rolling trends, and 24h reference lines.
 
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Input dataset containing ``timestamp`` and ``pm25`` (and optionally ``station_id``).
-    output_path : str or Path, optional
-        Destination path to save the 300 DPI PNG.
-    min_periods_24h : int, default 24
-        Minimum valid hourly observations required inside a trailing 24-hour window.
-    min_periods_7d : int, default 126
-        Minimum valid hourly observations required inside a trailing 168-hour (7-day) window.
-    dpi : int, default 300
-        Output resolution in dots per inch.
-
-    Returns
-    -------
-    matplotlib.figure.Figure
+    Explicitly separates:
+    1. Reference thresholds (QCVN 05:2023/BTNMT 24h = 50 µg/m³; WHO 2021 24h AQG = 15 µg/m³),
+    2. Descriptive statistics on valid overlapping 24h rolling windows and valid calendar days
+       (including empirical daily P99), and
+    3. Methodological limitations preventing formal annual regulatory compliance claims.
     """
     configure_vietnamese_fonts()
     work = compute_causal_rolling_pm25(
         df,
         min_periods_24h=min_periods_24h,
         min_periods_7d=min_periods_7d,
+    )
+    daily_stats = compute_daily_pm25_statistics(
+        df,
+        min_hours_per_day=min_hours_per_day,
     )
 
     n_total = len(work)
@@ -504,7 +796,7 @@ def plot_fig01_time_series(
         zorder=3,
         label=(
             f"Trung bình trượt nhân quả 24h (window=24h, min_periods={min_periods_24h}; "
-            f"n={n_valid_24h:,} cửa sổ hợp lệ)"
+            f"n={n_valid_24h:,} cửa sổ trượt hợp lệ — chồng lấn theo giờ)"
         ),
     )
     ax.plot(
@@ -516,7 +808,7 @@ def plot_fig01_time_series(
         label=f"Xu hướng trượt nhân quả 7 ngày (168h, min_periods={min_periods_7d})",
     )
 
-    # 3. Averaging-period-matched 24-hour reference thresholds (explicitly tied to rolling_24h)
+    # 3. Averaging-period-matched 24-hour reference thresholds (explicitly labeled as reference levels)
     ax.axhline(
         QCVN_2023_PM25_24H_LIMIT,
         color=PALETTE["qcvn_24h"],
@@ -524,8 +816,8 @@ def plot_fig01_time_series(
         linewidth=1.6,
         zorder=3,
         label=(
-            f"QCVN 05:2023/BTNMT — Giới hạn TB 24 giờ PM2.5: {QCVN_2023_PM25_24H_LIMIT:.0f} µg/m³ "
-            "(chỉ đối chiếu với đường trượt 24h)"
+            f"Ngưỡng tham chiếu 24h QCVN 05:2023/BTNMT: {QCVN_2023_PM25_24H_LIMIT:.0f} µg/m³ "
+            "(đối chiếu mô tả với chuỗi TB 24h; quy chuẩn gốc tính theo µg/Nm³)"
         ),
     )
     ax.axhline(
@@ -535,8 +827,8 @@ def plot_fig01_time_series(
         linewidth=1.5,
         zorder=3,
         label=(
-            f"WHO 2021 AQG — Khuyến nghị TB 24 giờ PM2.5: {WHO_2021_PM25_24H_AQG:.0f} µg/m³ "
-            "(chỉ đối chiếu với đường trượt 24h)"
+            f"Mức hướng dẫn tham chiếu 24h WHO 2021 AQG: {WHO_2021_PM25_24H_AQG:.0f} µg/m³ "
+            "(gắn với phân vị 99 [P99] của TB 24h theo ngày trong năm)"
         ),
     )
 
@@ -579,26 +871,38 @@ def plot_fig01_time_series(
     t_min_str = work[TIMESTAMP_COLUMN].min().strftime("%d/%m/%Y")
     t_max_str = work[TIMESTAMP_COLUMN].max().strftime("%d/%m/%Y")
 
-    # Data-driven takeaway title & methodology subtitle
+    n_vd = daily_stats["n_valid_days"]
+    n_td = daily_stats["n_total_calendar_days"]
+    n_day_exc_qcvn = daily_stats["n_days_exceed_qcvn_ref"]
+    pct_day_exc_qcvn = daily_stats["pct_days_exceed_qcvn_valid"]
+    p99_daily = daily_stats["p99_daily_pm25"]
+
+    if n_vd > 0:
+        daily_clause = (
+            f"TB ngày hợp lệ (≥{min_hours_per_day}h): {n_day_exc_qcvn}/{n_vd} ngày ({pct_day_exc_qcvn:.1f}%) ≥ 50 µg/m³, "
+            f"P99 ngày = {p99_daily:.1f} µg/m³"
+        )
+    else:
+        daily_clause = f"TB ngày hợp lệ (≥{min_hours_per_day}h): 0/{n_td} ngày đủ dữ liệu"
+
+    # Data-driven descriptive takeaway title & methodology subtitle
     title_text = (
-        f"FIG-01: Chuỗi trượt 24h PM2.5 vượt ngưỡng 24h QCVN 05:2023/BTNMT (50 µg/m³) trong "
-        f"{pct_exceed_qcvn_valid:.1f}% cửa sổ hợp lệ ({n_exceed_qcvn:,}/{n_valid_24h:,}; "
-        f"đỉnh 24h đạt {r24_peak_val:.1f} µg/m³)"
+        f"FIG-01: Thống kê mô tả PM2.5 — {pct_exceed_qcvn_valid:.1f}% cửa sổ trượt 24h hợp lệ "
+        f"({n_exceed_qcvn:,}/{n_valid_24h:,}) ≥ ngưỡng tham chiếu 50 µg/m³; {daily_clause}"
     )
     subtitle_text = (
         f"Trạm 556 Nguyễn Văn Cừ ({t_min_str}–{t_max_str}, UTC+7) | "
-        f"Vượt QCVN 24h tính trên tổng {n_total:,} giờ: {pct_exceed_qcvn_all:.1f}% | "
-        f"Đỉnh trượt 7 ngày: {r7d_peak_val:.1f} µg/m³ | "
-        "Lưu ý đơn vị: OpenAQ đo µg/m³ thực tế, QCVN quy định µg/Nm³ (25 °C, 760 mmHg)"
+        f"Cửa sổ trượt 24h ≥50 trên tổng {n_total:,} giờ: {pct_exceed_qcvn_all:.1f}% (đỉnh 24h: {r24_peak_val:.1f}, đỉnh 7d: {r7d_peak_val:.1f} µg/m³) | "
+        + _compliance_caveat_vi(daily_stats)
     )
 
-    ax.set_title(title_text, fontsize=11.5, fontweight="bold", loc="left", pad=22)
+    ax.set_title(title_text, fontsize=10.8, fontweight="bold", loc="left", pad=22)
     ax.text(
         0.0,
         1.015,
         subtitle_text,
         transform=ax.transAxes,
-        fontsize=8.6,
+        fontsize=8.3,
         color="#4a4a4a",
         ha="left",
         va="bottom",
@@ -615,7 +919,7 @@ def plot_fig01_time_series(
         frameon=True,
         facecolor="white",
         edgecolor="#dcdcdc",
-        fontsize=8.4,
+        fontsize=8.2,
         ncol=2,
     )
 
@@ -1560,19 +1864,35 @@ def plot_fig07_air_quality_categories(
     output_path: Optional[Union[str, Path]] = None,
     *,
     min_periods_24h: int = DEFAULT_ROLLING_24H_MIN_PERIODS,
+    min_hours_per_day: int = DEFAULT_MIN_VALID_HOURS_PER_DAY,
     dpi: int = DEFAULT_DPI,
 ) -> Figure:
-    """Generate FIG-07: Bar chart of 24-hour rolling PM2.5 across WHO 2021 & QCVN 05:2023 tiers.
+    """Generate FIG-07: Dual-panel bar chart comparing 24h rolling windows vs. calendar daily means.
 
-    Enforces a strict zero baseline (``ylim(bottom=0)``) and classifies only
-    mathematically compatible trailing 24-hour rolling averages (never raw
-    single-hour observations) against 24-hour regulatory thresholds.
+    Addresses methodological anti-conflation requirements:
+    1. **Panel A (Overlapping 24h Rolling Windows):** Classifies valid causal
+       trailing 24-hour rolling windows (``window="24h", min_periods=min_periods_24h``)
+       for continuous trend analysis. Explicitly labeled as overlapping hourly
+       windows (NOT calendar days) with separate denominators: valid windows
+       (``N_valid_windows``) vs. total expected hourly grid windows (``N_all_hours``).
+    2. **Panel B (Calendar-Day 24h Means & WHO 2021 P99):** Classifies non-overlapping
+       calendar days in ``Asia/Ho_Chi_Minh`` (UTC+7) meeting the technical completeness
+       criterion ``>= min_hours_per_day`` valid hours/day (default 18/24h = 75%,
+       without interpolation). Reports the empirical 99th percentile (``P99``)
+       referenced to the WHO 2021 24h AQG level (15 µg/m³) alongside separate
+       denominators (``N_valid_days`` vs. ``N_total_calendar_days``) and states why
+       partial/gapped multi-year coverage precludes formal annual compliance claims.
+    3. **Strict Zero Baseline:** Both panels enforce ``ylim(bottom=0.0)``.
     """
     configure_vietnamese_fonts()
     work = compute_causal_rolling_pm25(
         df,
         min_periods_24h=min_periods_24h,
         min_periods_7d=min(DEFAULT_ROLLING_7D_MIN_PERIODS, len(df)),
+    )
+    daily_stats = compute_daily_pm25_statistics(
+        df,
+        min_hours_per_day=min_hours_per_day,
     )
 
     n_total = len(work)
@@ -1587,129 +1907,241 @@ def plot_fig07_air_quality_categories(
     n_excluded = n_total - n_valid
 
     tier_labels = [
-        "< 15 µg/m³\nĐạt WHO 2021\n24h AQG",
-        "15 – <25 µg/m³\nWHO 2021\n24h IT-4",
-        "25 – <37.5 µg/m³\nWHO 2021\n24h IT-3",
-        "37.5 – <50 µg/m³\nĐạt QCVN 05:2023\n24h (WHO IT-2)",
-        "50 – <75 µg/m³\nVượt QCVN 24h\n(WHO 2021 IT-1)",
-        "≥ 75 µg/m³\nVượt WHO IT-1 &\nQCVN 24h (Rất cao)",
+        "< 15 µg/m³\nDưới mức tham chiếu\nWHO 24h (15)",
+        "15 – <25 µg/m³\nMức tham chiếu\nWHO 24h IT-4",
+        "25 – <37.5 µg/m³\nMức tham chiếu\nWHO 24h IT-3",
+        "37.5 – <50 µg/m³\nMức tham chiếu\nWHO IT-2 (<50 QCVN)",
+        "50 – <75 µg/m³\nTừ ngưỡng tham chiếu\nQCVN 24h (WHO IT-1)",
+        "≥ 75 µg/m³\nTrên mức tham chiếu\nWHO IT-1 & QCVN",
     ]
     tier_colors = [
-        "#009E73",  # Bluish green (meets WHO AQG)
-        "#56B4E9",  # Sky blue (IT-4)
-        "#9ecae1",  # Light blue (IT-3)
-        "#F0E442",  # Yellow (IT-2 / meets QCVN <=50)
-        "#E69F00",  # Orange (Exceeds QCVN 24h)
-        "#D55E00",  # Vermilion (Severe exceedance >=75)
+        "#009E73",  # Bluish green (<15 reference bracket)
+        "#56B4E9",  # Sky blue (15-<25 IT-4 bracket)
+        "#9ecae1",  # Light blue (25-<37.5 IT-3 bracket)
+        "#F0E442",  # Yellow (37.5-<50 IT-2 bracket)
+        "#E69F00",  # Orange (50-<75 QCVN reference exceedance bracket)
+        "#D55E00",  # Vermilion (>=75 severe bracket)
     ]
 
-    categories = pd.cut(
+    categories_roll = pd.cut(
         valid_r24,
         bins=list(WHO_QCVN_24H_BINS),
         labels=tier_labels,
         right=False,
         include_lowest=True,
     )
-    counts = categories.value_counts(sort=False).reindex(tier_labels, fill_value=0)
-    pct_valid = (counts / n_valid) * 100.0
-    pct_all = (counts / n_total) * 100.0
+    counts_roll = categories_roll.value_counts(sort=False).reindex(tier_labels, fill_value=0)
+    pct_roll_valid = (counts_roll / n_valid) * 100.0
+    pct_roll_all = (counts_roll / n_total) * 100.0
 
     n_exceed_qcvn = int((valid_r24 >= QCVN_2023_PM25_24H_LIMIT).sum())
     pct_exceed_qcvn_valid = (n_exceed_qcvn / n_valid) * 100.0
     pct_exceed_qcvn_all = (n_exceed_qcvn / n_total) * 100.0
 
-    n_meet_who = int((valid_r24 < WHO_2021_PM25_24H_AQG).sum())
-    pct_meet_who_valid = (n_meet_who / n_valid) * 100.0
+    n_below_who_roll = int((valid_r24 < WHO_2021_PM25_24H_AQG).sum())
+    pct_below_who_roll_valid = (n_below_who_roll / n_valid) * 100.0
 
-    fig, ax = plt.subplots(figsize=(13.2, 6.4))
-    apply_tufte_style(ax, grid_axis="y")
+    # Daily statistics from compute_daily_pm25_statistics()
+    n_total_days = daily_stats["n_total_calendar_days"]
+    n_valid_days = daily_stats["n_valid_days"]
+    n_excluded_days = daily_stats["n_excluded_days"]
+    n_zero_obs_days = daily_stats["n_zero_obs_days"]
+    n_incomplete_days = daily_stats["n_incomplete_days"]
+    counts_day_arr = daily_stats["tier_counts_daily"].to_numpy(dtype=float)
+    pct_day_valid_arr = daily_stats["tier_pct_valid_days"].to_numpy(dtype=float)
+    pct_day_all_arr = daily_stats["tier_pct_all_days"].to_numpy(dtype=float)
+
+    n_days_exc_qcvn = daily_stats["n_days_exceed_qcvn_ref"]
+    pct_days_exc_qcvn_valid = daily_stats["pct_days_exceed_qcvn_valid"]
+    pct_days_exc_qcvn_all = daily_stats["pct_days_exceed_qcvn_all_calendar"]
+    n_days_below_who = daily_stats["n_days_below_who_ref"]
+    pct_days_below_who_valid = daily_stats["pct_days_below_who_valid"]
+    n_days_above_who = daily_stats["n_days_above_who_ref"]
+    pct_days_above_who_valid = daily_stats["pct_days_above_who_valid"]
+    p99_daily = daily_stats["p99_daily_pm25"]
+    p99_str = f"{p99_daily:.1f} µg/m³" if not np.isnan(p99_daily) else "N/A (thiếu ngày hợp lệ)"
+
+    fig, (ax_roll, ax_day) = plt.subplots(1, 2, figsize=(16.2, 7.0))
+    apply_tufte_style(ax_roll, grid_axis="y")
+    apply_tufte_style(ax_day, grid_axis="y")
 
     x_pos = np.arange(len(tier_labels))
-    bars = ax.bar(
+
+    # ------------------------------------------------------------------
+    # Panel A: Valid 24-Hour Rolling Windows (Overlapping Hourly Windows)
+    # ------------------------------------------------------------------
+    bars_roll = ax_roll.bar(
         x_pos,
-        counts.to_numpy(dtype=float),
-        width=0.62,
+        counts_roll.to_numpy(dtype=float),
+        width=0.60,
         color=tier_colors,
         edgecolor="#2b2b2b",
-        linewidth=0.9,
+        linewidth=0.85,
         zorder=3,
     )
-
-    # Vertical divider separating compliant (< 50 µg/m³) vs exceedance (>= 50 µg/m³) QCVN 24h tiers
-    ax.axvline(
-        3.5,
-        color="#b30000",
-        linestyle="--",
-        linewidth=1.6,
-        zorder=4,
-    )
-    max_bar_height = float(counts.max()) if len(counts) > 0 else 1.0
-    ax.text(
-        3.56,
-        max_bar_height * 0.96,
-        "Ranh giới QCVN 05:2023/BTNMT\n"
-        "(Giới hạn TB 24h = 50 µg/m³)\n"
-        f"→ Vượt ngưỡng: {n_exceed_qcvn:,}/{n_valid:,} cửa sổ\n"
-        f"  • {pct_exceed_qcvn_valid:.1f}% trên mẫu hợp lệ\n"
-        f"  • {pct_exceed_qcvn_all:.1f}% trên tổng {n_total:,} giờ",
-        fontsize=8.3,
+    ax_roll.axvline(3.5, color="#b30000", linestyle="--", linewidth=1.5, zorder=4)
+    max_roll_height = max(float(counts_roll.max()), 1.0)
+    ax_roll.text(
+        3.55,
+        max_roll_height * 0.98,
+        "Ngưỡng tham chiếu 24h QCVN 05:2023/BTNMT\n"
+        "(50 µg/m³; gốc quy định µg/Nm³)\n"
+        f"• Cửa sổ ≥50: {n_exceed_qcvn:,}/{n_valid:,}\n"
+        f"  ({pct_exceed_qcvn_valid:.1f}% cửa sổ hợp lệ)\n"
+        f"  ({pct_exceed_qcvn_all:.1f}% tổng {n_total:,} giờ)\n"
+        f"• Cửa sổ <15: {n_below_who_roll:,}/{n_valid:,} ({pct_below_who_roll_valid:.1f}%)\n"
+        "⚠ Cửa sổ trượt chồng lấn 23/24h,\n"
+        "  KHÔNG phải số ngày!",
+        fontsize=7.7,
         fontweight="bold",
         color="#8c0000",
         va="top",
         ha="left",
-        bbox=dict(boxstyle="round,pad=0.32", facecolor="#fff5f0", edgecolor="#d95f02", alpha=0.94),
+        bbox=dict(boxstyle="round,pad=0.28", facecolor="#fff5f0", edgecolor="#d95f02", alpha=0.94),
     )
 
-    # Direct labels (n, % of valid windows, % of all rows) on top of each bar
-    for bar, count_val, pv, pa in zip(bars, counts, pct_valid, pct_all):
+    for bar, count_val, pv, pa in zip(bars_roll, counts_roll, pct_roll_valid, pct_roll_all):
         height = float(bar.get_height())
-        ax.text(
+        ax_roll.text(
             bar.get_x() + bar.get_width() / 2.0,
-            height + max_bar_height * 0.018,
-            f"n = {int(count_val):,}\n{pv:.1f}% (hợp lệ)\n({pa:.1f}% toàn chuỗi)",
+            height + max_roll_height * 0.016,
+            f"n={int(count_val):,}\n{pv:.1f}% hợp lệ\n({pa:.1f}% tổng giờ)",
             ha="center",
             va="bottom",
-            fontsize=8.2,
+            fontsize=7.5,
             fontweight="bold",
             color="#1f1f1f",
         )
 
-    ax.set_xticks(x_pos)
-    ax.set_xticklabels(tier_labels, fontsize=8.8, fontweight="bold")
-    ax.set_xlim(-0.55, len(tier_labels) - 0.35)
-    ax.set_xlabel(
-        "Bậc phân loại nồng độ PM2.5 trung bình trượt 24 giờ (µg/m³) theo WHO 2021 (AQG & Interim Targets) và QCVN 05:2023/BTNMT",
-        fontsize=9.8,
+    ax_roll.set_xticks(x_pos)
+    ax_roll.set_xticklabels(tier_labels, fontsize=7.8, fontweight="bold")
+    ax_roll.set_xlim(-0.55, len(tier_labels) - 0.25)
+    ax_roll.set_xlabel(
+        "Bậc nồng độ PM2.5 TB trượt 24h nhân quả (µg/m³; min_periods="
+        f"{min_periods_24h}, closed='right')",
+        fontsize=9.0,
         fontweight="bold",
     )
-    ax.set_ylabel("Số lượng cửa sổ trượt 24 giờ hợp lệ (n)", fontsize=10, fontweight="bold")
-
-    # Non-negotiable zero baseline for bar chart quantitative axis
-    ax.set_ylim(bottom=0.0, top=max_bar_height * 1.24)
-
-    title_text = (
-        f"FIG-07: {pct_exceed_qcvn_valid:.1f}% cửa sổ TB trượt 24h hợp lệ ({n_exceed_qcvn:,}/{n_valid:,}) "
-        f"vượt ngưỡng 24h QCVN 05:2023/BTNMT (50 µg/m³); chỉ {pct_meet_who_valid:.2f}% đạt WHO 2021 (15 µg/m³)"
-    )
-    subtitle_text = (
-        f"Đại lượng phân loại: TB trượt nhân quả 24h PM2.5 (window=24h, min_periods={min_periods_24h}, center=False) | "
-        f"Mẫu số 1: N_valid = {n_valid:,} cửa sổ 24h hợp lệ | "
-        f"Mẫu số 2: N_all = {n_total:,} giờ (loại {n_excluded:,} cửa sổ thiếu dữ liệu, không nội suy)"
+    ax_roll.set_ylabel("Số lượng cửa sổ trượt 24 giờ hợp lệ (n cửa sổ)", fontsize=9.5, fontweight="bold")
+    ax_roll.set_ylim(bottom=0.0, top=max_roll_height * 1.28)
+    ax_roll.set_title(
+        f"A. Cửa sổ trượt 24h hợp lệ (chồng lấn theo giờ, KHÔNG phải số ngày): "
+        f"{pct_exceed_qcvn_valid:.1f}% cửa sổ TB trượt 24h hợp lệ ({n_exceed_qcvn:,}/{n_valid:,}) ≥ 50 µg/m³\n"
+        f"(Mẫu số 1: N_valid = {n_valid:,} cửa sổ hợp lệ | Mẫu số 2: N_expected = {n_total:,} giờ lưới; "
+        f"loại {n_excluded:,} cửa sổ thiếu dữ liệu)",
+        fontsize=8.9,
+        fontweight="bold",
+        loc="left",
+        pad=10,
     )
 
-    ax.set_title(title_text, fontsize=11.2, fontweight="bold", loc="left", pad=22)
-    ax.text(
-        0.0,
-        1.018,
-        subtitle_text,
-        transform=ax.transAxes,
-        fontsize=8.5,
+    # ------------------------------------------------------------------
+    # Panel B: Valid Calendar Days (UTC+7) & WHO 2021 P99 Statistic
+    # ------------------------------------------------------------------
+    bars_day = ax_day.bar(
+        x_pos,
+        counts_day_arr,
+        width=0.60,
+        color=tier_colors,
+        edgecolor="#2b2b2b",
+        linewidth=0.85,
+        zorder=3,
+    )
+    ax_day.axvline(3.5, color="#b30000", linestyle="--", linewidth=1.5, zorder=4)
+    max_day_height = max(float(counts_day_arr.max()) if len(counts_day_arr) > 0 else 1.0, 1.0)
+
+    if n_valid_days > 0:
+        day_box_text = (
+            f"Thống kê Ngày hợp lệ (≥{min_hours_per_day}/24h)\n"
+            f"& Phân vị 99 (WHO 2021 24h AQG)\n"
+            f"• Ngày TB ≥50 µg/m³: {n_days_exc_qcvn}/{n_valid_days} ngày\n"
+            f"  ({pct_days_exc_qcvn_valid:.1f}% ngày hợp lệ | {pct_days_exc_qcvn_all:.1f}% tổng ngày)\n"
+            f"• P99 ngày (linear): {p99_daily:.1f} µg/m³\n"
+            f"  (mức tham chiếu WHO 24h: 15 µg/m³)\n"
+            f"• Ngày TB ≥15: {n_days_above_who}/{n_valid_days} ({pct_days_above_who_valid:.1f}%)\n"
+            f"• Ngày TB <15: {n_days_below_who}/{n_valid_days} ({pct_days_below_who_valid:.1f}%)\n"
+            + (
+                "⚠ Thống kê mô tả; chưa đủ 1 năm lịch\n  đầy đủ để kết luận tuân thủ năm"
+                if not daily_stats["is_sufficient_for_annual_compliance"]
+                else "⚠ Thống kê mô tả; đủ 1 năm lịch nhưng\n  chưa phải đánh giá tuân thủ chính thức"
+            )
+        )
+    else:
+        day_box_text = (
+            f"Không có ngày lịch đạt ≥{min_hours_per_day}/24h\n"
+            f"(N_valid_days = 0/{n_total_days} ngày lịch)\n"
+            "→ Không đủ dữ liệu tính P99 ngày"
+        )
+
+    ax_day.text(
+        3.55,
+        max_day_height * 0.98,
+        day_box_text,
+        fontsize=7.6,
+        fontweight="bold",
+        color="#0b3c5d",
+        va="top",
+        ha="left",
+        bbox=dict(boxstyle="round,pad=0.28", facecolor="#f0f8ff", edgecolor="#0072B2", alpha=0.94),
+    )
+
+    for bar, count_val, pvd, pad in zip(bars_day, counts_day_arr, pct_day_valid_arr, pct_day_all_arr):
+        height = float(bar.get_height())
+        ax_day.text(
+            bar.get_x() + bar.get_width() / 2.0,
+            height + max_day_height * 0.016,
+            f"n={int(count_val):,} ngày\n{pvd:.1f}% hợp lệ\n({pad:.1f}% tổng ngày)",
+            ha="center",
+            va="bottom",
+            fontsize=7.5,
+            fontweight="bold",
+            color="#1f1f1f",
+        )
+
+    ax_day.set_xticks(x_pos)
+    ax_day.set_xticklabels(tier_labels, fontsize=7.8, fontweight="bold")
+    ax_day.set_xlim(-0.55, len(tier_labels) - 0.25)
+    ax_day.set_xlabel(
+        f"Bậc nồng độ PM2.5 trung bình 24h theo ngày lịch (µg/m³; tiêu chí kỹ thuật ≥{min_hours_per_day}/24h, UTC+7)",
+        fontsize=9.0,
+        fontweight="bold",
+    )
+    ax_day.set_ylabel("Số lượng ngày lịch hợp lệ (n ngày)", fontsize=9.5, fontweight="bold")
+    ax_day.set_ylim(bottom=0.0, top=max_day_height * 1.28)
+    ax_day.set_title(
+        f"B. Trung bình 24h theo ngày lịch hợp lệ (≥{min_hours_per_day}/24h, không nội suy): "
+        f"{pct_days_exc_qcvn_valid:.1f}% ngày hợp lệ ({n_days_exc_qcvn}/{n_valid_days}) ≥ 50 µg/m³ | P99 = {p99_str}\n"
+        f"(Mẫu số 1: N_valid_days = {n_valid_days} ngày hợp lệ | Mẫu số 2: N_all_days = {n_total_days} ngày lịch; "
+        f"loại {n_excluded_days} ngày [{n_zero_obs_days} trống, {n_incomplete_days} thiếu giờ])",
+        fontsize=8.9,
+        fontweight="bold",
+        loc="left",
+        pad=10,
+    )
+
+    fig.suptitle(
+        f"FIG-07: Đối chiếu mô tả PM2.5 24h — {pct_exceed_qcvn_valid:.1f}% cửa sổ trượt hợp lệ "
+        f"({n_exceed_qcvn:,}/{n_valid:,}) và {pct_days_exc_qcvn_valid:.1f}% ngày hợp lệ "
+        f"({n_days_exc_qcvn}/{n_valid_days}) ≥ ngưỡng tham chiếu 50 µg/m³; P99 TB ngày = {p99_str}",
+        fontsize=11.4,
+        fontweight="bold",
+        x=0.01,
+        y=0.99,
+        ha="left",
+    )
+    fig.text(
+        0.01,
+        0.935,
+        f"Phạm vi: {daily_stats['start_date']} đến {daily_stats['end_date']} (UTC+7) | "
+        f"Tiêu chí ngày hợp lệ: ≥{min_hours_per_day}/24h quan trắc (quy ước kỹ thuật dự án, không nội suy; không phải quy định WHO) | "
+        "WHO 2021 24h AQG (15 µg/m³) định nghĩa theo P99 năm (~3–4 ngày vượt/năm) | "
+        + _compliance_caveat_vi(daily_stats),
+        fontsize=8.2,
         color="#4a4a4a",
         ha="left",
-        va="bottom",
     )
 
-    fig.tight_layout()
+    fig.tight_layout(rect=[0.0, 0.0, 1.0, 0.91])
     _save_figure(fig, output_path, dpi=dpi)
     return fig
 

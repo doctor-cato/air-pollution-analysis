@@ -39,8 +39,8 @@ Không test nào gọi mạng. Không test nào phụ thuộc thứ tự chạy.
 | `tests/test_pipeline_runtime_log.py` | 40 | Nhật ký thực thi pipeline, dấu phân cách Windows |
 | `tests/test_validate_issue8.py` | 29 | Checksum, đồng bộ generator, circular stats, smoke fixture, canh số liệu tài liệu |
 | `tests/test_verify_claims_rolling.py` | 7 | Biên rolling 24h — dữ liệu đồng nhất che lỗi |
-| `tests/test_visualizer.py` | 23 | Bộ 7 biểu đồ ấn phẩm FIG-01..FIG-07 (300 DPI, Tufte, zero-baseline, chu kỳ 24h, font tiếng Việt) |
-| **Tổng** | **454** | |
+| `tests/test_visualizer.py` | 35 | Bộ 7 biểu đồ ấn phẩm FIG-01..FIG-07 (300 DPI, Tufte, zero-baseline, chu kỳ 24h, font tiếng Việt) |
+| **Tổng** | **466** | |
 
 Đếm lại sau mỗi thay đổi:
 
@@ -56,20 +56,20 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 | Con số | Ý nghĩa |
 |---|---|
-| **454** | Số **test method được định nghĩa** trong mã nguồn |
-| **450** | Số unittest **thực sự chạy và báo cáo** trên CI (thiếu `data/`) |
-| **445** | Số **pass thực sự** trên CI (450 − 5 skip) |
+| **466** | Số **test method được định nghĩa** trong mã nguồn |
+| **462** | Số unittest **thực sự chạy và báo cáo** trên CI (thiếu `data/`) |
+| **457** | Số **pass thực sự** trên CI (462 − 5 skip) |
 
 ### Kết quả thực tế theo môi trường
 
 | Môi trường | Lệnh | Kết quả |
 |---|---|---|
-| Windows local, **có `data/`** | `python -m unittest discover tests` | `Ran 454 tests` + `OK` → **454 pass, 0 skip** |
-| Ubuntu CI `ubuntu-latest`, **không `data/`** | `python -m unittest discover tests -v` | `Ran 450 tests` + `OK (skipped=5)` → **445 pass, 5 skip** |
+| Windows local, **có `data/`** | `python -m unittest discover tests` | `Ran 466 tests` + `OK` → **466 pass, 0 skip** |
+| Ubuntu CI `ubuntu-latest`, **không `data/`** | `python -m unittest discover tests -v` | `Ran 462 tests` + `OK (skipped=5)` → **457 pass, 5 skip** |
 
 > `data/` bị `.gitignore` loại khỏi repository, nên **CI không bao giờ có dataset**.
 
-### Vì sao 454 − 450 = 4
+### Vì sao 466 − 462 = 4
 
 `TestDocumentedReproduction.setUpClass` trong `tests/test_flag_evidence.py` raise
 `unittest.SkipTest` khi thiếu `data/interim/*.parquet`. unittest bỏ qua **cả class**,

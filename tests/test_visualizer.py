@@ -38,6 +38,7 @@ from src.visualizer import (  # noqa: E402
     MissingColumnError,
     apply_tufte_style,
     compute_causal_rolling_pm25,
+    compute_daily_pm25_statistics,
     configure_vietnamese_fonts,
     generate_all_figures,
     main as visualizer_main,
@@ -543,6 +544,183 @@ class TestVisualizerSuite(unittest.TestCase):
             self.assertGreater(height, 1000)
             self.assertAlmostEqual(dpi_x, 300.0, delta=1.0)
             self.assertAlmostEqual(dpi_y, 300.0, delta=1.0)
+
+
+def _hourly_frame(start: str, values, tz: str = "Asia/Ho_Chi_Minh") -> pd.DataFrame:
+    """Build a minimal hourly frame (timestamp, pm25) with hand-computable values."""
+    ts = pd.date_range(start, periods=len(values), freq="h", tz=tz)
+    return pd.DataFrame({"timestamp": ts, "pm25": np.asarray(values, dtype=float)})
+
+
+class TestDailyPM25Statistics(unittest.TestCase):
+    """Calendar-day 24h means, completeness rules, WHO P99 and window-vs-day separation (PR #41 review)."""
+
+    def tearDown(self) -> None:
+        plt.close("all")
+
+    def test_complete_days_produce_exact_daily_means_and_counts(self) -> None:
+        df = _hourly_frame("2026-01-01 00:00", [10.0] * 24 + [60.0] * 24)
+        s = compute_daily_pm25_statistics(df)
+        daily = s["daily_df"]
+        self.assertEqual(s["n_total_calendar_days"], 2)
+        self.assertEqual(s["n_valid_days"], 2)
+        self.assertEqual(daily["daily_mean"].tolist(), [10.0, 60.0])
+        self.assertEqual(daily["n_valid_hours"].tolist(), [24, 24])
+        self.assertEqual(s["n_days_exceed_qcvn_ref"], 1)
+        self.assertAlmostEqual(s["pct_days_exceed_qcvn_valid"], 50.0)
+        self.assertEqual(s["n_days_below_who_ref"], 1)
+
+    def test_day_below_completeness_threshold_is_excluded_not_interpolated(self) -> None:
+        day1 = [20.0] * 24
+        day2 = [80.0] * 17 + [np.nan] * 7   # 17/24 < 18 -> incomplete
+        day3 = [40.0] * 18 + [np.nan] * 6   # 18/24 -> valid, mean of observed only
+        s = compute_daily_pm25_statistics(_hourly_frame("2026-01-01 00:00", day1 + day2 + day3))
+        daily = s["daily_df"].set_index("local_date")
+        statuses = daily["day_status"].tolist()
+        self.assertEqual(statuses, ["valid", "incomplete_obs", "valid"])
+        self.assertTrue(np.isnan(daily["daily_mean"].iloc[1]))
+        self.assertEqual(daily["n_valid_hours"].iloc[1], 17)
+        self.assertAlmostEqual(daily["daily_mean"].iloc[2], 40.0)
+        self.assertEqual(s["n_incomplete_days"], 1)
+        self.assertEqual(s["n_days_exceed_qcvn_ref"], 0, "Incomplete 80 µg/m³ day must not count as exceedance")
+
+    def test_days_with_no_observations_are_counted_as_no_obs(self) -> None:
+        full = _hourly_frame("2026-01-01 00:00", [30.0] * 24)
+        nan_day = _hourly_frame("2026-01-02 00:00", [np.nan] * 24)
+        later = _hourly_frame("2026-01-04 00:00", [30.0] * 24)  # 2026-01-03 entirely absent
+        s = compute_daily_pm25_statistics(pd.concat([full, nan_day, later], ignore_index=True))
+        self.assertEqual(s["n_total_calendar_days"], 4)
+        self.assertEqual(s["n_valid_days"], 2)
+        self.assertEqual(s["n_zero_obs_days"], 2)
+        self.assertEqual(s["daily_df"]["day_status"].tolist(), ["valid", "no_obs", "no_obs", "valid"])
+
+    def test_boundary_partial_days_and_local_timezone_day_split(self) -> None:
+        s = compute_daily_pm25_statistics(_hourly_frame("2026-01-01 22:00", [30.0] * 26))
+        self.assertEqual(s["n_total_calendar_days"], 2)
+        self.assertEqual(s["n_valid_days"], 1)
+        self.assertEqual(s["n_boundary_partial_days"], 1)
+        self.assertEqual(s["daily_df"]["day_status"].tolist(), ["incomplete_obs", "valid"])
+
+        # 17:00 UTC == 00:00 UTC+7 the next day: 24 hours map onto exactly one local day.
+        s_utc = compute_daily_pm25_statistics(_hourly_frame("2026-01-01 17:00", [25.0] * 24, tz="UTC"))
+        self.assertEqual(s_utc["n_total_calendar_days"], 1)
+        self.assertEqual(s_utc["start_date"], "2026-01-02")
+        self.assertEqual(s_utc["n_valid_days"], 1)
+
+    def test_duplicate_and_unsorted_timestamps(self) -> None:
+        base = _hourly_frame("2026-01-01 00:00", [20.0] * 24)
+        dup = pd.concat([base, base.iloc[[0]].assign(pm25=1000.0)], ignore_index=True)
+        s = compute_daily_pm25_statistics(dup)
+        self.assertEqual(s["n_duplicate_timestamps_dropped"], 1)
+        self.assertEqual(int(s["daily_df"]["n_valid_hours"].iloc[0]), 24)
+        self.assertAlmostEqual(s["daily_df"]["daily_mean"].iloc[0], 20.0)
+
+        ordered = _hourly_frame("2026-01-01 00:00", list(np.arange(48, dtype=float)))
+        shuffled = ordered.sample(frac=1.0, random_state=42).reset_index(drop=True)
+        pd.testing.assert_frame_equal(
+            compute_daily_pm25_statistics(ordered)["daily_df"],
+            compute_daily_pm25_statistics(shuffled)["daily_df"],
+        )
+
+    def test_p99_uses_only_valid_days(self) -> None:
+        values = []
+        for day_mean in range(1, 101):
+            values.extend([float(day_mean)] * 24)
+        values.extend([1000.0] * 5 + [np.nan] * 19)  # incomplete extreme day must be ignored
+        s = compute_daily_pm25_statistics(_hourly_frame("2025-01-01 00:00", values))
+        self.assertEqual(s["n_valid_days"], 100)
+        expected = float(np.percentile(np.arange(1, 101, dtype=float), 99))
+        self.assertAlmostEqual(s["p99_daily_pm25"], expected, places=9)
+        self.assertAlmostEqual(s["daily_max_pm25"], 100.0)
+
+    def test_rolling_window_count_is_not_a_day_count(self) -> None:
+        df = _hourly_frame("2026-01-01 00:00", [60.0] * 72)
+        n_windows = int(compute_causal_rolling_pm25(df)["rolling_24h"].notna().sum())
+        s = compute_daily_pm25_statistics(df)
+        self.assertEqual(n_windows, 49)  # 72 - 24 + 1 overlapping windows
+        self.assertEqual(s["n_valid_days"], 3)
+
+        fig = plot_fig07_air_quality_categories(df)
+        ax_roll, ax_day = fig.axes[0], fig.axes[1]
+        roll_heights = [p.get_height() for p in ax_roll.patches[:6]]
+        day_heights = [p.get_height() for p in ax_day.patches[:6]]
+        self.assertEqual(sum(roll_heights), 49)
+        self.assertEqual(sum(day_heights), 3)
+        self.assertEqual(day_heights[4], 3)  # all three days fall in [50, 75)
+        self.assertIn("cửa sổ", ax_roll.get_ylabel())
+        self.assertIn("ngày", ax_day.get_ylabel())
+
+    def test_denominators_are_distinct_and_labelled(self) -> None:
+        values = [60.0] * 24 + [10.0] * 24 + [70.0] * 10 + [np.nan] * 14
+        s = compute_daily_pm25_statistics(_hourly_frame("2026-01-01 00:00", values))
+        self.assertEqual((s["n_valid_days"], s["n_total_calendar_days"]), (2, 3))
+        self.assertAlmostEqual(s["pct_days_exceed_qcvn_valid"], 50.0)
+        self.assertAlmostEqual(s["pct_days_exceed_qcvn_all_calendar"], 100.0 / 3.0)
+
+        fig = plot_fig07_air_quality_categories(_hourly_frame("2026-01-01 00:00", values))
+        day_title = fig.axes[1].get_title(loc="left")
+        self.assertIn("N_valid_days = 2", day_title)
+        self.assertIn("N_all_days = 3", day_title)
+        roll_title = fig.axes[0].get_title(loc="left")
+        self.assertIn("N_valid =", roll_title)
+        self.assertIn("N_expected =", roll_title)
+
+    def test_all_nan_empty_and_invalid_parameters(self) -> None:
+        s = compute_daily_pm25_statistics(_hourly_frame("2026-01-01 00:00", [np.nan] * 48))
+        self.assertEqual(s["n_valid_days"], 0)
+        self.assertTrue(np.isnan(s["p99_daily_pm25"]))
+        self.assertEqual(s["n_zero_obs_days"], 2)
+        self.assertFalse(s["is_sufficient_for_annual_compliance"])
+        self.assertIn("Không có ngày lịch hợp lệ", s["compliance_limitation_note"])
+
+        with self.assertRaises(ValueError):
+            compute_daily_pm25_statistics(pd.DataFrame(columns=["timestamp", "pm25"]))
+        for bad in (0, 25):
+            with self.assertRaises(ValueError):
+                compute_daily_pm25_statistics(_hourly_frame("2026-01-01", [1.0] * 24), min_hours_per_day=bad)
+
+    def test_annual_compliance_flag_requires_full_single_year(self) -> None:
+        short = compute_daily_pm25_statistics(_hourly_frame("2026-01-01 00:00", [12.0] * 72))
+        self.assertFalse(short["is_sufficient_for_annual_compliance"])
+        self.assertIn("KHÔNG đủ cơ sở", short["compliance_limitation_note"])
+
+        full_year = compute_daily_pm25_statistics(_hourly_frame("2025-01-01 00:00", [12.0] * 8760))
+        self.assertEqual(full_year["n_valid_days"], 365)
+        self.assertTrue(full_year["is_sufficient_for_annual_compliance"])
+        self.assertAlmostEqual(full_year["p99_daily_pm25"], 12.0)
+
+    def test_titles_do_not_overstate_compliance(self) -> None:
+        df = _make_synthetic_df(n_hours=240)
+        fig7 = plot_fig07_air_quality_categories(df)
+        fig1 = plot_fig01_time_series(df)
+        text7 = _collect_all_figure_text(fig7)
+        text1 = _collect_all_figure_text(fig1)
+
+        self.assertIn("KHÔNG phải số ngày", text7)
+        self.assertIn("ngày lịch hợp lệ", text7)
+        self.assertIn("P99", text7)
+        self.assertIn("chưa đủ cơ sở kết luận tuân thủ", text7)
+        self.assertIn("không phải quy định WHO", text7)
+        for forbidden in ("Đạt WHO", "đạt WHO", "Đạt QCVN", "Vượt QCVN 24h\n"):
+            self.assertNotIn(forbidden, text7)
+
+        title1 = fig1.axes[0].get_title(loc="left")
+        self.assertIn("cửa sổ trượt 24h hợp lệ", title1)
+        self.assertIn("P99 ngày", title1)
+        self.assertIn("Thống kê mô tả", title1)
+        self.assertIn("chưa đủ cơ sở kết luận tuân thủ", text1)
+
+    def test_daily_statistics_do_not_mutate_input_and_split_by_station(self) -> None:
+        a = _hourly_frame("2026-01-01 00:00", [100.0] * 24).assign(station_id="A")
+        b = _hourly_frame("2026-01-01 00:00", [10.0] * 24).assign(station_id="B")
+        combined = pd.concat([a, b], ignore_index=True)
+        snapshot = combined.copy(deep=True)
+        s = compute_daily_pm25_statistics(combined)
+        pd.testing.assert_frame_equal(combined, snapshot)
+        self.assertEqual(s["n_duplicate_timestamps_dropped"], 0)
+        self.assertEqual(s["n_valid_days"], 2)
+        means = s["daily_df"].set_index("station_id")["daily_mean"].to_dict()
+        self.assertEqual(means, {"A": 100.0, "B": 10.0})
 
 
 if __name__ == "__main__":

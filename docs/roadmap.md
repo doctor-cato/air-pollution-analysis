@@ -777,15 +777,15 @@ Chi tiết luồng thực hiện:
 >   `#12`, `#13`) **đã được mở lại** và không còn bị chặn.
 > - Các số liệu thực nghiệm nêu trong các báo cáo (#4, #5) là **kết quả của một lần thực thi cụ thể**
 >   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
-> - Bộ kiểm thử hiện gồm **454 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
+> - Bộ kiểm thử hiện gồm **466 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
 >   [`docs/TEST_SUITE.md`](TEST_SUITE.md) — nguồn chuẩn duy nhất cho số liệu kiểm thử).
 >   Số mà unittest **thực sự chạy và báo cáo** phụ thuộc cả nền tảng lẫn việc có
->   `data/` hay không — **không phải con số 454 trên mọi nền tảng**:
->   - **Windows local (có `data/interim/*.parquet`)**: `Ran 454 tests` + `OK` → **454 pass, 0 skip**.
->   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`)**: `Ran 450 tests` + `OK (skipped=5)`
->     → **445 pass, 5 skip**.
+>   `data/` hay không — **không phải con số 466 trên mọi nền tảng**:
+>   - **Windows local (có `data/interim/*.parquet`)**: `Ran 466 tests` + `OK` → **466 pass, 0 skip**.
+>   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`)**: `Ran 462 tests` + `OK (skipped=5)`
+>     → **457 pass, 5 skip**.
 >
->   CI báo **450 chứ không phải 454** vì `TestDocumentedReproduction.setUpClass` ném
+>   CI báo **462 chứ không phải 466** vì `TestDocumentedReproduction.setUpClass` ném
 >   `unittest.SkipTest` khi thiếu `data/interim/*.parquet` → cả lớp bị bỏ qua và **4 phương
 >   thức của nó không chạy, không được tính vào "Ran"**. Danh sách **5** skip CI báo gồm:
 >   `setUpClass` đó; `TestScriptsUseTheComputation.test_progress_report_bullet_carries_the_computed_f_statistic`
