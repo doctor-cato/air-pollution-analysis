@@ -129,3 +129,8 @@ jobs:
             --execute \
             --output-dir /tmp/nbci \
             notebooks/00_environment_test.ipynb
+      - name: Kiểm tra deliverable Milestone 3 (FIG + CSV)
+        run: |
+          for i in $(seq -w 1 7); do test -f figures/FIG-$i.png || { echo "Missing FIG-$i.png"; exit 1; }; done
+          test -f reports/statistical_profile.csv || { echo "Missing statistical_profile.csv"; exit 1; }
+          echo "M3 artifacts OK"

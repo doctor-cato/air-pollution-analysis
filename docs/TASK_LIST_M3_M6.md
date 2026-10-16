@@ -28,8 +28,8 @@
 > | `notebooks/04_descriptive_stats.ipynb` | **đã có** (chờ review, PR #40) | Sinh từ `scripts/generate_04_notebook.py`; `scripts/validate_issue8.py` 215 assertion, live kernel 0 lỗi |
 > | `reports/statistical_profile.csv` | **đã có** | 8 biến × 27 cột; đối chiếu lại từ Parquet trong `validate_issue8.py` §4 |
 > | `notebooks/05`–`07` | **`NOT IMPLEMENTED`** | Chưa tồn tại (đã đổi tiền tố phân loại `06_`→`07_` ở task 0.3). Tương ứng Issue #11–#13 |
-> | `src/visualizer.py`, `tests/test_visualizer.py` | **`NOT IMPLEMENTED`** | Chưa tồn tại — task 3.1 / 3.2 còn `[ ]` |
-> | `figures/FIG-01`…`FIG-07` | **`NOT IMPLEMENTED`** | `figures/` chỉ có `.gitkeep` |
+> | `src/visualizer.py`, `tests/test_visualizer.py` | **VERIFIED / MERGED** (`6fe8eb6`) | Tồn tại; Tufte/Cleveland; 7 PNG render OK |
+> | `figures/FIG-01`…`FIG-07` | **VERIFIED / MERGED** (`6fe8eb6` PR #41, 2026-10-16) | 7 PNG (`~300 DPI`) đã commit; `src/visualizer.py` Tufte/Cleveland; `tests/test_visualizer.py` pass |
 > | Kiểm định giả thuyết của Issue #11 (task 5.1–5.6) | **`NOT IMPLEMENTED`** | Không có notebook, không có script, không có p-value nào được tính |
 > | `DummyClassifier` baseline (task 7.4) | **`NOT IMPLEMENTED`** | `git grep DummyClassifier -- src notebooks tests scripts` → rỗng |
 > | PR-AUC / Recall / F1 (task 7.5–7.7) | **`NOT IMPLEMENTED`** | Phụ thuộc nhãn ở 0.7b, chưa có mô hình nào được huấn luyện |
