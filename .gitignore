@@ -42,6 +42,7 @@ data/raw/*.parquet
 # được bất cứ lúc nào, không phải trạng thái cần bàn giao.
 reports/*
 !reports/.gitkeep
+!reports/statistical_profile.csv
 
 # ⚠️ figures/ CỐ Ý KHÔNG bị ignore: FIG-01…FIG-07 là bằng chứng chấm điểm
 # (mục "biểu đồ ấn phẩm" 20% rubric) và hội đồng cần mở repo xem được.

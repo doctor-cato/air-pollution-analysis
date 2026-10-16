@@ -161,7 +161,8 @@ Tài liệu này xác lập "bản khế ước nghiên cứu" (*Research Contra
 2. **Không kết luận trước dữ liệu (Zero Predetermined Conclusions):**  
    Mọi khẳng định về xu hướng, mức độ chênh lệch, độ phù hợp của mô hình và tính hiệu quả của cảnh báo phải được chứng minh bằng con số, đồ thị và kiểm định thống kê trên tập dữ liệu thực tế.
 3. **Phân định rõ ràng giữa Kế hoạch và Hiện trạng:**  
-   Tại thời điểm ban hành tài liệu này (Tuần 01 – Milestone 1), các câu hỏi nghiên cứu là **định hướng phân tích kế hoạch**, chưa có bất kỳ mô hình hay phân tích nào được thực thi.
+   Tại thời điểm ban hành tài liệu này (Tuần 01 – Milestone 1), các câu hỏi nghiên cứu là **định hướng phân tích kế hoạch**, chưa có bất kỳ mô hình hay phân tích nào được thực thi.  
+   **Cập nhật 2026-10-16:** SQ1 (phân phối thực nghiệm) đã **được tính toán** trong `notebooks/04_descriptive_stats.ipynb` [Issue #8], sinh `reports/statistical_profile.csv` và được đối chiếu lại từ dữ liệu thật bởi `scripts/validate_issue8.py`. **Phần suy luận thống kê (kiểm định, effect size, bootstrap CI) và phần hồi quy/phân loại vẫn `NOT IMPLEMENTED`** — thuộc Issue #11–#13, chưa có bất kỳ mô hình nào được huấn luyện. Trạng thái triển khai hiện hành: [`AGENTS.md`](../AGENTS.md) §Project Identity.
 
 ---
 

@@ -328,7 +328,15 @@ def normalize_timestamps(
             message=".*parsing datetimes with mixed time zones.*",
             category=FutureWarning,
         )
-        parsed = pd.to_datetime(out[TIMESTAMP_COLUMN], errors="coerce")
+        try:
+            parsed = pd.to_datetime(out[TIMESTAMP_COLUMN], errors="coerce")
+            mixed_offsets = parsed.dtype == object
+        except ValueError as err:
+            if "Mixed timezones detected" in str(err):
+                parsed = pd.to_datetime(out[TIMESTAMP_COLUMN], errors="coerce", utc=True)
+                mixed_offsets = True
+            else:
+                raise
     unparseable = int(parsed.isna().sum())
     if unparseable > 0:
         raise ValueError(
@@ -336,12 +344,11 @@ def normalize_timestamps(
             "Làm sạch tất định không được âm thầm biến mốc thời gian hỏng thành NaT."
         )
 
-    # Cột lẫn lộn nhiều UTC offset khiến `to_datetime` trả về kiểu `object`, và
-    # `.dt` sẽ ném AttributeError khó hiểu thay vì chuyển đổi như tài liệu mô tả.
+    # Cột lẫn lộn nhiều UTC offset khiến `to_datetime` trả về kiểu `object` (hoặc ném ValueError
+    # trên pandas 3.0+), và `.dt` sẽ ném AttributeError khó hiểu thay vì chuyển đổi như tài liệu mô tả.
     # Gom về UTC trước (mốc thời gian tuyệt đối không đổi) rồi chuyển xuống múi
     # giờ địa phương. Cột naive cho ra `datetime64[ns]` nên không bị tính nhầm.
-    mixed_offsets = parsed.dtype == object
-    if mixed_offsets:
+    if mixed_offsets and parsed.dtype == object:
         parsed = pd.to_datetime(out[TIMESTAMP_COLUMN], errors="coerce", utc=True)
 
     was_naive = not mixed_offsets and parsed.dt.tz is None

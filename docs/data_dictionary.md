@@ -343,4 +343,73 @@ Khi triển khai các module adapter trong `src/data_collection.py` (tại Issue
    - **Tuyệt đối không so sánh trực tiếp hai giá trị này như cùng một đơn vị đo**.
    - Nếu trong các bài toán phân tích hoặc mô hình hóa cảnh báo ở các giai đoạn sau (Issue #7, #13) cần đối chiếu nồng độ quan sát với các ngưỡng của QCVN, nhóm nghiên cứu bắt buộc phải thực hiện bước xử lý/chuẩn hóa đơn vị đo phù hợp dựa trên thông số nhiệt độ và áp suất thực tế.
    - **Không tự ý ấn định một công thức chuyển đổi cố định tại thời điểm Issue #2**, vì việc chuyển đổi đòi hỏi phải có căn cứ xác thực từ Issue #19 về điều kiện đo kỹ thuật của cảm biến nguồn (cảm biến báo cáo theo volumetric concentration hay đã chuẩn hóa sẵn).
+---
 
+## 8. `reports/statistical_profile.csv` — Hồ Sơ Thống Kê Mô Tả (Issue #8)
+
+> Sinh bởi `notebooks/04_descriptive_stats.ipynb` (nguồn chuẩn: `scripts/generate_04_notebook.py`)
+> và được **đối chiếu lại từ Parquet** bởi `scripts/validate_issue8.py` §4 — 17 phép so khớp
+> × 8 biến. Không ghi tay.
+
+### 8.1. Hình dạng bảng
+
+**8 dòng × 27 cột.** Mỗi dòng là một biến liên tục.
+
+### 8.2. Bốn nhóm cột
+
+| Nhóm | Cột | Ý nghĩa |
+|---|---|---|
+| **Định danh & độ phủ** | `variable`, `n`, `n_missing`, `missing_rate` | `n` = số quan sát hợp lệ; `n_missing` = số `NaN`; `missing_rate` = tỷ lệ thiếu (0–1) |
+| **Location** | `mean`, `median`, `mode` | Trung tâm phân phối |
+| **Spread** | `variance`, `std`, `q1`, `q3`, `iqr`, `range`, `min`, `max` | `iqr = q3 − q1`; `range = max − min` |
+| **Shape** | `skewness`, `kurtosis` | Fisher, `bias=False` (hiệu chỉnh mẫu) |
+| **Quantiles** | `p10`, `p25`, `p50`, `p75`, `p90`, `p95`, `p99` | Bất biến đơn điệu không giảm |
+| **Circular (chỉ `wind_direction`)** | `circular_mean`, `circular_std`, `notes` | Xem §8.4 |
+
+Bất biến được kiểm: `p25 = q1`, `p50 = median`, `p75 = q3`, `iqr = q3 − q1`,
+và `p10 ≤ p25 ≤ … ≤ p99`.
+
+### 8.3. Độ phủ thực tế (tính trên 9.044 dòng canonical)
+
+| Biến | `n` | `n_missing` | `missing_rate` |
+|---|---|---|---|
+| `pm25` | 7.495 | 1.549 | 17,13 % |
+| `pm10` | 7.575 | 1.469 | 16,24 % |
+| 6 biến khí tượng | 9.044 | 0 | 0,00 % |
+
+> **Không impute.** `pm25` và `pm10` còn `NaN` vì Issue #6 loại bỏ giá trị không truy được về nguồn.
+> Mọi thống kê báo cáo `n` và `n_missing` cạnh nhau để không ai đọc `mean` là của 9.044 dòng.
+
+### 8.4. `mode` là `NaN` cho `pm25` và `pm10` — KHÔNG phải lỗi
+
+`pm25` / `pm10` là phép đo liên tục độ chính xác cao. Giá trị lặp tự nhiên chỉ phản ánh **sai số
+làm tròn float**, không phải chế độ rời rạc thật. Thống kê Mode chuẩn vì vậy ghi `NaN` thay vì bịa
+một "đỉnh" từ nhiễu đo. Với biến khí tượng rời rạc / zero-inflated thì Mode có giá trị thật
+(vd. `precipitation` → `0,0` mm).
+
+### 8.5. `wind_direction` là biến GÓC CHU KỲ — đọc cột nào?
+
+$0° \equiv 360°$, nên thống kê tuyến tính (mean, median, quantile, skewness) phụ thuộc **điểm
+cắt 0° quy ước** và có thể sai hoàn toàn về hướng luồng gió thực tế:
+
+| Cách đọc | Giá trị | Đánh giá |
+|---|---|---|
+| Mean tuyến tính | **147,18°** (SSE) | ⚠️ chỉ tham khảo hình thức |
+| Circular mean | **107,12°** (ESE) | ✅ dùng để mô tả hướng |
+| Linear std | 95,36° | ⚠️ chỉ tham khảo hình thức |
+| Circular std | **82,32°** | ✅ dùng để mô tả độ tập trung |
+
+Chênh lệch **40,06°** giữa hai cách là minh hoạ cụ thể vì sao thống kê góc phải là circular.
+Giá trị đầy đủ kèm cảnh báo nằm ở cột `notes` của chính dòng `wind_direction`.
+
+Hệ quả cho các Issue sau (#12, #13): **không** đưa góc thô vào mô hình — dùng vector trực giao
+$(u, v)$ hoặc đặc trưng lượng giác $(\sin\theta, \cos\theta)$.
+
+### 8.6. Kiểm chứng lại file này
+
+```bash
+python scripts/validate_issue8.py    # §3 kiểm cấu trúc, §4 đối chiếu từng ô với Parquet
+```
+
+Nếu số trong bảng lệch khỏi dữ liệu thật, script **fail** — nó không kiểm tra chiều ngược lại
+(một con số sai trong tài liệu sẽ không bị bắt). Vì vậy `notes` phải đọc kèm §4 của script.
