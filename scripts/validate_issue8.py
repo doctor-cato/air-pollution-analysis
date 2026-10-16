@@ -21,6 +21,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 import pandas as pd
 import numpy as np
 
@@ -529,6 +534,8 @@ def main():
                 nb_to_run = nbformat.read(nb_path, as_version=4)
                 client = NotebookClient(nb_to_run, timeout=600, kernel_name="python3")
                 executed_nb = client.execute()
+                if csv_path.exists():
+                    csv_path.write_bytes(csv_path.read_bytes().replace(b"\r\n", b"\n"))
 
                 exec_errors = []
                 for idx, cell in enumerate(c for c in executed_nb.cells if c.cell_type == "code"):

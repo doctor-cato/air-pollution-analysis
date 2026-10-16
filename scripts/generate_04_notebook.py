@@ -4,7 +4,13 @@ Tuân thủ toàn bộ các quy tắc trong AGENTS.md, docs/roadmap.md và USER_
 """
 
 import json
+import sys
 from pathlib import Path
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 NOTEBOOK_PATH = REPO_ROOT / "notebooks" / "04_descriptive_stats.ipynb"
@@ -1254,8 +1260,8 @@ def generate_and_execute(output_path: Path = NOTEBOOK_PATH, execute: bool = True
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(notebook_json, f, indent=1, ensure_ascii=False)
+    import nbformat
+    nbformat.write(nbformat.from_dict(notebook_json), output_path)
     
     code_count = len([c for c in cells if c["cell_type"] == "code"])
     md_count = len([c for c in cells if c["cell_type"] == "markdown"])

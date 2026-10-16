@@ -305,6 +305,9 @@ class TestNotebookExecutionOutputs(unittest.TestCase):
         nb_obj = nbformat.read(nb_path, as_version=4)
         client = NotebookClient(nb_obj, timeout=600, kernel_name="python3")
         executed_nb = client.execute()
+        csv_path = REPO_ROOT / "reports" / "statistical_profile.csv"
+        if csv_path.exists():
+            csv_path.write_bytes(csv_path.read_bytes().replace(b"\r\n", b"\n"))
 
         error_cells = []
         code_cells = [c for c in executed_nb.cells if c.cell_type == "code"]
@@ -790,6 +793,22 @@ class TestNotebooksAreSerializationStable(unittest.TestCase):
                 nbformat.write(nb, str(roundtrip))
                 if roundtrip.read_text(encoding="utf-8") != path.read_text(encoding="utf-8"):
                     offenders.append(path.name)
+
+            from scripts.generate_04_notebook import generate_and_execute
+            gen_out = tmp_path / "generated_04.ipynb"
+            generate_and_execute(output_path=gen_out, execute=False)
+            nb_gen = nbformat.read(gen_out, as_version=4)
+            gen_rt = tmp_path / "generated_04_rt.ipynb"
+            nbformat.write(nb_gen, str(gen_rt))
+            self.assertEqual(
+                gen_rt.read_text(encoding="utf-8"),
+                gen_out.read_text(encoding="utf-8"),
+                "generate_and_execute(execute=False) không khớp chuẩn nbformat.write",
+            )
+            self.assertTrue(
+                gen_out.read_bytes().endswith(b"\n") and not gen_out.read_bytes().endswith(b"\n\n"),
+                "generate_and_execute(execute=False) thiếu newline cuối chuẩn",
+            )
 
         self.assertEqual(
             offenders, [],
