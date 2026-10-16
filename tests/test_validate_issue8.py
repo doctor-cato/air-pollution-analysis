@@ -26,10 +26,16 @@ from scipy import stats
 
 from scripts.validate_issue8 import (
     CHECKSUM_STATUSES,
+    MISMATCH_SEVERITIES,
+    PROCESSED_CHECKSUM_MISMATCH_SEVERITY,
+    RAW_CHECKSUM_MISMATCH_SEVERITY,
+    audit_artifact_checksums,
     checksum_verdict,
     check_notebook_sync,
+    report_checksum,
     verify_file_checksum,
 )
+import scripts.validate_issue8 as val_mod
 import scripts.generate_04_notebook as gen_04
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -101,12 +107,19 @@ class TestVerifyFileChecksum(unittest.TestCase):
 
 class TestChecksumVerdictRouting(unittest.TestCase):
     """
-    `checksum_verdict` phải ánh xạ TẤT CẢ trạng thái của `verify_file_checksum`.
-
-    Mục tiêu của PR review: "mọi trường hợp không có checksum kỳ vọng đều được
-    ghi nhận rõ là WARN/SKIP, không tính là xác minh thành công", và "giữ nguyên
-    việc phân biệt rõ MATCH, MISMATCH, NOT_FOUND và NO_EXPECTED_HASH".
+    `checksum_verdict`, `report_checksum` và `audit_artifact_checksums` phải
+    ánh xạ TẤT CẢ trạng thái của `verify_file_checksum` và thực thi đúng chính
+    sách mức độ nghiêm trọng cho processed dataset ('FAIL') vs raw dataset ('WARN').
     """
+
+    def setUp(self):
+        self._orig_counts = (val_mod.PASS, val_mod.FAIL, val_mod.WARN)
+        val_mod.PASS = 0
+        val_mod.FAIL = 0
+        val_mod.WARN = 0
+
+    def tearDown(self):
+        val_mod.PASS, val_mod.FAIL, val_mod.WARN = self._orig_counts
 
     def _result(self, status):
         return {
@@ -120,61 +133,197 @@ class TestChecksumVerdictRouting(unittest.TestCase):
     def test_every_status_is_routed(self):
         """Mỗi status trong CHECKSUM_STATUSES đều cho verdict hợp lệ."""
         for status in CHECKSUM_STATUSES:
-            kind, label, detail = checksum_verdict(self._result(status))
-            self.assertIn(kind, ("PASS", "WARN", "FAIL"), f"status={status} -> kind={kind}")
-            self.assertTrue(label, f"status={status} thiếu label")
-            self.assertIn(status, label, f"status={status} không được nêu trong label")
-            self.assertTrue(
-                detail.startswith("synthetic"),
-                f"status={status} phải giữ nguyên message gốc, nhận được: {detail!r}",
-            )
+            for sev in MISMATCH_SEVERITIES:
+                kind, label, detail = checksum_verdict(self._result(status), mismatch_severity=sev)
+                self.assertIn(kind, ("PASS", "WARN", "FAIL"), f"status={status}, sev={sev} -> kind={kind}")
+                self.assertTrue(label, f"status={status} thiếu label")
+                self.assertIn(status, label, f"status={status} không được nêu trong label")
+                self.assertTrue(
+                    detail.startswith("synthetic"),
+                    f"status={status} phải giữ nguyên message gốc, nhận được: {detail!r}",
+                )
 
     def test_only_match_is_a_pass(self):
-        """Chỉ MATCH mới được coi là xác minh thành công."""
-        self.assertEqual(checksum_verdict(self._result("MATCH"))[0], "PASS")
-        for status in ("MISMATCH", "NOT_FOUND", "NO_EXPECTED_HASH"):
-            self.assertNotEqual(
-                checksum_verdict(self._result(status))[0],
-                "PASS",
-                f"{status} KHÔNG BAO GIỜ được báo là PASS",
-            )
+        """Chỉ MATCH mới được coi là xác minh thành công (PASS) và tăng bộ đếm PASS."""
+        for sev in MISMATCH_SEVERITIES:
+            self.assertEqual(checksum_verdict(self._result("MATCH"), mismatch_severity=sev)[0], "PASS")
+            for status in ("MISMATCH", "NOT_FOUND", "NO_EXPECTED_HASH"):
+                self.assertNotEqual(
+                    checksum_verdict(self._result(status), mismatch_severity=sev)[0],
+                    "PASS",
+                    f"{status} (severity={sev}) KHÔNG BAO GIỜ được báo là PASS",
+                )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proc_file = root / "data" / "processed" / "air_pollution_final.parquet"
+            proc_file.parent.mkdir(parents=True)
+            payload = b"canonical_processed_parquet_bytes"
+            proc_file.write_bytes(payload)
+            expected_sha = hashlib.sha256(payload).hexdigest()
+
+            meta = {
+                "collection_pipeline_execution": {
+                    "artifact_dtypes": {"processed_sha256": expected_sha},
+                    "openaq_ingestion": {"raw_file": "data/raw/missing.parquet", "raw_sha256": None},
+                    "open_meteo_ingestion": {"raw_file": "data/raw/missing.json", "raw_sha256": None},
+                }
+            }
+            audit = audit_artifact_checksums(meta, root=root, parquet_path=proc_file)
+            self.assertEqual(audit["processed"]["result"]["status"], "MATCH")
+            self.assertEqual(audit["processed"]["verdict"], "PASS")
+            self.assertEqual(val_mod.PASS, 1)
+            self.assertEqual(val_mod.FAIL, 0)
+            self.assertEqual(audit["exit_code"], 0)
 
     def test_no_expected_hash_is_warn_and_states_the_limitation(self):
-        """NO_EXPECTED_HASH -> WARN, và thông điệp phải nói rõ chưa xác minh được."""
-        kind, label, detail = checksum_verdict(self._result("NO_EXPECTED_HASH"))
-        self.assertEqual(kind, "WARN")
-        self.assertIn("NO_EXPECTED_HASH", label)
-        self.assertIn("KHÔNG được tính là một kiểm tra checksum thành công", detail)
+        """NO_EXPECTED_HASH -> WARN (không PASS, không FAIL), kèm thông điệp giới hạn."""
+        for sev in MISMATCH_SEVERITIES:
+            kind, label, detail = checksum_verdict(self._result("NO_EXPECTED_HASH"), mismatch_severity=sev)
+            self.assertEqual(kind, "WARN")
+            self.assertIn("NO_EXPECTED_HASH", label)
+            self.assertIn("KHÔNG được tính là một kiểm tra checksum thành công", detail)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proc_file = root / "data" / "processed" / "air_pollution_final.parquet"
+            proc_file.parent.mkdir(parents=True)
+            proc_file.write_bytes(b"processed_without_registered_sha")
+
+            meta = {
+                "collection_pipeline_execution": {
+                    "artifact_dtypes": {},
+                    "openaq_ingestion": {"raw_file": "data/raw/missing.parquet", "raw_sha256": None},
+                    "open_meteo_ingestion": {"raw_file": "data/raw/missing.json", "raw_sha256": None},
+                }
+            }
+            audit = audit_artifact_checksums(meta, root=root, parquet_path=proc_file)
+            self.assertEqual(audit["processed"]["result"]["status"], "NO_EXPECTED_HASH")
+            self.assertEqual(audit["processed"]["verdict"], "WARN")
+            self.assertEqual(val_mod.PASS, 0)
+            self.assertEqual(val_mod.FAIL, 0)
+            self.assertGreaterEqual(val_mod.WARN, 2)  # 1 cho NO_EXPECTED_HASH + 1 cho integrity contract note
+            self.assertEqual(audit["exit_code"], 0)
 
     def test_not_found_is_warn(self):
-        """NOT_FOUND -> WARN (không có gì để hash)."""
-        kind, label, detail = checksum_verdict(self._result("NOT_FOUND"))
-        self.assertEqual(kind, "WARN")
-        self.assertIn("NOT_FOUND", label)
-        self.assertIn("không thể xác minh", detail)
+        """NOT_FOUND -> WARN (không có gì để hash, tuyệt đối không báo PASS)."""
+        for sev in MISMATCH_SEVERITIES:
+            kind, label, detail = checksum_verdict(self._result("NOT_FOUND"), mismatch_severity=sev)
+            self.assertEqual(kind, "WARN")
+            self.assertIn("NOT_FOUND", label)
+            self.assertIn("không thể xác minh", detail)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            missing_proc = root / "data" / "processed" / "air_pollution_final.parquet"
+            meta = {
+                "collection_pipeline_execution": {
+                    "artifact_dtypes": {"processed_sha256": "a" * 64},
+                    "openaq_ingestion": {"raw_file": "data/raw/missing.parquet", "raw_sha256": "b" * 64},
+                    "open_meteo_ingestion": {"raw_file": "data/raw/missing.json", "raw_sha256": "c" * 64},
+                }
+            }
+            audit = audit_artifact_checksums(meta, root=root, parquet_path=missing_proc)
+            self.assertEqual(audit["processed"]["result"]["status"], "NOT_FOUND")
+            self.assertEqual(audit["processed"]["verdict"], "WARN")
+            self.assertNotEqual(audit["processed"]["verdict"], "PASS")
+            self.assertEqual(val_mod.PASS, 0)
 
     def test_mismatch_defaults_to_warn_not_fail(self):
         """
-        MISMATCH mặc định là WARN vì dữ liệu thô của dự án không byte-reproducible
-        (docs/history/02), nhưng KHÔNG BAO GIỜ được báo là đã xác minh.
+        Phân tách chính sách MISMATCH giữa processed dataset ('FAIL') và raw dataset ('WARN'):
+        - Processed dataset có expected hash nhưng lệch SHA-256 -> FAIL và exit_code == 1.
+        - Raw dataset lệch SHA-256 (do không byte-reproducible) -> WARN, độc lập với processed dataset.
         """
-        kind, label, detail = checksum_verdict(self._result("MISMATCH"))
+        self.assertEqual(PROCESSED_CHECKSUM_MISMATCH_SEVERITY, "FAIL")
+        self.assertEqual(RAW_CHECKSUM_MISMATCH_SEVERITY, "WARN")
+
+        kind, label, detail = checksum_verdict(self._result("MISMATCH"), mismatch_severity=RAW_CHECKSUM_MISMATCH_SEVERITY)
         self.assertEqual(kind, "WARN")
         self.assertIn("MISMATCH", label)
         self.assertIn("KHÔNG được tính là đã xác minh tính toàn vẹn dữ liệu", detail)
 
-        kind_fail, _, _ = checksum_verdict(self._result("MISMATCH"), mismatch_severity="FAIL")
+        kind_fail, _, _ = checksum_verdict(
+            self._result("MISMATCH"),
+            mismatch_severity=PROCESSED_CHECKSUM_MISMATCH_SEVERITY,
+        )
         self.assertEqual(kind_fail, "FAIL")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proc_file = root / "data" / "processed" / "air_pollution_final.parquet"
+            raw_aq_file = root / "data" / "raw" / "openaq_raw_4946811.parquet"
+            raw_wx_file = root / "data" / "raw" / "open_meteo_raw.json"
+            proc_file.parent.mkdir(parents=True)
+            raw_aq_file.parent.mkdir(parents=True)
+
+            proc_bytes = b"actual_processed_bytes"
+            proc_file.write_bytes(proc_bytes)
+            raw_aq_file.write_bytes(b"regenerated_openaq_parquet_bytes")
+            raw_wx_file.write_bytes(b"regenerated_open_meteo_json_bytes")
+
+            # Kịch bản A: Processed dataset MISMATCH -> phải FAIL và exit_code == 1
+            val_mod.PASS = val_mod.FAIL = val_mod.WARN = 0
+            meta_proc_mismatch = {
+                "collection_pipeline_execution": {
+                    "artifact_dtypes": {"processed_sha256": "0" * 64},
+                    "openaq_ingestion": {
+                        "raw_file": "data/raw/openaq_raw_4946811.parquet",
+                        "raw_sha256": "1" * 64,
+                    },
+                    "open_meteo_ingestion": {
+                        "raw_file": "data/raw/open_meteo_raw.json",
+                        "raw_sha256": "2" * 64,
+                    },
+                }
+            }
+            audit_fail = audit_artifact_checksums(meta_proc_mismatch, root=root, parquet_path=proc_file)
+            self.assertEqual(audit_fail["processed"]["result"]["status"], "MISMATCH")
+            self.assertEqual(audit_fail["processed"]["verdict"], "FAIL")
+            self.assertEqual(audit_fail["openaq_raw"]["verdict"], "WARN")
+            self.assertEqual(audit_fail["open_meteo_raw"]["verdict"], "WARN")
+            self.assertEqual(val_mod.PASS, 0)
+            self.assertEqual(val_mod.FAIL, 1)
+            self.assertEqual(audit_fail["exit_code"], 1)
+
+            # Kịch bản B: Processed dataset MATCH nhưng Raw datasets MISMATCH ->
+            # Processed PASS, Raw WARN, FAIL == 0 và exit_code == 0 (chính sách độc lập)
+            val_mod.PASS = val_mod.FAIL = val_mod.WARN = 0
+            meta_raw_only_mismatch = {
+                "collection_pipeline_execution": {
+                    "artifact_dtypes": {
+                        "processed_sha256": hashlib.sha256(proc_bytes).hexdigest()
+                    },
+                    "openaq_ingestion": {
+                        "raw_file": "data/raw/openaq_raw_4946811.parquet",
+                        "raw_sha256": "1" * 64,
+                    },
+                    "open_meteo_ingestion": {
+                        "raw_file": "data/raw/open_meteo_raw.json",
+                        "raw_sha256": "2" * 64,
+                    },
+                }
+            }
+            audit_raw_warn = audit_artifact_checksums(meta_raw_only_mismatch, root=root, parquet_path=proc_file)
+            self.assertEqual(audit_raw_warn["processed"]["verdict"], "PASS")
+            self.assertEqual(audit_raw_warn["openaq_raw"]["verdict"], "WARN")
+            self.assertEqual(audit_raw_warn["open_meteo_raw"]["verdict"], "WARN")
+            self.assertEqual(val_mod.PASS, 1)
+            self.assertEqual(val_mod.FAIL, 0)
+            self.assertEqual(audit_raw_warn["exit_code"], 0)
 
     def test_unknown_status_raises_instead_of_falling_through(self):
         """
-        Một trạng thái lạ phải ném lỗi chứ không được rơi qua im lặng.
-
-        Đây là guard chống lại việc thêm status mới vào `verify_file_checksum`
-        mà quên xử lý — dạng lỗi khiến bước kiểm tra bị báo im lặng là "đạt".
+        Một trạng thái lạ hoặc mismatch_severity không hợp lệ phải ném ValueError
+        chứ không được rơi qua im lặng thành PASS hay WARN.
         """
         with self.assertRaises(ValueError):
             checksum_verdict({"status": "SOMETHING_NEW", "message": "x"})
+        with self.assertRaises(ValueError):
+            report_checksum({"status": "INVALID_STATUS", "message": "x"}, "label")
+        for bad_severity in ("PASS", "IGNORE", "", None):
+            with self.assertRaises(ValueError):
+                checksum_verdict(self._result("MISMATCH"), mismatch_severity=bad_severity)
 
     def test_checklist_matches_verify_file_checksum_docstring(self):
         """CHECKSUM_STATUSES phải liệt kê đủ 4 trạng thái mà hàm gốc trả về."""

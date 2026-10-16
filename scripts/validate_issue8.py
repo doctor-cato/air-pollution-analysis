@@ -51,22 +51,40 @@ def warn(label: str, detail: str = ""):
 
 
 #: Mọi trạng thái mà `verify_file_checksum` có thể trả về. Danh sách này là hợp
-#: đồng bắt buộc: `checksum_verdict` xử lý TÁT CẢ các trạng thái ở đây, nên không
+#: đồng bắt buộc: `checksum_verdict` xử lý TẤT CẢ các trạng thái ở đây, nên không
 #: thể có nhánh nào bị bỏ qua im lặng.
 CHECKSUM_STATUSES = ("MATCH", "MISMATCH", "NOT_FOUND", "NO_EXPECTED_HASH")
+MISMATCH_SEVERITIES = ("WARN", "FAIL")
+
+#: Chính sách mức độ nghiêm trọng khi SHA-256 thực tế khác checksum kỳ vọng:
+#: - Processed dataset (`data/processed/air_pollution_final.parquet`): nếu
+#:   metadata định nghĩa `processed_sha256` đáng tin cậy mà hash thực tế lệch,
+#:   đó là lỗi toàn vẹn dữ liệu -> 'FAIL' (làm script thoát với mã lỗi 1).
+#: - Raw datasets (`openaq_raw_*.parquet`, `open_meteo_raw_*.json`): không
+#:   tái tạo byte-for-byte qua các lần tải S3/API (docs/history/02) -> 'WARN'.
+PROCESSED_CHECKSUM_MISMATCH_SEVERITY = "FAIL"
+RAW_CHECKSUM_MISMATCH_SEVERITY = "WARN"
 
 
 def checksum_verdict(result: dict, mismatch_severity: str = "WARN") -> tuple:
     """
     Chuẩn hoá kết quả `verify_file_checksum` thành một phán quyết có thể kiểm thử.
 
-    Hợp đồng quan trọng: **chỉ** `MISMATCH` với `mismatch_severity='FAIL'` và
-    `MATCH` là 'FAIL'; `NOT_FOUND` và `NO_EXPECTED_HASH` LUÔN là 'WARN'. Như vậy
-    việc thiếu checksum kỳ vọng (hoặc thiếu tệp) không bao giờ bị báo nhầm là
-    "đã xác minh tính toàn vẹn dữ liệu".
+    Hợp đồng quan trọng: **chỉ** `MATCH` mới trả về `'PASS'`; `MISMATCH` trả về
+    `'FAIL'` khi `mismatch_severity='FAIL'` (chính sách cho processed dataset)
+    hoặc `'WARN'` khi `mismatch_severity='WARN'` (chính sách cho raw dataset);
+    `NOT_FOUND` và `NO_EXPECTED_HASH` LUÔN là `'WARN'`. Như vậy việc thiếu
+    checksum kỳ vọng (hoặc thiếu tệp) không bao giờ bị báo nhầm là "đã xác minh
+    tính toàn vẹn dữ liệu".
 
     Trả về tuple ``(kind, label, detail)`` với ``kind`` thuộc {'PASS','WARN','FAIL'}.
     """
+    if mismatch_severity not in MISMATCH_SEVERITIES:
+        raise ValueError(
+            "mismatch_severity không hợp lệ '%s'; mọi mức độ phải nằm trong %s"
+            % (mismatch_severity, list(MISMATCH_SEVERITIES))
+        )
+
     status = result.get("status")
     message = result.get("message", "")
 
@@ -106,7 +124,7 @@ def checksum_verdict(result: dict, mismatch_severity: str = "WARN") -> tuple:
     )
 
 
-def report_checksum(result: dict, label: str, mismatch_severity: str = "WARN"):
+def report_checksum(result: dict, label: str, mismatch_severity: str = "WARN") -> str:
     """Gọi `checksum_verdict` rồi in kết quả bằng `check`/`warn` tương ứng."""
     kind, _auto_label, detail = checksum_verdict(result, mismatch_severity)
     if kind == "PASS":
@@ -115,6 +133,7 @@ def report_checksum(result: dict, label: str, mismatch_severity: str = "WARN"):
         check(label, False, detail)
     else:
         warn(label, detail)
+    return kind
 
 
 def verify_file_checksum(file_path: Path | str, expected_sha: str | None) -> dict:
@@ -202,6 +221,97 @@ def check_notebook_sync(notebook_path: Path, generator_cells: list) -> tuple[boo
     return True, f"Toàn bộ {len(disk_cells)} cells khớp tuyệt đối 100% giữa notebook và generator"
 
 
+def audit_artifact_checksums(
+    meta: dict,
+    root: Path = ROOT,
+    parquet_path: Path | None = None,
+) -> dict:
+    """
+    Thực thi kiểm toán checksum mục 2.3–2.5 với chính sách mức độ nghiêm trọng
+    tách biệt giữa processed dataset ('FAIL' khi MISMATCH) và raw dataset
+    ('WARN' khi MISMATCH do không byte-reproducible).
+    """
+    if parquet_path is None:
+        parquet_path = root / "data" / "processed" / "air_pollution_final.parquet"
+
+    rec_exec = meta.get("collection_pipeline_execution", {})
+
+    # 2.3 Processed dataset checksum verification (MISMATCH -> FAIL)
+    expected_proc_sha = (
+        rec_exec.get("artifact_dtypes", {}).get("processed_sha256")
+    )
+    res_proc = verify_file_checksum(parquet_path, expected_proc_sha)
+    verdict_proc = report_checksum(
+        res_proc,
+        "Processed artifact SHA-256 vs metadata.json provenance",
+        mismatch_severity=PROCESSED_CHECKSUM_MISMATCH_SEVERITY,
+    )
+    if res_proc["status"] == "NO_EXPECTED_HASH":
+        # processed artifact không có hash chuẩn trong provenance: hợp đồng
+        # toàn vẹn chỉ dựa trên shape [9044, 18] + 18 cột schema.
+        warn(
+            "  └ integrity contract for processed artifact",
+            "Metadata không định nghĩa hash chuẩn cho processed artifact; "
+            "hợp đồng toàn vẹn dựa trên shape [9044, 18] và 18 cột schema.",
+        )
+
+    # 2.4 Raw OpenAQ payload checksum verification (MISMATCH -> WARN)
+    raw_aq = rec_exec.get("openaq_ingestion", {})
+    raw_aq_file = root / raw_aq.get("raw_file", "")
+    raw_aq_expected_sha = raw_aq.get("raw_sha256")
+
+    res_aq = verify_file_checksum(raw_aq_file, raw_aq_expected_sha)
+    verdict_aq = report_checksum(
+        res_aq,
+        "Raw OpenAQ payload SHA-256 vs metadata.json provenance",
+        mismatch_severity=RAW_CHECKSUM_MISMATCH_SEVERITY,
+    )
+    if res_aq["status"] == "MISMATCH":
+        # Parquet không byte-reproducible qua các lần nạp S3 khác nhau
+        # (docs/history/02) -> hạ xuống WARN, không tính là đã xác minh.
+        warn(
+            "  └ why MISMATCH is expected here",
+            "Parquet không byte-reproducible qua các lần nạp S3 khác nhau "
+            "theo docs/history/02.",
+        )
+    elif res_aq["status"] == "NOT_FOUND":
+        warn(
+            "  └ raw payload location",
+            "data/raw/*.parquet bị .gitignore loại khỏi repository theo Three-tier "
+            "Raw Data Policy; tệp chỉ tồn tại trên máy đã chạy pipeline.",
+        )
+
+    # 2.5 Raw Open-Meteo payload checksum verification (MISMATCH -> WARN)
+    raw_wx = rec_exec.get("open_meteo_ingestion", {})
+    raw_wx_file = root / raw_wx.get("raw_file", "")
+    raw_wx_expected_sha = raw_wx.get("raw_sha256")
+
+    res_wx = verify_file_checksum(raw_wx_file, raw_wx_expected_sha)
+    verdict_wx = report_checksum(
+        res_wx,
+        "Raw Open-Meteo payload SHA-256 vs metadata.json provenance",
+        mismatch_severity=RAW_CHECKSUM_MISMATCH_SEVERITY,
+    )
+    if res_wx["status"] == "MISMATCH":
+        warn(
+            "  └ why MISMATCH is expected here",
+            "Open-Meteo API trả về generationtime_ms thay đổi theo từng lần request.",
+        )
+    elif res_wx["status"] == "NOT_FOUND":
+        warn(
+            "  └ raw payload location",
+            "data/raw/*.json bị .gitignore loại khỏi repository theo Three-tier "
+            "Raw Data Policy; tệp chỉ tồn tại trên máy đã chạy pipeline.",
+        )
+
+    return {
+        "processed": {"result": res_proc, "verdict": verdict_proc},
+        "openaq_raw": {"result": res_aq, "verdict": verdict_aq},
+        "open_meteo_raw": {"result": res_wx, "verdict": verdict_wx},
+        "exit_code": 1 if FAIL > 0 else 0,
+    }
+
+
 def main():
     # ─── 1. File existence ──────────────────────────────────────────────
     print("\n═══ 1. File Existence ═══")
@@ -244,67 +354,8 @@ def main():
                 list(df_actual.shape) == [9044, 18],
             )
 
-        # 2.3 Processed dataset checksum verification
-        expected_proc_sha = (
-            meta.get("collection_pipeline_execution", {})
-            .get("artifact_dtypes", {})
-            .get("processed_sha256")
-        )
-        res_proc = verify_file_checksum(parquet_path, expected_proc_sha)
-        report_checksum(
-            res_proc,
-            "Processed artifact SHA-256 vs metadata.json provenance",
-        )
-        if res_proc["status"] == "NO_EXPECTED_HASH":
-            # processed artifact không có hash chuẩn trong provenance: hợp đồng
-            # toàn vẹn chỉ dựa trên shape [9044, 18] + 18 cột schema.
-            warn(
-                "  └ integrity contract for processed artifact",
-                "Metadata không định nghĩa hash chuẩn cho processed artifact; "
-                "hợp đồng toàn vẹn dựa trên shape [9044, 18] và 18 cột schema.",
-            )
-
-        # 2.4 Raw OpenAQ payload checksum verification
-        rec_exec = meta.get("collection_pipeline_execution", {})
-        raw_aq = rec_exec.get("openaq_ingestion", {})
-        raw_aq_file = ROOT / raw_aq.get("raw_file", "")
-        raw_aq_expected_sha = raw_aq.get("raw_sha256")
-
-        res_aq = verify_file_checksum(raw_aq_file, raw_aq_expected_sha)
-        report_checksum(res_aq, "Raw OpenAQ payload SHA-256 vs metadata.json provenance")
-        if res_aq["status"] == "MISMATCH":
-            # Parquet không byte-reproducible qua các lần nạp S3 khác nhau
-            # (docs/history/02) -> hạ xuống WARN, không tính là đã xác minh.
-            warn(
-                "  └ why MISMATCH is expected here",
-                "Parquet không byte-reproducible qua các lần nạp S3 khác nhau "
-                "theo docs/history/02.",
-            )
-        elif res_aq["status"] == "NOT_FOUND":
-            warn(
-                "  └ raw payload location",
-                "data/raw/*.parquet bị .gitignore loại khỏi repository theo Three-tier "
-                "Raw Data Policy; tệp chỉ tồn tại trên máy đã chạy pipeline.",
-            )
-
-        # 2.5 Raw Open-Meteo payload checksum verification
-        raw_wx = rec_exec.get("open_meteo_ingestion", {})
-        raw_wx_file = ROOT / raw_wx.get("raw_file", "")
-        raw_wx_expected_sha = raw_wx.get("raw_sha256")
-
-        res_wx = verify_file_checksum(raw_wx_file, raw_wx_expected_sha)
-        report_checksum(res_wx, "Raw Open-Meteo payload SHA-256 vs metadata.json provenance")
-        if res_wx["status"] == "MISMATCH":
-            warn(
-                "  └ why MISMATCH is expected here",
-                "Open-Meteo API trả về generationtime_ms thay đổi theo từng lần request.",
-            )
-        elif res_wx["status"] == "NOT_FOUND":
-            warn(
-                "  └ raw payload location",
-                "data/raw/*.json bị .gitignore loại khỏi repository theo Three-tier "
-                "Raw Data Policy; tệp chỉ tồn tại trên máy đã chạy pipeline.",
-            )
+        # 2.3–2.5 Artifact checksum verification (processed: FAIL on mismatch; raw: WARN on mismatch)
+        audit_artifact_checksums(meta, root=ROOT, parquet_path=parquet_path)
     else:
         warn("metadata.json not found", "cannot verify data provenance")
 
