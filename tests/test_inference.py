@@ -75,7 +75,14 @@ class TestConstants(unittest.TestCase):
     def test_bootstrap_settings(self):
         self.assertEqual(inf.N_BOOTSTRAP, 1_000)
         self.assertEqual(inf.BOOTSTRAP_SEED, 42)
-        self.assertEqual(inf.BLOCK_LENGTH_DAYS, 7)
+        # Block 28 ngày = 4 chu kỳ tuần: ACF ngày còn ~0,32 ở lag 14 nên phụ thuộc
+        # kéo dài quá hai tuần; mô phỏng size cho thấy null bootstrap chỉ đạt
+        # size ≈ α khi block ≥ 28 ngày.
+        self.assertEqual(inf.BLOCK_LENGTH_DAYS, 28)
+        self.assertEqual(inf.N_NULL_BOOTSTRAP, 5_000)
+        self.assertEqual(inf.HAC_LAG_DAILY, 28)
+        self.assertEqual(inf.BLOCK_LENGTH_SENSITIVITY, (7, 14, 21, 28, 42))
+        self.assertEqual(inf.HAC_LAG_SENSITIVITY, (7, 14, 21, 28, 42))
 
     def test_daily_coverage_rule(self):
         self.assertEqual(inf.MIN_VALID_HOURS_PER_DAY, 18)
@@ -731,7 +738,9 @@ class TestRunInferenceSynthetic(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.frame = _synthetic_hourly()
-        cls.results = inf.run_inference(cls.frame, n_bootstrap=40, seed=42)
+        cls.results = inf.run_inference(
+            cls.frame, n_bootstrap=40, seed=42, include_simulation=False
+        )
 
     def test_top_level_contract(self):
         for key in (
@@ -743,6 +752,7 @@ class TestRunInferenceSynthetic(unittest.TestCase):
             "holm_confirmatory",
             "posthoc_season",
             "sensitivity",
+            "generalization",
             "qcvn_context",
         ):
             self.assertIn(key, self.results)
@@ -752,8 +762,10 @@ class TestRunInferenceSynthetic(unittest.TestCase):
         self.assertEqual(meta["issue"], "#11")
         self.assertEqual(meta["alpha"], 0.05)
         self.assertEqual(meta["n_bootstrap"], 40)
+        self.assertEqual(meta["n_null_bootstrap"], inf.N_NULL_BOOTSTRAP)
         self.assertEqual(meta["bootstrap_seed"], 42)
-        self.assertEqual(meta["block_length_days"], 7)
+        self.assertEqual(meta["block_length_days"], inf.BLOCK_LENGTH_DAYS)
+        self.assertEqual(meta["hac_lag_days"], inf.HAC_LAG_DAILY)
         self.assertIsNone(meta["dataset_sha256"])  # df tổng hợp, không có tệp nguồn
 
     def test_panel_audit_counts_every_day(self):
@@ -767,14 +779,18 @@ class TestRunInferenceSynthetic(unittest.TestCase):
         tests = self.results["tests"]
         self.assertEqual(
             set(tests),
-            {"season_kruskal", "weekday_mannwhitney", "qcvn_24h_wilcoxon", "qcvn_annual_ttest"},
+            {"season_effect", "weekday_effect", "qcvn_24h", "qcvn_annual"},
         )
         for name, result in tests.items():
             with self.subTest(test=name):
                 self.assertIn("p_value", result)
+                self.assertIn("p_value_independence", result)
                 self.assertIn("effect_size", result)
                 self.assertIn("p_holm", result)
                 self.assertIn("reject_holm", result)
+                self.assertIn("status", result)
+                self.assertIn("method", result)
+                self.assertIn("sensitivity", result)
 
     def test_holm_table_is_consistent_with_raw_p_values(self):
         table = self.results["holm_confirmatory"]
@@ -783,6 +799,8 @@ class TestRunInferenceSynthetic(unittest.TestCase):
             self.assertGreaterEqual(row["p_holm"], row["p_raw"] - 1e-15)
             self.assertEqual(row["reject_raw"], row["p_raw"] < inf.ALPHA)
             self.assertEqual(row["reject_holm"], row["p_holm"] < inf.ALPHA)
+            # Bảng tham chiếu dùng p giả định độc lập — phải tách bạch.
+            self.assertGreaterEqual(row["p_holm_independence"], row["p_raw_independence"] - 1e-15)
 
     def test_posthoc_family_has_six_pairs_with_separate_holm(self):
         posthoc = self.results["posthoc_season"]
@@ -791,12 +809,19 @@ class TestRunInferenceSynthetic(unittest.TestCase):
         for pair in posthoc["pairs"]:
             self.assertIn("pair", pair)
             self.assertGreaterEqual(pair["p_holm"], pair["p_value"] - 1e-15)
+            self.assertIn("p_value_independence", pair)
 
     def test_sensitivity_block_has_all_three_checks(self):
         sensitivity = self.results["sensitivity"]
         self.assertEqual(sensitivity["paired_weeks"]["n_weeks"], 60)
         self.assertIn("weekly_kruskal", sensitivity["season_weekly"])
         self.assertGreater(sensitivity["power_mde"]["mde"], 0.0)
+
+    def test_generalization_block_reports_one_cycle(self):
+        generalization = self.results["generalization"]
+        self.assertEqual(generalization["n_seasonal_cycles"], 1)
+        self.assertIn("coverage", generalization)
+        self.assertIn("season_year_breakdown", generalization)
 
     def test_dependence_block_uses_dense_daily_grid(self):
         dependence = self.results["dependence"]
@@ -806,7 +831,9 @@ class TestRunInferenceSynthetic(unittest.TestCase):
         self.assertIn("lưới lịch", dependence["daily_series_note"])
 
     def test_rerun_with_same_seed_is_identical(self):
-        again = inf.run_inference(self.frame, n_bootstrap=40, seed=42)
+        again = inf.run_inference(
+            self.frame, n_bootstrap=40, seed=42, include_simulation=False
+        )
         for name in self.results["tests"]:
             self.assertEqual(
                 again["tests"][name]["statistic"], self.results["tests"][name]["statistic"]
@@ -823,14 +850,16 @@ class TestRunInferenceSynthetic(unittest.TestCase):
 class TestRenderInferenceReport(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.results = inf.run_inference(_synthetic_hourly(), n_bootstrap=40, seed=42)
+        cls.results = inf.run_inference(
+            _synthetic_hourly(), n_bootstrap=40, seed=42, include_simulation=False
+        )
         cls.report = inf.render_inference_report(cls.results)
 
-    def test_has_twelve_numbered_sections(self):
+    def test_has_fifteen_numbered_sections(self):
         headings = [line for line in self.report.splitlines() if line.startswith("## ")]
-        self.assertEqual(len(headings), 12)
+        self.assertEqual(len(headings), 15)
         self.assertTrue(headings[0].startswith("## 1."))
-        self.assertTrue(headings[-1].startswith("## 12."))
+        self.assertTrue(headings[-1].startswith("## 15."))
 
     def test_states_alpha_holm_and_qcvn_cycles(self):
         self.assertIn("Holm", self.report)
@@ -838,6 +867,24 @@ class TestRenderInferenceReport(unittest.TestCase):
         self.assertIn("QCVN 05:2023/BTNMT", self.report)
         self.assertIn("trung bình 24 giờ", self.report)
         self.assertIn("trung bình năm", self.report)
+
+    def test_documents_the_dependence_aware_framework(self):
+        """Báo cáo phải nêu rõ cách dựng null dưới H₀ và quy tắc hạ mức kết luận."""
+        for token in (
+            "null",
+            "Newey",
+            "HAC",
+            "R1",
+            "R2",
+            "R3",
+            "thăm dò",
+            "EXPLORATORY",
+        ):
+            self.assertIn(token, self.report)
+
+    def test_keeps_reference_p_values_next_to_corrected_ones(self):
+        self.assertIn("tham chiếu", self.report)
+        self.assertIn("giả định độc lập", self.report)
 
     def test_is_deterministic(self):
         self.assertEqual(inf.render_inference_report(self.results), self.report)
@@ -865,9 +912,9 @@ class TestInferenceArtifacts(unittest.TestCase):
 
     def test_notebook_has_the_documented_cell_mix(self):
         nb = nbformat.read(self.NOTEBOOK, as_version=4)
-        self.assertEqual(len(nb.cells), 43)
-        self.assertEqual(sum(1 for c in nb.cells if c.cell_type == "code"), 20)
-        self.assertEqual(sum(1 for c in nb.cells if c.cell_type == "markdown"), 23)
+        self.assertEqual(len(nb.cells), 47)
+        self.assertEqual(sum(1 for c in nb.cells if c.cell_type == "code"), 22)
+        self.assertEqual(sum(1 for c in nb.cells if c.cell_type == "markdown"), 25)
 
     def test_notebook_has_no_error_output(self):
         nb = nbformat.read(self.NOTEBOOK, as_version=4)
@@ -893,10 +940,10 @@ class TestInferenceArtifacts(unittest.TestCase):
             self.assertTrue(figure.exists(), f"thiếu {figure.name}")
             self.assertGreater(figure.stat().st_size, 10_000)
 
-    def test_report_exists_with_twelve_sections(self):
+    def test_report_exists_with_fifteen_sections(self):
         self.assertTrue(self.REPORT.exists())
         text = self.REPORT.read_text(encoding="utf-8")
-        self.assertEqual(len([l for l in text.splitlines() if l.startswith("## ")]), 12)
+        self.assertEqual(len([l for l in text.splitlines() if l.startswith("## ")]), 15)
 
     def test_report_keeps_both_denominators_distinct(self):
         """
@@ -926,7 +973,10 @@ class TestRealDataset(unittest.TestCase):
                 "Thiếu data/processed/air_pollution_final.parquet — chạy notebook 03 trước."
             )
         # n_bootstrap nhỏ: chỉ cần thống kê/effect size/Holm, không cần CI khớp báo cáo.
-        cls.results = inf.run_inference(n_bootstrap=200, seed=42)
+        # Mô phỏng size bị tắt ở đây để test không chậm (nó chạy trong notebook).
+        cls.results = inf.run_inference(
+            n_bootstrap=200, seed=42, include_simulation=False
+        )
 
     def test_dataset_checksum(self):
         self.assertEqual(inf.dataset_sha256(), self.EXPECTED_SHA256)
@@ -962,22 +1012,54 @@ class TestRealDataset(unittest.TestCase):
 
     def test_confirmatory_results_match_report(self):
         tests = self.results["tests"]
-        self.assertAlmostEqual(tests["season_kruskal"]["statistic"], 61.5344, places=3)
-        self.assertAlmostEqual(tests["season_kruskal"]["effect_size"], 0.2065, places=3)
-        self.assertAlmostEqual(tests["weekday_mannwhitney"]["statistic"], 8083.0, places=1)
-        self.assertAlmostEqual(tests["weekday_mannwhitney"]["effect_size"], -0.1175, places=3)
-        self.assertAlmostEqual(tests["qcvn_24h_wilcoxon"]["effect_size"], -0.4102, places=3)
-        self.assertAlmostEqual(tests["qcvn_annual_ttest"]["effect_size"], 0.8476, places=3)
-        self.assertEqual(tests["qcvn_annual_ttest"]["df"], 298)
+        self.assertAlmostEqual(tests["season_effect"]["statistic"], 61.5344, places=3)
+        self.assertAlmostEqual(tests["season_effect"]["effect_size"], 0.2065, places=3)
+        self.assertAlmostEqual(tests["weekday_effect"]["statistic"], 8083.0, places=1)
+        self.assertAlmostEqual(tests["weekday_effect"]["effect_size"], -0.1175, places=3)
+        self.assertAlmostEqual(tests["qcvn_24h"]["effect_size"], -0.4102, places=3)
+        self.assertAlmostEqual(tests["qcvn_annual"]["effect_size"], 0.8476, places=3)
+        self.assertEqual(tests["qcvn_annual"]["n"] - 1, 298)
 
-    def test_holm_family_rejects_three_of_four(self):
+    def test_dependence_aware_p_values_are_far_from_the_naive_ones(self):
+        """
+        Bằng chứng cốt lõi của bản sửa: với ba kiểm định mà giả định độc lập sai
+        (mùa và hai ngưỡng QCVN) p-value cũ **lạc quan** vượt bậc, và bản hiệu
+        chỉnh phụ thuộc thời gian phải lớn hơn hẳn.
+        """
+        tests = self.results["tests"]
+        for key in ("season_effect", "qcvn_24h", "qcvn_annual"):
+            with self.subTest(test=key):
+                self.assertGreater(tests[key]["p_value"], tests[key]["p_value_independence"])
+
+    def test_weekday_contrast_keeps_the_same_conclusion(self):
+        """
+        So sánh weekday/weekend là so sánh *trong cùng giai đoạn*, nên phép kiểm cũ
+        vốn đã bảo thủ (mô phỏng: size ≈ 0,01). Vì vậy p đã hiệu chỉnh **nhỏ hơn**
+        p tham chiếu — và cả hai đều không bác bỏ H₀, nên kết luận không đổi.
+        """
+        weekday = self.results["tests"]["weekday_effect"]
+        self.assertGreater(weekday["p_value"], inf.ALPHA)
+        self.assertGreater(weekday["p_value_independence"], inf.ALPHA)
+        self.assertFalse(weekday["reject_holm"])
+        self.assertFalse(weekday["reject_raw"])
+
+    def test_holm_family_rejects_two_of_four_after_the_correction(self):
         table = self.results["holm_confirmatory"]
-        self.assertEqual(sum(1 for row in table if row["reject_holm"]), 3)
         by_key = {row["key"]: row for row in table}
-        self.assertFalse(by_key["weekday_mannwhitney"]["reject_raw"])
-        self.assertTrue(by_key["season_kruskal"]["reject_holm"])
-        self.assertTrue(by_key["qcvn_24h_wilcoxon"]["reject_holm"])
-        self.assertTrue(by_key["qcvn_annual_ttest"]["reject_holm"])
+        # Phương pháp cũ (giả định độc lập) bác bỏ 3/4 — bản sửa bác bỏ 2/4.
+        self.assertEqual(sum(1 for row in table if row["reject_holm_independence"]), 3)
+        self.assertEqual(sum(1 for row in table if row["reject_holm"]), 2)
+        self.assertFalse(by_key["weekday_effect"]["reject_raw"])
+        self.assertFalse(by_key["weekday_effect"]["reject_holm"])
+        self.assertTrue(by_key["qcvn_24h"]["reject_holm"])
+        self.assertTrue(by_key["qcvn_annual"]["reject_holm"])
+        # Kiểm định mùa: p đã hiệu chỉnh lớn hơn α sau Holm và bị hạ xuống thăm dò.
+        self.assertFalse(by_key["season_effect"]["reject_holm"])
+        self.assertEqual(by_key["season_effect"]["status"], "exploratory")
+
+    def test_confirmatory_family_keeps_four_members(self):
+        """Family Holm phải giữ nguyên 4 kiểm định đã chốt trước — không thu hẹp sau khi xem kết quả."""
+        self.assertEqual(len(self.results["holm_confirmatory"]), 4)
 
     def test_qcvn_context_keeps_rolling_and_daily_denominators(self):
         context = self.results["qcvn_context"]
@@ -985,6 +1067,418 @@ class TestRealDataset(unittest.TestCase):
         self.assertEqual(context["rolling_windows_over"], 1655)
         self.assertEqual(context["panel_days"], 299)
         self.assertEqual(context["panel_days_over"], 84)
+
+
+# ---------------------------------------------------------------------------
+# Suy luận có xét tới phụ thuộc thời gian (sửa theo review 5586524840)
+# ---------------------------------------------------------------------------
+
+
+def _ar1(n: int, rho: float = 0.73, seed: int = 3) -> np.ndarray:
+    """Chuỗi AR(1) tất định dùng cho mô phỏng trong test."""
+    return inf.ar1_series(n, rho, sigma=1.0, seed=seed)
+
+
+class TestNeweyWestCovariance(unittest.TestCase):
+    """Hiệp phương sai HAC phải khớp với statsmodels — kiểm chứng độc lập."""
+
+    def test_matches_statsmodels_cov_hac(self):
+        import statsmodels.api as sm
+
+        rng = np.random.default_rng(11)
+        n = 120
+        design = rng.normal(size=(n, 2))
+        errors = np.zeros(n)
+        for i in range(1, n):
+            errors[i] = 0.7 * errors[i - 1] + rng.normal()
+        y = 3.0 + 2.0 * design[:, 0] - 1.0 * design[:, 1] + errors
+        model = sm.OLS(y, design).fit()
+        for lag in (1, 3, 7):
+            with self.subTest(lag=lag):
+                expected = model.get_robustcov_results(
+                    cov_type="HAC", maxlags=lag, use_correction=True
+                ).cov_params()
+                mine = inf.newey_west_covariance(design, model.resid, lag)
+                np.testing.assert_allclose(expected, mine, atol=1e-10)
+
+    def test_rejects_inconsistent_inputs(self):
+        design = np.ones((10, 2))
+        with self.assertRaises(ValueError):
+            inf.newey_west_covariance(design, np.zeros(9), 2)
+        with self.assertRaises(ValueError):
+            inf.newey_west_covariance(design, np.zeros(10), -1)
+
+
+class TestHacRegression(unittest.TestCase):
+    def test_ols_coefficients_match_the_normal_equations(self):
+        rng = np.random.default_rng(5)
+        design = np.column_stack([np.ones(50), rng.normal(size=50)])
+        y = design @ np.array([2.0, -0.5]) + rng.normal(size=50)
+        model = inf.hac_regression(y, design, lag=2)
+        beta, *_ = np.linalg.lstsq(design, y, rcond=None)
+        np.testing.assert_allclose(model["coef"], beta, atol=1e-10)
+
+    def test_hac_se_grows_with_persistent_errors(self):
+        rng = np.random.default_rng(6)
+        n = 200
+        design = np.ones((n, 1))
+        errors = np.zeros(n)
+        for i in range(1, n):
+            errors[i] = 0.8 * errors[i - 1] + rng.normal()
+        y = 10.0 + errors
+        model = inf.hac_regression(y, design, lag=14)
+        naive_se = y.std(ddof=1) / np.sqrt(n)
+        self.assertGreater(model["se"][0], naive_se)
+
+    def test_joint_wald_test_detects_a_real_difference(self):
+        rng = np.random.default_rng(7)
+        n = 240
+        group = np.repeat([0, 1, 2, 3], n // 4)
+        design = np.column_stack(
+            [np.ones(n), (group == 1).astype(float), (group == 2).astype(float),
+             (group == 3).astype(float)]
+        )
+        y = 20.0 + 5.0 * (group == 3) + rng.normal(size=n)
+        model = inf.hac_regression(y, design, lag=4)
+        wald = inf.joint_wald_test(model["coef"], model["cov"], [1, 2, 3], model["df_resid"])
+        self.assertLess(wald["p_value"], 0.01)
+        self.assertEqual(wald["df1"], 3)
+
+    def test_joint_wald_test_does_not_reject_when_there_is_no_difference(self):
+        rng = np.random.default_rng(8)
+        n = 240
+        group = np.repeat([0, 1, 2, 3], n // 4)
+        design = np.column_stack(
+            [np.ones(n), (group == 1).astype(float), (group == 2).astype(float),
+             (group == 3).astype(float)]
+        )
+        y = 20.0 + rng.normal(size=n)
+        model = inf.hac_regression(y, design, lag=4)
+        wald = inf.joint_wald_test(model["coef"], model["cov"], [1, 2, 3], model["df_resid"])
+        self.assertGreater(wald["p_value"], 0.05)
+
+
+class TestBlockBootstrapNullTest(unittest.TestCase):
+    """Kiểm định bootstrap: null dựng dưới H₀, có seed, có độ phân giải."""
+
+    def setUp(self):
+        self.values = _ar1(200, seed=13)
+
+    def _run(self, **kwargs):
+        positions = np.arange(200)
+        masks = [
+            positions < 50,
+            (positions >= 50) & (positions < 100),
+            (positions >= 100) & (positions < 150),
+            positions >= 150,
+        ]
+        kw = stats.kruskal(*[self.values[m] for m in masks])
+        return inf.block_bootstrap_null_test(
+            self.values,
+            statistic=lambda matrix: inf.kruskal_statistic_rows(matrix, masks),
+            observed_statistic=float(kw.statistic),
+            alternative="greater",
+            n_bootstrap=300,
+            seed=42,
+            **kwargs,
+        )
+
+    def test_p_value_is_bounded_and_never_zero(self):
+        result = self._run()
+        self.assertGreater(result["p_value"], 0.0)
+        self.assertLessEqual(result["p_value"], 1.0)
+        self.assertGreaterEqual(result["p_value"], result["resolution_floor"] - 1e-12)
+
+    def test_same_seed_gives_the_same_p_value(self):
+        self.assertEqual(self._run()["p_value"], self._run()["p_value"])
+
+    def test_resolution_floor_matches_the_bootstrap_count(self):
+        result = self._run()
+        self.assertAlmostEqual(result["resolution_floor"], 2.0 / (300 + 1), places=12)
+
+    def test_block_length_is_capped_at_series_length(self):
+        result = self._run(block_length=10_000)
+        self.assertEqual(result["block_length"], 200)
+
+    def test_null_series_with_nan_is_rejected(self):
+        broken = self.values.copy()
+        broken[5] = np.nan
+        positions = np.arange(200)
+        with self.assertRaises(ValueError):
+            inf.block_bootstrap_null_test(
+                broken,
+                statistic=lambda matrix: inf.kruskal_statistic_rows(
+                    matrix, [positions < 100, positions >= 100]
+                ),
+                observed_statistic=1.0,
+                n_bootstrap=50,
+            )
+
+    def test_too_short_series_is_rejected(self):
+        with self.assertRaises(ValueError):
+            inf.block_bootstrap_null_test(
+                np.arange(4.0),
+                statistic=lambda matrix: np.zeros(matrix.shape[0]),
+                observed_statistic=0.0,
+                n_bootstrap=10,
+            )
+
+    def test_invalid_alternative_is_rejected(self):
+        with self.assertRaises(ValueError):
+            inf.block_bootstrap_null_test(
+                self.values,
+                statistic=lambda matrix: np.zeros(matrix.shape[0]),
+                observed_statistic=0.0,
+                alternative="two-sideds",
+                n_bootstrap=10,
+            )
+
+
+class TestNullImposedTest(unittest.TestCase):
+    """Null phải được dựng DƯỚI H₀ — phép kiểm vị trí phải bất biến dịch chuyển."""
+
+    def test_p_value_is_invariant_to_a_location_shift(self):
+        values = _ar1(200, seed=17)
+        base = inf.null_imposed_centered_test(
+            values, mu=0.0, statistic="t", n_bootstrap=400, seed=42
+        )
+        shifted = inf.null_imposed_centered_test(
+            values + 5.0, mu=5.0, statistic="t", n_bootstrap=400, seed=42
+        )
+        self.assertAlmostEqual(base["p_value"], shifted["p_value"], places=12)
+
+    def test_p_value_grows_as_the_null_hypothesis_gets_closer(self):
+        values = _ar1(200, seed=19) + 3.0
+        far = inf.null_imposed_centered_test(
+            values, mu=0.0, statistic="t", n_bootstrap=400, seed=42
+        )
+        near = inf.null_imposed_centered_test(
+            values, mu=3.0, statistic="t", n_bootstrap=400, seed=42
+        )
+        self.assertLess(far["p_value"], near["p_value"])
+
+    def test_bootstrap_percentile_p_value_is_consistent_with_the_interval(self):
+        values = _ar1(200, seed=23)
+        result = inf.bootstrap_percentile_pvalue(
+            values, mu=0.0, statistic="mean", n_bootstrap=400, seed=42
+        )
+        interval = inf.bootstrap_ci(
+            values, statistic="mean", block_length=28, n_bootstrap=400, seed=42
+        )
+        # Nếu CI 95% không chứa μ thì p-value phải nhỏ; nếu chứa thì p lớn.
+        if interval["ci_low"] <= 0.0 <= interval["ci_high"]:
+            self.assertGreater(result["p_value"], 0.05)
+        else:
+            self.assertLess(result["p_value"], 0.05)
+
+
+class TestTypeIErrorControl(unittest.TestCase):
+    """
+    Kiểm soát sai lầm loại I dưới H₀ — bằng chứng cho phương pháp đã sửa.
+
+    Với chuỗi tự tương quan, phép kiểm giả định độc lập bác bỏ H₀ **quá nhiều**;
+    phương pháp hiệu chỉnh phụ thuộc phải đưa tỷ lệ này về gần α.
+    """
+
+    N_DAYS = 200
+    N_SIM = 60
+
+    @classmethod
+    def setUpClass(cls):
+        cls.rates = inf.simulate_test_rates(
+            n_days=cls.N_DAYS,
+            n_sim=cls.N_SIM,
+            rho=0.73,
+            n_bootstrap=200,
+            seed=42,
+            apply_effect=False,
+        )
+
+    def test_naive_tests_are_clearly_anti_conservative(self):
+        for name in ("season", "mean", "median"):
+            with self.subTest(test=name):
+                self.assertGreater(self.rates[name]["size_independence"], 0.15)
+
+    def test_corrected_methods_are_closer_to_nominal_than_the_naive_ones(self):
+        for name in ("season", "mean", "median"):
+            with self.subTest(test=name):
+                self.assertLessEqual(
+                    self.rates[name]["size_dependence_aware"],
+                    self.rates[name]["size_independence"] + 1e-9,
+                )
+        # Mọi phương pháp đã hiệu chỉnh phải ở gần α hơn nhiều so với phép kiểm
+        # giả định độc lập (vốn bác bỏ hàng chục tới gần 80% số lần dưới H₀).
+        for name in ("season", "weekday", "mean", "median"):
+            with self.subTest(test=name):
+                self.assertLessEqual(self.rates[name]["size_dependence_aware"], 0.20)
+
+    def test_block_bootstrap_null_is_close_to_nominal_for_the_season_test(self):
+        self.assertLessEqual(self.rates["season"]["size_dependence_aware"], 0.15)
+
+    def test_simulation_is_reproducible(self):
+        again = inf.simulate_test_rates(
+            n_days=self.N_DAYS,
+            n_sim=self.N_SIM,
+            rho=0.73,
+            n_bootstrap=200,
+            seed=42,
+            apply_effect=False,
+        )
+        for name in self.rates:
+            self.assertEqual(
+                self.rates[name]["size_dependence_aware"],
+                again[name]["size_dependence_aware"],
+            )
+
+
+class TestPowerUnderControl(unittest.TestCase):
+    """Power phải tăng khi hiệu ứng tăng — kiểm tra phương pháp không mất sức mạnh vô lý."""
+
+    N_DAYS = 200
+    N_SIM = 40
+
+    def test_power_is_higher_with_a_larger_effect(self):
+        with_effect = inf.simulate_test_rates(
+            n_days=self.N_DAYS, n_sim=self.N_SIM, rho=0.73, n_bootstrap=200,
+            seed=42, apply_effect=True,
+        )
+        # Hiệu ứng trong mô phỏng chuẩn là +1 đơn vị; hiệu ứng lớn hơn phải cho
+        # p-value nhỏ hơn trên cùng một chuỗi.
+        values = _ar1(self.N_DAYS, seed=29)
+        far = inf.null_imposed_centered_test(
+            values, mu=-5.0, statistic="t", n_bootstrap=400, seed=42
+        )
+        near = inf.null_imposed_centered_test(
+            values, mu=0.0, statistic="t", n_bootstrap=400, seed=42
+        )
+        self.assertLess(far["p_value"], near["p_value"])
+        self.assertGreater(with_effect["mean"]["size_dependence_aware"], 0.5)
+
+
+class TestIndependentDataIsUnaffected(unittest.TestCase):
+    """Với dữ liệu độc lập, hiệu chỉnh phụ thuộc không được làm sai lệch p-value."""
+
+    def test_corrected_and_naive_p_values_agree_on_independent_data(self):
+        rng = np.random.default_rng(31)
+        values = rng.normal(size=400)
+        naive = float(stats.ttest_1samp(values, popmean=0.0).pvalue)
+        corrected = inf.hac_mean_test(values, mu=0.0, lag=4)["p_value"]
+        self.assertLess(
+            abs(np.log10(max(naive, 1e-300)) - np.log10(max(corrected, 1e-300))), 1.0
+        )
+
+    def test_hac_interval_is_close_to_the_ols_interval_without_dependence(self):
+        rng = np.random.default_rng(33)
+        values = rng.normal(loc=5.0, scale=2.0, size=400)
+        model = inf.hac_mean_test(values, mu=0.0, lag=4)
+        naive_se = values.std(ddof=1) / np.sqrt(values.size)
+        self.assertLess(model["se"], 1.5 * naive_se)
+
+
+class TestHolmMatchesStatsmodels(unittest.TestCase):
+    """Kiểm chứng hiệu chỉnh Holm bằng một implementation độc lập."""
+
+    def test_matches_statsmodels_multipletests(self):
+        from statsmodels.stats.multitest import multipletests
+
+        p = np.array([0.001, 0.013, 0.04, 0.2, 0.5])
+        expected = multipletests(p, method="holm")[1]
+        np.testing.assert_allclose(inf.holm_adjust(p), expected, atol=1e-12)
+
+    def test_matches_statsmodels_with_ties(self):
+        from statsmodels.stats.multitest import multipletests
+
+        p = np.array([0.02, 0.02, 0.02, 0.3])
+        expected = multipletests(p, method="holm")[1]
+        np.testing.assert_allclose(inf.holm_adjust(p), expected, atol=1e-12)
+
+
+class TestSeasonGeneralizationDiagnostics(unittest.TestCase):
+    def test_reports_one_cycle_and_per_season_coverage(self):
+        panel, _ = inf.build_daily_panel(_synthetic_hourly())
+        result = inf.season_generalization_diagnostics(panel)
+        self.assertEqual(result["n_seasonal_cycles"], 1)
+        self.assertEqual(set(result["coverage"]), set(SEASON_DISPLAY_ORDER))
+        for season_key, coverage in result["coverage"].items():
+            with self.subTest(season=season_key):
+                self.assertEqual(
+                    coverage["kept_days"] + coverage["dropped_days"],
+                    coverage["calendar_days"],
+                )
+
+    def test_december_and_january_belong_to_the_same_season_year(self):
+        dates = pd.to_datetime(
+            ["2025-12-15", "2026-01-15", "2026-02-15", "2025-07-15", "2026-07-15"]
+        )
+        seasons = pd.Series(["Dong", "Dong", "Dong", "He", "He"])
+        years = inf._season_year(dates, seasons)
+        self.assertEqual(years.tolist(), [2026, 2026, 2026, 2025, 2026])
+
+    def test_trend_to_contrast_ratio_is_reported(self):
+        panel, _ = inf.build_daily_panel(_synthetic_hourly())
+        result = inf.season_generalization_diagnostics(panel)
+        self.assertGreater(result["max_season_contrast"], 0.0)
+        self.assertTrue(np.isfinite(result["trend_to_contrast_ratio"]))
+
+
+class TestAssumptionViolations(unittest.TestCase):
+    """Phải báo lỗi rõ ràng khi giả định bị vi phạm — không âm thầm trả số."""
+
+    def test_hac_mean_test_rejects_a_constant_series(self):
+        with self.assertRaises(ValueError):
+            inf.hac_mean_test(np.full(30, 7.0), mu=0.0, lag=4)
+
+    def test_hac_mean_test_requires_enough_observations(self):
+        with self.assertRaises(ValueError):
+            inf.hac_mean_test(np.arange(5.0), mu=0.0, lag=2)
+
+    def test_null_imposed_test_rejects_too_few_observations(self):
+        with self.assertRaises(ValueError):
+            inf.null_imposed_centered_test(np.arange(5.0), mu=0.0, statistic="t")
+
+    def test_null_imposed_test_rejects_an_unknown_statistic(self):
+        with self.assertRaises(ValueError):
+            inf.null_imposed_centered_test(
+                np.arange(30.0), mu=0.0, statistic="medianrank"
+            )
+
+
+class TestNotebookGeneratorMatchesNotebook(unittest.TestCase):
+    """Generator là nguồn sự thật — notebook trong repo phải khớp cấu trúc."""
+
+    def test_generator_rebuilds_the_documented_cell_mix(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "generate_05_notebook", REPO_ROOT / "scripts" / "generate_05_notebook.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        notebook = module.build_notebook_dict()
+        self.assertEqual(len(notebook["cells"]), 47)
+        self.assertEqual(
+            sum(1 for c in notebook["cells"] if c["cell_type"] == "code"), 22
+        )
+        self.assertEqual(
+            sum(1 for c in notebook["cells"] if c["cell_type"] == "markdown"), 25
+        )
+
+    def test_notebook_on_disk_matches_the_generator_cell_structure(self):
+        nb = nbformat.read(
+            REPO_ROOT / "notebooks" / "05_statistical_inference.ipynb", as_version=4
+        )
+        self.assertEqual(len(nb.cells), 47)
+        self.assertEqual(sum(1 for c in nb.cells if c.cell_type == "code"), 22)
+
+    def test_notebook_documents_the_dependence_aware_framework(self):
+        nb = nbformat.read(
+            REPO_ROOT / "notebooks" / "05_statistical_inference.ipynb", as_version=4
+        )
+        text = "\n".join(
+            "".join(cell.source) for cell in nb.cells if cell.cell_type == "markdown"
+        )
+        for token in ("Newey", "HAC", "null", "R1", "THĂM DÒ"):
+            self.assertIn(token, text)
 
 
 if __name__ == "__main__":
