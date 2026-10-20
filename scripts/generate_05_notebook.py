@@ -131,12 +131,14 @@ from src.inference import (  # noqa: E402
     HAC_LAG_DAILY,
     HAC_LAG_SENSITIVITY,
     INFERENCE_FIGURES,
+    MONTECARLO_CSV_RELATIVE,
     N_BOOTSTRAP,
     N_NULL_BOOTSTRAP,
     QCVN_2023_PM25_24H_LIMIT,
     QCVN_2023_PM25_ANNUAL_LIMIT,
     SEASON_DISPLAY_ORDER,
     SEASON_LABELS_VI,
+    load_monte_carlo_csv,
     plot_inference_figures,
     qq_points,
     render_inference_report,
@@ -206,6 +208,7 @@ meta = results["meta"]
 panel_info = results["panel"]
 audit = panel_info["audit"]
 panel = panel_info["frame"]
+calendar_info = results["calendar"]
 diagnostics = results["diagnostics"]
 dependence = results["dependence"]
 tests = results["tests"]
@@ -225,6 +228,8 @@ assert meta["n_null_bootstrap"] == N_NULL_BOOTSTRAP == 5_000
 assert meta["bootstrap_seed"] == 42
 assert meta["block_length_days"] == BLOCK_LENGTH_DAYS == 28
 assert meta["hac_lag_days"] == HAC_LAG_DAILY == 28
+assert calendar_info["n_calendar_days"] >= calendar_info["n_observed_days"] > 0
+assert calendar_info["n_missing_days"] > 0, "Bộ dữ liệu phải có ngày thiếu để mục 2 có ý nghĩa"
 assert audit["days_kept"] == n_days
 assert audit["days_kept"] + audit["days_dropped"] == audit["days_with_any_observation"]
 assert len(holm_table) == 4 and set(tests) == {row["key"] for row in holm_table}
@@ -290,6 +295,62 @@ display(season_counts)
 print(f"→ n = {format_int_vi(n_days)} ngày; {format_int_vi(audit['days_dropped'])} ngày bị loại.")
 print(f"  Kiểm tra: {audit['days_kept']} + {audit['days_dropped']} = "
       f"{audit['days_kept'] + audit['days_dropped']} = số ngày có quan sát.")
+""")
+
+# ---------------------------------------------------------------------------
+# CELL 4b: Section 2 — calendar + missingness
+# ---------------------------------------------------------------------------
+add_md(r"""---
+
+## 2. Lịch ngày và mặt nạ thiếu — đơn vị của **mọi** resample
+
+Đây là phần quan trọng nhất của bản sửa (review `5588255357`).
+
+Panel lọc bỏ những ngày thiếu độ phủ, nên hai phần tử liền nhau của panel **không**
+phải hai ngày lịch liên tiếp. Với 79 ngày thiếu trong 378 ngày lịch, "block 28
+phần tử" của bản cũ thực tế trải tới **52 ngày lịch** — sai lệch đúng cái mà
+tham số phụ thuộc cần giữ.
+
+Vì vậy mọi resample giờ chạy trên **lịch ngày đầy đủ**:
+
+1. **Block = ngày LỊCH liên tiếp** (cuộn vòng ở cuối lịch). Tham số luôn mang
+   nghĩa *ngày*, không phải *phần tử mảng*.
+2. **Mặt nạ thiếu đi theo bản sao.** Một khối chứa 3 ngày thiếu thì bản sao cũng
+   thiếu đúng 3 ngày đó — **không** nội suy, **không** tạo quan sát giả, **không**
+   nối hai khoảng thời gian bị ngắt.
+3. **Nhãn nhóm ở vị trí j của bản sao là nhãn lịch của vị trí j**; *giá trị* tại
+   vị trí j lấy ngẫu nhiên từ chuỗi gộp. Nhờ vậy null H₀ (các nhóm cùng phân
+   phối) được dựng **đúng**. Nếu nhãn đi theo *ngày nguồn* thì cấu trúc mùa vụ
+   được giữ lại trong null và p-value bị thổi phồng (kiểm chứng bằng test
+   `test_labels_are_decoupled_from_the_resampled_values`).
+""")
+
+add_code(r"""calendar_rows = [
+    ("Số ngày lịch trong dải quan sát", format_int_vi(calendar_info["n_calendar_days"])),
+    ("Ngày có trung bình ngày (dùng được)", format_int_vi(calendar_info["n_observed_days"])),
+    ("Ngày thiếu", f"{format_int_vi(calendar_info['n_missing_days'])} "
+                    f"({pct(calendar_info['missing_share'], 1)})"),
+    ("Số cụm ngày thiếu liên tiếp", format_int_vi(calendar_info["n_missing_runs"])),
+    ("Cụm thiếu dài nhất", f"{format_int_vi(calendar_info['max_missing_run'])} ngày"),
+    ("Ngày lịch đầu – cuối", f"{calendar_info['calendar_first']} → {calendar_info['calendar_last']}"),
+]
+display(pd.DataFrame(calendar_rows, columns=["Đại lượng lịch", "Giá trị"]))
+
+season_null = tests["season_effect"]["null_bootstrap"]
+print("Số ngày quan sát của mỗi bản sao bootstrap (mặt nạ đi theo bản sao):")
+print(f"  gốc: {format_int_vi(season_null['n_observed_original'])} ngày · "
+      f"bản sao: {format_number_vi(season_null['n_observed_replicate_mean'], 1)} ± "
+      f"{format_number_vi(season_null['n_observed_replicate_sd'], 1)} ngày "
+      f"(khoảng {format_int_vi(season_null['n_observed_replicate_min'])}–"
+      f"{format_int_vi(season_null['n_observed_replicate_max'])})")
+print("→ Phân phối null đã bao hàm cả biến động cỡ mẫu này.")
+
+# Bằng chứng: "28 phần tử" của bản cũ trải tới bao nhiêu ngày lịch?
+kept_dates = pd.DatetimeIndex(panel["date"]).sort_values()
+spans = np.asarray((kept_dates[27:] - kept_dates[:-27]).days, dtype=float)
+print(f"\nBằng chứng vấn đề: 28 ngày *quan sát* liên tiếp của panel trải tới "
+      f"{format_int_vi(int(spans.max()))} ngày lịch (trung vị {format_int_vi(int(np.median(spans)))} ngày) "
+      f"→ 'block 28 ngày' của bản cũ không phải 28 ngày.")
 """)
 
 # ---------------------------------------------------------------------------
@@ -444,10 +505,14 @@ add_md(r"""---
 
 | # | Câu hỏi | H₀ | H₁ | Phương pháp **chính** | Vì sao phương pháp này |
 |---|---|---|---|---|---|
-| 1 | Khác biệt giữa bốn mùa | 4 mùa cùng phân phối (quá trình ổn định) | Có ít nhất một mùa khác | Kruskal-Wallis + **null block bootstrap** trên chuỗi gộp | Omnibus 4 nhóm; null được dựng dưới H₀ với cấu trúc phụ thuộc được giữ |
-| 2 | Ngày làm việc vs cuối tuần | Hai nhóm cùng phân phối | Hai nhóm khác nhau | Mann-Whitney U + **null block bootstrap** trên chuỗi gộp | So hạng, bền với outlier; null dựng dưới H₀ |
+| 1 | Khác biệt giữa bốn mùa | 4 mùa cùng phân phối (quá trình ổn định) | Có ít nhất một mùa khác | Kruskal-Wallis + **null block bootstrap THEO LỊCH** trên chuỗi gộp | Omnibus 4 nhóm; null dựng dưới H₀ với cấu trúc phụ thuộc và **lịch ngày** được giữ |
+| 2 | Ngày làm việc vs cuối tuần | Hai nhóm cùng phân phối | Hai nhóm khác nhau | **HAC/Newey–West** `[1, xu hướng, dummy cuối tuần]` | Sai số sandwich xử lý tự tương quan; có xu hướng để không bắt nhầm xu hướng dài hạn |
 | 3 | QCVN 24 giờ (50 µg/m³) | P(trung bình ngày > 50) = 0,5 | Khác 0,5 | **HAC/Newey–West** cho tỷ lệ vượt ngưỡng | Tương đương trung vị = 50 với phân phối liên tục; SE sandwich xử lý tự tương quan |
 | 4 | QCVN năm (25 µg/m³) | E(trung bình ngày) = 25 | Khác 25 | **HAC/Newey–West** (mô hình chỉ có hệ số chặn) | Ngưỡng năm là ngưỡng của **trung bình**; SE sandwich là phương sai dài hạn |
+
+**Phương pháp chính được chọn bằng BẰNG CHỨNG HIỆU LỰC** (mục 9): Monte Carlo đo tỷ lệ
+bác bỏ H₀ của từng phương pháp trên nhiều kịch bản dữ liệu. Phương pháp nào giữ được
+tỷ lệ bác bỏ gần α thì làm phương pháp chính — **không** chọn theo cảm tính.
 
 **Cả bốn kiểm định đều hai phía, α = 0,05.** Chiều của hiệu ứng **không** được suy
 từ p-value mà đọc từ ước lượng điểm và CI. Lý do: chọn một phía sau khi nhìn dữ
@@ -471,6 +536,8 @@ liệu là thay đổi giả thuyết giữa chừng — làm p mất ý nghĩa.
 | R1 — Ổn định | Kết luận đổi chiều khi đổi độ dài block / lag HAC trong lưới độ nhạy | Hạ xuống **THĂM DÒ** |
 | R2 — Đồng thuận | Phương pháp đối chứng cho kết luận khác chiều phương pháp chính | Hạ xuống **THĂM DÒ** |
 | R3 — Tính được | Không dựng được p hợp lệ | **KHÔNG XÁC NHẬN ĐƯỢC** |
+| R4 — Hiệu lực | Tỷ lệ bác bỏ dưới H₀ của phương pháp chính vượt **2,5α** ở kịch bản áp dụng được (mục 9) | Hạ xuống **THĂM DÒ** |
+| R5 — Một chu kỳ mùa | Bốn mùa là bốn **đoạn thời gian liên tiếp** trong **một** chu kỳ mùa duy nhất | Kiểm định mùa **luôn** là **THĂM DÒ** |
 
 > **Family Holm vẫn gồm đúng 4 kiểm định** như đã chốt trước khi xem dữ liệu. Việc một
 > kiểm định bị hạ xuống *thăm dò* **không** làm thay đổi family — thay đổi family sau khi
@@ -587,22 +654,18 @@ display(pd.DataFrame(season_rows, columns=["Mùa", "n (ngày)", "Trung vị (µg
 season_ci = season["ci_dong_vs_he"]
 print(f"H = {format_number_vi(season['statistic'], 4)} · df = {season['df']} · "
       f"n = {format_int_vi(season['n'])}")
-print(f"p (null bootstrap, có xét phụ thuộc) = {p_text(season['p_value'])}")
-print(f"p Holm                             = {p_text(season['p_holm'])}")
-print(f"p tham chiếu (giả định độc lập)    = {p_text(season['p_value_independence'])}")
-print(f"ε²                                 = {format_number_vi(season['effect_size'], 4)}")
-print(f"Đối chứng HAC (có xu hướng): F = {format_number_vi(season['supporting_result']['statistic'], 3)}, "
-      f"p = {p_text(season['supporting_result']['p_value'])}, "
-      f"xu hướng = {format_number_vi(season['supporting_result']['trend_per_month'])} µg/m³ mỗi tháng")
-print(f"CI 95% block bootstrap cho trung vị Đông − Hè: "
+print(f"p (null bootstrap THEO LỊCH) = {p_text(season['p_value'])}")
+print(f"p Holm                        = {p_text(season['p_holm'])}")
+print(f"p tham chiếu (giả định độc lập) = {p_text(season['p_value_independence'])}")
+print(f"p hồi quy HAC (chẩn đoán)      = {p_text(season['p_value_hac'])}")
+print(f"ε² = {format_number_vi(season['effect_size'], 4)}")
+print(f"Xu hướng tuyến tính (HAC): {format_number_vi(season['supporting_result']['trend_per_month'])} µg/m³ mỗi tháng")
+print(f"CI 95% block bootstrap (theo lịch) cho trung vị Đông − Hè: "
       f"{format_number_vi(season_ci['point'])} µg/m³, {ci_text(season_ci)}")
 
-print("\nĐộ nhạy theo độ dài block (phương pháp chính):")
-for name, entry in sorted(season["sensitivity"]["block_length"].items(), key=lambda kv: int(kv[0])):
-    print(f"  block {name:>2} ngày: p = {p_text(entry['p_value'])}")
-print("Độ nhạy theo lag HAC (phương pháp đối chứng):")
-for name, entry in sorted(season["sensitivity"]["hac_lag"].items(), key=lambda kv: int(kv[0])):
-    print(f"  lag {name:>2} ngày: p = {p_text(entry['p_value'])}")
+print("\nĐộ nhạy theo độ dài block (ngày lịch):")
+for name, entry in sorted(season["sensitivity"]["block_length_days"].items(), key=lambda kv: int(kv[0])):
+    print(f"  block {name:>2} ngày lịch: p = {p_text(entry['p_value'])}")
 
 print(f"\nTrạng thái kết luận: {status_text(season['status'])} — {season['status_reason']}")
 assert season["status"] == "exploratory", "Kết luận mùa phải ở trạng thái thăm dò"
@@ -682,20 +745,19 @@ weekday_ci = weekday["ci"]
 
 print(f"Ngày làm việc: n = {format_int_vi(weekday['n_a'])}, trung vị {format_number_vi(weekday['median_a'])} µg/m³")
 print(f"Ngày cuối tuần: n = {format_int_vi(weekday['n_b'])}, trung vị {format_number_vi(weekday['median_b'])} µg/m³")
-print(f"U = {format_number_vi(weekday['statistic'], 1)} · p (null bootstrap) = {p_text(weekday['p_value'])} · "
+print(f"U = {format_number_vi(weekday['statistic'], 1)} · p (HAC, phương pháp chính) = {p_text(weekday['p_value'])} · "
       f"p Holm = {p_text(weekday['p_holm'])}")
 print(f"p tham chiếu (giả định độc lập) = {p_text(weekday['p_value_independence'])}")
-print(f"Đối chứng HAC: t = {format_number_vi(weekday['supporting_result']['statistic'], 3)}, "
-      f"p = {p_text(weekday['supporting_result']['p_value'])}")
+print(f"Đối chứng (null bootstrap theo lịch) p = {p_text(weekday['p_value_bootstrap'])}")
 print(f"Chênh lệch trung vị (weekday − weekend) = {format_number_vi(weekday['median_difference'])} µg/m³, "
       f"CI 95% {ci_text(weekday_ci)}")
 print(f"r_rb = {format_number_vi(weekday['effect_size'], 4)}  (dương = ngày làm việc cao hơn)")
 print(f"MDE ≈ {format_number_vi(mde['mde'])} µg/m³ "
       f"(SD gộp {format_number_vi(mde['pooled_sd'])}; power {mde['power']:.0%}; α = {mde['alpha']})")
 
-print("\nĐộ nhạy theo độ dài block:")
-for name, entry in sorted(weekday["sensitivity"]["block_length"].items(), key=lambda kv: int(kv[0])):
-    print(f"  block {name:>2} ngày: p = {p_text(entry['p_value'])}")
+print("\nĐộ nhạy theo lag HAC (phương pháp chính):")
+for name, entry in sorted(weekday["sensitivity"]["hac_lag"].items(), key=lambda kv: int(kv[0])):
+    print(f"  lag {name:>2} ngày: p = {p_text(entry['p_value'])}")
 
 ci_includes_zero = weekday_ci["ci_low"] <= 0.0 <= weekday_ci["ci_high"]
 print(f"\nTrạng thái kết luận: {status_text(weekday['status'])} — {weekday['status_reason']}")
@@ -773,7 +835,7 @@ print(f"[24 giờ] n = {format_int_vi(q24['n'])} ngày · trung vị {format_num
 print(f"  t (tỷ lệ vượt ngưỡng, HAC) = {format_number_vi(q24['statistic'], 4)}")
 print(f"  p (hiệu chỉnh phụ thuộc) = {p_text(q24['p_value'])} · p Holm = {p_text(q24['p_holm'])}")
 print(f"  p tham chiếu (Wilcoxon, giả định độc lập) = {p_text(q24['p_value_independence'])}")
-print(f"  đối chứng: null-imposed bootstrap p = {p_text(q24['supporting_result']['null_imposed_p'])}, "
+print(f"  đối chứng: null áp đặt H0 theo lịch p = {p_text(q24['p_value_bootstrap'])}, "
       f"p đảo CI = {p_text(q24['supporting_result']['percentile_p'])}, "
       f"signed-rank HAC p = {p_text(q24['supporting_result']['signed_rank_hac_p'])}")
 print(f"  r = {format_number_vi(q24['effect_size'], 4)} (âm = dưới ngưỡng)")
@@ -785,7 +847,7 @@ print(f"[Năm] n = {format_int_vi(annual['n'])} ngày · trung bình {format_num
 print(f"  t (HAC) = {format_number_vi(annual['statistic'], 4)} · df = {annual['n'] - 1}")
 print(f"  p (hiệu chỉnh phụ thuộc) = {p_text(annual['p_value'])} · p Holm = {p_text(annual['p_holm'])}")
 print(f"  p tham chiếu (t-test, giả định độc lập) = {p_text(annual['p_value_independence'])}")
-print(f"  đối chứng: null-imposed bootstrap p = {p_text(annual['supporting_result']['null_imposed_p'])}, "
+print(f"  đối chứng: null áp đặt H0 theo lịch p = {p_text(annual['p_value_bootstrap'])}, "
       f"p đảo CI = {p_text(annual['supporting_result']['percentile_p'])}")
 print(f"  Cohen's d = {format_number_vi(annual['effect_size'], 4)}")
 print(f"  CI 95% HAC: {ci_text(annual['hac_detail']['ci'])}")
@@ -854,26 +916,33 @@ lần lặp, cả ba cách tính p (tham chiếu, phương pháp chính, phươn
 đều được áp dụng trên **cùng một** chuỗi mô phỏng.
 """)
 
-add_code(r"""size_rows = []
-for name, entry in simulation["size"].items():
-    power = simulation["power"][name]
-    size_rows.append({
-        "Phép kiểm": name,
-        "size (tham chiếu)": pct(entry["size_independence"], 1),
-        "size (chính)": pct(entry["size_dependence_aware"], 1),
-        "size (đối chứng)": pct(entry["size_supporting"], 1),
-        "power (tham chiếu)": pct(power["size_independence"], 1),
-        "power (chính)": pct(power["size_dependence_aware"], 1),
-        "power (đối chứng)": pct(power["size_supporting"], 1),
-    })
-display(pd.DataFrame(size_rows))
-
-print(f"ρ mô phỏng = {format_number_vi(simulation['rho_used'], 4)} · n = {format_int_vi(simulation['n_days'])} "
-      f"ngày · {format_int_vi(simulation['n_sim'])} lần lặp · α = {ALPHA}")
-print("→ 'size' là tỷ lệ bác bỏ H₀ khi H₀ đúng; 'power' là tỷ lệ bác bỏ khi có hiệu ứng.")
-print("→ Phép kiểm giả định độc lập bác bỏ hàng chục tới gần 80% số lần dưới H₀: bằng chứng")
-print("  định lượng rằng p-value SciPy KHÔNG kiểm soát được sai lầm loại I trên dữ liệu này.")
-print("→ Phương pháp có xét phụ thuộc đưa tỷ lệ này về gần α (vẫn hơi lạc quan ~2–3 lần α).")
+add_code(r"""mc = load_monte_carlo_csv()
+if mc is None:
+    print("⚠ Chưa có `reports/inference_montecarlo.csv` — chạy:")
+    print("  python scripts/validate_inference_montecarlo.py --n-sim 1000")
+else:
+    rows = []
+    for scenario_key, scenario in mc["scenarios"].items():
+        for test_name, entry in scenario["tests"].items():
+            def cell(suffix, entry=entry):
+                key = f"rate_{suffix}"
+                if key not in entry:
+                    return "—"
+                return (f"{pct(entry[key], 1)} "
+                        f"[{pct(entry[f'ci_low_{suffix}'], 1)}–{pct(entry[f'ci_high_{suffix}'], 1)}]")
+            rows.append({
+                "Kịch bản": scenario["label"],
+                "Phép kiểm": test_name,
+                "Độc lập": cell("p_independence"),
+                "Null bootstrap (lịch)": cell("p_bootstrap"),
+                "HAC": cell("p_hac"),
+            })
+    display(pd.DataFrame(rows))
+    print(f"Monte Carlo: {format_int_vi(mc['n_sim'])} lần/kịch bản · n = {format_int_vi(mc['n_days'])} ngày · "
+          f"null bootstrap {format_int_vi(mc['n_bootstrap'])} lặp · HAC lag {format_int_vi(mc['hac_lag'])} ngày · "
+          f"seed {format_int_vi(mc['seed'])}")
+    print("→ 'size' = tỷ lệ bác bỏ H₀ khi H₀ ĐÚNG; khoảng trong ngoặc là CI Wilson 95% của tỷ lệ đó.")
+    print("→ Cột 'Độc lập' vỡ tung khi có tự tương quan: p-value SciPy KHÔNG kiểm soát được sai lầm loại I.")
 """)
 
 # ---------------------------------------------------------------------------
@@ -1058,9 +1127,10 @@ add_md(r"""---
 ## 14. Giới hạn khoa học
 
 1. **Một chu kỳ mùa, một trạm.** Dải 07/2025–07/2026 chỉ chứa một vòng mùa và toàn bộ dữ liệu đến từ một trạm đô thị. Khác biệt theo mùa là mô tả của **giai đoạn này**, không ngoại suy được sang năm khác hay trạm khác (mục 10).
-2. **Hiệu chỉnh phụ thuộc thời gian là xấp xỉ, không phải định nghĩa.** Mọi phương pháp ở mục 4 đều là phương pháp bậc cao với giả định ổn định; mô phỏng (mục 9) cho thấy tỷ lệ bác bỏ dưới H₀ còn cao hơn α khoảng 2–3 lần. p-value vì vậy là **chỉ báo độ tương thích**, không phải xác suất chính xác tuyệt đối.
-3. **Kết luận mùa đã bị hạ xuống thăm dò** vì p-value của kiểm định omnibus mùa không ổn định theo độ dài block (mục 6). Đây là hạn chế thật, không phải khiêm tốn hình thức.
-4. **Block bootstrap là xấp xỉ.** Block 28 ngày giữ cấu trúc theo tuần nhưng không mô phỏng được phụ thuộc dài hạn hơn nữa; với so sánh hai nhóm, resample trên chuỗi gộp bỏ qua tương quan chéo nhóm — kiểm tra ghép cặp theo tuần ở mục 11.1 là biện pháp bù.
+2. **Thiếu dữ liệu không ngẫu nhiên.** 79 ngày trong 378 ngày lịch không tạo được trung bình ngày, tập trung thành 17 cụm (cụm dài nhất 47 ngày). Cơ chế thiếu **không** được biết là ngẫu nhiên; nếu độ phủ phụ thuộc thời tiết thì mức nền ước lượng có thể bị lệch. Báo cáo **không** giả định MCAR.
+3. **Hiệu chỉnh phụ thuộc là xấp xỉ, không phải định nghĩa.** Mọi phương pháp ở mục 4 đều là phương pháp bậc cao với giả định ổn định; Monte Carlo (mục 9) cho thấy tỷ lệ bác bỏ dưới H₀ có kịch bản vượt 2,5α. p-value vì vậy là **chỉ báo độ tương thích**, không phải xác suất chính xác tuyệt đối.
+4. **Kết luận mùa đã bị hạ xuống thăm dò** (quy tắc R5: một chu kỳ mùa duy nhất, mùa trùng với đoạn thời gian) và hồi quy HAC cho mùa **không** dùng để quyết định trạng thái vì ma trận hiệp phương sai gần suy biến (Monte Carlo: size 30–55%).
+5. **Block bootstrap là xấp xỉ.** Block 28 ngày lịch giữ cấu trúc theo tuần nhưng không mô phỏng được phụ thuộc dài hạn hơn 4 tuần; kịch bản phụ thuộc kéo dài cho thấy phương pháp **bảo thủ** ở đó (size thấp hơn α) — mất sức mạnh chứ không sai hướng.
 5. **Ngưỡng 18/24 giờ** là quy ước phân tích (độ phủ 75%), không phải điều khoản QCVN. Đổi ngưỡng sẽ đổi n; bảng nhật ký lọc ở mục 1 làm việc đổi ngưỡng trở nên minh bạch.
 6. **QCVN 05:2023/BTNMT quy định ở điều kiện chuẩn** (µg/Nm³, 25 °C, 760 mmHg), còn trạm OpenAQ báo nồng độ môi trường (µg/m³). So sánh định lượng với ngưỡng vì vậy là **xấp xỉ**.
 7. **Không có kết luận nhân quả.** Khác biệt theo mùa/ngày trong tuần là liên hệ thống kê; nguồn phát thải, khí tượng và điều kiện biên không được phân tách ở đây.
@@ -1118,6 +1188,9 @@ checks = {
     "n_eff": format_number_vi(dependence["daily_effective_n"]["n_effective"], 1),
     "tỷ lệ ngày vượt": pct(context["panel_share"]),
     "xu hướng mỗi tháng": format_number_vi(generalization["trend_per_month"]),
+    "số ngày lịch": format_int_vi(calendar_info["n_calendar_days"]),
+    "số ngày thiếu": format_int_vi(calendar_info["n_missing_days"]),
+    "cụm thiếu dài nhất": format_int_vi(calendar_info["max_missing_run"]),
 }
 missing = {name: token for name, token in checks.items() if token not in report_text}
 assert not missing, f"Báo cáo thiếu/khác các token: {missing}"
@@ -1151,8 +1224,10 @@ add_md(r"""---
 | n và số quan sát bị loại | Mục 1 (299 giữ / 52 loại), từng kiểm định ở mục 4.1 |
 | Holm báo cả p gốc và p hiệu chỉnh | Mục 5 (family xác nhận), mục 6.3 (family hậu định riêng) |
 | α = 0,05; 1.000 bootstrap; seed 42 | Mục 0, assert trong mục 0.1 |
-| **Xử lý tự tương quan trong p-value** | **Mục 4 (khung phương pháp), mục 9 (mô phỏng size)** |
+| **Xử lý tự tương quan trong p-value** | **Mục 4 (khung phương pháp), mục 9 (Monte Carlo đa kịch bản)** |
+| Bootstrap theo **lịch ngày** + mặt nạ thiếu | **Mục 2** (lịch, mặt nạ, bằng chứng "28 phần tử ≠ 28 ngày") |
 | **Khả năng khái quát hóa theo mùa** | **Mục 10** |
+| Quy tắc hạ mức kết luận (R1–R5) | **Mục 4.3** |
 | Giới hạn khi giả định không bảo đảm | Mục 3, 7.2 (MDE), 14 |
 | Không đổi chronological split | Mục 1.2, 13 (đọc `SPLIT_TIMESTAMP`) |
 | Đầu ra tái lập | Mục 15 (round-trip + đối chiếu chéo + artifact) |

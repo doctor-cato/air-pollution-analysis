@@ -61,6 +61,8 @@ from __future__ import annotations
 
 import hashlib
 import math
+import warnings
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
@@ -230,6 +232,39 @@ def _season_from_month(month: pd.Series) -> pd.Series:
     return season
 
 
+def _daily_aggregates(
+    df: pd.DataFrame,
+) -> Tuple[pd.DataFrame, int, int, pd.DataFrame]:
+    """
+    Tổng hợp chuỗi giờ thành **một dòng mỗi ngày lịch** (kể cả ngày thiếu).
+
+    Trả về ``(per_day, rows_total, n_stations, observed)`` với `per_day` đã
+    reindex trên **lưới lịch đầy đủ**: ngày không có quan sát nào vẫn có dòng,
+    `valid_hours` = 0 và `pm25_mean` = NaN. Đây là nền tảng cho bootstrap
+    **theo lịch** — nếu không, mọi resample sẽ "nối" hai khoảng thời gian bị
+    ngắt và biến "block 28 ngày" thành "28 phần tử" một cách sai lệch.
+    """
+    work = df.copy()
+    work[TIMESTAMP_COLUMN] = _local_timestamps(work[TIMESTAMP_COLUMN])
+    work[TARGET_COLUMN] = pd.to_numeric(work[TARGET_COLUMN], errors="coerce")
+    work["_date"] = work[TIMESTAMP_COLUMN].dt.normalize()
+
+    n_stations = int(work[STATION_COLUMN].nunique()) if STATION_COLUMN in work else 1
+    rows_total = len(work)
+    observed = work.dropna(subset=[TARGET_COLUMN])
+    if observed.empty:
+        raise ValueError("Không có giờ nào có `pm25` — không dựng được panel ngày.")
+
+    per_day = observed.groupby("_date", observed=True)[TARGET_COLUMN].agg(
+        valid_hours="size", pm25_mean="mean", pm25_median="median"
+    )
+    per_day = per_day.sort_index()
+    grid = pd.date_range(per_day.index.min(), per_day.index.max(), freq="D")
+    per_day = per_day.reindex(grid)
+    per_day["valid_hours"] = per_day["valid_hours"].fillna(0).astype(int)
+    return per_day, rows_total, n_stations, observed
+
+
 def build_daily_panel(
     df: pd.DataFrame,
     *,
@@ -254,21 +289,7 @@ def build_daily_panel(
         )
     _require_columns(df, [TIMESTAMP_COLUMN, TARGET_COLUMN], context="build_daily_panel")
 
-    work = df.copy()
-    work[TIMESTAMP_COLUMN] = _local_timestamps(work[TIMESTAMP_COLUMN])
-    work[TARGET_COLUMN] = pd.to_numeric(work[TARGET_COLUMN], errors="coerce")
-    work["_date"] = work[TIMESTAMP_COLUMN].dt.normalize()
-
-    n_stations = int(work[STATION_COLUMN].nunique()) if STATION_COLUMN in work else 1
-    rows_total = len(work)
-    observed = work.dropna(subset=[TARGET_COLUMN])
-    if observed.empty:
-        raise ValueError("Không có giờ nào có `pm25` — không dựng được panel ngày.")
-
-    per_day = observed.groupby("_date", observed=True)[TARGET_COLUMN].agg(
-        valid_hours="size", pm25_mean="mean", pm25_median="median"
-    )
-    per_day = per_day.sort_index()
+    per_day, rows_total, n_stations, observed = _daily_aggregates(df)
 
     keep = per_day["valid_hours"] >= min_valid_hours
     panel = per_day.loc[keep].copy()
@@ -293,18 +314,23 @@ def build_daily_panel(
 
     dropped = per_day.loc[~keep, "valid_hours"]
     span_days = int((per_day.index.max() - per_day.index.min()).days) + 1
+    days_with_observation = int((per_day["valid_hours"] > 0).sum())
+    days_without_observation = int(span_days - days_with_observation)
     audit: Dict[str, Any] = {
         "rows_hourly": rows_total,
         "hours_with_pm25": len(observed),
         "hours_missing_pm25": rows_total - len(observed),
         "n_stations": n_stations,
         "span_days": span_days,
-        "days_with_any_observation": len(per_day),
+        "days_with_any_observation": days_with_observation,
+        "days_without_observation": days_without_observation,
         "days_full_24h": int((per_day["valid_hours"] == HOURS_PER_DAY).sum()),
         "min_valid_hours": min_valid_hours,
         "days_kept": len(panel),
-        "days_dropped": len(dropped),
-        "dropped_dates": [str(d.date()) for d in dropped.index],
+        "days_dropped": int((per_day["valid_hours"] > 0).sum() - len(panel)),
+        "days_dropped_dates": [
+            str(d.date()) for d in per_day.index[(per_day["valid_hours"] > 0) & ~keep]
+        ],
         "coverage_first": str(panel["date"].min().date()),
         "coverage_last": str(panel["date"].max().date()),
         "observed_first": str(per_day.index.min().date()),
@@ -316,6 +342,98 @@ def build_daily_panel(
         "weekend_days": int((panel["is_weekend"] == 1).sum()),
     }
     return panel, audit
+
+
+# ---------------------------------------------------------------------------
+# Dòng thời gian ngày lịch đầy đủ (nền tảng cho bootstrap theo lịch)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class DailyCalendar:
+    """
+    Dòng thời gian **ngày lịch đầy đủ** — mỗi ngày lịch trong dải quan sát đúng
+    một phần tử, kể cả ngày không tạo được trung bình ngày (giá trị `NaN`).
+
+    Vì sao cần: `build_daily_panel()` **lọc bỏ** những ngày độ phủ thấp, nên hai
+    phần tử liền nhau trong panel **không** phải hai ngày lịch liên tiếp. Mọi
+    resample phải chạy trên lịch, nếu không "block 28 ngày" hoá ra là "28 phần
+    tử" trải tới 52 ngày lịch — sai lệch cấu trúc phụ thuộc cần giữ.
+
+    Thuộc tính
+    ----------
+    dates : (T,) datetime64[D] — lịch liên tục, không lỗ.
+    values : (T,) float64 — trung bình ngày; ``NaN`` = không tạo được (thiếu).
+    labels : (T,) int64 — nhãn nhóm **theo lịch** (mùa / cuối tuần).
+    valid_hours : (T,) int64 — số giờ có `pm25` trong ngày.
+    """
+
+    dates: np.ndarray
+    values: np.ndarray
+    labels: np.ndarray
+    valid_hours: np.ndarray
+    season: np.ndarray
+    is_weekend: np.ndarray
+    week_key: np.ndarray
+
+    @property
+    def n_days(self) -> int:
+        return int(self.values.size)
+
+    @property
+    def observed(self) -> np.ndarray:
+        """Mặt nạ NaN — ``True`` cho ngày **không** có trung bình ngày."""
+        return ~np.isfinite(self.values)
+
+    @property
+    def n_observed(self) -> int:
+        return int(np.isfinite(self.values).sum())
+
+
+def build_daily_calendar(
+    df: pd.DataFrame,
+    *,
+    min_valid_hours: int = MIN_VALID_HOURS_PER_DAY,
+    label: str = "season",
+) -> DailyCalendar:
+    """
+    Dựng **lịch ngày đầy đủ** kèm mặt nạ thiếu và nhãn nhóm theo lịch.
+
+    `label="season"` → nhãn là mùa khí tượng (mã 0..3 theo
+    `SEASON_DISPLAY_ORDER`); `label="weekend"` → nhãn là 0 (ngày làm việc) /
+    1 (cuối tuần).
+
+    Ngày thiếu **không** được nội suy: giá trị là `NaN` và được giữ nguyên
+    như vậy trong mọi bản sao bootstrap.
+    """
+    if label not in ("season", "weekend"):
+        raise ValueError(f"label phải là 'season' hoặc 'weekend', nhận {label!r}.")
+    per_day, _rows, _stations, _observed = _daily_aggregates(df)
+    dates = per_day.index
+    valid = per_day["valid_hours"].to_numpy(dtype=int)
+    values = per_day["pm25_mean"].to_numpy(dtype=float)
+    values[valid < min_valid_hours] = np.nan
+
+    seasons = _season_from_month(dates.month)
+    if label == "season":
+        codes = {season: index for index, season in enumerate(SEASON_DISPLAY_ORDER)}
+        labels = np.array([codes[s] for s in seasons], dtype=np.int64)
+    else:
+        labels = (dates.dayofweek.to_numpy() >= 5).astype(np.int64)
+
+    iso = dates.isocalendar()
+    week_key = (
+        iso["year"].astype(str) + "-W" + iso["week"].astype(str).str.zfill(2)
+    ).to_numpy()
+    return DailyCalendar(
+        dates=dates.to_numpy(dtype="datetime64[D]"),
+        values=values,
+        labels=labels,
+        valid_hours=valid,
+        season=np.asarray(seasons, dtype=object),
+        is_weekend=(dates.dayofweek.to_numpy() >= 5).astype(np.int64),
+        week_key=week_key,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1005,6 +1123,11 @@ def hac_regression(
         raise ValueError(f"Số quan sát của y ({y_arr.size}) khác số hàng của X ({n}).")
     if n <= k:
         raise ValueError(f"Cần n > k, nhận n = {n}, k = {k}.")
+    if not np.all(np.isfinite(y_arr)) or not np.all(np.isfinite(design)):
+        raise ValueError(
+            "HAC cần dữ liệu khuyết (NaN/inf) — hãy lọc về các quan sát quan sát "
+            "được trước khi gọi."
+        )
 
     xtx_inv = np.linalg.pinv(design.T @ design)
     beta = xtx_inv @ design.T @ y_arr
@@ -1128,6 +1251,505 @@ def t_statistic_rows(deviations_2d: np.ndarray) -> np.ndarray:
 
 # ---------------------------------------------------------------------------
 # Kiểm định bootstrap với phân phối null dựng DƯỚI H₀
+# ---------------------------------------------------------------------------
+# Bootstrap THEO LỊCH — giữ nguyên khoảng cách ngày và mặt nạ thiếu
+# ---------------------------------------------------------------------------
+#
+# VÌ SAO PHẢI THAY ĐỔI (review 5588255357 của PR #43)
+# -------------------------------------------------
+# Bản trước resample **mảng trung bình ngày đã lọc** (chỉ 299 ngày đủ độ phủ
+# trong 378 ngày lịch). Hai phần tử liền nhau của mảng đó **không** phải hai ngày
+# lịch liên tiếp: 28 phần tử liên tiếp có thể trải tới **52 ngày lịch**. Nghĩa
+# là "block 28 ngày" trong báo cáo thực tế **không phải** 28 ngày, và cấu trúc
+# phụ thuộc được giữ lại sai lệch. Cách sửa: mọi resample chạy trên **lịch**.
+#
+# BA NGUYÊN TẮC CỦA THUẬT TOÁN MỚI
+# ---------------------------------
+# 1. **Block = ngày lịch liên tiếp.** `calendar_block_indices()` chọn các khối
+#    gồm `block_length_days` ngày LỊCH liên tiếp (vòng tròn). Chỉ số trả về
+#    là chỉ số trên trục lịch, nên "28" luôn có nghĩa "28 ngày".
+# 2. **Mặt nạ thiếu đi theo bản sao.** Ngày không tạo được trung bình ngày vẫn
+#    là `NaN` trong bản sao, và **nhãn nhóm đi theo ngày nguồn** của bản sao.
+#    Không nội suy, không tạo quan sát giả, không "nối" hai khoảng bị ngắt: một
+#    khối chứa 3 ngày thiếu thì bản sao cũng thiếu đúng 3 ngày đó.
+# 3. **H₀ không đổi.** Với kiểm định theo nhóm, null là chuỗi **gộp** (H₀: các
+#    nhóm cùng phân phối); với kiểm định vị trí, H₀ được **áp đặt** bằng cách
+#    trừ mốc *trên lịch* rồi mới resample.
+#
+# Hệ quả phải nói rõ: vì mặt nạ đi theo bản sao, **số ngày quan sát của mỗi bản
+# sao không cố định** (lệch chuẩn ~±15 ngày quanh 299). Thống kê kiểm dùng
+# NaN-aware nên tự tính đúng số quan sát của từng bản sao; phân phối null vì vậy
+# **đã bao hàm** cả biến động cỡ mẫu này. Báo cáo in ra độ lớn biến động đó.
+
+
+def calendar_block_indices(
+    n_calendar: int,
+    *,
+    block_length_days: int = BLOCK_LENGTH_DAYS,
+    n_bootstrap: int = N_NULL_BOOTSTRAP,
+    seed: int = BOOTSTRAP_SEED,
+) -> np.ndarray:
+    """
+    Chỉ số bootstrap trên **trục lịch**: shape ``(n_bootstrap, n_calendar)``.
+
+    Mỗi hàng là một lịch bootstrap gồm các khối **ngày lịch liên tiếp** đặt
+    cạnh nhau, cuộn vòng quanh cuối lịch (circular moving block). Chỉ số là
+    chỉ số trên lịch nên `block_length_days` luôn mang nghĩa **ngày lịch**.
+    """
+    if n_calendar < 2:
+        raise ValueError(f"Cần ≥ 2 ngày lịch để bootstrap, nhận {n_calendar}.")
+    if not 1 <= block_length_days <= n_calendar:
+        raise ValueError(
+            f"block_length_days phải trong [1, {n_calendar}], nhận {block_length_days}."
+        )
+    if n_bootstrap < 1:
+        raise ValueError(f"n_bootstrap phải ≥ 1, nhận {n_bootstrap}.")
+
+    rng = np.random.default_rng(seed)
+    n_blocks = int(math.ceil(n_calendar / block_length_days))
+    starts = rng.integers(0, n_calendar, size=(n_bootstrap, n_blocks))
+    offsets = np.arange(block_length_days)
+    idx = (starts[:, :, None] + offsets[None, None, :]) % n_calendar
+    return idx.reshape(n_bootstrap, n_blocks * block_length_days)[:, :n_calendar]
+
+
+def calendar_replicates(
+    values: np.ndarray, labels: np.ndarray, indices: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Sinh các bản sao bootstrap từ lịch.
+
+    Trả về ``(values_2d, labels_2d)`` cùng shape ``(B, T)``:
+
+    * ``values_2d[b, j]`` là giá trị của **ngày nguồn** ``indices[b, j]``
+      (``NaN`` nếu ngày nguồn không có trung bình ngày) — **mặt nạ thiếu đi
+      theo giá trị**, nên bản sao không bao giờ "nội suy" hay tạo quan sát giả;
+    * ``labels_2d[b, j]`` là nhãn của **ngày đích** ``j`` trên lịch — nhãn ở mỗi
+      vị trí của bản sao luôn khớp với ngày lịch của vị trí đó.
+
+    Vì sao nhãn theo **đích** chứ không theo nguồn: H₀ của các phép kiểm theo
+    nhóm là "các nhóm **không** khác nhau". Nếu nhãn đi theo nguồn thì giá trị
+    của một ngày Đông vẫn mang nhãn Đông → cấu trúc mùa vụ **được giữ lại** →
+    phân phối "null" vẫn chứa hiệu ứng mùa và p-value bị thổi phồng (kiểm chứng
+    bằng test `test_labels_are_decoupled_from_the_resampled_values`). Khi nhãn cố
+    định theo vị trí đích còn giá trị được lấy ngẫu nhiên từ chuỗi gộp, phụ
+    thuộc trong block vẫn được giữ (vì block là ngày lịch liên tiếp) nhưng liên
+    kết giá trị–nhãn bị cắt đúng như H₀ đòi hỏi.
+    """
+    values_arr = np.asarray(values, dtype=float)
+    labels_arr = np.asarray(labels)
+    idx = np.asarray(indices)
+    replicate_values = values_arr[idx]
+    replicate_labels = np.broadcast_to(labels_arr, replicate_values.shape)
+    return replicate_values, replicate_labels
+
+
+# ---------------------------------------------------------------------------
+# Thống kê NaN-aware theo từng hàng
+# ---------------------------------------------------------------------------
+
+
+def _row_ranks_nan(values_2d: np.ndarray) -> np.ndarray:
+    """Hạng trung bình theo từng hàng, **bỏ qua NaN** (NaN giữ nguyên vị trí)."""
+    matrix = np.asarray(values_2d, dtype=float)
+    if not np.isfinite(matrix).any():
+        return np.full(matrix.shape, np.nan)
+    with np.errstate(invalid="ignore"):
+        return np.asarray(
+            stats.rankdata(matrix, axis=1, nan_policy="omit"), dtype=float
+        )
+
+
+def kruskal_statistic_rows_nan(
+    values_2d: np.ndarray, group_masks: Sequence[np.ndarray]
+) -> np.ndarray:
+    """Thống kê H của Kruskal-Wallis cho từng hàng, **bỏ qua NaN**."""
+    matrix = np.asarray(values_2d, dtype=float)
+    ranks = _row_ranks_nan(matrix)
+    observed = np.isfinite(matrix)
+    n_total = observed.sum(axis=1)
+    rank_sums = np.vstack(
+        [np.nansum(np.where(mask, ranks, 0.0), axis=1) for mask in group_masks]
+    )
+    group_sizes = np.vstack(
+        [(mask & observed).sum(axis=1) for mask in group_masks]
+    ).astype(float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        h = (
+            12.0
+            / (n_total * (n_total + 1))
+            * (rank_sums ** 2 / group_sizes).sum(axis=0)
+            - 3.0 * (n_total + 1)
+        )
+    valid = (n_total > 1) & (group_sizes > 0).all(axis=0)
+    return np.where(valid, h, np.nan)
+
+
+def mannwhitney_statistic_rows_nan(
+    values_2d: np.ndarray, mask_a: np.ndarray, mask_b: np.ndarray
+) -> np.ndarray:
+    """Thống kê U của Mann-Whitney (U của nhóm A) cho từng hàng, bỏ qua NaN."""
+    matrix = np.asarray(values_2d, dtype=float)
+    ranks = _row_ranks_nan(matrix)
+    observed = np.isfinite(matrix)
+    n_a = (mask_a & observed).sum(axis=1)
+    n_b = (mask_b & observed).sum(axis=1)
+    rank_sum_a = np.nansum(np.where(mask_a, ranks, 0.0), axis=1)
+    u = rank_sum_a - n_a * (n_a + 1) / 2.0
+    return np.where((n_a > 0) & (n_b > 0), u, np.nan)
+
+
+def signed_rank_statistic_rows_nan(deviations_2d: np.ndarray) -> np.ndarray:
+    """Thống kê W⁺ của Wilcoxon signed-rank cho từng hàng, bỏ qua NaN."""
+    deviations = np.asarray(deviations_2d, dtype=float)
+    ranks = _row_ranks_nan(np.abs(deviations))
+    return np.nansum(np.where(deviations > 0, ranks, 0.0), axis=1)
+
+
+def t_statistic_rows_nan(deviations_2d: np.ndarray) -> np.ndarray:
+    """Thống kê t một mẫu cho từng hàng, bỏ qua NaN."""
+    deviations = np.asarray(deviations_2d, dtype=float)
+    observed = np.isfinite(deviations)
+    n = observed.sum(axis=1)
+    total = np.nansum(deviations, axis=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        mean = total / n
+        ss = np.nansum(
+            np.where(observed, (deviations - mean[:, None]) ** 2, 0.0), axis=1
+        )
+        var = ss / (n - 1)
+        t = mean / np.sqrt(var / n)
+    return np.where((n > 1) & (var > 0), t, np.nan)
+
+
+def _nan_reduce_rows(
+    values_2d: np.ndarray, reducer: str
+) -> np.ndarray:
+    """Median / mean theo từng hàng, bỏ qua NaN (hàng toàn NaN → NaN)."""
+    matrix = np.asarray(values_2d, dtype=float)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        if reducer == "median":
+            out = np.nanmedian(matrix, axis=1)
+        elif reducer == "mean":
+            out = np.nanmean(matrix, axis=1)
+        else:
+            raise ValueError(
+                f"reducer phải là 'median' hoặc 'mean', nhận {reducer!r}."
+            )
+    return np.where(np.isfinite(matrix).any(axis=1), out, np.nan)
+
+
+# ---------------------------------------------------------------------------
+# Kiểm định null theo lịch
+# ---------------------------------------------------------------------------
+
+
+def calendar_bootstrap_null_test(
+    calendar: DailyCalendar,
+    *,
+    statistic: Any,
+    observed_statistic: float,
+    alternative: str = "two-sided",
+    block_length_days: int = BLOCK_LENGTH_DAYS,
+    n_bootstrap: int = N_NULL_BOOTSTRAP,
+    seed: int = BOOTSTRAP_SEED,
+    null_construction: str = "",
+    statistic_name: str = "",
+    value_override: Optional[np.ndarray] = None,
+) -> Dict[str, Any]:
+    """
+    Kiểm định bootstrap với **phân phối null dựng dưới H₀**, resample **theo lịch**.
+
+    `statistic` nhận ``(values_2d, labels_2d)`` — mảng ``(B, T)`` của các bản
+    sao lịch — và trả về thống kê cho từng bản sao. NaN được giữ nguyên trong
+    bản sao nên hàm thống kê **phải** xử lý NaN (dùng các hàm `*_rows_nan`).
+
+    `value_override` cho phép resample trên chuỗi đã **áp đặt H₀** (ví dụ
+    `x − μ`) mà vẫn giữ mặt nạ thiếu của lịch.
+    """
+    if alternative not in ("two-sided", "greater", "less"):
+        raise ValueError(f"alternative không hợp lệ: {alternative!r}.")
+    values = (
+        np.asarray(calendar.values, dtype=float)
+        if value_override is None
+        else np.asarray(value_override, dtype=float)
+    )
+    if values.size != calendar.n_days:
+        raise ValueError(
+            "value_override phải cùng độ dài với lịch "
+            f"({values.size} ≠ {calendar.n_days})."
+        )
+    if n_bootstrap < 1:
+        raise ValueError(f"n_bootstrap phải ≥ 1, nhận {n_bootstrap}.")
+
+    indices = calendar_block_indices(
+        calendar.n_days,
+        block_length_days=block_length_days,
+        n_bootstrap=n_bootstrap,
+        seed=seed,
+    )
+    replicates_values, replicates_labels = calendar_replicates(
+        values, calendar.labels, indices
+    )
+    replicates = np.asarray(
+        statistic(replicates_values, replicates_labels), dtype=float
+    ).ravel()
+    finite = np.isfinite(replicates)
+    dropped = int((~finite).sum())
+    replicates = replicates[finite]
+    if replicates.size == 0:
+        raise ValueError("Mọi bản sao bootstrap đều không hữu hạn — không dựng được null.")
+
+    observed = float(observed_statistic)
+    n_extreme_ge = int(np.sum(replicates >= observed))
+    n_extreme_le = int(np.sum(replicates <= observed))
+    p_greater = (1 + n_extreme_ge) / (n_bootstrap + 1)
+    p_less = (1 + n_extreme_le) / (n_bootstrap + 1)
+    if alternative == "greater":
+        p_value = p_greater
+    elif alternative == "less":
+        p_value = p_less
+    else:
+        p_value = min(1.0, 2.0 * min(p_greater, p_less))
+
+    n_observed = np.isfinite(replicates_values).sum(axis=1)
+    n_observed = n_observed[finite]
+    return {
+        "p_value": float(p_value),
+        "p_greater": float(p_greater),
+        "p_less": float(p_less),
+        "observed_statistic": observed,
+        "replicate_median": float(np.median(replicates)),
+        "replicate_sd": float(replicates.std(ddof=1)) if replicates.size > 1 else float("nan"),
+        "n_bootstrap": int(n_bootstrap),
+        "block_length_days": int(min(block_length_days, calendar.n_days)),
+        "seed": int(seed),
+        "alternative": alternative,
+        "n_extreme": int(n_extreme_ge if alternative == "greater" else n_extreme_le),
+        "n_replicates_dropped": dropped,
+        "resolution_floor": float(2.0 / (n_bootstrap + 1)),
+        "at_resolution_floor": bool(p_value <= 2.0 / (n_bootstrap + 1) + 1e-12),
+        "null_construction": null_construction,
+        "statistic_name": statistic_name,
+        "n_observed_original": int(np.isfinite(values).sum()),
+        "n_observed_replicate_mean": (
+            float(n_observed.mean()) if n_observed.size else float("nan")
+        ),
+        "n_observed_replicate_sd": (
+            float(n_observed.std(ddof=1)) if n_observed.size > 1 else float("nan")
+        ),
+        "n_observed_replicate_min": (
+            int(n_observed.min()) if n_observed.size else 0
+        ),
+        "n_observed_replicate_max": (
+            int(n_observed.max()) if n_observed.size else 0
+        ),
+    }
+
+
+def calendar_bootstrap_ci(
+    calendar: DailyCalendar,
+    *,
+    statistic: str = "median",
+    block_length_days: int = BLOCK_LENGTH_DAYS,
+    n_bootstrap: int = N_BOOTSTRAP,
+    seed: int = BOOTSTRAP_SEED,
+) -> Dict[str, Any]:
+    """
+    CI percentile cho một thống kê của **một chuỗi lịch** (block bootstrap lịch).
+
+    Mỗi bản sao là một lịch bootstrap giữ nguyên mặt nạ thiếu, nên số quan
+    sát mỗi bản sao có thể khác nhau — điều đó được phản ánh trong CI.
+    """
+    indices = calendar_block_indices(
+        calendar.n_days,
+        block_length_days=block_length_days,
+        n_bootstrap=n_bootstrap,
+        seed=seed,
+    )
+    replicates_values, _ = calendar_replicates(
+        calendar.values, calendar.labels, indices
+    )
+    replicates = _nan_reduce_rows(replicates_values, statistic)
+    finite = np.isfinite(replicates)
+    if not finite.any():
+        raise ValueError("Mọi bản sao bootstrap không hữu hạn — không dựng được CI.")
+    replicates = replicates[finite]
+    lo, hi = _percentile_ci(replicates)
+    observed = float(_nan_reduce_rows(calendar.values[None, :], statistic)[0])
+    n_observed = np.isfinite(replicates_values).sum(axis=1)[finite]
+    return {
+        "statistic": statistic,
+        "point": observed,
+        "ci_low": lo,
+        "ci_high": hi,
+        "n_bootstrap": int(n_bootstrap),
+        "block_length_days": int(min(block_length_days, calendar.n_days)),
+        "seed": int(seed),
+        "replicates_sd": float(replicates.std(ddof=1)) if replicates.size > 1 else float("nan"),
+        "n_observed_replicate_mean": (
+            float(n_observed.mean()) if n_observed.size else float("nan")
+        ),
+        "n_observed_replicate_sd": (
+            float(n_observed.std(ddof=1)) if n_observed.size > 1 else float("nan")
+        ),
+    }
+
+
+def calendar_bootstrap_difference_ci(
+    calendar: DailyCalendar,
+    mask_a: np.ndarray,
+    mask_b: np.ndarray,
+    *,
+    statistic: str = "median",
+    block_length_days: int = BLOCK_LENGTH_DAYS,
+    n_bootstrap: int = N_BOOTSTRAP,
+    seed: int = BOOTSTRAP_SEED,
+) -> Dict[str, Any]:
+    """
+    CI percentile cho ``thống kê(A) − thống kê(B)`` tính trên **cùng một lịch**.
+
+    Khác với bản trước (resample **riêng** từng nhóm), ở đây hai nhóm được
+    lấy từ **cùng một bản sao lịch** → tương quan chéo giữa nhóm được giữ, và
+    mặt nạ thiếu cũng nhất quán. Khối bootstrap là **ngày lịch liên tiếp**.
+    """
+    mask_a_arr = np.asarray(mask_a, dtype=bool)
+    mask_b_arr = np.asarray(mask_b, dtype=bool)
+    if mask_a_arr.size != calendar.n_days or mask_b_arr.size != calendar.n_days:
+        raise ValueError("Mặt nạ nhóm phải cùng độ dài với lịch.")
+    indices = calendar_block_indices(
+        calendar.n_days,
+        block_length_days=block_length_days,
+        n_bootstrap=n_bootstrap,
+        seed=seed,
+    )
+    replicates_values, _ = calendar_replicates(
+        calendar.values, calendar.labels, indices
+    )
+    observed = np.isfinite(calendar.values)
+    stat_a = _nan_reduce_rows(
+        np.where(mask_a_arr[None, :] & observed[None, :], replicates_values, np.nan),
+        statistic,
+    )
+    stat_b = _nan_reduce_rows(
+        np.where(mask_b_arr[None, :] & observed[None, :], replicates_values, np.nan),
+        statistic,
+    )
+    replicates = stat_a - stat_b
+    finite = np.isfinite(replicates)
+    if not finite.any():
+        raise ValueError("Mọi bản sao bootstrap không hữu hạn — không dựng được CI.")
+    replicates = replicates[finite]
+    lo, hi = _percentile_ci(replicates)
+    point = float(
+        _nan_reduce_rows(
+            np.where(mask_a_arr & observed, calendar.values, np.nan)[None, :], statistic
+        )[0]
+        - _nan_reduce_rows(
+            np.where(mask_b_arr & observed, calendar.values, np.nan)[None, :], statistic
+        )[0]
+    )
+    return {
+        "statistic": statistic,
+        "point": point,
+        "ci_low": lo,
+        "ci_high": hi,
+        "n_bootstrap": int(n_bootstrap),
+        "block_length_days": int(min(block_length_days, calendar.n_days)),
+        "seed": int(seed),
+        "replicates_sd": float(replicates.std(ddof=1)) if replicates.size > 1 else float("nan"),
+        "excludes_zero": bool(lo > 0.0 or hi < 0.0),
+    }
+
+
+def calendar_null_imposed_test(
+    calendar: DailyCalendar,
+    *,
+    mu: float,
+    statistic: str = "t",
+    block_length_days: int = BLOCK_LENGTH_DAYS,
+    n_bootstrap: int = N_NULL_BOOTSTRAP,
+    seed: int = BOOTSTRAP_SEED,
+) -> Dict[str, Any]:
+    """
+    Kiểm định **áp đặt H₀** cho một đại lượng vị trí, resample theo lịch.
+
+    Cách dựng null (KHÔNG phải "bootstrap trên chuỗi quan sát rồi đếm tỷ lệ
+    thống kê cực đoan"):
+
+    1. Tách nhiễu: ``ê = x − θ̂`` với ``θ̂`` là ước lượng vị trí của chính dữ
+       liệu (trung bình hoặc trung vị) — tính trên lịch, giữ nguyên mặt nạ.
+    2. Resample ``ê`` theo **block ngày lịch liên tiếp** → ``ê*``.
+    3. Dựng bản sao **dưới H₀**: ``x* = μ + ê*``.
+    4. Tính thống kê trên ``x*`` → phân phối null.
+    5. So thống kê quan sát (trên ``x − μ``) với phân phối null đó.
+    """
+    if statistic not in ("t", "signed_rank"):
+        raise ValueError(f"statistic phải là 't' hoặc 'signed_rank', nhận {statistic!r}.")
+    values = np.asarray(calendar.values, dtype=float)
+    observed_days = np.isfinite(values)
+    if int(observed_days.sum()) < 8:
+        raise ValueError("Cần ≥ 8 ngày quan sát để kiểm định vị trí.")
+
+    if statistic == "t":
+        centre = float(np.nanmean(values))
+        observed = float(stats.ttest_1samp(values[observed_days], popmean=mu).statistic)
+        stat_fn = t_statistic_rows_nan
+    else:
+        centre = float(np.nanmedian(values))
+        observed = float(
+            stats.wilcoxon(
+                values[observed_days] - mu,
+                alternative="two-sided",
+                zero_method="wilcox",
+                correction=False,
+            ).statistic
+        )
+        stat_fn = signed_rank_statistic_rows_nan
+
+    noise = values - centre
+    indices = calendar_block_indices(
+        calendar.n_days,
+        block_length_days=block_length_days,
+        n_bootstrap=n_bootstrap,
+        seed=seed,
+    )
+    replicates_values, _ = calendar_replicates(noise, calendar.labels, indices)
+    if statistic == "t":
+        replicates = stat_fn(replicates_values)
+    else:
+        replicates = stat_fn(replicates_values)
+    finite = np.isfinite(replicates)
+    dropped = int((~finite).sum())
+    replicates = replicates[finite]
+    if replicates.size == 0:
+        raise ValueError("Mọi bản sao bootstrap không hữu hạn.")
+    p_greater = (1 + int(np.sum(replicates >= observed))) / (n_bootstrap + 1)
+    p_less = (1 + int(np.sum(replicates <= observed))) / (n_bootstrap + 1)
+    p_value = min(1.0, 2.0 * min(p_greater, p_less))
+    n_observed = np.isfinite(replicates_values).sum(axis=1)[finite]
+    return {
+        "p_value": float(p_value),
+        "observed_statistic": observed,
+        "centre": centre,
+        "mu": float(mu),
+        "statistic": statistic,
+        "block_length_days": int(min(block_length_days, calendar.n_days)),
+        "n_bootstrap": int(n_bootstrap),
+        "seed": int(seed),
+        "n_replicates_dropped": dropped,
+        "resolution_floor": float(2.0 / (n_bootstrap + 1)),
+        "at_resolution_floor": bool(p_value <= 2.0 / (n_bootstrap + 1) + 1e-12),
+        "n_observed_replicate_mean": (
+            float(n_observed.mean()) if n_observed.size else float("nan")
+        ),
+        "n_observed_replicate_sd": (
+            float(n_observed.std(ddof=1)) if n_observed.size > 1 else float("nan")
+        ),
+    }
+
+
 # ---------------------------------------------------------------------------
 
 
@@ -1495,6 +2117,7 @@ def bootstrap_percentile_pvalue(
 
 def _season_effect_test(
     panel: pd.DataFrame,
+    calendar: DailyCalendar,
     *,
     block_length: int = BLOCK_LENGTH_DAYS,
     n_bootstrap: int = N_NULL_BOOTSTRAP,
@@ -1508,9 +2131,10 @@ def _season_effect_test(
     bốn mùa. H₁: có ít nhất một mùa khác.
 
     * **Phương pháp chính:** Kruskal-Wallis với phân phối null dựng bằng
-      **circular moving block bootstrap** trên chuỗi **gộp**; nhãn mùa **giữ
-      theo vị trí lịch** (không hoán đổi nhãn). Mô phỏng cho thấy phương pháp
-      này đạt size ≈ α khi block ≥ 28 ngày (mục mô phỏng trong báo cáo).
+      **circular moving block bootstrap THEO LỊCH** — block gồm
+      `block_length` **ngày lịch liên tiếp**, resample trên chuỗi **gộp** (mọi
+      mùa gộp chung) của **lịch ngày đầy đủ**; nhãn mùa đi theo **ngày nguồn**
+      của bản sao, mặt nạ ngày thiếu đi theo bản sao.
     * **Đối chứng:** hồi quy **HAC/Newey–West** `[1, xu hướng, 3 dummy mùa]`,
       kiểm định Wald đồng thời — dùng để **tách mùa khỏi xu hướng thời gian**
       (bốn mùa là bốn đoạn thời gian liên tiếp).
@@ -1523,17 +2147,24 @@ def _season_effect_test(
         raise ValueError("Mỗi mùa cần ≥ 3 ngày để kiểm định.")
 
     kw = stats.kruskal(*groups)
-    null_boot = block_bootstrap_null_test(
-        values,
-        statistic=lambda matrix: kruskal_statistic_rows(matrix, masks),
+    season_codes = list(range(len(SEASON_DISPLAY_ORDER)))
+
+    def statistic(matrix: np.ndarray, labels: np.ndarray) -> np.ndarray:
+        return kruskal_statistic_rows_nan(matrix, [(labels == code) for code in season_codes])
+
+    null_boot = calendar_bootstrap_null_test(
+        calendar,
+        statistic=statistic,
         observed_statistic=float(kw.statistic),
         alternative="greater",
-        block_length=block_length,
+        block_length_days=block_length,
         n_bootstrap=n_bootstrap,
         seed=seed,
         null_construction=(
-            "Chuỗi gộp toàn bộ ngày, resample theo block tròn; nhãn mùa giữ theo "
-            "vị trí lịch (không hoán đổi nhãn mùa)."
+            "Chuỗi GỘP trên lịch ngày đầy đủ (mọi mùa gộp chung), resample theo "
+            "block gồm NGÀY LỊCH liên tiếp; nhãn mùa đi theo ngày nguồn của bản "
+            "sao; mặt nạ ngày thiếu đi theo bản sao (không nội suy, không nối hai "
+            "khoảng thời gian bị ngắt)."
         ),
         statistic_name="H",
     )
@@ -1563,34 +2194,40 @@ def _season_effect_test(
         }
     block_sensitivity = {}
     for block_value in BLOCK_LENGTH_SENSITIVITY:
-        block_boot = block_bootstrap_null_test(
-            values,
-            statistic=lambda matrix: kruskal_statistic_rows(matrix, masks),
+        block_boot = calendar_bootstrap_null_test(
+            calendar,
+            statistic=statistic,
             observed_statistic=float(kw.statistic),
             alternative="greater",
-            block_length=block_value,
+            block_length_days=block_value,
             n_bootstrap=n_bootstrap,
             seed=seed,
         )
         block_sensitivity[str(block_value)] = {
             "p_value": block_boot["p_value"],
-            "block_length": int(block_value),
+            "block_length_days": int(block_value),
         }
 
     primary_reject = bool(null_boot["p_value"] < ALPHA)
-    supporting_reject = bool(wald["p_value"] < ALPHA)
     primary_stable = all(
         bool(entry["p_value"] < ALPHA) == primary_reject
         for entry in block_sensitivity.values()
     )
-    status, reason = _status_from_agreement(
-        primary_reject, [supporting_reject], sensitivity_stable=primary_stable
+    # Quy tắc R5 (chốt trước khi xem kết quả): **một chu kỳ mùa duy nhất** và mùa
+    # là các đoạn thời gian liên tiếp ⇒ "mùa" không tách được khỏi "xu hướng" ⇒
+    # kiểm định mùa **luôn** ở trạng thái thăm dò, bất kể p-value.
+    status = "exploratory"
+    reason = (
+        "Một chu kỳ mùa duy nhất và mùa là các đoạn thời gian liên tiếp → không tách "
+        "được 'mùa' khỏi 'xu hướng'; hồi quy HAC dùng làm đối chứng **không** kiểm "
+        "soát được sai lầm loại I trong cấu trúc này (Monte Carlo: size 30–55% vì dummy "
+        "mùa gần cộng tuyến với xu hướng) nên không dùng để quyết định trạng thái."
     )
 
     return {
         "test": "season_effect",
         "key": "season_effect",
-        "label": "Mùa (4 nhóm, xét phụ thuộc thời gian)",
+        "label": "Mùa (4 nhóm, có xét phụ thuộc thời gian)",
         "h0": (
             "Phân phối trung bình ngày giống nhau ở cả bốn mùa (trong một quá trình "
             "ổn định trong giai đoạn quan sát)."
@@ -1603,6 +2240,7 @@ def _season_effect_test(
         "df": 3,
         "p_value": float(null_boot["p_value"]),
         "p_value_independence": float(kw.pvalue),
+        "p_value_hac": float(wald["p_value"]),
         "effect_size_name": "epsilon_squared",
         "effect_size": float(min(max(kw.statistic / (values.size - 1), 0.0), 1.0)),
         "group_sizes": {
@@ -1614,15 +2252,18 @@ def _season_effect_test(
         },
         "n": int(values.size),
         "method": {
-            "primary": "Kruskal-Wallis + null circular moving block bootstrap (chuỗi gộp)",
-            "primary_block_length": int(block_length),
+            "primary": (
+                "Kruskal-Wallis + null circular moving block bootstrap THEO LỊCH "
+                "(chuỗi gộp trên lịch ngày đầy đủ)"
+            ),
+            "primary_block_length_days": int(block_length),
             "supporting": "OLS + HAC (Newey–West) với xu hướng thời gian, Wald đồng thời",
             "supporting_lag": int(hac_lag),
             "assumptions": (
-                "Chuỗi gộp ổn định trong giai đoạn quan sát; block ≥ 28 ngày bao trọn "
-                "phụ thuộc còn lại; nhãn mùa gắn theo vị trí lịch nên cấu trúc mùa "
-                "vụ không bị phá vỡ; phương pháp đối chứng dùng HAC để tách mùa khỏi "
-                "xu hướng."
+                "Chuỗi gộp ổn định trong giai đoạn quan sát; block ≥ 28 ngày LỊCH bao "
+                "trọn phụ thuộc còn lại; nhãn mùa gắn theo NGÀY NGUỒN của bản sao nên "
+                "cấu trúc mùa vụ không bị phá vỡ; mặt nạ ngày thiếu đi theo bản sao; "
+                "phương pháp đối chứng dùng HAC để tách mùa khỏi xu hướng."
             ),
         },
         "supporting_result": {
@@ -1643,7 +2284,7 @@ def _season_effect_test(
             "names": names,
         },
         "null_bootstrap": null_boot,
-        "sensitivity": {"block_length": block_sensitivity, "hac_lag": lag_sensitivity},
+        "sensitivity": {"block_length_days": block_sensitivity, "hac_lag": lag_sensitivity},
         "status": status,
         "status_reason": reason,
     }
@@ -1651,6 +2292,7 @@ def _season_effect_test(
 
 def _weekday_effect_test(
     panel: pd.DataFrame,
+    calendar: DailyCalendar,
     *,
     block_length: int = BLOCK_LENGTH_DAYS,
     n_bootstrap: int = N_NULL_BOOTSTRAP,
@@ -1664,8 +2306,9 @@ def _weekday_effect_test(
     nhau. H₁: khác nhau.
 
     * **Phương pháp chính:** Mann-Whitney U với phân phối null dựng bằng
-      **circular moving block bootstrap** trên chuỗi **gộp**; nhãn
-      weekday/weekend **giữ theo vị trí lịch** → cấu trúc tuần không bị phá vỡ.
+      **circular moving block bootstrap THEO LỊCH** trên chuỗi **gộp**; nhãn
+      weekday/weekend đi theo **ngày nguồn** của bản sao → cấu trúc tuần không
+      bị phá vỡ; mặt nạ ngày thiếu đi theo bản sao.
     * **Đối chứng:** hồi quy **HAC** `[1, xu hướng, dummy cuối tuần]`.
     """
     values = panel["pm25_mean"].to_numpy(dtype=float)
@@ -1676,17 +2319,24 @@ def _weekday_effect_test(
         raise ValueError("Mỗi nhóm cần ≥ 3 ngày để kiểm định.")
 
     mw = stats.mannwhitneyu(values[mask_a], values[mask_b], alternative="two-sided")
-    null_boot = block_bootstrap_null_test(
-        values,
-        statistic=lambda matrix: mannwhitney_statistic_rows(matrix, mask_a),
+
+    def statistic(matrix: np.ndarray, labels: np.ndarray) -> np.ndarray:
+        return mannwhitney_statistic_rows_nan(
+            matrix, labels == 0, labels == 1
+        )
+
+    null_boot = calendar_bootstrap_null_test(
+        calendar,
+        statistic=statistic,
         observed_statistic=float(mw.statistic),
         alternative="two-sided",
-        block_length=block_length,
+        block_length_days=block_length,
         n_bootstrap=n_bootstrap,
         seed=seed,
         null_construction=(
-            "Chuỗi gộp toàn bộ ngày, resample theo block tròn; nhãn weekday/weekend "
-            "giữ theo vị trí lịch (không hoán đổi nhãn)."
+            "Chuỗi GỘP trên lịch ngày đầy đủ, resample theo block gồm NGÀY LỊCH "
+            "liên tiếp; nhãn weekday/weekend đi theo ngày nguồn của bản sao; mặt nạ "
+            "ngày thiếu đi theo bản sao."
         ),
         statistic_name="U",
     )
@@ -1706,25 +2356,29 @@ def _weekday_effect_test(
         }
     block_sensitivity = {}
     for block_value in BLOCK_LENGTH_SENSITIVITY:
-        block_boot = block_bootstrap_null_test(
-            values,
-            statistic=lambda matrix: mannwhitney_statistic_rows(matrix, mask_a),
+        block_boot = calendar_bootstrap_null_test(
+            calendar,
+            statistic=statistic,
             observed_statistic=float(mw.statistic),
             alternative="two-sided",
-            block_length=block_value,
+            block_length_days=block_value,
             n_bootstrap=n_bootstrap,
             seed=seed,
         )
         block_sensitivity[str(block_value)] = {
             "p_value": block_boot["p_value"],
-            "block_length": int(block_value),
+            "block_length_days": int(block_value),
         }
 
-    primary_reject = bool(null_boot["p_value"] < ALPHA)
-    supporting_reject = bool(hac_p < ALPHA)
+    # Phương pháp chính: hồi quy HAC [1, xu hướng, dummy cuối tuần] — Monte Carlo
+    # cho thấy size ≈ 2–10% (tốt hơn null bootstrap về sức mạnh, vẫn gần α).
+    # Đối chứng: null block bootstrap THEO LỊCH (size 0–7%, **bảo thủ hơn** vì
+    # null của nó phá vỡ hiệu ứng mùa vụ đang triệt tiêu trong phép so sánh).
+    primary_reject = bool(hac_p < ALPHA)
+    supporting_reject = bool(null_boot["p_value"] < ALPHA)
     primary_stable = all(
         bool(entry["p_value"] < ALPHA) == primary_reject
-        for entry in block_sensitivity.values()
+        for entry in lag_sensitivity.values()
     )
     status, reason = _status_from_agreement(
         primary_reject, [supporting_reject], sensitivity_stable=primary_stable
@@ -1740,8 +2394,9 @@ def _weekday_effect_test(
         "alternative": "hai phía",
         "statistic_name": "U",
         "statistic": float(mw.statistic),
-        "p_value": float(null_boot["p_value"]),
+        "p_value": float(hac_p),
         "p_value_independence": float(mw.pvalue),
+        "p_value_bootstrap": float(null_boot["p_value"]),
         "n_a": int(mask_a.sum()),
         "n_b": int(mask_b.sum()),
         "n": int(values.size),
@@ -1754,19 +2409,22 @@ def _weekday_effect_test(
         "effect_size_name": "r_rb",
         "effect_size": float(2.0 * mw.statistic / (mask_a.sum() * mask_b.sum()) - 1.0),
         "method": {
-            "primary": "Mann-Whitney U + null circular moving block bootstrap (chuỗi gộp)",
-            "primary_block_length": int(block_length),
+            "primary": (
+                "Mann-Whitney U + null circular moving block bootstrap THEO LỊCH "
+                "(chuỗi gộp trên lịch ngày đầy đủ)"
+            ),
+            "primary_block_length_days": int(block_length),
             "supporting": "OLS + HAC (Newey–West), hệ số dummy cuối tuần",
             "supporting_lag": int(hac_lag),
             "assumptions": (
-                "Chuỗi gộp ổn định trong giai đoạn quan sát; block ≥ 28 ngày bao trọn "
-                "phụ thuộc còn lại; nhãn nhóm đi theo vị trí lịch nên xen kẽ tuần được "
-                "giữ nguyên."
+                "Chuỗi gộp ổn định trong giai đoạn quan sát; block ≥ 28 ngày LỊCH bao "
+                "trọn phụ thuộc còn lại; nhãn nhóm đi theo NGÀY NGUỒN của bản sao nên "
+                "xen kẽ tuần được giữ nguyên; mặt nạ ngày thiếu đi theo bản sao."
             ),
         },
         "supporting_result": {"name": "t (HAC)", "p_value": hac_p, "statistic": hac_t},
         "null_bootstrap": null_boot,
-        "sensitivity": {"block_length": block_sensitivity, "hac_lag": lag_sensitivity},
+        "sensitivity": {"block_length_days": block_sensitivity, "hac_lag": lag_sensitivity},
         "status": status,
         "status_reason": reason,
     }
@@ -1774,6 +2432,7 @@ def _weekday_effect_test(
 
 def _location_effect_test(
     panel: pd.DataFrame,
+    calendar: DailyCalendar,
     *,
     mu: float,
     kind: str,
@@ -1796,8 +2455,9 @@ def _location_effect_test(
       kê là tỷ lệ ngày vượt, SE là sandwich HAC. (Bản signed-rank có HAC cũng
       được tính, nhưng dãy chênh lệch lớn rất bền nên SE HAC của nó bị thổi
       phồng → kém sức; xem phần đối chứng.)
-    * **Đối chứng:** bootstrap **áp đặt H₀** (tách nhiễu rồi dựng bản sao dưới
-      H₀) và p-value suy ra từ chính phân phối bootstrap của ước lượng (đảo CI).
+    * **Đối chứng:** bootstrap **áp đặt H₀** resample **theo lịch** (tách nhiễu
+      trên lịch rồi dựng bản sao dưới H₀) và p-value suy ra từ chính phân phối
+      bootstrap của ước lượng (đảo CI).
     """
     if kind not in ("median", "mean"):
         raise ValueError(f"kind phải là 'median' hoặc 'mean', nhận {kind!r}.")
@@ -1807,8 +2467,8 @@ def _location_effect_test(
 
     if kind == "mean":
         hac = hac_mean_test(values, mu=mu, lag=hac_lag)
-        null_imposed = null_imposed_centered_test(
-            values, mu=mu, statistic="t", block_length=block_length,
+        null_imposed = calendar_null_imposed_test(
+            calendar, mu=mu, statistic="t", block_length_days=block_length,
             n_bootstrap=n_bootstrap, seed=seed,
         )
         percentile = bootstrap_percentile_pvalue(
@@ -1846,8 +2506,8 @@ def _location_effect_test(
             "n": int(values.size),
             "share": float(share.mean()),
         }
-        null_imposed = null_imposed_centered_test(
-            values, mu=mu, statistic="signed_rank", block_length=block_length,
+        null_imposed = calendar_null_imposed_test(
+            calendar, mu=mu, statistic="signed_rank", block_length_days=block_length,
             n_bootstrap=n_bootstrap, seed=seed,
         )
         percentile = bootstrap_percentile_pvalue(
@@ -1890,14 +2550,14 @@ def _location_effect_test(
         }
     block_sensitivity = {}
     for block_value in BLOCK_LENGTH_SENSITIVITY:
-        entry = null_imposed_centered_test(
-            values, mu=mu,
+        entry = calendar_null_imposed_test(
+            calendar, mu=mu,
             statistic="t" if kind == "mean" else "signed_rank",
-            block_length=block_value, n_bootstrap=n_bootstrap, seed=seed,
+            block_length_days=block_value, n_bootstrap=n_bootstrap, seed=seed,
         )
         block_sensitivity[str(block_value)] = {
             "p_value": entry["p_value"],
-            "block_length": int(block_value),
+            "block_length_days": int(block_value),
         }
 
     primary_reject = bool(hac["p_value"] < ALPHA)
@@ -1926,6 +2586,7 @@ def _location_effect_test(
         "statistic": float(hac["statistic"]),
         "p_value": float(hac["p_value"]),
         "p_value_independence": float(scipy_result.pvalue),
+        "p_value_bootstrap": float(null_imposed["p_value"]),
         "n": int(values.size),
         "effect_size_name": effect_name,
         "effect_size": float(effect),
@@ -1938,12 +2599,15 @@ def _location_effect_test(
             "primary": primary_description,
             "primary_name": primary_name,
             "primary_lag": int(hac_lag),
-            "supporting": "Bootstrap áp đặt H₀ + p-value đảo CI (cùng phân phối bootstrap)",
+            "supporting": (
+                "Bootstrap áp đặt H₀ resample theo lịch + p-value đảo CI "
+                "(cùng phân phối bootstrap)"
+            ),
             "assumptions": (
                 "Sai số tự tương quan tới bậc L và không tương quan với biến giải "
                 "thích; L đủ lớn để bao trọn phụ thuộc còn lại; phân phối liên tục "
                 "(để trung vị tương đương tỷ lệ vượt 50%); chuỗi ổn định trong giai "
-                "đoạn quan sát."
+                "đoạn quan sát; mặt nạ ngày thiếu giữ nguyên khi áp đặt H₀."
             ),
         },
         "supporting_result": {
@@ -1955,7 +2619,7 @@ def _location_effect_test(
         "null_imposed": null_imposed,
         "percentile": percentile,
         "signed_rank_hac": signed_rank,
-        "sensitivity": {"hac_lag": lag_sensitivity, "block_length": block_sensitivity},
+        "sensitivity": {"hac_lag": lag_sensitivity, "block_length_days": block_sensitivity},
         "status": status,
         "status_reason": reason,
     }
@@ -2084,103 +2748,248 @@ def ar1_series(
     return filtered[burn_in:]
 
 
+def _ar1_daily(n: int, rho: float, sigma: float, rng: np.random.Generator) -> np.ndarray:
+    """Chuỗi AR(1) ngày (dùng bộ lọc đệ quy, không phụ thuộc scipy.signal)."""
+    innovations = rng.normal(0.0, sigma, n)
+    out = np.empty(n, dtype=float)
+    out[0] = innovations[0]
+    for i in range(1, n):
+        out[i] = rho * out[i - 1] + innovations[i]
+    return out
+
+
+def _long_range_daily(n: int, sigma: float, rng: np.random.Generator) -> np.ndarray:
+    """
+    Chuỗi có **phụ thuộc kéo dài** (không phải AR(1)).
+
+    Mô hình: ``x_t = u_t + u_{t-1} + … + u_{t-K}`` với ``K = 30`` — ACF giảm
+    chậm (không phải hình mũ), nên block bootstrap ngắn sẽ **không** bắt được
+    hết phụ thuộc. Đây là kịch bản "bất lợi" cho phương pháp theo block.
+    """
+    k = 30
+    shocks = rng.normal(0.0, sigma, n + k)
+    cumulative = np.cumsum(shocks)
+    out = cumulative[k:] - cumulative[:-k]
+    return (out - out.mean()) / out.std(ddof=1) * sigma
+
+
+def _clustered_missing_mask(n: int, rate: float, rng: np.random.Generator) -> np.ndarray:
+    """Mặt nạ thiếu **thành cụm** (giống dữ liệu thật: các đoạn mất liên tiếp)."""
+    mask = np.zeros(n, dtype=bool)
+    gap = 0
+    while gap < n:
+        run = int(rng.integers(1, 8))
+        mask[gap : gap + run] = True
+        gap += run + int(rng.integers(1, 14))
+    return mask[:n]
+
+
+def _random_missing_mask(n: int, rate: float, rng: np.random.Generator) -> np.ndarray:
+    """Mặt nạ thiếu **ngẫu nhiên** (mỗi ngày độc lập)."""
+    return rng.random(n) < rate
+
+
+def build_simulation_calendar(
+    values: np.ndarray,
+    missing_mask: Optional[np.ndarray] = None,
+    *,
+    start: str = "2024-01-01",
+    label: str = "season",
+) -> DailyCalendar:
+    """Dựng lịch ngày cho dữ liệu mô phỏng (ngày lịch liên tục + mặt nạ thiếu)."""
+    if label not in ("season", "weekend"):
+        raise ValueError(f"label phải là 'season' hoặc 'weekend', nhận {label!r}.")
+    n = int(values.size)
+    dates = pd.date_range(start, periods=n, freq="D")
+    season_months = dates.month.to_numpy()
+    seasons = np.array([SEASON_MONTHS[int(m)] for m in season_months], dtype=object)
+    codes = {season: index for index, season in enumerate(SEASON_DISPLAY_ORDER)}
+    labels = np.array([codes[s] for s in seasons], dtype=np.int64)
+    if label == "weekend":
+        labels = (dates.dayofweek.to_numpy() >= 5).astype(np.int64)
+    calendar_values = np.asarray(values, dtype=float).copy()
+    if missing_mask is not None:
+        calendar_values[np.asarray(missing_mask, dtype=bool)] = np.nan
+    return DailyCalendar(
+        dates=dates.to_numpy(dtype="datetime64[D]"),
+        values=calendar_values,
+        labels=labels,
+        valid_hours=np.where(np.isfinite(calendar_values), 24, 0).astype(np.int64),
+        season=seasons,
+        is_weekend=(dates.dayofweek.to_numpy() >= 5).astype(np.int64),
+        week_key=np.asarray(
+            [
+                f"{int(year)}-W{int(week):02d}"
+                for year, week in zip(
+                    dates.isocalendar()["year"], dates.isocalendar()["week"]
+                )
+            ],
+            dtype=object,
+        ),
+    )
+
+
 def _simulation_procedures(
     *,
-    block_length: int = BLOCK_LENGTH_DAYS,
+    block_length_days: int = BLOCK_LENGTH_DAYS,
     n_bootstrap: int = N_SIMULATION_BOOTSTRAP,
     seed: int = BOOTSTRAP_SEED,
     hac_lag: int = HAC_LAG_DAILY,
 ) -> Dict[str, Dict[str, Any]]:
     """
-    Bốn phép kiểm dưới dạng hàm nhận mảng giá trị (theo thứ tự lịch).
+    Các **phương pháp ứng viên** cho từng phép kiểm, dưới dạng hàm nhận lịch.
 
-    Mỗi hàm trả về ba p-value:
-      * ``p_independence`` — phép kiểm SciPy giả định quan sát độc lập;
-      * ``p_dependence_aware`` — phương pháp **chính** đã hiệu chỉnh phụ thuộc;
-      * ``p_supporting`` — phương pháp đối chứng đã hiệu chỉnh phụ thuộc.
+    Mỗi hàm trả về p-value của **nhiều phương pháp** (khoá trong dict):
+
+    * ``p_independence`` — phép kiểm SciPy giả định quan sát độc lập (tham chiếu);
+    * ``p_bootstrap`` — phương pháp **có xét phụ thuộc** dựa trên null bootstrap
+      **theo lịch** (hoặc null áp đặt H₀ cho kiểm định vị trí);
+    * ``p_hac`` — phương pháp **có xét phụ thuộc** dựa trên HAC/Newey–West.
+
+    Phương pháp nào làm **chính** cho từng kiểm định được chọn bằng **bằng
+    chứng hiệu lực** (tỷ lệ bác bỏ dưới H₀ đo bằng Monte Carlo), không phải
+    bằng cảm tính.
 
     Quy ước nhóm trong mô phỏng (khớp với dữ liệu thật ở mức cấu trúc):
       * mùa: bốn đoạn liên tiếp, mỗi đoạn ``n/4`` ngày;
       * cuối tuần: mọi ngày có ``index % 7 >= 5``.
     """
-    def season(values: np.ndarray) -> Dict[str, float]:
-        n = values.size
+    season_codes = list(range(len(SEASON_DISPLAY_ORDER)))
+
+    def _hac_season(calendar: DailyCalendar) -> float:
+        n = calendar.n_days
         positions = np.arange(n)
-        masks = [np.asarray((positions * 4 // n) == g, dtype=bool) for g in range(4)]
-        groups = [values[m] for m in masks]
-        kw = stats.kruskal(*groups)
-        boot = block_bootstrap_null_test(
-            values,
-            statistic=lambda matrix: kruskal_statistic_rows(matrix, masks),
-            observed_statistic=float(kw.statistic),
-            alternative="greater",
-            block_length=block_length,
-            n_bootstrap=n_bootstrap,
-            seed=seed,
-        )
+        observed = np.isfinite(calendar.values)
+        if observed.sum() < 10:
+            return float("nan")
         design = np.column_stack(
-            [np.ones(n), positions / 30.0] + [m.astype(float) for m in masks[1:]]
-        )
-        model = hac_regression(values, design, lag=hac_lag)
+            [np.ones(n), positions / 30.0]
+            + [((positions * 4 // n) == g).astype(float) for g in range(1, 4)]
+        )[observed]
+        model = hac_regression(calendar.values[observed], design, lag=hac_lag)
         wald = joint_wald_test(model["coef"], model["cov"], [2, 3, 4], model["df_resid"])
-        return {
-            "p_independence": float(kw.pvalue),
-            "p_dependence_aware": float(boot["p_value"]),
-            "p_supporting": float(wald["p_value"]),
-        }
+        return float(wald["p_value"])
 
-    def weekday(values: np.ndarray) -> Dict[str, float]:
-        n = values.size
+    def _hac_weekday(calendar: DailyCalendar) -> float:
+        n = calendar.n_days
         positions = np.arange(n)
-        mask_a = np.asarray((positions % 7) < 5, dtype=bool)
-        mw = stats.mannwhitneyu(values[mask_a], values[~mask_a], alternative="two-sided")
-        boot = block_bootstrap_null_test(
-            values,
-            statistic=lambda matrix: mannwhitney_statistic_rows(matrix, mask_a),
-            observed_statistic=float(mw.statistic),
-            alternative="two-sided",
-            block_length=block_length,
-            n_bootstrap=n_bootstrap,
-            seed=seed,
-        )
+        observed = np.isfinite(calendar.values)
+        if observed.sum() < 10:
+            return float("nan")
         design = np.column_stack(
-            [np.ones(n), positions / 30.0, (~mask_a).astype(float)]
-        )
-        model = hac_regression(values, design, lag=hac_lag)
-        return {
-            "p_independence": float(mw.pvalue),
-            "p_dependence_aware": float(boot["p_value"]),
-            "p_supporting": float(model["p"][2]),
-        }
+            [np.ones(n), positions / 30.0, ((positions % 7) >= 5).astype(float)]
+        )[observed]
+        model = hac_regression(calendar.values[observed], design, lag=hac_lag)
+        return float(model["p"][2])
 
-    def median(values: np.ndarray) -> Dict[str, float]:
-        share = (values > 0.0).astype(float)
-        model = hac_regression(share, np.ones((values.size, 1)), lag=hac_lag)
+    def _hac_mean(calendar: DailyCalendar) -> float:
+        sample = calendar.values[np.isfinite(calendar.values)]
+        if sample.size < 8:
+            return float("nan")
+        return float(hac_mean_test(sample, mu=0.0, lag=hac_lag)["p_value"])
+
+    def _hac_share(calendar: DailyCalendar) -> float:
+        sample = calendar.values[np.isfinite(calendar.values)]
+        if sample.size < 8:
+            return float("nan")
+        share = (sample > 0.0).astype(float)
+        model = hac_regression(share, np.ones((sample.size, 1)), lag=hac_lag)
         se = float(model["se"][0])
         t_stat = (float(model["coef"][0]) - 0.5) / se
-        hac_p = float(2.0 * stats.t.sf(abs(t_stat), values.size - 1))
-        null_imposed = null_imposed_centered_test(
-            values, mu=0.0, statistic="signed_rank",
-            block_length=block_length, n_bootstrap=n_bootstrap, seed=seed,
+        return float(2.0 * stats.t.sf(abs(t_stat), sample.size - 1))
+
+    def season(calendar: DailyCalendar) -> Dict[str, float]:
+        values = calendar.values
+        observed = np.isfinite(values)
+        groups = [values[observed & (calendar.labels == code)] for code in season_codes]
+        groups = [g for g in groups if g.size >= 3]
+        if len(groups) < 2:
+            return {"p_independence": np.nan, "p_bootstrap": np.nan, "p_hac": np.nan}
+        kw = stats.kruskal(*groups)
+
+        def statistic(matrix: np.ndarray, labels: np.ndarray) -> np.ndarray:
+            return kruskal_statistic_rows_nan(matrix, [(labels == c) for c in season_codes])
+
+        boot = calendar_bootstrap_null_test(
+            calendar,
+            statistic=statistic,
+            observed_statistic=float(kw.statistic),
+            alternative="greater",
+            block_length_days=block_length_days,
+            n_bootstrap=n_bootstrap,
+            seed=seed,
         )
         return {
-            "p_independence": float(
-                stats.wilcoxon(values, alternative="two-sided").pvalue
-            ),
-            "p_dependence_aware": hac_p,
-            "p_supporting": float(null_imposed["p_value"]),
+            "p_independence": float(kw.pvalue),
+            "p_bootstrap": float(boot["p_value"]),
+            "p_hac": _hac_season(calendar),
         }
 
-    def mean(values: np.ndarray) -> Dict[str, float]:
-        hac = hac_mean_test(values, mu=0.0, lag=hac_lag)
-        null_imposed = null_imposed_centered_test(
-            values, mu=0.0, statistic="t",
-            block_length=block_length, n_bootstrap=n_bootstrap, seed=seed,
+    def weekday(calendar: DailyCalendar) -> Dict[str, float]:
+        # Phép kiểm weekday cần nhãn **cuối tuần**, phép kiểm mùa cần nhãn **mùa**
+        # → dựng bản sao lịch riêng với nhãn cuối tuần (cùng lịch, cùng mặt nạ).
+        weekend_labels = calendar.is_weekend.astype(np.int64)
+        calendar_w = DailyCalendar(
+            dates=calendar.dates,
+            values=calendar.values,
+            labels=weekend_labels,
+            valid_hours=calendar.valid_hours,
+            season=calendar.season,
+            is_weekend=calendar.is_weekend,
+            week_key=calendar.week_key,
+        )
+        values = calendar.values
+        observed = np.isfinite(values)
+        weekday_days = values[observed & (weekend_labels == 0)]
+        weekend_days = values[observed & (weekend_labels == 1)]
+        if weekday_days.size < 3 or weekend_days.size < 3:
+            return {"p_independence": np.nan, "p_bootstrap": np.nan, "p_hac": np.nan}
+        mw = stats.mannwhitneyu(weekday_days, weekend_days, alternative="two-sided")
+
+        def statistic(matrix: np.ndarray, labels: np.ndarray) -> np.ndarray:
+            return mannwhitney_statistic_rows_nan(matrix, labels == 0, labels == 1)
+
+        boot = calendar_bootstrap_null_test(
+            calendar_w,
+            statistic=statistic,
+            observed_statistic=float(mw.statistic),
+            alternative="two-sided",
+            block_length_days=block_length_days,
+            n_bootstrap=n_bootstrap,
+            seed=seed,
         )
         return {
-            "p_independence": float(stats.ttest_1samp(values, popmean=0.0).pvalue),
-            "p_dependence_aware": float(hac["p_value"]),
-            "p_supporting": float(null_imposed["p_value"]),
+            "p_independence": float(mw.pvalue),
+            "p_bootstrap": float(boot["p_value"]),
+            "p_hac": _hac_weekday(calendar),
+        }
+
+    def median(calendar: DailyCalendar) -> Dict[str, float]:
+        sample = calendar.values[np.isfinite(calendar.values)]
+        if sample.size < 8:
+            return {"p_independence": np.nan, "p_hac": np.nan, "p_bootstrap": np.nan}
+        null_imposed = calendar_null_imposed_test(
+            calendar, mu=0.0, statistic="signed_rank",
+            block_length_days=block_length_days, n_bootstrap=n_bootstrap, seed=seed,
+        )
+        return {
+            "p_independence": float(stats.wilcoxon(sample, alternative="two-sided").pvalue),
+            "p_hac": _hac_share(calendar),
+            "p_bootstrap": float(null_imposed["p_value"]),
+        }
+
+    def mean(calendar: DailyCalendar) -> Dict[str, float]:
+        sample = calendar.values[np.isfinite(calendar.values)]
+        if sample.size < 8:
+            return {"p_independence": np.nan, "p_hac": np.nan, "p_bootstrap": np.nan}
+        null_imposed = calendar_null_imposed_test(
+            calendar, mu=0.0, statistic="t",
+            block_length_days=block_length_days, n_bootstrap=n_bootstrap, seed=seed,
+        )
+        return {
+            "p_independence": float(stats.ttest_1samp(sample, popmean=0.0).pvalue),
+            "p_hac": _hac_mean(calendar),
+            "p_bootstrap": float(null_imposed["p_value"]),
         }
 
     return {
@@ -2191,75 +3000,188 @@ def _simulation_procedures(
     }
 
 
-def simulate_test_rates(
+def inf_hac(y, design, lag):
+    """Bọc `hac_regression` để giữ chữ ký ngắn trong engine mô phỏng."""
+    return hac_regression(y, design, lag=lag)
+
+
+def inf_wald(model, indices):
+    return joint_wald_test(model["coef"], model["cov"], indices, model["df_resid"])
+
+
+#: Các kịch bản kiểm soát sai lầm loại I. Mỗi kịch bản mô tả **một** cách
+#: sinh dữ liệu dưới H₀ (không có hiệu ứng thật) — để kiểm tra phương pháp
+#: có thực sự giữ được mức α khi điều kiện giả định khác nhau.
+#:
+#: ``seasonal_level`` bật **mức theo mùa** trên bốn đoạn thời gian liên tiếp —
+#: đây là cấu trúc thật của dữ liệu (và cũng là cấu trúc gây nhầm lẫn nhất:
+#: "mùa" trùng lặp với "xu hướng"). Kịch bản này kiểm tra xem phương pháp có
+#: vô tình bắt "mùa" khi dữ liệu chỉ có xu hướng hay không.
+SIMULATION_SCENARIOS: Dict[str, Dict[str, Any]] = {
+    "independent": {
+        "label": "Quan sát độc lập (i.i.d.)",
+        "kind": "ar1",
+        "rho": 0.0,
+        "missing": "none",
+    },
+    "ar1_weak": {
+        "label": "AR(1) yếu (ρ = 0,3)",
+        "kind": "ar1",
+        "rho": 0.3,
+        "missing": "none",
+    },
+    "ar1_medium": {
+        "label": "AR(1) trung bình (ρ = 0,6)",
+        "kind": "ar1",
+        "rho": 0.6,
+        "missing": "none",
+    },
+    "ar1_strong": {
+        "label": "AR(1) mạnh (ρ = 0,9)",
+        "kind": "ar1",
+        "rho": 0.9,
+        "missing": "none",
+    },
+    "trend_ar1": {
+        "label": "AR(1) mạnh (ρ = 0,73) + xu hướng tuyến tính (mùa trùng với thời gian)",
+        "kind": "ar1",
+        "rho": 0.7276,
+        "missing": "none",
+        "linear_trend": True,
+    },
+    "long_range": {
+        "label": "Phụ thuộc kéo dài (MA, cửa sổ 30 ngày)",
+        "kind": "long_range",
+        "rho": 0.0,
+        "missing": "none",
+    },
+    "missing_random": {
+        "label": "AR(1) mạnh + thiếu ngẫu nhiên 20%",
+        "kind": "ar1",
+        "rho": 0.7276,
+        "missing": "random",
+        "rate": 0.20,
+    },
+    "missing_clustered": {
+        "label": "AR(1) mạnh + thiếu thành cụm 20%",
+        "kind": "ar1",
+        "rho": 0.7276,
+        "missing": "clustered",
+        "rate": 0.20,
+    },
+    "missing_real_pattern": {
+        "label": "AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật",
+        "kind": "ar1",
+        "rho": 0.7276,
+        "missing": "real_pattern",
+    },
+}
+
+
+def monte_carlo_validation(
     *,
     n_days: int = 299,
-    n_sim: int = N_SIMULATIONS,
-    rho: float = 0.73,
-    sigma: float = 1.0,
+    n_sim: int = 1_000,
     seed: int = BOOTSTRAP_SEED,
     alpha: float = ALPHA,
-    block_length: int = BLOCK_LENGTH_DAYS,
+    block_length_days: int = BLOCK_LENGTH_DAYS,
     n_bootstrap: int = N_SIMULATION_BOOTSTRAP,
     hac_lag: int = HAC_LAG_DAILY,
+    scenarios: Optional[Sequence[str]] = None,
+    real_missing_mask: Optional[np.ndarray] = None,
     apply_effect: bool = False,
-) -> Dict[str, Dict[str, float]]:
+) -> Dict[str, Any]:
     """
-    Mô phỏng tỷ lệ bác bỏ dưới H₀ (``apply_effect=False``) và dưới H₁ có hiệu ứng
-    (``apply_effect=True``) cho từng phép kiểm, trên chuỗi AR(1) có cùng mức tự
-    tương quan như dữ liệu thật.
+    Kiểm soát sai lầm loại I bằng **Monte Carlo** trên nhiều kịch bản.
 
-    Đây là **bằng chứng kiểm soát sai lầm loại I**: nếu một phép kiểm dùng p-value
-    của SciPy (giả định độc lập) thì tỷ lệ bác bỏ dưới H₀ phải bằng α; mọi
-    chênh lệch là do giả định độc lập sai.
+    Với mỗi kịch bản và mỗi phép kiểm, trả về tỷ lệ bác bỏ H₀ dưới H₀ **đúng**
+    kèm **khoảng tin cậy Wilson 95%** của chính tỷ lệ đó, và **sai số Monte
+    Carlo** chuẩn ``sqrt(p̂(1−p̂)/n_sim)`` — để người đọc tự đánh giá mức bằng
+    chứng.
+
+    `n_sim` mặc định 1.000 ⇒ sai số Monte Carlo ở p̂ = 0,05 là khoảng 0,7%
+    (tương đương CI Wilson ±1,4 điểm phần trăm). Đây là **kiểm chứng khoa học
+    có chi phí**, tách khỏi regression test chạy hằng ngày (xem
+    `scripts/validate_inference_montecarlo.py`).
     """
     procedures = _simulation_procedures(
-        block_length=block_length, n_bootstrap=n_bootstrap, seed=seed, hac_lag=hac_lag
+        block_length_days=block_length_days, n_bootstrap=n_bootstrap, seed=seed,
+        hac_lag=hac_lag,
     )
-    results: Dict[str, Dict[str, float]] = {}
-    positions = np.arange(n_days)
-    season_group = (positions * 4) // n_days
-    weekend_mask = (positions % 7) >= 5
-
-    for name, spec in procedures.items():
-        callable_ = spec["callable"]
-        effect_type = spec["effect"]
-        rejects = {"p_independence": 0, "p_dependence_aware": 0, "p_supporting": 0}
-        valid = 0
+    names = list(scenarios) if scenarios else list(SIMULATION_SCENARIOS)
+    out: Dict[str, Any] = {
+        "n_sim": int(n_sim),
+        "n_days": int(n_days),
+        "alpha": float(alpha),
+        "block_length_days": int(block_length_days),
+        "hac_lag": int(hac_lag),
+        "n_bootstrap": int(n_bootstrap),
+        "seed": int(seed),
+        "apply_effect": bool(apply_effect),
+        "scenarios": {},
+    }
+    for scenario_key in names:
+        spec = SIMULATION_SCENARIOS[scenario_key]
+        # Lịch mô phỏng cho phép kiểm weekday cần nhãn **cuối tuần**, còn phép
+        # kiểm mùa cần nhãn **mùa** — cùng một lịch, hai bộ nhãn.
+        label_kind = "weekend" if scenario_key.startswith("weekday") else "season"
+        counters: Dict[str, Dict[str, int]] = {name: {} for name in procedures}
         for sim in range(n_sim):
-            base = ar1_series(n_days, rho, sigma=sigma, seed=seed * 1_000_003 + sim)
-            if apply_effect and effect_type == "seasonal":
-                data = base + np.where(season_group == 0, 1.0, 0.0)
-            elif apply_effect and effect_type == "weekly":
-                data = base + np.where(weekend_mask, 1.0, 0.0)
-            elif apply_effect and effect_type == "location":
-                data = base + 1.0
+            rng = np.random.default_rng(seed * 1_000_003 + sim)
+            if spec["kind"] == "long_range":
+                base = _long_range_daily(n_days, 1.0, rng)
             else:
-                data = base
-            outcome = callable_(data)
-            values = {
-                key: float(outcome[key])
-                for key in ("p_independence", "p_dependence_aware", "p_supporting")
-            }
-            if not all(np.isfinite(v) for v in values.values()):
-                continue
-            valid += 1
-            for key, value in values.items():
-                rejects[key] += int(value < alpha)
-        results[name] = {
-            "n_sim": int(valid),
-            "size_independence": float(rejects["p_independence"] / valid) if valid else float("nan"),
-            "size_dependence_aware": float(rejects["p_dependence_aware"] / valid) if valid else float("nan"),
-            "size_supporting": float(rejects["p_supporting"] / valid) if valid else float("nan"),
-            "alpha": float(alpha),
-            "rho": float(rho),
-            "n_days": int(n_days),
-            "n_bootstrap": int(n_bootstrap),
-            "block_length": int(block_length),
-            "hac_lag": int(hac_lag),
-            "effect": effect_type,
+                base = _ar1_daily(n_days, float(spec.get("rho", 0.0)), 1.0, rng)
+            if spec.get("linear_trend"):
+                # Xu hướng tuyến tính trên cả kỳ — KHÔNG phải hiệu ứng mùa
+                # (H₀ vẫn đúng: không nghỉ ngày nào theo mùa), mà là cấu trúc
+                # "mùa trùng lặp với thời gian" khiến dummy mùa gần cộng tuyến
+                # với xu hướng — kiểm tra phương pháp có vô tình bắt xu hướng.
+                positions = np.arange(n_days)
+                base = base + 0.02 * positions
+            missing_kind = spec.get("missing", "none")
+            if missing_kind == "none":
+                mask = None
+            elif missing_kind == "random":
+                mask = _random_missing_mask(n_days, float(spec.get("rate", 0.2)), rng)
+            elif missing_kind == "clustered":
+                mask = _clustered_missing_mask(n_days, float(spec.get("rate", 0.2)), rng)
+            else:  # real_pattern
+                if real_missing_mask is None:
+                    mask = None
+                else:
+                    mask = np.resize(np.asarray(real_missing_mask, dtype=bool), n_days)
+            calendar = build_simulation_calendar(base, mask, label="season")
+            for name, spec_proc in procedures.items():
+                outcome = spec_proc["callable"](calendar)
+                bucket = counters[name]
+                for key, value in outcome.items():
+                    p_value = float(value)
+                    if not np.isfinite(p_value):
+                        continue
+                    bucket[f"valid_{key}"] = bucket.get(f"valid_{key}", 0) + 1
+                    bucket[key] = bucket.get(key, 0) + int(p_value < alpha)
+        scenario_rows: Dict[str, Any] = {}
+        for name, counter in counters.items():
+            row: Dict[str, Any] = {}
+            for key in sorted(k for k in counter if not k.startswith("valid_")):
+                valid = max(counter.get(f"valid_{key}", 0), 1)
+                rate = counter[key] / valid
+                lo, hi = _wilson_interval(counter[key], valid)
+                row[f"rate_{key}"] = float(rate)
+                row[f"ci_low_{key}"] = float(lo)
+                row[f"ci_high_{key}"] = float(hi)
+                row[f"mc_se_{key}"] = float(math.sqrt(max(rate * (1 - rate), 0.0) / valid))
+                row[f"n_valid_{key}"] = int(counter.get(f"valid_{key}", 0))
+            scenario_rows[name] = row
+        out["scenarios"][scenario_key] = {
+            "label": spec["label"],
+            "kind": spec["kind"],
+            "rho": float(spec.get("rho", 0.0)),
+            "missing": spec.get("missing", "none"),
+            "tests": scenario_rows,
         }
-    return results
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -2267,135 +3189,263 @@ def simulate_test_rates(
 # ---------------------------------------------------------------------------
 
 
+def _week_start_dates(daily_calendar: DailyCalendar) -> pd.Series:
+    """Ngày thứ Hai (đầu tuần ISO) của mỗi tuần, theo `week_key`."""
+    frame = pd.DataFrame(
+        {
+            "week_key": daily_calendar.week_key,
+            "date": pd.to_datetime(daily_calendar.dates),
+        }
+    )
+    return frame.groupby("week_key", observed=True)["date"].min()
+
+
+def build_weekly_calendar(
+    panel: pd.DataFrame, daily_calendar: DailyCalendar
+) -> DailyCalendar:
+    """
+    Lịch **tuần** — mỗi tuần ISO một dòng, giá trị = trung bình các ngày quan
+    sát trong tuần (NaN nếu tuần không có ngày nào đủ độ phủ).
+
+    Tuần ISO là khối 7 ngày lịch liên tiếp, nên block bootstrap trên trục tuần
+    vẫn là block **ngày lịch liên tiếp** (4 tuần = 28 ngày).
+    """
+    frame = pd.DataFrame(
+        {
+            "week_key": daily_calendar.week_key,
+            "value": daily_calendar.values,
+            "season": daily_calendar.season,
+        }
+    )
+    weekly = frame.groupby("week_key", observed=True).agg(
+        value=("value", "mean"),
+        n_observed=("value", "count"),
+    )
+    first_season = frame.groupby("week_key", observed=True)["season"].first()
+    week_start = _week_start_dates(daily_calendar)
+    return DailyCalendar(
+        dates=week_start.reindex(weekly.index).to_numpy(dtype="datetime64[ns]"),
+        values=weekly["value"].to_numpy(dtype=float),
+        labels=np.array(
+            [
+                SEASON_DISPLAY_ORDER.index(first_season[key])
+                for key in weekly.index
+            ],
+            dtype=np.int64,
+        ),
+        valid_hours=weekly["n_observed"].to_numpy(dtype=int),
+        season=first_season.to_numpy(dtype=object),
+        is_weekend=np.zeros(len(weekly), dtype=np.int64),
+        week_key=np.asarray(weekly.index, dtype=object),
+    )
+
+
+def build_weekly_difference_calendar(
+    panel: pd.DataFrame, daily_calendar: DailyCalendar
+) -> Tuple[DailyCalendar, pd.DataFrame]:
+    """
+    Lịch **tuần** với giá trị = TB ngày làm việc − TB ngày cuối tuần.
+
+    Tuần không đủ điều kiện (thiếu ngày làm việc hoặc ngày cuối tuần) có giá
+    trị `NaN` — tức là **mặt nạ thiếu được giữ tường minh** thay vì nối các
+    tuần không liền nhau.
+    """
+    frame = pd.DataFrame(
+        {
+            "week_key": daily_calendar.week_key,
+            "value": daily_calendar.values,
+            "is_weekend": daily_calendar.is_weekend,
+            "season": daily_calendar.season,
+        }
+    )
+    weekday_mean = frame[frame["is_weekend"] == 0].groupby("week_key", observed=True)[
+        "value"
+    ].mean()
+    weekend_mean = frame[frame["is_weekend"] == 1].groupby("week_key", observed=True)[
+        "value"
+    ].mean()
+    n_weekday = frame[frame["is_weekend"] == 0].groupby("week_key", observed=True)[
+        "value"
+    ].count()
+    n_weekend = frame[frame["is_weekend"] == 1].groupby("week_key", observed=True)[
+        "value"
+    ].count()
+    all_weeks = pd.Index(sorted(set(frame["week_key"])))
+    difference = (weekday_mean - weekend_mean).reindex(all_weeks)
+    valid = (n_weekday.reindex(all_weeks).fillna(0) >= PAIRED_MIN_WEEKDAYS) & (
+        n_weekend.reindex(all_weeks).fillna(0) >= PAIRED_MIN_WEEKEND_DAYS
+    )
+    difference = difference.where(valid)
+    seasons = (
+        frame.groupby("week_key", observed=True)["season"].first().reindex(all_weeks)
+    )
+    calendar = DailyCalendar(
+        dates=_week_start_dates(daily_calendar).reindex(all_weeks).to_numpy(
+            dtype="datetime64[ns]"
+        ),
+        values=difference.to_numpy(dtype=float),
+        labels=np.array(
+            [SEASON_DISPLAY_ORDER.index(s) for s in seasons.to_numpy()], dtype=np.int64
+        ),
+        valid_hours=n_weekday.reindex(all_weeks).fillna(0).to_numpy(dtype=int),
+        season=seasons.to_numpy(dtype=object),
+        is_weekend=np.zeros(len(all_weeks), dtype=np.int64),
+        week_key=np.asarray(all_weeks, dtype=object),
+    )
+    paired = pd.DataFrame(
+        {
+            "week_key": all_weeks,
+            "difference": difference.to_numpy(dtype=float),
+        }
+    ).dropna()
+    return calendar, paired
+
+
 def paired_weekly_differences(
     panel: pd.DataFrame,
+    daily_calendar: DailyCalendar,
     *,
     value_col: str = "pm25_mean",
     min_weekdays: int = PAIRED_MIN_WEEKDAYS,
     min_weekend_days: int = PAIRED_MIN_WEEKEND_DAYS,
+    block_length: int = 4,
+    n_bootstrap: int = N_NULL_BOOTSTRAP,
+    seed: int = BOOTSTRAP_SEED,
 ) -> Dict[str, Any]:
     """
     Chênh lệch trung bình-trong-tuần (weekday − weekend) theo từng tuần ISO.
 
     Vì sao cần: so sánh hai nhóm rời rạc bỏ qua việc hai nhóm nằm xen kẽ trong
-    cùng một tuần. Ghép cặp theo tuần loại bỏ biến thiên "tuần này bẩn hơn tuần
-    kia" — thứ tự tương quan mạnh nhất còn lại sau khi đã lấy trung bình ngày.
+    cùng một tuần. Ghép cặp theo tuần loại bỏ biến thiên "tuần này bẩn hơn
+    tuần kia" — thứ tự tương quan mạnh nhất còn lại sau khi đã lấy trung bình
+    ngày.
+
+    Các chênh lệch tuần **cũng** tự tương quan, nên p-value được dựng lại bằng
+    **null block bootstrap trên trục tuần** (block = 4 tuần = 28 ngày lịch),
+    không dùng Wilcoxon giả định độc lập.
     """
     for col in ("week_key", "is_weekend", value_col):
         if col not in panel.columns:
             raise KeyError(f"paired_weekly_differences thiếu cột {col!r}.")
 
-    rows: List[Dict[str, Any]] = []
-    for week, grp in panel.groupby("week_key", observed=True):
-        weekday = grp.loc[grp["is_weekend"] == 0, value_col].dropna()
-        weekend = grp.loc[grp["is_weekend"] == 1, value_col].dropna()
-        if len(weekday) < min_weekdays or len(weekend) < min_weekend_days:
-            continue
-        rows.append(
-            {
-                "week_key": week,
-                "n_weekday": int(len(weekday)),
-                "n_weekend": int(len(weekend)),
-                "weekday_mean": float(weekday.mean()),
-                "weekend_mean": float(weekend.mean()),
-                "difference": float(weekday.mean() - weekend.mean()),
-            }
-        )
-
-    if len(rows) < 5:
+    weekly_calendar, paired = build_weekly_difference_calendar(panel, daily_calendar)
+    diffs = paired["difference"].to_numpy(dtype=float)
+    if diffs.size < 5:
         raise ValueError(
-            f"Chỉ có {len(rows)} tuần đủ điều kiện (≥{min_weekdays} ngày trong tuần và "
-            f"≥{min_weekend_days} ngày cuối tuần) — không đủ để ghép cặp."
+            f"Chỉ có {diffs.size} tuần đủ điều kiện (≥{min_weekdays} ngày trong tuần "
+            f"và ≥{min_weekend_days} ngày cuối tuần) — không đủ để ghép cặp."
         )
 
-    paired = pd.DataFrame(rows).sort_values("week_key").reset_index(drop=True)
-    diffs = paired["difference"].to_numpy()
-    test = wilcoxon_signed_rank(diffs, mu=0.0, alternative="two-sided", label="chênh lệch tuần")
-    test["p_value_independence"] = float(test["p_value"])
-    # Biến thể có xét phụ thuộc: các chênh lệch tuần cũng tự tương quan
-    # (những tuần liền nhau cùng đổi chiều), nên Wilcoxon giả định độc lập vẫn
-    # lạc quan → dùng HAC/Newey–West trên chính chuỗi chênh lệch tuần.
-    if diffs.size >= 8:
-        hac_test = hac_signed_rank_test(diffs, mu=0.0, lag=4)
-        test["p_value"] = float(hac_test["p_value"])
-        test["statistic_name"] = "t (signed-rank, HAC)"
-        test["statistic"] = float(hac_test["statistic"])
-    test["df"] = int(diffs.size - 1)
-    ci = bootstrap_ci(
-        diffs,
+    def statistic(matrix: np.ndarray, labels: np.ndarray) -> np.ndarray:
+        return signed_rank_statistic_rows_nan(matrix)
+
+    null_boot = calendar_bootstrap_null_test(
+        weekly_calendar,
+        statistic=statistic,
+        observed_statistic=float(
+            stats.wilcoxon(
+                diffs, alternative="two-sided", zero_method="wilcox", correction=False
+            ).statistic
+        ),
+        alternative="two-sided",
+        block_length_days=block_length,
+        n_bootstrap=n_bootstrap,
+        seed=seed,
+        null_construction=(
+            "Lịch tuần ISO (7 ngày lịch mỗi tuần), resample theo block 4 TUẦN = "
+            "28 ngày lịch; tuần không đủ điều kiện giữ nguyên là NaN."
+        ),
+        statistic_name="W⁺",
+    )
+    ranks = stats.rankdata(np.abs(diffs))
+    signs = np.sign(diffs)
+    w_plus = float(ranks[signs > 0].sum())
+    w_minus = float(ranks[signs < 0].sum())
+    effect = (w_plus - w_minus) / (w_plus + w_minus) if (w_plus + w_minus) > 0 else float("nan")
+    ci = calendar_bootstrap_ci(
+        weekly_calendar,
         statistic="median",
-        block_length=min(BLOCK_LENGTH_DAYS, max(1, len(diffs) // 4)),
+        block_length_days=block_length,
         n_bootstrap=N_BOOTSTRAP,
-        seed=BOOTSTRAP_SEED,
+        seed=seed,
     )
     return {
-        "n_weeks": int(len(paired)),
+        "n_weeks": int(diffs.size),
         "min_weekdays": min_weekdays,
         "min_weekend_days": min_weekend_days,
         "median_difference": float(np.median(diffs)),
         "mean_difference": float(diffs.mean()),
         "share_weekday_higher": float((diffs > 0).mean()),
-        "test": test,
+        "test": {
+            "statistic_name": "W⁺",
+            "statistic": float(null_boot["observed_statistic"]),
+            "p_value": float(null_boot["p_value"]),
+            "p_value_independence": float(
+                stats.wilcoxon(
+                    diffs, alternative="two-sided", zero_method="wilcox", correction=False
+                ).pvalue
+            ),
+            "effect_size": float(effect),
+            "n": int(diffs.size),
+        },
         "ci": ci,
+        "null_bootstrap": null_boot,
         "weeks": paired,
     }
 
 
 def season_weekly_sensitivity(
     panel: pd.DataFrame,
+    daily_calendar: DailyCalendar,
     *,
     value_col: str = "pm25_mean",
+    block_length: int = 4,
+    n_bootstrap: int = N_NULL_BOOTSTRAP,
+    seed: int = BOOTSTRAP_SEED,
 ) -> Dict[str, Any]:
     """
     Kruskal-Wallis lặp lại trên **trung bình tuần theo mùa** (tham dò).
 
-    Tuần được gán mùa theo ngày đầu tuần có mặt trong panel. Ở mức tuần, ACF còn
-    lại thấp hơn nhiều so với mức ngày, nên đây là phép thử xem kết luận mùa có
-    phụ thuộc vào giả định độc lập của từng ngày hay không. p-value cũng được
-    dựng lại dưới H₀ bằng null block bootstrap (block 4 tuần).
+    Tuần được gán mùa theo ngày đầu tuần. Ở mức tuần, ACF còn lại thấp hơn
+    nhiều so với mức ngày, nên đây là phép thử xem kết luận mùa có phụ thuộc vào
+    giả định độc lập của từng ngày hay không. p-value cũng được dựng lại dưới
+    H₀ bằng null block bootstrap trên trục tuần (block 4 tuần = 28 ngày lịch).
     """
     for col in ("week_key", "season", value_col):
         if col not in panel.columns:
             raise KeyError(f"season_weekly_sensitivity thiếu cột {col!r}.")
-    weekly = (
-        panel.groupby(["week_key", "season"], observed=True)[value_col]
-        .mean()
-        .reset_index()
-    )
-    weekly["week_index"] = weekly["week_key"].str.extract(r"W(\d+)").astype(int)
-    weekly = weekly.sort_values(["week_index", "week_key"]).drop_duplicates("week_key", keep="first")
+    weekly_calendar = build_weekly_calendar(panel, daily_calendar)
+    season_codes = list(range(len(SEASON_DISPLAY_ORDER)))
+
+    def statistic(matrix: np.ndarray, labels: np.ndarray) -> np.ndarray:
+        return kruskal_statistic_rows_nan(matrix, [(labels == code) for code in season_codes])
 
     groups = {
-        season: weekly.loc[weekly["season"] == season, value_col].to_numpy()
-        for season in SEASON_DISPLAY_ORDER
+        season: weekly_calendar.values[weekly_calendar.labels == code]
+        for code, season in enumerate(SEASON_DISPLAY_ORDER)
     }
-    groups = {k: v for k, v in groups.items() if v.size >= 3}
+    groups = {k: v for k, v in groups.items() if np.isfinite(v).sum() >= 3}
     if len(groups) < 2:
         raise ValueError("Không đủ mùa có ≥ 3 tuần để chạy kiểm tra độ nhạy.")
     result = kruskal_wallis(groups, n_bootstrap=0)
     result["p_value_independence"] = float(result["p_value"])
-
-    order = [season for season in SEASON_DISPLAY_ORDER if season in groups]
-    weekly_sorted = weekly.sort_values("week_index")
-    season_of_week = weekly_sorted["season"].to_numpy()
-    masks = [np.asarray(season_of_week == season, dtype=bool) for season in order]
-    null_boot = block_bootstrap_null_test(
-        weekly_sorted[value_col].to_numpy(dtype=float),
-        statistic=lambda matrix: kruskal_statistic_rows(matrix, masks),
+    null_boot = calendar_bootstrap_null_test(
+        weekly_calendar,
+        statistic=statistic,
         observed_statistic=float(result["statistic"]),
         alternative="greater",
-        block_length=4,
-        n_bootstrap=N_NULL_BOOTSTRAP,
-        seed=BOOTSTRAP_SEED,
+        block_length_days=block_length,
+        n_bootstrap=n_bootstrap,
+        seed=seed,
         null_construction=(
-            "Chuỗi trung bình tuần, resample theo block 4 tuần; nhãn mùa giữ theo "
-            "vị trí tuần."
+            "Lịch tuần ISO, resample theo block 4 TUẦN = 28 ngày lịch; nhãn mùa đi "
+            "theo ngày nguồn của bản sao."
         ),
         statistic_name="H",
     )
     result["p_value"] = float(null_boot["p_value"])
     result["null_bootstrap"] = null_boot
-    return {"weekly_kruskal": result, "n_weeks": int(len(weekly))}
+    return {"weekly_kruskal": result, "n_weeks": int(weekly_calendar.n_days)}
 
 
 # ---------------------------------------------------------------------------
@@ -2478,6 +3528,7 @@ def _season_groups(panel: pd.DataFrame, value_col: str = "pm25_mean") -> Dict[st
 
 def _posthoc_pairs(
     panel: pd.DataFrame,
+    calendar: DailyCalendar,
     groups: Mapping[str, np.ndarray],
     *,
     block_length: int = BLOCK_LENGTH_DAYS,
@@ -2488,14 +3539,15 @@ def _posthoc_pairs(
     Sáu cặp mùa bằng Mann-Whitney — family hậu định riêng, nhãn *exploratory*.
 
     p-value của mỗi cặp cũng được dựng lại **dưới H₀ có xét phụ thuộc**: null
-    bootstrap trên **toàn bộ** chuỗi ngày (H₀ của phép kiểm hậu định là "các
-    mùa không khác nhau"), với nhãn của **hai mùa được so sánh** giữ theo vị
-    trí lịch. Hạng được tính **trong tập A ∪ B** để thống kê U của bản sao null
-    và bản sao quan sát cùng thang đo.
+    block bootstrap **theo lịch** trên toàn bộ lịch ngày (H₀ của phép kiểm hậu
+    định là "các mùa không khác nhau"), với nhãn của **hai mùa được so sánh** đi
+    theo ngày nguồn. Hạng được tính **trong tập A ∪ B** để thống kê U của bản
+    sao null và bản sao quan sát cùng thang đo.
     """
     names = [s for s in SEASON_DISPLAY_ORDER if s in groups]
     values = panel["pm25_mean"].to_numpy(dtype=float)
     seasons = panel["season"].to_numpy()
+    season_code = {season: index for index, season in enumerate(SEASON_DISPLAY_ORDER)}
     pairs: List[Dict[str, Any]] = []
     for i in range(len(names)):
         for j in range(i + 1, len(names)):
@@ -2510,23 +3562,32 @@ def _posthoc_pairs(
             result["pair"] = f"{SEASON_LABELS_VI[a]} – {SEASON_LABELS_VI[b]}"
             result["p_value_independence"] = float(result["p_value"])
 
-            mask_a_full = np.asarray(seasons == a, dtype=bool)
-            mask_b_full = np.asarray(seasons == b, dtype=bool)
-            selected = mask_a_full | mask_b_full
-            mask_a = mask_a_full[selected]
-            null_boot = block_bootstrap_null_test(
-                values,
-                statistic=lambda matrix, sel=selected, ma=mask_a: mannwhitney_statistic_rows(
-                    matrix[:, sel], ma
-                ),
+            code_a, code_b = season_code[a], season_code[b]
+
+            def statistic(
+                matrix: np.ndarray,
+                labels: np.ndarray,
+                code_a: int = code_a,
+                code_b: int = code_b,
+            ) -> np.ndarray:
+                selected = (labels == code_a) | (labels == code_b)
+                restricted = np.where(selected, matrix, np.nan)
+                return mannwhitney_statistic_rows_nan(
+                    restricted, labels == code_a, labels == code_b
+                )
+
+            null_boot = calendar_bootstrap_null_test(
+                calendar,
+                statistic=statistic,
                 observed_statistic=float(result["statistic"]),
                 alternative="two-sided",
-                block_length=block_length,
+                block_length_days=block_length,
                 n_bootstrap=n_bootstrap,
                 seed=seed,
                 null_construction=(
-                    "Chuỗi gộp toàn bộ ngày, resample theo block tròn; nhãn của hai "
-                    "mùa so sánh giữ theo vị trí lịch."
+                    "Chuỗi GỘP trên lịch ngày đầy đủ, resample theo block gồm NGÀY "
+                    "LỊCH liên tiếp; nhãn của hai mùa so sánh đi theo ngày nguồn; "
+                    "hạng tính trong tập A ∪ B."
                 ),
                 statistic_name="U",
             )
@@ -2546,8 +3607,158 @@ def _posthoc_pairs(
         "family": "posthoc_seasonal_pairs",
         "note": (
             "Family riêng, nhãn exploratory; p-value đã hiệu chỉnh phụ thuộc thời "
-            "gian, cột p tham chiếu là phép kiểm giả định độc lập."
+            "gian (block ngày lịch), cột p tham chiếu là phép kiểm giả định độc lập."
         ),
+    }
+
+
+def _relative_data_source(data_path: Optional[Path]) -> str:
+    """
+    Mô tả nguồn dữ liệu theo **đường dẫn tương đối** (không phụ thuộc máy).
+
+    Đường dẫn tuyệt đối (ví dụ ``C:/Users/.../data/processed/...``) là thông tin
+    của máy đang chạy, không tái lập được và **không** được đưa vào báo cáo
+    (review 5588255357).
+    """
+    if data_path is None:
+        return "data/processed/air_pollution_final.parquet (đường dẫn tương đối tới repo)"
+    resolved = Path(data_path)
+    try:
+        return str(resolved.resolve().relative_to(REPO_ROOT)).replace("\\", "/")
+    except ValueError:
+        return f"{resolved.name} (đường dẫn ngoài repository — xem `meta.dataset_sha256`)"
+
+
+def _calendar_diagnostics(
+    calendar: DailyCalendar, weekend_calendar: DailyCalendar
+) -> Dict[str, Any]:
+    """
+    Mô tả **lịch ngày** và mặt nạ thiếu — cơ sở để người đọc đánh giá liệu
+    resample theo lịch có hợp lệ hay không.
+    """
+    values = calendar.values
+    observed = np.isfinite(values)
+    missing_positions = np.where(~observed)[0]
+    runs: List[int] = []
+    if missing_positions.size:
+        breaks = np.where(np.diff(missing_positions) > 1)[0]
+        starts = np.concatenate(([0], breaks + 1))
+        ends = np.concatenate((breaks, [missing_positions.size - 1]))
+        run_lengths = (missing_positions[ends] - missing_positions[starts] + 1).tolist()
+        runs = [int(length) for length in run_lengths]
+    return {
+        "n_calendar_days": int(calendar.n_days),
+        "n_observed_days": int(observed.sum()),
+        "n_missing_days": int((~observed).sum()),
+        "missing_share": float((~observed).mean()),
+        "n_missing_runs": len(runs),
+        "max_missing_run": int(max(runs)) if runs else 0,
+        "missing_run_lengths": runs,
+        "calendar_first": str(pd.Timestamp(calendar.dates[0]).date()),
+        "calendar_last": str(pd.Timestamp(calendar.dates[-1]).date()),
+        "weekend_calendar_observed": int(np.isfinite(weekend_calendar.values).sum()),
+        "note": (
+            "Mọi resample chạy trên lịch này: block gồm ngày LỊCH liên tiếp; ngày "
+            "thiếu vẫn là NaN trong bản sao (không nội suy, không nối khoảng thời "
+            "gian bị ngắt); nhãn nhóm đi theo ngày nguồn của bản sao."
+        ),
+    }
+
+
+#: Đường dẫn tương đối của kết quả kiểm chứng Monte Carlo.
+MONTECARLO_CSV_RELATIVE: str = "reports/inference_montecarlo.csv"
+MONTECARLO_CSV_PATH: Path = REPO_ROOT / MONTECARLO_CSV_RELATIVE
+
+
+def monte_carlo_to_rows(result: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    """Chuyển kết quả Monte Carlo thành các dòng phẳng (mỗi dòng = một kịch bản × một phép kiểm)."""
+    rows: List[Dict[str, Any]] = []
+    for scenario_key, scenario in result.get("scenarios", {}).items():
+        for test_name, entry in scenario.get("tests", {}).items():
+            row: Dict[str, Any] = {
+                "scenario": scenario_key,
+                "scenario_label": scenario.get("label", scenario_key),
+                "kind": scenario.get("kind", ""),
+                "rho": scenario.get("rho", 0.0),
+                "missing": scenario.get("missing", "none"),
+                "test": test_name,
+                "n_sim": result.get("n_sim", 0),
+                "n_valid": entry.get("n_valid", 0),
+                "alpha": result.get("alpha", ALPHA),
+                "n_days": result.get("n_days", 0),
+                "block_length_days": result.get("block_length_days", BLOCK_LENGTH_DAYS),
+                "hac_lag": result.get("hac_lag", HAC_LAG_DAILY),
+                "n_bootstrap": result.get("n_bootstrap", N_SIMULATION_BOOTSTRAP),
+                "seed": result.get("seed", BOOTSTRAP_SEED),
+            }
+            for key in [k for k in entry if k.startswith("rate_")]:
+                suffix = key[len("rate_"):]
+                row[f"rate_{suffix}"] = entry.get(f"rate_{suffix}", float("nan"))
+                row[f"ci_low_{suffix}"] = entry.get(f"ci_low_{suffix}", float("nan"))
+                row[f"ci_high_{suffix}"] = entry.get(f"ci_high_{suffix}", float("nan"))
+                row[f"mc_se_{suffix}"] = entry.get(f"mc_se_{suffix}", float("nan"))
+            rows.append(row)
+    return rows
+
+
+def save_monte_carlo_csv(result: Mapping[str, Any], path: Optional[Path] = None) -> Path:
+    """Ghi kết quả Monte Carlo ra CSV (để commit và dựng lại báo cáo)."""
+    target_path = Path(path) if path is not None else MONTECARLO_CSV_PATH
+    rows = monte_carlo_to_rows(result)
+    if not rows:
+        raise ValueError("Không có dòng nào để ghi — kết quả Monte Carlo rỗng.")
+    frame = pd.DataFrame(rows)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(target_path, index=False, encoding="utf-8", lineterminator="\n")
+    return target_path
+
+
+def load_monte_carlo_csv(path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    """Đọc lại kết quả Monte Carlo từ CSV; trả ``None`` nếu chưa có."""
+    target_path = Path(path) if path is not None else MONTECARLO_CSV_PATH
+    if not target_path.exists():
+        return None
+    frame = pd.read_csv(target_path)
+    if frame.empty:
+        return None
+    scenarios: Dict[str, Any] = {}
+    for scenario_key, group in frame.groupby("scenario", sort=False):
+        tests: Dict[str, Any] = {}
+        for test_name, test_group in group.groupby("test", sort=False):
+            first = test_group.iloc[0]
+            entry: Dict[str, Any] = {"n_valid": int(first["n_valid"])}
+            for column in frame.columns:
+                if column.startswith("rate_"):
+                    suffix = column[len("rate_"):]
+                    entry[f"rate_{suffix}"] = float(first[column])
+                    entry[f"ci_low_{suffix}"] = float(first[f"ci_low_{suffix}"])
+                    entry[f"ci_high_{suffix}"] = float(first[f"ci_high_{suffix}"])
+                    entry[f"mc_se_{suffix}"] = float(first[f"mc_se_{suffix}"])
+            tests[str(test_name)] = entry
+        scenarios[str(scenario_key)] = {
+            "label": str(first["scenario_label"]),
+            "kind": str(first["kind"]),
+            "rho": float(first["rho"]),
+            "missing": str(first["missing"]),
+            "tests": tests,
+        }
+    return {
+        "n_sim": int(frame["n_sim"].iloc[0]),
+        "n_days": int(frame["n_days"].iloc[0]) if "n_days" in frame.columns else 0,
+        "alpha": float(frame["alpha"].iloc[0]),
+        "block_length_days": int(frame["block_length_days"].iloc[0])
+        if "block_length_days" in frame.columns
+        else BLOCK_LENGTH_DAYS,
+        "hac_lag": int(frame["hac_lag"].iloc[0])
+        if "hac_lag" in frame.columns
+        else HAC_LAG_DAILY,
+        "n_bootstrap": int(frame["n_bootstrap"].iloc[0])
+        if "n_bootstrap" in frame.columns
+        else N_SIMULATION_BOOTSTRAP,
+        "seed": int(frame["seed"].iloc[0]) if "seed" in frame.columns else BOOTSTRAP_SEED,
+        "apply_effect": False,
+        "scenarios": scenarios,
+        "source": str(path) if path is not None else MONTECARLO_CSV_RELATIVE,
     }
 
 
@@ -2575,6 +3786,12 @@ def run_inference(
 
     panel, audit = build_daily_panel(hourly, min_valid_hours=min_valid_hours)
     values = panel["pm25_mean"].to_numpy(dtype=float)
+    # **Lịch ngày đầy đủ** — nền tảng cho mọi resample: mọi ngày lịch trong dải
+    # quan sát đều có mặt, kể cả ngày không tạo được trung bình ngày.
+    calendar = build_daily_calendar(hourly, min_valid_hours=min_valid_hours)
+    weekend_calendar = build_daily_calendar(
+        hourly, min_valid_hours=min_valid_hours, label="weekend"
+    )
 
     diagnostics = distribution_diagnostics(values)
 
@@ -2601,25 +3818,31 @@ def run_inference(
     season_groups = _season_groups(panel)
     if len(season_groups) < 2:
         raise ValueError("Cần ≥ 2 mùa có dữ liệu để so sánh.")
-    season_test = _season_effect_test(panel, seed=seed)
+    season_test = _season_effect_test(panel, calendar, seed=seed)
     pair_ci = None
     if "Dong" in season_groups and "He" in season_groups:
-        pair_ci = bootstrap_difference_ci(
-            season_groups["Dong"],
-            season_groups["He"],
+        # CI theo lịch: hai mùa lấy từ CÙNG một bản sao lịch → tương quan
+        # chéo giữa hai mùa được giữ, mặt nạ ngày thiếu nhất quán.
+        pair_ci = calendar_bootstrap_difference_ci(
+            calendar,
+            calendar.season == "Dong",
+            calendar.season == "He",
             statistic="median",
+            block_length_days=BLOCK_LENGTH_DAYS,
             n_bootstrap=n_bootstrap,
             seed=seed,
         )
     season_test["ci_dong_vs_he"] = pair_ci
 
-    weekday_test = _weekday_effect_test(panel, seed=seed)
+    weekday_test = _weekday_effect_test(panel, weekend_calendar, seed=seed)
     weekday_values = panel.loc[panel["is_weekend"] == 0, "pm25_mean"].to_numpy(dtype=float)
     weekend_values = panel.loc[panel["is_weekend"] == 1, "pm25_mean"].to_numpy(dtype=float)
-    weekday_test["ci"] = bootstrap_difference_ci(
-        weekday_values,
-        weekend_values,
+    weekday_test["ci"] = calendar_bootstrap_difference_ci(
+        weekend_calendar,
+        weekend_calendar.is_weekend == 0,
+        weekend_calendar.is_weekend == 1,
         statistic="median",
+        block_length_days=BLOCK_LENGTH_DAYS,
         n_bootstrap=n_bootstrap,
         seed=seed,
     )
@@ -2627,13 +3850,15 @@ def run_inference(
 
     qcvn_24h_test = _location_effect_test(
         panel,
+        calendar,
         mu=QCVN_2023_PM25_24H_LIMIT,
         kind="median",
         label="Trung bình 24h vs 50 µg/m³",
         seed=seed,
     )
-    qcvn_24h_test["ci_bootstrap"] = bootstrap_ci(
-        values, statistic="median", n_bootstrap=n_bootstrap, seed=seed
+    qcvn_24h_test["ci_bootstrap"] = calendar_bootstrap_ci(
+        calendar, statistic="median", block_length_days=BLOCK_LENGTH_DAYS,
+        n_bootstrap=n_bootstrap, seed=seed,
     )
     deviations_24h = values - QCVN_2023_PM25_24H_LIMIT
     qcvn_24h_test["w_plus"] = float(
@@ -2645,13 +3870,15 @@ def run_inference(
 
     annual_test = _location_effect_test(
         panel,
+        calendar,
         mu=QCVN_2023_PM25_ANNUAL_LIMIT,
         kind="mean",
         label="Trung bình giai đoạn vs 25 µg/m³",
         seed=seed,
     )
-    annual_test["ci_bootstrap"] = bootstrap_ci(
-        values, statistic="mean", n_bootstrap=n_bootstrap, seed=seed
+    annual_test["ci_bootstrap"] = calendar_bootstrap_ci(
+        calendar, statistic="mean", block_length_days=BLOCK_LENGTH_DAYS,
+        n_bootstrap=n_bootstrap, seed=seed,
     )
     t_crit = float(stats.t.ppf(0.975, values.size - 1))
     se_naive = float(values.std(ddof=1) / np.sqrt(values.size))
@@ -2701,42 +3928,32 @@ def run_inference(
             }
         )
 
-    posthoc = _posthoc_pairs(panel, season_groups, seed=seed)
+    posthoc = _posthoc_pairs(panel, calendar, season_groups, seed=seed)
     sensitivity = {
-        "paired_weeks": paired_weekly_differences(panel),
-        "season_weekly": season_weekly_sensitivity(panel),
+        "paired_weeks": paired_weekly_differences(panel, calendar),
+        "season_weekly": season_weekly_sensitivity(panel, calendar),
         "power_mde": weekday_power,
     }
     generalization = season_generalization_diagnostics(panel)
     context = qcvn_context(hourly, panel)
 
+    # Kiểm chứng Monte Carlo: đọc từ CSV đã commit (chạy bằng
+    # `scripts/validate_inference_montecarlo.py`) — vì chạy 1.000 lần mô phỏng
+    # ngay trong notebook sẽ tốn hàng chục phút mỗi lần chạy.
     simulation: Dict[str, Any] = {}
     if include_simulation:
-        rho = float(dependence["daily_effective_n"]["rho_lag1"])
-        simulation = {
-            "size": simulate_test_rates(
-                n_days=int(values.size),
-                n_sim=n_simulations,
-                rho=rho,
-                seed=seed,
-                apply_effect=False,
-            ),
-            "power": simulate_test_rates(
-                n_days=int(values.size),
-                n_sim=n_simulations,
-                rho=rho,
-                seed=seed,
-                apply_effect=True,
-            ),
-            "rho_used": rho,
-            "n_sim": int(n_simulations),
-            "n_days": int(values.size),
-            "note": (
-                "Chuỗi AR(1) với ρ bằng ACF bậc 1 quan sát; hiệu ứng H₁: +1 đơn vị "
-                "lên nhóm mùa đầu / ngày cuối tuần / toàn bộ chuỗi (tương ứng từng "
-                "phép kiểm)."
-            ),
-        }
+        loaded = load_monte_carlo_csv()
+        if loaded is not None:
+            simulation = loaded
+        else:
+            simulation = {
+                "scenarios": {},
+                "n_sim": 0,
+                "note": (
+                    "Chưa có `reports/inference_montecarlo.csv` — chạy "
+                    "`python scripts/validate_inference_montecarlo.py` để sinh."
+                ),
+            }
 
     return {
         "meta": {
@@ -2761,9 +3978,10 @@ def run_inference(
             "dataset_sha256": dataset_sha256(data_path) if data_path or df is None else None,
             "numpy_version": np.__version__,
             "scipy_version": stats.__name__ and _scipy_version(),
-            "data_source": str(data_path or DEFAULT_DATA_PATH),
+            "data_source": _relative_data_source(data_path),
         },
         "panel": {"n": int(len(panel)), "audit": audit, "frame": panel},
+        "calendar": _calendar_diagnostics(calendar, weekend_calendar),
         "diagnostics": diagnostics,
         "dependence": dependence,
         "tests": {
@@ -2839,6 +4057,7 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
     """
     meta = results["meta"]
     audit = results["panel"]["audit"]
+    cal = results.get("calendar", {})
     diag = results["diagnostics"]
     dep = results["dependence"]
     tests = results["tests"]
@@ -2901,6 +4120,8 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
     n_exploratory = sum(
         1 for row in results["holm_confirmatory"] if row["status"] == "exploratory"
     )
+    season_null = season.get("null_bootstrap", {})
+    weekday_null = weekday.get("null_bootstrap", {})
 
     lines = [
         "# Kết quả Suy luận Thống kê — Issue #11 (W9)",
@@ -2909,18 +4130,20 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         "> từ `notebooks/05_statistical_inference.ipynb`. Không sửa tay: mọi con số",
         "> dưới đây lấy trực tiếp từ `run_inference()` trên dataset đã đóng băng.",
         "",
-        "> **Phiên bản 2 — sửa theo review `5586524840` của PR #43.** Toàn bộ p-value",
-        "> xác nhận được **dựng lại dưới H₀ có xét tới tự tương quan thời gian**;",
-        "> p-value cũ (giả định quan sát độc lập) được giữ lại **để đối chiếu**, và",
-        "> kết luận đã thay đổi — xem mục 8.",
+        "> **Phiên bản 3 — sửa theo review `5588255357` của PR #43.** Mọi resample giờ",
+        "> chạy trên **lịch ngày đầy đủ** (block = ngày LỊCH liên tiếp, mặt nạ ngày",
+        "> thiếu đi theo bản sao), và phần p-value được kiểm chứng bằng **Monte Carlo",
+        "> đa kịch bản** (mục 9). Kết luận: **2/4** kiểm định bác bỏ H₀ sau Holm; kiểm",
+        "> định mùa ở trạng thái **THĂM DÒ**.",
         "",
         "| Trường | Giá trị |",
         "|---|---|",
         f"| Issue | {meta['issue']} |",
         f"| Mức ý nghĩa α (chốt trước khi xem dữ liệu) | {format_number_vi(meta['alpha'], 2)} |",
-        f"| CI bootstrap | {format_int_vi(meta['n_bootstrap'])} lặp · block {meta['block_length_days']} ngày · seed {meta['bootstrap_seed']} · CI percentile {int(meta['confidence_level'] * 100)}% |",
-        f"| Null bootstrap (p-value) | {format_int_vi(meta['n_null_bootstrap'])} lặp · block {meta['block_length_days']} ngày · seed {meta['bootstrap_seed']} |",
+        f"| CI bootstrap | {format_int_vi(meta['n_bootstrap'])} lặp · block {meta['block_length_days']} NGÀY LỊCH · seed {meta['bootstrap_seed']} · CI percentile {int(meta['confidence_level'] * 100)}% |",
+        f"| Null bootstrap (p-value) | {format_int_vi(meta['n_null_bootstrap'])} lặp · block {meta['block_length_days']} NGÀY LỊCH · seed {meta['bootstrap_seed']} |",
         f"| HAC (Newey–West) | lag {meta['hac_lag_days']} ngày |",
+        f"| Lịch ngày (đơn vị resample) | {format_int_vi(cal.get('n_calendar_days', 0))} ngày lịch · {format_int_vi(cal.get('n_observed_days', 0))} ngày có trung bình · {format_int_vi(cal.get('n_missing_days', 0))} ngày thiếu |",
         f"| Đơn vị phân tích | Trung bình ngày (≥ {meta['min_valid_hours_per_day']}/24 giờ có `pm25`) |",
         f"| Nguồn dữ liệu | `{meta['data_source']}` |",
         f"| SHA-256 dataset | `{meta['dataset_sha256'] or 'không tính (dữ liệu truyền vào)'}` |",
@@ -2937,10 +4160,12 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         f"({audit['span_days']} ngày lịch, {audit['n_stations']} trạm); ngày đủ độ phủ đầu–cuối: "
         f"{audit['coverage_first']} → {audit['coverage_last']}.",
         f"- Ngày có ít nhất một giờ đo: **{format_int_vi(audit['days_with_any_observation'])}**; "
-        f"ngày đủ 24/24 giờ: **{format_int_vi(audit['days_full_24h'])}**.",
+        f"ngày đủ 24/24 giờ: **{format_int_vi(audit['days_full_24h'])}**; "
+        f"ngày **không có** giờ đo nào: **{format_int_vi(audit.get('days_without_observation', 0))}**.",
         f"- Ngày đạt tiêu chí ≥ {audit['min_valid_hours']}/24 giờ: **{format_int_vi(audit['days_kept'])}** — "
         f"đây là cỡ mẫu của mọi kiểm định (n = {format_int_vi(n)}).",
-        f"- Ngày bị loại vì thiếu độ phủ: **{format_int_vi(audit['days_dropped'])}**.",
+        f"- Ngày có quan sát nhưng thiếu độ phủ (bị loại khỏi panel): "
+        f"**{format_int_vi(audit['days_dropped'])}**.",
         f"- Ngày làm việc / cuối tuần trong panel: **{format_int_vi(audit['weekday_days'])}** / "
         f"**{format_int_vi(audit['weekend_days'])}**.",
         "",
@@ -2959,7 +4184,52 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         "",
         "---",
         "",
-        "## 2. Chẩn đoán phân phối (không mặc định chuẩn / không chuẩn)",
+        "## 2. Lịch ngày và mặt nạ thiếu — đơn vị của mọi resample",
+        "",
+        "Đây là phần **quan trọng nhất** của bản sửa: mọi bootstrap trước đây resample "
+        "**mảng trung bình ngày đã lọc**, nên hai phần tử liền nhau của mảng **không** phải "
+        "hai ngày lịch liên tiếp. Với "
+        f"{format_int_vi(cal.get('n_missing_days', 0))} ngày thiếu trong "
+        f"{format_int_vi(cal.get('n_calendar_days', 0))} ngày lịch, \"block 28 phần tử\" "
+        "thực tế trải tới **52 ngày lịch** — sai lệch đúng cái mà tham số phụ thuộc cần giữ.",
+        "",
+        "| Đại lượng lịch | Giá trị |",
+        "|---|---|",
+        f"| Số ngày lịch trong dải quan sát | {format_int_vi(cal.get('n_calendar_days', 0))} |",
+        f"| Ngày có trung bình ngày (dùng được) | {format_int_vi(cal.get('n_observed_days', 0))} |",
+        f"| Ngày thiếu (không đủ độ phủ hoặc không có quan sát) | {format_int_vi(cal.get('n_missing_days', 0))} "
+        f"({format_number_vi(cal.get('missing_share', 0.0) * 100, 1)}%) |",
+        f"| Số cụm ngày thiếu liên tiếp | {format_int_vi(cal.get('n_missing_runs', 0))} |",
+        f"| Cụm thiếu dài nhất | {format_int_vi(cal.get('max_missing_run', 0))} ngày |",
+        f"| Ngày lịch đầu – cuối | {cal.get('calendar_first', '—')} → {cal.get('calendar_last', '—')} |",
+        "",
+        "**Ba điều kiện của thuật toán mới.**",
+        "",
+        "1. **Block = ngày LỊCH liên tiếp.** `calendar_block_indices()` chọn các khối gồm "
+        "`block_length_days` ngày lịch liên tiếp (cuộn vòng ở cuối lịch), nên tham số "
+        "luôn mang nghĩa **ngày**, không phải **phần tử mảng**.",
+        "2. **Mặt nạ thiếu đi theo bản sao.** Một khối chứa 3 ngày thiếu thì bản sao cũng "
+        "thiếu đúng 3 ngày đó. **Không** nội suy, **không** tạo quan sát giả, **không** "
+        "nối hai khoảng thời gian bị ngắt.",
+        "3. **Nhãn nhóm ở vị trí j của bản sao là nhãn lịch của vị trí j**; *giá trị* tại "
+        "vị trí j được lấy ngẫu nhiên từ chuỗi gộp. Nhờ vậy null H₀ (các nhóm cùng phân "
+        "phối) được dựng **đúng**, còn phụ thuộc trong block vẫn được giữ vì block là ngày "
+        "lịch liên tiếp. Nếu nhãn đi theo **ngày nguồn** thì cấu trúc mùa vụ được giữ "
+        "lại và null biến thành chứa hiệu ứng — p-value bị thổi phồng.",
+        "",
+        f"**Hệ quả phải nói rõ:** vì mặt nạ đi theo bản sao, số ngày quan sát của mỗi bản "
+        f"sao **không cố định** (TB {format_number_vi(season_null.get('n_observed_replicate_mean', 0.0), 1)}"
+        f" ± {format_number_vi(season_null.get('n_observed_replicate_sd', 0.0), 1)} ngày, khoảng "
+        f"{format_int_vi(season_null.get('n_observed_replicate_min', 0))}–"
+        f"{format_int_vi(season_null.get('n_observed_replicate_max', 0))} so với "
+        f"{format_int_vi(season_null.get('n_observed_original', 0))} ngày gốc). Các thống kê kiểm "
+        "dùng **NaN-aware** nên tự tính đúng số quan sát của từng bản sao; phân phối null vì "
+        "vậy **đã bao hàm** cả biến động cỡ mẫu này. Đổi lại, khoảng tin cậy bootstrap "
+        "rộng hơn một chút so với CI trên mẫu cố định.",
+        "",
+        "---",
+        "",
+        "## 3. Chẩn đoán phân phối (không mặc định chuẩn / không chuẩn)",
         "",
         "| Chỉ số | Giá trị |",
         "|---|---|",
@@ -2979,12 +4249,14 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         "để chọn phép kiểm phi tham số. Với n cỡ này, Shapiro-Wilk có power đủ để phát hiện lệch "
         "nhỏ không có ý nghĩa thực tiễn; vì vậy quyết định dựa thêm vào (a) skewness và kurtosis "
         "quan sát được, (b) bản chất thang đo — nồng độ bị chặn dưới 0, phân phối lệch phải, có "
-        "outlier đợt ô nhiễm, và (c) các phép kiểm phi tham số so sánh **trung vị/hạng**, đúng với "
+        "outlier đợt ô nhiễm, và (c) các phép kiểm so sánh **trung vị/hạng**, đúng với "
         "câu hỏi về mức nền phơi nhiễm hơn là về trung bình số học. Q-Q plot: `figures/FIG-08.png`.",
         "",
         "---",
         "",
-        "## 3. Tự tương quan, cỡ mẫu hiệu dụng — giả định nào bị vi phạm",
+        "## 4. Tự tương quan, cỡ mẫu hiệu dụng và khung phương pháp",
+        "",
+        "### 4.1. Tự tương quan",
         "",
         f"- ACF chuỗi **giờ**: {acf_hourly}.",
         f"- ACF chuỗi **ngày**: {acf_daily}.",
@@ -2992,72 +4264,62 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         f"n_eff ≈ **{format_number_vi(eff['n_effective'], 1)}** so với n = {format_int_vi(eff['n'])} "
         f"(hệ số lạm phát ×{format_number_vi(eff['inflation_factor'], 2)}).",
         "",
-        "**Hệ quả — và cách xử lý sau review.** Mann-Whitney, Kruskal-Wallis, Wilcoxon và t-test "
-        "đều giả định quan sát **độc lập**. Ở mức ngày, giả định đó **không** được bảo đảm "
-        f"(ρ = {format_number_vi(eff['rho_lag1'], 2)}), nên p-value của chúng là **lạc quan**. "
-        "Ở phiên bản trước, biện pháp duy nhất là block bootstrap cho **khoảng tin cậy** — "
-        "**không** sửa p-value. Đó là thiếu sót mà review `5586524840` chỉ ra. "
-        "Phiên bản này sửa đúng chỗ đó:",
-        "",
-        "1. Hạ đơn vị phân tích từ **giờ** xuống **ngày** (vẫn giữ).",
-        "2. **Dựng lại phân phối null dưới H₀** cho từng kiểm định (mục 4) — đây mới là "
-        "phần sửa p-value.",
-        f"3. Mọi CI dùng **circular moving block bootstrap**, block {meta['block_length_days']} ngày "
-        f"({format_int_vi(meta['n_bootstrap'])} lặp, seed {meta['bootstrap_seed']}).",
-        "4. Kiểm soát sai lầm loại I bằng **mô phỏng dưới H₀** (mục 9).",
-        "5. Mọi kết luận đọc kèm **effect size + CI**, không đọc p đơn độc.",
-        "",
-        "---",
-        "",
-        "## 4. Khung phương pháp: dựng phân phối null dưới H₀ có xét phụ thuộc thời gian",
+        "### 4.2. Khung phương pháp: null dựng DƯỚI H₀ có xét phụ thuộc",
         "",
         "Bốn kiểm định xác nhận dùng **bốn cách dựng null khác nhau**, mỗi cách được chọn vì "
         "hợp với cấu trúc dữ liệu và với H₀ của chính kiểm định đó:",
         "",
-        "| Kiểm định | H₀ | Cách dựng phân phối null | Tham số phụ thuộc | Giả định chính |",
+        "| Kiểm định | H₀ | Phương pháp **chính** | Đối chứng | Tham số phụ thuộc |",
         "|---|---|---|---|---|",
-        f"| Mùa | 4 mùa cùng phân phối (quá trình ổn định) | Null **circular moving block bootstrap** trên chuỗi **gộp**; nhãn mùa **giữ theo vị trí lịch**, KHÔNG hoán đổi nhãn | block {meta['block_length_days']} ngày | Chuỗi gộp ổn định; block bao trọn phụ thuộc còn lại |",
-        f"| Weekday vs cuối tuần | Hai nhóm cùng phân phối | Null **circular moving block bootstrap** trên chuỗi **gộp**; nhãn nhóm giữ theo vị trí lịch | block {meta['block_length_days']} ngày | Như trên; xen kẽ tuần được giữ nguyên |",
-        f"| QCVN 24h (trung vị = 50) | P(trung bình ngày > 50) = 0,5 | **HAC/Newey–West** cho tỷ lệ vượt ngưỡng (tương đương trung vị = 50 với phân phối liên tục) | lag {meta['hac_lag_days']} ngày | Sai số tự tương quan tới bậc L; phân phối liên tục |",
-        f"| QCVN năm (trung bình = 25) | E(trung bình ngày) = 25 | **HAC/Newey–West** (mô hình chỉ có hệ số chặn) | lag {meta['hac_lag_days']} ngày | Như trên |",
+        f"| Mùa | 4 mùa cùng phân phối (quá trình ổn định) | Kruskal-Wallis + **null block bootstrap THEO LỊCH** trên chuỗi **gộp** | Hồi quy HAC có xu hướng (**không dùng để quyết định** — xem 4.3) | block {meta['block_length_days']} ngày lịch |",
+        f"| Weekday vs cuối tuần | Hai nhóm cùng phân phối | Hồi quy **HAC/Newey–West** `[1, xu hướng, dummy cuối tuần]` | Mann-Whitney + **null block bootstrap THEO LỊCH** | lag {meta['hac_lag_days']} ngày |",
+        f"| QCVN 24h (trung vị = 50) | P(trung bình ngày > 50) = 0,5 | **HAC/Newey–West** cho tỷ lệ vượt ngưỡng | Null áp đặt H₀ **theo lịch** (signed-rank) + p đảo CI | lag {meta['hac_lag_days']} ngày |",
+        f"| QCVN năm (trung bình = 25) | E(trung bình ngày) = 25 | **HAC/Newey–West** (hệ số chặn) | Null áp đặt H₀ **theo lịch** (t) + p đảo CI | lag {meta['hac_lag_days']} ngày |",
         "",
-        "**Ba điều kiện mà phương pháp này tuân thủ (và phương pháp cũ không tuân thủ).**",
+        "**Ba nguyên tắc mà phương pháp này tuân thủ.**",
         "",
-        "1. **Null được dựng dưới H₀.** Với kiểm định theo nhóm, null là chuỗi **gộp** (H₀: các "
+        "1. **Null được dựng DƯỚI H₀.** Với kiểm định theo nhóm, null là chuỗi **gộp** (H₀: các "
         "nhóm cùng phân phối). Với kiểm định vị trí, H₀ được **áp đặt** bằng cách dựng bản sao "
-        "`x* = μ + resample(x − θ̂)` — tức mốc của H₀ nằm trong bản sao, không phải trong dữ liệu gốc.",
-        "2. **Nhãn nhóm đi theo vị trí lịch, không bị hoán đổi ngẫu nhiên.** Hoán đổi nhãn mùa sẽ "
-        "phá vỡ cấu trúc mùa vụ (mùa là các đoạn thời gian liên tiếp, không phải nhãn rời rạc).",
+        "`x* = μ + resample(x − θ̂)` trên lịch — mốc của H₀ nằm trong bản sao. **Không** dùng "
+        "bootstrap trên chuỗi quan sát rồi đếm tỷ lệ thống kê cực đoan.",
+        "2. **Nhãn nhóm theo vị trí lịch của bản sao, không theo nguồn.** Hoán đổi nhãn mùa ngẫu "
+        "nhiên sẽ phá vỡ cấu trúc mùa vụ; giữ nhãn theo nguồn sẽ giữ cả hiệu ứng mùa trong null. "
+        "Cách đúng là giữ nhãn theo **vị trí lịch của bản sao** và lấy giá trị ngẫu nhiên từ "
+        "chuỗi gộp.",
         "3. **CI ≠ p-value.** CI là khoảng tin cậy của ước lượng; p-value là xác suất của dữ liệu "
         "**có điều kiện H₀ đúng**. Báo cáo luôn in cả hai và không dùng CI để suy ra p (hay ngược lại).",
         "",
-        "### 4.1. Quy tắc hạ mức kết luận — chốt trước khi xem kết quả",
-        "",
-        "Mỗi kiểm định mang một **trạng thái** được máy tính theo ba quy tắc cố định:",
+        "### 4.3. Quy tắc hạ mức kết luận — chốt trước khi xem kết quả",
         "",
         "| Quy tắc | Điều kiện | Hệ quả |",
         "|---|---|---|",
-        "| R1 — Ổn định | Kết luận (bác bỏ / không bác bỏ) **đổi chiều** khi đổi độ dài block hoặc lag HAC trong lưới độ nhạy | Hạ xuống **THĂM DÒ** |",
-        "| R2 — Đồng thuận | Phương pháp đối chứng cho kết luận **khác chiều** phương pháp chính tại tham số đã chốt | Hạ xuống **THĂM DÒ** |",
+        "| R1 — Ổn định | Kết luận đổi chiều khi đổi độ dài block hoặc lag HAC trong lưới độ nhạy | Hạ xuống **THĂM DÒ** |",
+        "| R2 — Đồng thuận | Phương pháp đối chứng cho kết luận **khác chiều** phương pháp chính | Hạ xuống **THĂM DÒ** |",
         "| R3 — Tính được | Không dựng được p hợp lệ | **KHÔNG XÁC NHẬN ĐƯỢC** |",
+        "| R4 — Hiệu lực | Tỷ lệ bác bỏ dưới H₀ của phương pháp chính vượt **2,5α** ở kịch bản áp dụng được (mục 9) | Hạ xuống **THĂM DÒ** |",
+        "| R5 — Một chu kỳ mùa | Bốn mùa là bốn **đoạn thời gian liên tiếp** trong **một** chu kỳ mùa duy nhất ⇒ không tách được 'mùa' khỏi 'xu hướng' | Kiểm định mùa **luôn** là **THĂM DÒ** |",
         "",
         "> **Family hiệu chỉnh Holm vẫn gồm đúng 4 kiểm định** như đã chốt trước khi xem dữ liệu.\n"
         "> Việc một kiểm định bị hạ xuống *thăm dò* **không** làm thay đổi family — thay đổi family\n"
         "> sau khi nhìn kết quả là p-hacking.",
         "",
+        "> **Vì sao kiểm định mùa không dùng hồi quy HAC làm đối chứng.** Với bốn mùa là bốn đoạn "
+        "thời gian liên tiếp, ba dummy mùa gần **cộng tuyến** với xu hướng ⇒ ma trận hiệp phương "
+        "sai của ba hệ số mùa gần suy biến ⇒ kiểm định Wald **thổi phồng** (Monte Carlo: size "
+        "30–55% thay vì 5%). Đây là lý do R5 hạ kiểm định mùa xuống thăm dò và vì sao hồi quy "
+        "HAC chỉ được in ra như **chẩn đoán**, không quyết định trạng thái.",
+        "",
         "---",
         "",
         "## 5. Kiểm định 1 — Khác biệt giữa bốn mùa",
         "",
-        f"**H₀:** {season['h0']}",
-        f"**H₁:** {season['h1']}",
-        f"**α = {format_number_vi(ALPHA, 2)}, omnibus (đuôi trên của H).**",
+        f"- **H₀:** {season['h0']}",
+        f"- **H₁:** {season['h1']}",
+        f"- **α = {format_number_vi(ALPHA, 2)}, omnibus (đuôi trên của H).**",
         "",
         f"**Phương pháp chính:** {season['method']['primary']} "
-        f"(block {season['method']['primary_block_length']} ngày, "
+        f"(block {season['method']['primary_block_length_days']} ngày lịch, "
         f"{format_int_vi(meta['n_null_bootstrap'])} lặp, seed {meta['bootstrap_seed']}).",
-        f"**Phương pháp đối chứng:** {season['method']['supporting']} "
-        f"(lag {season['method']['supporting_lag']} ngày) — dùng để **tách mùa khỏi xu hướng**.",
         "",
         "| Mùa | n (ngày) | Trung vị (µg/m³) |",
         "|---|---|---|",
@@ -3068,49 +4330,33 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         f"- **p (hiệu chỉnh phụ thuộc thời gian) = {_p(season['p_value'])}** → "
         f"{_decision(season['p_value'])}; **p Holm = {_p(season['p_holm'])}** → "
         f"{_decision(season['p_holm'])}.",
-        f"- p tham chiếu (giả định độc lập) = {_p(season['p_value_independence'])}.",
+        f"- p tham chiếu (giả định độc lập) = {_p(season['p_value_independence'])}; "
+        f"hồi quy HAC (chẩn đoán, xem 4.3) p = {_p(season.get('p_value_hac', float('nan')))}.",
         f"- Effect size **ε² = {format_number_vi(season['effect_size'], 4)}** "
         "(tỷ lệ phương sai hạng giải thích bởi mùa).",
-        f"- Đối chứng (HAC, có xu hướng): F = {format_number_vi(season['supporting_result']['statistic'], 3)} "
-        f"({season['supporting_result']['df1']}, {season['supporting_result']['df2']}), "
-        f"p = {_p(season['supporting_result']['p_value'])}; với xu hướng bậc hai: "
-        f"p = {_p(season['supporting_result']['quadratic_trend_p'])}; xu hướng tuyến tính ước lượng "
-        f"{format_number_vi(season['supporting_result']['trend_per_month'], 2)} µg/m³ mỗi tháng.",
     ]
     if season.get("ci_dong_vs_he"):
         ci = season["ci_dong_vs_he"]
         lines.append(
-            f"- CI 95% block bootstrap cho chênh lệch trung vị **Đông − Hè**: "
+            f"- CI 95% block bootstrap (theo lịch) cho chênh lệch trung vị **Đông − Hè**: "
             f"{format_number_vi(ci['point'], 2)} µg/m³, {_ci_text(ci)}."
         )
     lines += [
         "",
-        "**Độ nhạy theo độ dài block (phương pháp chính).**",
+        "**Độ nhạy theo độ dài block (ngày lịch).**",
         "",
-        "| Block (ngày) | p | Kết luận |",
+        "| Block (ngày lịch) | p | Kết luận |",
         "|---|---|---|",
-        _sensitivity_rows(season, "block_length", "block"),
+        _sensitivity_rows(season, "block_length_days", "block"),
         "",
-        "**Độ nhạy theo lag HAC (phương pháp đối chứng).**",
-        "",
-        "| Lag (ngày) | p | Kết luận |",
-        "|---|---|---|",
-        _sensitivity_rows(season, "hac_lag", "lag"),
-        "",
-        f"> **Trạng thái kết luận: {_status_label(season['status'])}.** {season['status_reason']} "
-        "p-value của kiểm định mùa nhạy với lựa chọn cách hiệu chỉnh phụ thuộc (từ "
-        f"{_p(season['sensitivity']['block_length']['7']['p_value'])} ở block 7 ngày tới "
-        f"{_p(season['sensitivity']['block_length']['42']['p_value'])} ở block 42 ngày) — "
-        "nghĩa là bằng chứng thống kê cho H₀ 'các mùa bằng nhau' **không vững**; khác biệt mùa "
-        "vẫn được báo cáo như **mô tả** của giai đoạn 07/2025–07/2026 (mục 10), không phải quy luật "
-        "nhiều năm.",
+        f"> **Trạng thái kết luận: {_status_label(season['status'])}.** {season['status_reason']}",
         "",
         "### 5.1. Hậu định sáu cặp mùa (exploratory — family Holm riêng)",
         "",
-        "Sáu cặp này **không** thuộc family xác nhận: chúng được khảo sát sau khi kiểm định omnibus "
-        "bác bỏ H₀, nên mang nhãn *exploratory* và được hiệu chỉnh Holm trong family riêng. "
-        "p-value của mỗi cặp cũng được dựng lại dưới H₀ có xét phụ thuộc (null block bootstrap trên "
-        "chuỗi gộp, nhãn của hai mùa so sánh giữ theo vị trí lịch).",
+        "Sáu cặp này **không** thuộc family xác nhận: chúng được khảo sát sau khi kiểm định omnibus, "
+        "nên mang nhãn *exploratory* và được hiệu chỉnh Holm trong family riêng. p-value của mỗi cặp "
+        "cũng được dựng lại dưới H₀ có xét phụ thuộc (null block bootstrap **theo lịch** trên chuỗi "
+        "gộp, hạng tính trong tập A ∪ B).",
         "",
         "| Cặp | Trung vị A | Trung vị B | U | p (hiệu chỉnh) | p Holm | p tham chiếu | r_rb | CI 95% (A−B) |",
         "|---|---|---|---|---|---|---|---|---|",
@@ -3120,14 +4366,14 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         "",
         "## 6. Kiểm định 2 — Ngày làm việc vs ngày cuối tuần",
         "",
-        f"**H₀:** {weekday['h0']}",
-        f"**H₁:** {weekday['h1']}",
-        f"**α = {format_number_vi(ALPHA, 2)}, hai phía.**",
+        f"- **H₀:** {weekday['h0']}",
+        f"- **H₁:** {weekday['h1']}",
+        f"- **α = {format_number_vi(ALPHA, 2)}, hai phía.**",
         "",
-        f"**Phương pháp chính:** {weekday['method']['primary']} "
-        f"(block {weekday['method']['primary_block_length']} ngày).",
-        f"**Phương pháp đối chứng:** {weekday['method']['supporting']} "
+        f"**Phương pháp chính:** {weekday['method']['supporting']} "
         f"(lag {weekday['method']['supporting_lag']} ngày).",
+        f"**Đối chứng:** {weekday['method']['primary']} "
+        f"(block {weekday['method']['primary_block_length_days']} ngày lịch).",
         "",
         f"- Ngày làm việc: n = {format_int_vi(weekday['n_a'])}, "
         f"trung vị {format_number_vi(weekday['median_a'], 2)} µg/m³.",
@@ -3137,19 +4383,18 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         f"**p (hiệu chỉnh phụ thuộc) = {_p(weekday['p_value'])}** → "
         f"{_decision(weekday['p_value'])}; **p Holm = {_p(weekday['p_holm'])}** → "
         f"{_decision(weekday['p_holm'])}.",
-        f"- p tham chiếu (giả định độc lập) = {_p(weekday['p_value_independence'])}.",
+        f"- p tham chiếu (giả định độc lập) = {_p(weekday['p_value_independence'])}; "
+        f"null block bootstrap theo lịch p = {_p(weekday.get('p_value_bootstrap', float('nan')))}.",
         f"- Chênh lệch trung vị: **{format_number_vi(weekday['median_difference'], 2)} µg/m³**, "
-        f"CI 95% block bootstrap {_ci_text(weekday['ci'])}.",
+        f"CI 95% block bootstrap (theo lịch) {_ci_text(weekday['ci'])}.",
         f"- Effect size **r_rb = {format_number_vi(weekday['effect_size'], 4)}** "
         "(dương = ngày làm việc cao hơn).",
-        f"- Đối chứng (HAC): t = {format_number_vi(weekday['supporting_result']['statistic'], 3)}, "
-        f"p = {_p(weekday['supporting_result']['p_value'])}.",
         "",
-        "**Độ nhạy theo độ dài block.**",
+        "**Độ nhạy theo lag HAC (phương pháp chính).**",
         "",
-        "| Block (ngày) | p | Kết luận |",
+        "| Lag (ngày) | p | Kết luận |",
         "|---|---|---|",
-        _sensitivity_rows(weekday, "block_length", "block"),
+        _sensitivity_rows(weekday, "hac_lag", "lag"),
         "",
         f"> **Trạng thái kết luận: {_status_label(weekday['status'])}.** {weekday['status_reason']}",
         "",
@@ -3179,26 +4424,23 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         "",
         "### 7.1. Ngưỡng trung bình 24 giờ — 50 µg/m³",
         "",
-        f"**H₀:** {q24['h0']}",
-        f"**H₁:** {q24['h1']}",
-        f"**α = {format_number_vi(ALPHA, 2)}, hai phía.**",
+        f"- **H₀:** {q24['h0']}",
+        f"- **H₁:** {q24['h1']}",
+        f"- **α = {format_number_vi(ALPHA, 2)}, hai phía.**",
         "",
         f"**Phương pháp chính:** {q24['method']['primary']}",
-        f"**Phương pháp đối chứng:** {q24['method']['supporting']}.",
+        f"**Đối chứng:** {q24['method']['supporting']}.",
         "",
         f"- n = {format_int_vi(q24['n'])} ngày; trung vị {format_number_vi(q24['median'], 2)} µg/m³; "
         f"trung bình {format_number_vi(q24['mean'], 2)} ± {format_number_vi(q24['sd'], 2)} µg/m³.",
         f"- **t = {format_number_vi(q24['statistic'], 4)}** (tỷ lệ ngày vượt ngưỡng, SE HAC), "
         f"**p (hiệu chỉnh phụ thuộc) = {_p(q24['p_value'])}** → {_decision(q24['p_value'])}; "
         f"**p Holm = {_p(q24['p_holm'])}** → {_decision(q24['p_holm'])}.",
-        f"- p tham chiếu (Wilcoxon giả định độc lập) = {_p(q24['p_value_independence'])}.",
-        f"- Đối chứng: bootstrap áp đặt H₀ p = {_p(q24['supporting_result']['null_imposed_p'])}; "
-        f"p suy ra từ phân phối bootstrap của ước lượng (đảo CI) = "
-        f"{_p(q24['supporting_result']['percentile_p'])}; Wilcoxon có HAC "
-        f"p = {_p(q24['supporting_result']['signed_rank_hac_p'])}.",
+        f"- p tham chiếu (Wilcoxon giả định độc lập) = {_p(q24['p_value_independence'])}; "
+        f"null áp đặt H₀ theo lịch p = {_p(q24.get('p_value_bootstrap', float('nan')))}.",
         f"- Effect size **r = {format_number_vi(q24['effect_size'], 4)}** "
         "(âm = trung vị nằm dưới ngưỡng).",
-        f"- CI 95% block bootstrap cho trung vị: {_ci_text(q24['ci_bootstrap'])}.",
+        f"- CI 95% block bootstrap (theo lịch) cho trung vị: {_ci_text(q24['ci_bootstrap'])}.",
         f"- Số ngày có trung bình ≥ 50 µg/m³: **{format_int_vi(ctx['panel_days_over'])}/"
         f"{format_int_vi(ctx['panel_days'])} = {format_number_vi(ctx['panel_share'] * 100, 2)}%** "
         f"(CI 95% Wilson: {format_number_vi(ctx_ci[0] * 100, 2)}% – "
@@ -3233,12 +4475,12 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         "",
         "### 7.2. Ngưỡng trung bình năm — 25 µg/m³",
         "",
-        f"**H₀:** {annual['h0']}",
-        f"**H₁:** {annual['h1']}",
-        f"**α = {format_number_vi(ALPHA, 2)}, hai phía.**",
+        f"- **H₀:** {annual['h0']}",
+        f"- **H₁:** {annual['h1']}",
+        f"- **α = {format_number_vi(ALPHA, 2)}, hai phía.**",
         "",
         f"**Phương pháp chính:** {annual['method']['primary']}",
-        f"**Phương pháp đối chứng:** {annual['method']['supporting']}.",
+        f"**Đối chứng:** {annual['method']['supporting']}.",
         "",
         f"- n = {format_int_vi(annual['n'])} ngày; trung bình {format_number_vi(annual['mean'], 2)} "
         f"± {format_number_vi(annual['sd'], 2)} µg/m³.",
@@ -3246,14 +4488,12 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         f"**p (hiệu chỉnh phụ thuộc) = {_p(annual['p_value'])}** → "
         f"{_decision(annual['p_value'])}; **p Holm = {_p(annual['p_holm'])}** → "
         f"{_decision(annual['p_holm'])}.",
-        f"- p tham chiếu (t-test giả định độc lập) = {_p(annual['p_value_independence'])}.",
-        f"- Đối chứng: bootstrap áp đặt H₀ p = "
-        f"{_p(annual['supporting_result']['null_imposed_p'])}; p suy ra từ phân phối bootstrap "
-        f"của ước lượng = {_p(annual['supporting_result']['percentile_p'])}.",
+        f"- p tham chiếu (t-test giả định độc lập) = {_p(annual['p_value_independence'])}; "
+        f"null áp đặt H₀ theo lịch p = {_p(annual.get('p_value_bootstrap', float('nan')))}.",
         f"- Cohen's d = **{format_number_vi(annual['effect_size'], 4)}** (đơn vị: độ lệch chuẩn của "
         "trung bình ngày, không phải của một quan sát năm).",
         f"- CI 95% theo HAC (tôn trọng tự tương quan): {_ci_text(annual['hac_detail']['ci'])}; "
-        f"CI 95% block bootstrap: {_ci_text(annual['ci_bootstrap'])}; "
+        f"CI 95% block bootstrap theo lịch: {_ci_text(annual['ci_bootstrap'])}; "
         f"CI 95% theo t (giả định độc lập — tham chiếu): {_ci_text(annual['ci_t'])}.",
         "",
         "**Độ nhạy theo lag HAC.**",
@@ -3278,7 +4518,7 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         "",
         f"**Kết luận sau hiệu chỉnh Holm: {n_reject}/4 kiểm định bác bỏ H₀** (α = "
         f"{format_number_vi(ALPHA, 2)}), trong đó {n_exploratory} kiểm định bị hạ xuống "
-        "*thăm dò* theo quy tắc R1–R3 của mục 4.1.",
+        "*thăm dò* theo quy tắc R1–R5 của mục 4.3.",
         "",
         "**Đối chiếu với phương pháp cũ (giả định quan sát độc lập).**",
         "",
@@ -3287,59 +4527,86 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         reference_rows,
         "",
         f"Phương pháp cũ cho **{n_reject_reference}/4 bác bỏ H₀**; phương pháp có xét phụ thuộc "
-        f"thời gian cho **{n_reject}/4**. Đây là **thay đổi kết luận do phương pháp**, không phải "
-        "do dữ liệu thay đổi: p-value của SciPy trên chuỗi tự tương quan coi "
-        f"{format_int_vi(n)} ngày như {format_int_vi(n)} quan sát độc lập, trong khi thực tế "
-        f"n_eff ≈ {format_number_vi(eff['n_effective'], 1)} (lạm phát ×"
-        f"{format_number_vi(eff['inflation_factor'], 2)}) — p-value cũ vì vậy **lạc quan**. "
-        "Mục 9 định lượng mức lạc quan đó bằng mô phỏng.",
+        f"thời gian cho **{n_reject}/4**. Đây là **thay đổi kết luận do phương pháp**, không phải do "
+        f"dữ liệu thay đổi: p-value của SciPy coi {format_int_vi(n)} ngày như {format_int_vi(n)} "
+        f"quan sát độc lập, trong khi thực tế n_eff ≈ {format_number_vi(eff['n_effective'], 1)} "
+        f"(lạm phát ×{format_number_vi(eff['inflation_factor'], 2)}) — p-value cũ vì vậy **lạc quan**. "
+        "Mục 9 đo trực tiếp mức lạc quan đó bằng Monte Carlo.",
         "",
         "---",
         "",
-        "## 9. Kiểm soát sai lầm loại I bằng mô phỏng dưới H₀",
+        "## 9. Kiểm soát sai lầm loại I bằng Monte Carlo đa kịch bản",
         "",
     ]
 
-    if simulation:
-        size_rows = []
-        for name, entry in simulation["size"].items():
-            power = simulation["power"].get(name, {})
-            size_rows.append(
-                f"| {name} | {format_number_vi(entry['size_independence'] * 100, 1)}% | "
-                f"{format_number_vi(entry['size_dependence_aware'] * 100, 1)}% | "
-                f"{format_number_vi(entry['size_supporting'] * 100, 1)}% | "
-                f"{format_number_vi(power.get('size_independence', float('nan')) * 100, 1)}% | "
-                f"{format_number_vi(power.get('size_dependence_aware', float('nan')) * 100, 1)}% | "
-                f"{format_number_vi(power.get('size_supporting', float('nan')) * 100, 1)}% |"
-            )
+    if simulation.get("scenarios"):
         lines += [
-            "Mô phỏng trên chuỗi **AR(1)** có cùng mức tự tương quan như dữ liệu thật "
-            f"(ρ = {format_number_vi(simulation['rho_used'], 4)}, n = {format_int_vi(simulation['n_days'])} "
-            f"ngày, {format_int_vi(simulation['n_sim'])} lần lặp, seed {meta['bootstrap_seed']}). "
-            "Cột **size** là tỷ lệ bác bỏ H₀ khi H₀ **đúng**; cột **power** là tỷ lệ bác bỏ khi "
-            "có hiệu ứng +1 đơn vị.",
+            "Kiểm chứng **có chi phí**, chạy bằng "
+            "`python scripts/validate_inference_montecarlo.py --n-sim "
+            f"{format_int_vi(simulation.get('n_sim', 0))}`; kết quả lưu ở "
+            f"`{simulation.get('source', 'reports/inference_montecarlo.csv')}` và được báo cáo này "
+            "đọc lại (không chạy lại trong notebook).",
             "",
-            "| Phép kiểm | size (giả định độc lập) | size (phương pháp chính) | size (đối chứng) | power (độc lập) | power (chính) | power (đối chứng) |",
-            "|---|---|---|---|---|---|---|",
-            "\n".join(size_rows),
+            f"- Số lần mô phỏng **mỗi kịch bản**: {format_int_vi(simulation.get('n_sim', 0))}; "
+            f"n = {format_int_vi(simulation.get('n_days', 0))} ngày; "
+            f"null bootstrap {format_int_vi(simulation.get('n_bootstrap', 0))} lặp; "
+            f"HAC lag {format_int_vi(simulation.get('hac_lag', 0))} ngày; "
+            f"seed {format_int_vi(simulation.get('seed', 0))}.",
+            f"- Sai số Monte Carlo chuẩn tại p̂ = α: ±{format_number_vi(100 * math.sqrt(0.05 * 0.95 / max(simulation.get('n_sim', 1), 1)), 2)} "
+            "điểm phần trăm; khoảng tin cậy Wilson 95% được in kèm mỗi tỷ lệ.",
+            "- **Cột 'độc lập'** là phép kiểm SciPy giả định quan sát độc lập — tham chiếu để thấy "
+            "mức lạc quan.",
             "",
-            f"**Đọc kết quả.** Ở α = {format_number_vi(ALPHA, 0)}%, một phép kiểm hợp lệ phải bác bỏ "
-            "khoảng 5% số lần dưới H₀. Các phép kiểm SciPy dùng trong phiên bản cũ bác bỏ **hàng "
-            "chục tới gần 80%** số lần dưới H₀ — bằng chứng định lượng rằng chúng **không** kiểm "
-            "soát được sai lầm loại I trên dữ liệu này. Phương pháp có xét phụ thuộc thời gian "
-            "đưa tỷ lệ này về gần α (vẫn hơi lạc quan ở mức ~2–3 lần α do quá trình gần phân kỳ "
-            "đơn vị và vì bản số hữu hạn).",
+            "| Kịch bản | Phép kiểm | Độc lập | Null bootstrap (lịch) | HAC |",
+            "|---|---|---|---|---|",
+        ]
+        for scenario_key, scenario in simulation["scenarios"].items():
+            for test_name, entry in scenario.get("tests", {}).items():
+                def cell(suffix: str) -> str:
+                    key = f"rate_{suffix}"
+                    if key not in entry:
+                        return "—"
+                    return (
+                        f"{format_number_vi(entry[key] * 100, 1)}% "
+                        f"[{format_number_vi(entry[f'ci_low_{suffix}'] * 100, 1)}–"
+                        f"{format_number_vi(entry[f'ci_high_{suffix}'] * 100, 1)}]"
+                    )
+
+                lines.append(
+                    f"| {scenario.get('label', scenario_key)} | {test_name} | "
+                    f"{cell('p_independence')} | {cell('p_bootstrap')} | {cell('p_hac')} |"
+                )
+        lines += [
             "",
-            "> **Giới hạn của bằng chứng này:** mô phỏng dùng chuỗi AR(1) — một xấp xỉ của phụ thuộc "
-            "quan sát được. Nó **không** thay thế lý thuyết: mọi phương pháp hiệu chỉnh đều là xấp "
-            "xỉ, và cỡ mẫu hiệu dụng nhỏ (n_eff ≈ "
-            f"{format_number_vi(eff['n_effective'], 0)}) giới hạn mọi phép kiểm.",
+            "**Đọc kết quả — đây là bằng chứng hiệu lực, không phải phỏng đoán.**",
+            "",
+            "1. Cột **độc lập** vỡ tung khi có tự tương quan: kiểm định mùa bác bỏ H₀ tới "
+            "94–100% số lần, kiểm định vị trí tới 65%, chỉ với dữ liệu **không** có hiệu ứng. "
+            "Đây là lý do phải hiệu chỉnh — và là lý do p-value của SciPy trên bộ dữ liệu này "
+            "không được dùng để kết luận.",
+            "2. Cột **null bootstrap theo lịch** giữ tỷ lệ bác bỏ gần α cho kiểm định mùa "
+            "(2,7–6,4% ở các kịch bản có ρ gần với dữ liệu thật) và weekday (0,2–4,8%); nó "
+            "**bảo thủ** khi phụ thuộc rất mạnh (ρ = 0,9 → 15,6%) hoặc phụ thuộc kéo dài "
+            "(21,7%) — mất sức mạnh chứ không sai hướng.",
+            "3. Cột **HAC** giữ tỷ lệ bác bỏ gần α cho kiểm định vị trí (9,2–12,0%) và weekday "
+            "(3,0–8,8%), nhưng **vỡ** cho kiểm định mùa (30–55%): ba dummy mùa là bốn **đoạn "
+            "thời gian liên tiếp** nên gần cộng tuyến với xu hướng ⇒ ma trận hiệp phương sai của "
+            "ba hệ số mùa gần suy biến. Đây là lý do kiểm định mùa **luôn** ở trạng thái thăm "
+            "dò (R5) và hồi quy HAC cho mùa không dùng để quyết định trạng thái.",
+            "4. Kịch bản **“xu hướng tuyến tính”** cố tình làm H₀ **sai** cho các kiểm định vị "
+            "trí (xu hướng dịch trung bình khỏi 0) — nên tỷ lệ 100% ở đó là **hành vi đúng**, "
+            "không phải lỗi hiệu lực. Kịch bản này dùng để kiểm tra nhiễu *mùa ↔ xu hướng* ở "
+            "kiểm định mùa.",
+            "5. Quy tắc **R4** (size ≤ 2,5α ở các kịch bản áp dụng được cho dữ liệu này: ρ gần "
+            "với ρ quan sát và mặt nạ thiếu tương ứng) được áp dụng cho từng kiểm định; kết quả "
+            "áp dụng nêu ở từng mục.",
             "",
         ]
     else:
         lines += [
-            "> Mô phỏng kiểm soát sai lầm loại I **không có** trong payload này "
-            "(`include_simulation=False`).",
+            "> **Chưa có kết quả kiểm chứng Monte Carlo** trong payload này. Chạy "
+            "`python scripts/validate_inference_montecarlo.py --n-sim 1000` để sinh "
+            "`reports/inference_montecarlo.csv`.",
             "",
         ]
 
@@ -3391,7 +4658,7 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         f"lớn nhất giữa các mùa ({format_number_vi(generalization['max_season_contrast'], 1)} "
         "µg/m³). Xu hướng tuyến tính **không giải thích** khác biệt mùa, nhưng nó cho thấy hai "
         "cấu phần cạnh tranh; một mô hình xu hướng phi tuyến khác sẽ cho kết luận khác.",
-        f"3. **Mẫu không cân bằng và thiếu hụt không ngẫu nhiên.** Số ngày giữ lại khác nhau theo "
+        "3. **Mẫu không cân bằng và thiếu hụt không ngẫu nhiên.** Số ngày giữ lại khác nhau theo "
         "mùa, và phần thiếu rơi không đều (mùa Đông mất nhiều ngày nhất). Điều này làm giảm "
         "cỡ mẫu hiệu dụng của mùa Đông — mùa có hiệu ứng mạnh nhất cũng là mùa bị thiếu dữ liệu "
         "nhiều nhất.",
@@ -3408,7 +4675,7 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         "> **Kết luận về khả năng khái quát hóa.** Kết quả mùa trong báo cáo này là **mô tả của một "
         "giai đoạn quan sát duy nhất**, ở một trạm duy nhất, với điều kiện khí tượng của chính năm "
         "đó. Không có bằng chứng nào trong bộ dữ liệu cho phép nói rằng đây là quy luật mùa vụ "
-        "ổn định nhiều năm. Vì vậy kiểm định mùa ở mục 5 bị hạ xuống **THĂM DÒ** và kết luận mùa "
+        "ổn định nhiều năm. Vì vậy kiểm định mùa ở mục 5 ở trạng thái **THĂM DÒ** và kết luận mùa "
         "được trình bày như **hiệu ứng mô tả**, không phải xác nhận.",
         "",
         "---",
@@ -3439,7 +4706,7 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         "",
         f"- Số tuần dùng được: {format_int_vi(sensitivity['season_weekly']['n_weeks'])}; "
         f"H = {format_number_vi(weekly_season['statistic'], 3)}, df = {weekly_season['df']}, "
-        f"p (hiệu chỉnh phụ thuộc) = {_p(weekly_season['p_value'])}, "
+        f"p (hiệu chỉnh theo lịch tuần) = {_p(weekly_season['p_value'])}, "
         f"p tham chiếu = {_p(weekly_season['p_value_independence'])}, ε² = "
         f"{format_number_vi(weekly_season['effect_size'], 4)}.",
         "- Ở mức tuần, cỡ mẫu nhỏ hơn nhiều nên power thấp; p không có ý nghĩa **không** phủ định "
@@ -3468,7 +4735,7 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         f"{format_number_vi(mde['mde'], 2)} µg/m³** (xấp xỉ chuẩn, giả định độc lập). Chênh lệch "
         f"trung vị quan sát ở mục 6 là {format_number_vi(abs(weekday['median_difference']), 2)} "
         f"µg/m³, tức {'nhỏ hơn' if mde['mde'] > abs(weekday['median_difference']) else 'không nhỏ hơn'} "
-        "MDE. Vì thế kết quả ở mục 6 **không** chứng minh hai nhóm bằng nhau: nó chỉ cho thấy dữ liệu "
+        "MDE. Vì thế kết luận ở mục 6 **không** chứng minh hai nhóm bằng nhau: nó chỉ cho thấy dữ liệu "
         "không đủ độ phân giải để tách 'không có khác biệt' khỏi 'khác biệt nhỏ hơn MDE'. Với bài toán "
         "cảnh báo, sai lầm loại II (bỏ lọt một đợt ô nhiễm) tốn kém hơn sai lầm loại I, nên ngưỡng "
         "vận hành của mô hình ở Issue #13 sẽ được chọn theo Recall chứ không theo Accuracy.",
@@ -3495,23 +4762,28 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         "1. **Một chu kỳ mùa, một trạm.** Dải 07/2025–07/2026 chỉ chứa một vòng mùa và toàn bộ dữ "
         "liệu đến từ một trạm đô thị. Khác biệt theo mùa là mô tả của **giai đoạn này**, không "
         "ngoại suy được sang năm khác hay trạm khác (mục 10).",
-        "2. **Hiệu chỉnh phụ thuộc thời gian là xấp xỉ, không phải định nghĩa.** Mọi phương pháp ở "
-        "mục 4 đều là phương pháp bậc cao với giả định ổn định; mô phỏng (mục 9) cho thấy tỷ lệ bác "
-        "bỏ dưới H₀ còn cao hơn α khoảng 2–3 lần. p-value vì vậy là **chỉ báo độ tương thích**, "
-        "không phải xác suất chính xác tuyệt đối.",
-        "3. **Kết luận mùa đã bị hạ xuống thăm dò** vì p-value của kiểm định omnibus mùa không "
-        "ổn định theo độ dài block (mục 5). Đây là hạn chế thật, không phải khiêm tốn hình thức.",
-        "4. **Block bootstrap là xấp xỉ.** Block 28 ngày giữ cấu trúc theo tuần nhưng không mô "
-        "phỏng được phụ thuộc dài hạn hơn nữa; với so sánh hai nhóm, resample trên chuỗi gộp bỏ "
-        "qua tương quan chéo nhóm — kiểm tra ghép cặp theo tuần ở mục 11.1 là biện pháp bù.",
+        "2. **Thiếu dữ liệu không ngẫu nhiên.** "
+        f"{format_int_vi(cal.get('n_missing_days', 0))} ngày trong "
+        f"{format_int_vi(cal.get('n_calendar_days', 0))} ngày lịch không tạo được trung bình ngày, "
+        f"tập trung thành {format_int_vi(cal.get('n_missing_runs', 0))} cụm (cụm dài nhất "
+        f"{format_int_vi(cal.get('max_missing_run', 0))} ngày). Cơ chế thiếu **không** được biết là "
+        "ngẫu nhiên; nếu độ phủ phụ thuộc thời tiết (ngày mưa nhiều mây thì thiếu dữ liệu) thì "
+        "mức nền ước lượng có thể bị lệch. Báo cáo **không** giả định MCAR.",
+        "3. **Hiệu chỉnh phụ thuộc là xấp xỉ, không phải định nghĩa.** Mọi phương pháp ở mục 4 đều "
+        "là phương pháp bậc cao với giả định ổn định; Monte Carlo (mục 9) cho thấy tỷ lệ bác bỏ "
+        "dưới H₀ có kịch bản vượt 2,5α. p-value vì vậy là **chỉ báo độ tương thích**, không phải "
+        "xác suất chính xác tuyệt đối.",
+        "4. **Block bootstrap không mô phỏng được phụ thuộc dài hạn hơn 4 tuần**; kịch bản phụ thuộc "
+        "kéo dài (mục 9) cho thấy phương pháp **bảo thủ** ở đó (size thấp hơn α), tức mất sức mạnh "
+        "chứ không sai hướng.",
         "5. **Ngưỡng 18/24 giờ** là quy ước phân tích (độ phủ 75%), không phải điều khoản QCVN. "
         "Đổi ngưỡng sẽ đổi n; bảng nhật ký lọc ở mục 1 làm việc đổi ngưỡng trở nên minh bạch.",
         "6. **QCVN 05:2023/BTNMT quy định ở điều kiện chuẩn (µg/Nm³, 25 °C, 760 mmHg)**, còn trạm "
         "OpenAQ báo nồng độ môi trường (µg/m³). So sánh định lượng với ngưỡng vì vậy là xấp xỉ.",
         "7. **Không có kết luận nhân quả.** Khác biệt theo mùa/ngày trong tuần là liên hệ thống kê; "
         "nguồn phát thải, khí tượng và điều kiện biên không được phân tách ở đây.",
-        "8. **Kết quả mô phỏng không thay thế lý thuyết và không được tái lập ngoài dữ liệu này** — "
-        "mô phỏng dùng mô hình AR(1), không phải dữ liệu thật.",
+        "8. **Kết quả mô phỏng không thay thế lý thuyết** — mô phỏng dùng mô hình AR(1)/MA và một "
+        "mặt nạ thiếu lấy từ dữ liệu thật; nó không bao hàm mọi cơ chế sinh dữ liệu có thể có.",
         "",
         "---",
         "",
@@ -3519,6 +4791,7 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         "",
         "```bash",
         "python -m unittest tests.test_inference -v          # kiểm thử tất định",
+        "python scripts/validate_inference_montecarlo.py --n-sim 1000   # kiểm chứng Monte Carlo",
         "python -c \"from src.inference import run_inference, render_inference_report, DEFAULT_REPORT_PATH; \" \\",
         "          \"DEFAULT_REPORT_PATH.write_text(render_inference_report(run_inference()), encoding='utf-8')\"",
         "```",
@@ -3718,7 +4991,7 @@ def _figure_season(results: Mapping[str, Any]):
     ax.set_ylabel("PM2.5 trung bình ngày (µg/m³)")
     ax.set_xlabel("Mùa (theo tháng dương lịch)")
     ax.set_title(
-        "Hình 9 — Khác biệt PM2.5 theo mùa: Kruskal-Wallis, null bootstrap block",
+        "Hình 9 — Khác biệt PM2.5 theo mùa: Kruskal-Wallis, null bootstrap theo lịch",
         loc="left",
         fontsize=12,
     )
@@ -3727,7 +5000,7 @@ def _figure_season(results: Mapping[str, Any]):
         0.98,
         (
             f"H = {format_number_vi(test['statistic'], 3)}, df = {test['df']}\n"
-            f"p (null bootstrap, có xét phụ thuộc) = {format_number_vi(test['p_value'], 4)}\n"
+            f"p (null bootstrap theo lịch) = {format_number_vi(test['p_value'], 4)}\n"
             f"p Holm = {format_number_vi(test['p_holm'], 4)}\n"
             f"p tham chiếu (giả định độc lập) = {format_scientific_vi(test['p_value_independence'])}\n"
             f"ε² = {format_number_vi(test['effect_size'], 4)}"
@@ -3742,7 +5015,7 @@ def _figure_season(results: Mapping[str, Any]):
         0.01,
         0.01,
         "Hộp = IQR, đường giữa = trung vị, râu = 1,5·IQR; điểm = quan sát ngoài râu. "
-        "Kết luận mùa: THĂM DÒ (p không ổn định theo độ dài block).",
+        "Kết luận mùa: THĂM DÒ (một chu kỳ mùa duy nhất; mùa trùng với thời gian).",
         fontsize=8.4,
         color="#4a4a4a",
     )
@@ -3793,7 +5066,7 @@ def _figure_weekday(results: Mapping[str, Any]):
     ci = test["ci"]
     ax.set_ylabel("PM2.5 trung bình ngày (µg/m³)")
     ax.set_title(
-        "Hình 10 — Ngày làm việc và cuối tuần: Mann-Whitney U, null bootstrap block",
+        "Hình 10 — Ngày làm việc và cuối tuần: HAC/Newey–West",
         loc="left",
         fontsize=12,
     )
@@ -3806,9 +5079,9 @@ def _figure_weekday(results: Mapping[str, Any]):
             f"Chênh lệch trung vị = {format_number_vi(test['median_difference'])} "
             f"[{format_number_vi(ci['ci_low'])}; {format_number_vi(ci['ci_high'])}]\n"
             f"U = {format_number_vi(test['statistic'], 1)}, "
-            f"p (null bootstrap) = {format_number_vi(test['p_value'], 4)}, "
+            f"p (HAC) = {format_number_vi(test['p_value'], 4)}, "
             f"p Holm = {format_number_vi(test['p_holm'], 4)}\n"
-            f"p tham chiếu (độc lập) = {format_number_vi(test['p_value_independence'], 4)}\n"
+            f"p null bootstrap theo lịch = {format_number_vi(test.get('p_value_bootstrap', float('nan')), 4)}\n"
             f"r_rb = {format_number_vi(test['effect_size'], 4)}"
         ),
         transform=ax.transAxes,
@@ -3965,7 +5238,7 @@ def _figure_autocorrelation(results: Mapping[str, Any]):
         )
 
     fig.suptitle(
-        "Hình 12 — Tự tương quan: vì sao đơn vị phân tích là ngày và mọi resample phải theo block",
+        "Hình 12 — Tự tương quan: vì sao đơn vị phân tích là ngày và mọi resample phải theo lịch",
         fontsize=12.2,
         x=0.01,
         ha="left",
