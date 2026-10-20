@@ -4,11 +4,16 @@
 > từ `notebooks/05_statistical_inference.ipynb`. Không sửa tay: mọi con số
 > dưới đây lấy trực tiếp từ `run_inference()` trên dataset đã đóng băng.
 
-> **Phiên bản 3 — sửa theo review `5588255357` của PR #43.** Mọi resample giờ
-> chạy trên **lịch ngày đầy đủ** (block = ngày LỊCH liên tiếp, mặt nạ ngày
-> thiếu đi theo bản sao), và phần p-value được kiểm chứng bằng **Monte Carlo
-> đa kịch bản** (mục 9). Kết luận: **2/4** kiểm định bác bỏ H₀ sau Holm; kiểm
-> định mùa ở trạng thái **THĂM DÒ**.
+> **Phiên bản 4 — sửa theo review `5589500408` của PR #43.** CI của chênh lệch
+> trung vị giữa hai nhóm nay dựng bằng **một** phương pháp duy nhất
+> (`calendar_contrast_ci()`: CI **hiệu ứng**, block ngày LỊCH, nhãn đi theo
+> ngày nguồn) và phân tích chính (§5) cùng bảng hậu định (§5.1) đọc **cùng
+> một payload** → không còn hai số khác nhau cho cùng estimand. p-value hậu
+> định dùng thống kê chuẩn hoá **r_rb** để thống kê quan sát và thống kê null
+> cùng thang đo. Mọi resample vẫn chạy trên **lịch ngày đầy đủ** (block = ngày
+> LỊCH liên tiếp, mặt nạ ngày thiếu đi theo bản sao), và phần p-value được
+> kiểm chứng bằng **Monte Carlo đa kịch bản** (mục 9). Kết luận: **2/4** kiểm
+> định bác bỏ H₀ sau Holm; kiểm định mùa ở trạng thái **THĂM DÒ**.
 
 | Trường | Giá trị |
 |---|---|
@@ -144,7 +149,8 @@ Bốn kiểm định xác nhận dùng **bốn cách dựng null khác nhau**, m
 - **p (hiệu chỉnh phụ thuộc thời gian) = 0,0280** → bác bỏ H₀; **p Holm = 0,0560** → không bác bỏ H₀.
 - p tham chiếu (giả định độc lập) = 2,76·10⁻¹³; hồi quy HAC (chẩn đoán, xem 4.3) p = 2,36·10⁻¹⁰.
 - Effect size **ε² = 0,2065** (tỷ lệ phương sai hạng giải thích bởi mùa).
-- CI 95% block bootstrap (theo lịch) cho chênh lệch trung vị **Đông − Hè**: 29,32 µg/m³, [−29,80; 24,99].
+- CI 95% của **hiệu ứng** (bootstrap block theo lịch, phân tầng theo nhóm) cho chênh lệch trung vị **Đông − Hè**: 29,32 µg/m³, [7,58; 38,65] (n Đông = 79 ngày quan sát, n Hè = 53 ngày quan sát; cách dựng: percentile; CI chứa ước lượng điểm: có).
+- **Đây là CI của hiệu ứng, KHÁC phân phối null dùng cho p-value.** CI trả lời *"chênh lệch trung vị giữa hai mùa là bao nhiêu, với độ không chắc chắn ra sao"*; p-value trả lời *"dữ liệu có tương phản với H₀: hai mùa cùng phân phối không"*. Vì vậy CI có thể **loại trừ 0** trong khi p-value của cùng một cặp **không** nhỏ hơn α (và ngược lại) — hai câu hỏi khác nhau, hai phương pháp khác nhau.
 
 **Độ nhạy theo độ dài block (ngày lịch).**
 
@@ -162,14 +168,19 @@ Bốn kiểm định xác nhận dùng **bốn cách dựng null khác nhau**, m
 
 Sáu cặp này **không** thuộc family xác nhận: chúng được khảo sát sau khi kiểm định omnibus, nên mang nhãn *exploratory* và được hiệu chỉnh Holm trong family riêng. p-value của mỗi cặp cũng được dựng lại dưới H₀ có xét phụ thuộc (null block bootstrap **theo lịch** trên chuỗi gộp, hạng tính trong tập A ∪ B).
 
+**Hai cột p và cột CI trả lời hai câu hỏi khác nhau, và được dựng bằng hai cơ chế khác nhau (nêu rõ để không đọc nhầm):**
+
+- **p (hiệu chỉnh)** và **p Holm**: kiểm định H₀ *"hai mùa có cùng phân phối"*, null dựng bằng block bootstrap theo lịch trên chuỗi gộp với **nhãn ở vị trí đích** (nhãn bị tách khỏi giá trị ⇒ mô phỏng H₀). Thống kê so sánh là **r_rb** (chuẩn hoá theo cỡ mẫu) vì phân phối null của U phụ thuộc vào cỡ mẫu mà bản sao null dựng trên *footprint lịch* (Hè có 105 ngày lịch nhưng chỉ 53 ngày quan sát) — dùng U thô sẽ so sánh hai thang đo khác nhau. Cột **U** vẫn là thống kê gốc của phép kiểm Mann-Whitney.
+- **CI 95% (A−B)**: CI của **hiệu ứng** cho đại lượng `trung vị(A) − trung vị(B)`, dựng bằng `calendar_contrast_ci()` — mỗi nhóm resample trong footprint lịch của chính nó bằng block gồm ngày LỊCH liên tiếp, **nhãn đi theo ngày nguồn**, mặt nạ ngày thiếu đi theo bản sao. Đây là **cùng** hàm và **cùng** payload mà §5 dùng cho Đông − Hè, nên hai bảng không thể lệch nhau.
+
 | Cặp | Trung vị A | Trung vị B | U | p (hiệu chỉnh) | p Holm | p tham chiếu | r_rb | CI 95% (A−B) |
 |---|---|---|---|---|---|---|---|---|
-| Đông – Xuân | 60,46 | 32,81 | 5191 | 0,0084 | 0,0504 | 1,49·10⁻¹⁰ | 0,583 | [8,82; 36,68] |
-| Đông – Hè | 60,46 | 31,14 | 3519 | 0,5975 | 1,0000 | 3,72·10⁻¹¹ | 0,681 | [9,95; 38,65] |
-| Đông – Thu | 60,46 | 36,30 | 4951 | 0,0192 | 0,0960 | 5,93·10⁻⁸ | 0,492 | [5,31; 33,82] |
-| Xuân – Hè | 32,81 | 31,14 | 2512 | 0,6623 | 1,0000 | 0,1639 | 0,142 | [−4,31; 7,81] |
-| Xuân – Thu | 32,81 | 36,30 | 3140 | 0,6055 | 1,0000 | 0,2688 | −0,099 | [−8,65; 3,55] |
-| Hè – Thu | 31,14 | 36,30 | 1731 | 0,2464 | 0,9854 | 0,0289 | −0,222 | [−9,59; 0,50] |
+| Đông – Xuân | 60,46 | 32,81 | 5191 | 0,0224 | 0,1120 | 1,49·10⁻¹⁰ | 0,583 | [3,21; 36,75] |
+| Đông – Hè | 60,46 | 31,14 | 3519 | 0,0052 | 0,0312 | 3,72·10⁻¹¹ | 0,681 | [7,58; 38,65] |
+| Đông – Thu | 60,46 | 36,30 | 4951 | 0,0568 | 0,2272 | 5,93·10⁻⁸ | 0,492 | [−1,82; 32,08] |
+| Xuân – Hè | 32,81 | 31,14 | 2512 | 0,5835 | 1,0000 | 0,1639 | 0,142 | [−3,94; 9,77] |
+| Xuân – Thu | 32,81 | 36,30 | 3140 | 0,7163 | 1,0000 | 0,2688 | −0,099 | [−16,39; 3,85] |
+| Hè – Thu | 31,14 | 36,30 | 1731 | 0,3751 | 1,0000 | 0,0289 | −0,222 | [−18,82; 0,31] |
 
 ---
 
@@ -186,7 +197,7 @@ Sáu cặp này **không** thuộc family xác nhận: chúng được khảo s�
 - Ngày cuối tuần: n = 86, trung vị 39,45 µg/m³.
 - **U = 8083,0**, **p (hiệu chỉnh phụ thuộc) = 0,1082** → không bác bỏ H₀; **p Holm = 0,1082** → không bác bỏ H₀.
 - p tham chiếu (giả định độc lập) = 0,1120; null block bootstrap theo lịch p = 0,5379.
-- Chênh lệch trung vị: **−2,74 µg/m³**, CI 95% block bootstrap (theo lịch) [−6,62; 5,07].
+- Chênh lệch trung vị: **−2,74 µg/m³**, CI 95% của **hiệu ứng** (bootstrap block theo lịch, phân tầng theo nhóm) [−16,25; 4,24].
 - Effect size **r_rb = −0,1175** (dương = ngày làm việc cao hơn).
 
 **Độ nhạy theo lag HAC (phương pháp chính).**
@@ -203,7 +214,7 @@ Sáu cặp này **không** thuộc family xác nhận: chúng được khảo s�
 
 **Ý nghĩa thống kê ≠ ý nghĩa thực tiễn — và power có giới hạn.** Với SD gộp 21,65 µg/m³, n₁ = 213, n₂ = 86, chênh lệch nhỏ nhất phát hiện được ở power 80%, α = 0,05 là **MDE ≈ 7,75 µg/m³** (xấp xỉ chuẩn, tính hậu nghiệm từ SD quan sát — lưu ý: công thức này **giả định độc lập**, nên với chuỗi tự tương quan nó **đánh giá thấp** ngưỡng phân giải thực tế).
 
-- Chênh lệch quan sát được là −2,74 µg/m³, nhỏ hơn MDE, và CI 95% block bootstrap [−6,62; 5,07] chứa 0; |r_rb| = 0,117. Vì vậy dữ liệu **không đủ độ phân giải** để phân biệt 'không có khác biệt' với 'khác biệt nhỏ hơn MDE' — đây không phải bằng chứng khẳng định hai nhóm bằng nhau.
+- Chênh lệch quan sát được là −2,74 µg/m³, nhỏ hơn MDE, và CI 95% của hiệu ứng [−16,25; 4,24] chứa 0; |r_rb| = 0,117. Vì vậy dữ liệu **không đủ độ phân giải** để phân biệt 'không có khác biệt' với 'khác biệt nhỏ hơn MDE' — đây không phải bằng chứng khẳng định hai nhóm bằng nhau.
 - Ước lượng điểm nằm trong khoảng sai số thực hành của một trạm đo, nên không được dùng để quy kết nguồn phát thải hay hành vi giao thông.
 
 ---
@@ -313,38 +324,47 @@ Kiểm chứng **có chi phí**, chạy bằng `python scripts/validate_inferenc
 | Quan sát độc lập (i.i.d.) | weekday | 4,9% [3,7–6,4] | 4,5% [3,4–6,0] | 7,4% [5,9–9,2] |
 | Quan sát độc lập (i.i.d.) | median | 6,0% [4,7–7,6] | 13,1% [11,1–15,3] | 9,2% [7,6–11,2] |
 | Quan sát độc lập (i.i.d.) | mean | 6,1% [4,8–7,8] | 8,7% [7,1–10,6] | 9,4% [7,7–11,4] |
+| Quan sát độc lập (i.i.d.) | pair | 4,2% [3,1–5,6] | 4,5% [3,4–6,0] | — |
 | AR(1) yếu (ρ = 0,3) | season | 22,6% [20,1–25,3] | 3,7% [2,7–5,1] | 31,6% [28,8–34,5] |
 | AR(1) yếu (ρ = 0,3) | weekday | 6,3% [5,0–8,0] | 4,8% [3,6–6,3] | 7,4% [5,9–9,2] |
 | AR(1) yếu (ρ = 0,3) | median | 15,7% [13,6–18,1] | 11,7% [9,9–13,8] | 9,4% [7,7–11,4] |
 | AR(1) yếu (ρ = 0,3) | mean | 16,6% [14,4–19,0] | 9,2% [7,6–11,2] | 9,9% [8,2–11,9] |
+| AR(1) yếu (ρ = 0,3) | pair | 13,4% [11,4–15,7] | 4,2% [3,1–5,6] | — |
 | AR(1) trung bình (ρ = 0,6) | season | 56,0% [52,9–59,0] | 4,6% [3,5–6,1] | 34,5% [31,6–37,5] |
 | AR(1) trung bình (ρ = 0,6) | weekday | 4,1% [3,0–5,5] | 3,5% [2,5–4,8] | 7,0% [5,6–8,8] |
 | AR(1) trung bình (ρ = 0,6) | median | 33,2% [30,4–36,2] | 10,7% [8,9–12,8] | 9,4% [7,7–11,4] |
 | AR(1) trung bình (ρ = 0,6) | mean | 33,4% [30,5–36,4] | 9,5% [7,8–11,5] | 10,3% [8,6–12,3] |
+| AR(1) trung bình (ρ = 0,6) | pair | 31,7% [28,9–34,6] | 5,0% [3,8–6,5] | — |
 | AR(1) mạnh (ρ = 0,9) | season | 94,2% [92,6–95,5] | 15,6% [13,5–18,0] | 49,5% [46,4–52,6] |
 | AR(1) mạnh (ρ = 0,9) | weekday | 0,0% [0,0–0,4] | 0,8% [0,4–1,6] | 4,2% [3,1–5,6] |
 | AR(1) mạnh (ρ = 0,9) | median | 65,3% [62,3–68,2] | 14,9% [12,8–17,2] | 16,8% [14,6–19,2] |
 | AR(1) mạnh (ρ = 0,9) | mean | 66,1% [63,1–69,0] | 14,4% [12,4–16,7] | 16,6% [14,4–19,0] |
+| AR(1) mạnh (ρ = 0,9) | pair | 64,7% [61,7–67,6] | 10,4% [8,7–12,4] | — |
 | AR(1) mạnh (ρ = 0,73) + xu hướng tuyến tính (mùa trùng với thời gian) | season | 100,0% [99,6–100,0] | 100,0% [99,6–100,0] | 37,8% [34,8–40,8] |
 | AR(1) mạnh (ρ = 0,73) + xu hướng tuyến tính (mùa trùng với thời gian) | weekday | 0,0% [0,0–0,4] | 0,8% [0,4–1,6] | 7,3% [5,8–9,1] |
 | AR(1) mạnh (ρ = 0,73) + xu hướng tuyến tính (mùa trùng với thời gian) | median | 100,0% [99,6–100,0] | 100,0% [99,6–100,0] | 100,0% [99,6–100,0] |
 | AR(1) mạnh (ρ = 0,73) + xu hướng tuyến tính (mùa trùng với thời gian) | mean | 100,0% [99,6–100,0] | 100,0% [99,6–100,0] | 100,0% [99,6–100,0] |
+| AR(1) mạnh (ρ = 0,73) + xu hướng tuyến tính (mùa trùng với thời gian) | pair | 100,0% [99,6–100,0] | 90,9% [89,0–92,5] | — |
 | Phụ thuộc kéo dài (MA, cửa sổ 30 ngày) | season | 98,0% [96,9–98,7] | 21,7% [19,3–24,4] | 55,5% [52,4–58,6] |
 | Phụ thuộc kéo dài (MA, cửa sổ 30 ngày) | weekday | 0,0% [0,0–0,4] | 0,2% [0,1–0,7] | 3,0% [2,1–4,3] |
 | Phụ thuộc kéo dài (MA, cửa sổ 30 ngày) | median | 1,7% [1,1–2,7] | 0,0% [0,0–0,4] | 0,0% [0,0–0,4] |
 | Phụ thuộc kéo dài (MA, cửa sổ 30 ngày) | mean | 0,0% [0,0–0,4] | 0,0% [0,0–0,4] | 0,0% [0,0–0,4] |
+| Phụ thuộc kéo dài (MA, cửa sổ 30 ngày) | pair | 73,8% [71,0–76,4] | 12,5% [10,6–14,7] | — |
 | AR(1) mạnh + thiếu ngẫu nhiên 20% | season | 66,8% [63,8–69,6] | 5,5% [4,2–7,1] | 42,9% [39,9–46,0] |
 | AR(1) mạnh + thiếu ngẫu nhiên 20% | weekday | 1,8% [1,1–2,8] | 0,5% [0,2–1,2] | 8,8% [7,2–10,7] |
 | AR(1) mạnh + thiếu ngẫu nhiên 20% | median | 39,3% [36,3–42,4] | 9,8% [8,1–11,8] | 10,2% [8,5–12,2] |
 | AR(1) mạnh + thiếu ngẫu nhiên 20% | mean | 39,3% [36,3–42,4] | 9,3% [7,7–11,3] | 11,6% [9,8–13,7] |
+| AR(1) mạnh + thiếu ngẫu nhiên 20% | pair | 38,2% [35,2–41,3] | 5,1% [3,9–6,6] | — |
 | AR(1) mạnh + thiếu thành cụm 20% | season | 64,6% [61,6–67,5] | 6,4% [5,0–8,1] | 48,6% [45,5–51,7] |
 | AR(1) mạnh + thiếu thành cụm 20% | weekday | 3,0% [2,1–4,3] | 0,2% [0,1–0,7] | 8,8% [7,2–10,7] |
 | AR(1) mạnh + thiếu thành cụm 20% | median | 37,1% [34,2–40,1] | 6,8% [5,4–8,5] | 11,0% [9,2–13,1] |
 | AR(1) mạnh + thiếu thành cụm 20% | mean | 36,9% [34,0–39,9] | 9,1% [7,5–11,0] | 12,0% [10,1–14,2] |
+| AR(1) mạnh + thiếu thành cụm 20% | pair | 36,5% [33,6–39,5] | 6,6% [5,2–8,3] | — |
 | AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | season | 72,3% [69,4–75,0] | 5,6% [4,3–7,2] | 40,3% [37,3–43,4] |
 | AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | weekday | 1,7% [1,1–2,7] | 0,4% [0,2–1,0] | 7,6% [6,1–9,4] |
 | AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | median | 41,5% [38,5–44,6] | 10,5% [8,7–12,6] | 11,9% [10,0–14,1] |
 | AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | mean | 42,3% [39,3–45,4] | 10,3% [8,6–12,3] | 12,0% [10,1–14,2] |
+| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | pair | 41,8% [38,8–44,9] | 5,3% [4,1–6,9] | — |
 
 **Đọc kết quả — đây là bằng chứng hiệu lực, không phải phỏng đoán.**
 
@@ -353,6 +373,7 @@ Kiểm chứng **có chi phí**, chạy bằng `python scripts/validate_inferenc
 3. Cột **HAC** giữ tỷ lệ bác bỏ gần α cho kiểm định vị trí (9,2–12,0%) và weekday (3,0–8,8%), nhưng **vỡ** cho kiểm định mùa (30–55%): ba dummy mùa là bốn **đoạn thời gian liên tiếp** nên gần cộng tuyến với xu hướng ⇒ ma trận hiệp phương sai của ba hệ số mùa gần suy biến. Đây là lý do kiểm định mùa **luôn** ở trạng thái thăm dò (R5) và hồi quy HAC cho mùa không dùng để quyết định trạng thái.
 4. Kịch bản **“xu hướng tuyến tính”** cố tình làm H₀ **sai** cho các kiểm định vị trí (xu hướng dịch trung bình khỏi 0) — nên tỷ lệ 100% ở đó là **hành vi đúng**, không phải lỗi hiệu lực. Kịch bản này dùng để kiểm tra nhiễu *mùa ↔ xu hướng* ở kiểm định mùa.
 5. Quy tắc **R4** (size ≤ 2,5α ở các kịch bản áp dụng được cho dữ liệu này: ρ gần với ρ quan sát và mặt nạ thiếu tương ứng) được áp dụng cho từng kiểm định; kết quả áp dụng nêu ở từng mục.
+6. **Phép kiểm hậu định một cặp mùa (`pair`)** dùng thống kê chuẩn hoá `r_rb` và giữ tỷ lệ bác bỏ gần α ở các kịch bản có ρ gần dữ liệu thật (4,2–5,3%); ở kịch bản phụ thuộc rất mạnh (ρ = 0,9) nó lên 10,4% và ở kịch bản phụ thuộc kéo dài lên 12,5% — ngay ngưỡng 2,5α; ở kịch bản **xu hướng tuyến tính** nó bác bỏ 90,9% vì hai mùa là hai **đoạn thời gian** nên bị trộn với xu hướng, đúng như kiểm định mùa omnibus. Vì vậy family hậu định **luôn** mang nhãn *exploratory*, và CI của hiệu ứng (§5, §5.1) là bằng chứng **mô tả** chênh lệch trung vị trong giai đoạn quan sát, không phải bằng chứng suy luận rằng mùa là quy luật nhiều năm.
 
 ## 10. Khả năng khái quát hóa kết quả theo mùa
 

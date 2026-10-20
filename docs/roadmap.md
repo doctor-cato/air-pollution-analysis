@@ -787,19 +787,19 @@ W01–W15.
 >   `#12`, `#13`) **đã được mở lại** và không còn bị chặn.
 > - Các số liệu thực nghiệm nêu trong các báo cáo (#4, #5) là **kết quả của một lần thực thi cụ thể**
 >   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
-> - Bộ kiểm thử hiện gồm **643 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
+> - Bộ kiểm thử hiện gồm **662 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
 >   [`docs/TEST_SUITE.md`](TEST_SUITE.md) — nguồn chuẩn duy nhất cho số liệu kiểm thử).
 >   Số mà unittest **thực sự chạy và báo cáo** phụ thuộc cả nền tảng lẫn việc có
->   `data/` hay không — **không phải con số 643 trên mọi nền tảng**:
->   - **Windows local (có `data/interim/*.parquet`)**: `Ran 643 tests` + `OK` → **643 pass, 0 skip**.
->   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`)**: `Ran 629 tests` + `OK (skipped=6)`
->     → **625 pass, 6 skip**.
+>   `data/` hay không — **không phải con số 662 trên mọi nền tảng**:
+>   - **Windows local (có `data/interim/*.parquet`)**: `Ran 662 tests` + `OK` → **662 pass, 0 skip**.
+>   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`)**: `Ran 646 tests` + `OK (skipped=6)`
+>     → **642 pass, 6 skip**.
 >
->   CI báo **629 chứ không phải 643** vì **14** phương thức nằm trong **2** lớp mà
+>   CI báo **646 chứ không phải 662** vì **16** phương thức nằm trong **2** lớp mà
 >   `setUpClass` ném `unittest.SkipTest` khi thiếu `data/` — `TestDocumentedReproduction`
 >   (4) và `TestRealDataset` của `tests/test_inference.py` (10); cả hai lớp bị bỏ qua nên
 >   các phương thức **không chạy, không được tính vào "Ran"**, nhưng mỗi lớp vẫn đóng góp
->   **1 dòng** vào `skipped=`. Vì vậy `pass = Ran − (skipped − holder) = 629 − (6 − 2) = 625`.
+>   **1 dòng** vào `skipped=`. Vì vậy `pass = Ran − (skipped − holder) = 646 − (6 − 2) = 642`.
 >   Danh sách skip còn lại: `TestScriptsUseTheComputation.test_progress_report_bullet_carries_the_computed_f_statistic`
 >   (cùng lý do thiếu dữ liệu); hai test `@unittest.skipUnless(os.name == "nt")` trong
 >   `tests/test_pipeline_runtime_log.py`; và `test_live_restart_kernel_and_run_all` trong

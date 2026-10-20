@@ -660,8 +660,13 @@ print(f"p tham chiếu (giả định độc lập) = {p_text(season['p_value_in
 print(f"p hồi quy HAC (chẩn đoán)      = {p_text(season['p_value_hac'])}")
 print(f"ε² = {format_number_vi(season['effect_size'], 4)}")
 print(f"Xu hướng tuyến tính (HAC): {format_number_vi(season['supporting_result']['trend_per_month'])} µg/m³ mỗi tháng")
-print(f"CI 95% block bootstrap (theo lịch) cho trung vị Đông − Hè: "
-      f"{format_number_vi(season_ci['point'])} µg/m³, {ci_text(season_ci)}")
+print(f"CI 95% của HIỆU ỨNG (bootstrap block theo lịch, phân tầng theo nhóm) cho "
+      f"trung vị Đông − Hè: {format_number_vi(season_ci['point'])} µg/m³, "
+      f"{ci_text(season_ci)}")
+print(f"  · n Đông = {format_int_vi(season_ci['n_a'])} ngày quan sát, "
+      f"n Hè = {format_int_vi(season_ci['n_b'])} ngày quan sát")
+print(f"  · cách dựng: {season_ci['ci_method']}; "
+      f"CI chứa ước lượng điểm: {season_ci['contains_point_estimate']}")
 
 print("\nĐộ nhạy theo độ dài block (ngày lịch):")
 for name, entry in sorted(season["sensitivity"]["block_length_days"].items(), key=lambda kv: int(kv[0])):
@@ -670,6 +675,17 @@ for name, entry in sorted(season["sensitivity"]["block_length_days"].items(), ke
 print(f"\nTrạng thái kết luận: {status_text(season['status'])} — {season['status_reason']}")
 assert season["status"] == "exploratory", "Kết luận mùa phải ở trạng thái thăm dò"
 assert 0.0 <= season["effect_size"] <= 1.0
+
+# §5 và §5.1 phải báo cáo CÙNG một CI cho cùng estimand "trung vị(Đông) − trung vị(Hè)".
+dong_he_pair = next(
+    p for p in posthoc["pairs"]
+    if p["label_a"] == SEASON_LABELS_VI["Dong"] and p["label_b"] == SEASON_LABELS_VI["He"]
+)
+assert dong_he_pair["ci"]["point"] == season_ci["point"]
+assert dong_he_pair["ci"]["ci_low"] == season_ci["ci_low"]
+assert dong_he_pair["ci"]["ci_high"] == season_ci["ci_high"]
+assert season_ci["ci_low"] <= season_ci["point"] <= season_ci["ci_high"]
+print("→ CI Đông − Hè ở §5 và §5.1 là CÙNG một payload (không thể lệch nhau).")
 """)
 
 add_md(r"""**Đọc kết quả.** Khác biệt mùa **rõ rệt về mặt mô tả**: ε² ở mức trung bình,
@@ -683,6 +699,24 @@ năm (mục 10).
 
 Sáu cặp dưới đây **không** tham gia family xác nhận. Chúng chỉ định vị khác biệt
 nằm ở đâu; p-value của chúng cũng đã được dựng lại dưới H₀ có xét phụ thuộc.
+
+Hai điểm về cách đọc bảng:
+
+1. **p-value hậu định dùng thống kê chuẩn hoá `r_rb`.** Phân phối null của U phụ
+   thuộc vào cỡ mẫu; bản sao null được dựng trên *footprint lịch* của hai mùa (Hè
+   có 105 ngày lịch nhưng chỉ 53 ngày quan sát) nên nếu so trực tiếp U thô với U
+   quan sát thì hai thang đo lệch nhau. `r_rb = 2U/(n_a·n_b) − 1` chuẩn hoá theo cỡ
+   mẫu nên quan sát và null cùng thang đo. Cột **U** vẫn là thống kê gốc.
+2. **Cột CI là CI của hiệu ứng**, dựng bằng **cùng** `calendar_contrast_ci()` và
+   **cùng payload** mà §6.2 dùng cho Đông − Hè → bảng này và phân tích chính không
+   thể cho hai số khác nhau cho cùng một estimand.
+
+> **CI của hiệu ứng ≠ phân phối null.** CI ở §6.2 dựng bằng `calendar_contrast_ci()`
+> (mỗi nhóm resample trong footprint lịch của chính nó, block gồm ngày LỊCH liên
+> tiếp, **nhãn đi theo ngày nguồn**, mặt nạ ngày thiếu đi theo bản sao) → nó mô phỏng
+> **sampling distribution** của chênh lệch trung vị. p-value thì dùng null block
+> bootstrap với **nhãn ở vị trí đích** (nhãn bị tách khỏi giá trị) → mô phỏng **H₀**.
+> Hai cơ chế khác nhau trả lời hai câu hỏi khác nhau.
 """)
 
 add_code(r"""pair_rows = []
@@ -701,7 +735,14 @@ for pair in posthoc["pairs"]:
 display(pd.DataFrame(pair_rows))
 assert posthoc["n_pairs"] == 6
 assert all(p["p_holm"] >= p["p_value"] - 1e-12 for p in posthoc["pairs"])
+# Mọi cặp: CI hữu hạn, đúng thứ tự, và chứa ước lượng điểm của chính nó.
+for p in posthoc["pairs"]:
+    ci = p["ci"]
+    assert np.isfinite(ci["ci_low"]) and np.isfinite(ci["ci_high"])
+    assert ci["ci_low"] <= ci["point"] <= ci["ci_high"], p["pair"]
+    assert ci["point"] == p["median_a"] - p["median_b"], p["pair"]
 print("→ Family hậu định: 6 cặp, Holm riêng, nhãn exploratory.")
+print("→ Mọi CI hậu định chứa ước lượng điểm và khớp trung vị(A) − trung vị(B).")
 """)
 
 add_code(r"""display_image(Image(filename=str(FIGURES["season"]), width=760))
@@ -750,7 +791,7 @@ print(f"U = {format_number_vi(weekday['statistic'], 1)} · p (HAC, phương phá
 print(f"p tham chiếu (giả định độc lập) = {p_text(weekday['p_value_independence'])}")
 print(f"Đối chứng (null bootstrap theo lịch) p = {p_text(weekday['p_value_bootstrap'])}")
 print(f"Chênh lệch trung vị (weekday − weekend) = {format_number_vi(weekday['median_difference'])} µg/m³, "
-      f"CI 95% {ci_text(weekday_ci)}")
+      f"CI 95% của hiệu ứng {ci_text(weekday_ci)}")
 print(f"r_rb = {format_number_vi(weekday['effect_size'], 4)}  (dương = ngày làm việc cao hơn)")
 print(f"MDE ≈ {format_number_vi(mde['mde'])} µg/m³ "
       f"(SD gộp {format_number_vi(mde['pooled_sd'])}; power {mde['power']:.0%}; α = {mde['alpha']})")
@@ -1180,6 +1221,8 @@ checks = {
     "p QCVN năm (hiệu chỉnh)": p_text(tests["qcvn_annual"]["p_value"]),
     "p Holm QCVN năm": p_text(tests["qcvn_annual"]["p_holm"]),
     "CI weekday": ci_text(tests["weekday_effect"]["ci"]),
+    "CI Đông − Hè (§5)": ci_text(tests["season_effect"]["ci_dong_vs_he"]),
+    "CI Đông − Hè (§5.1 hậu định)": ci_text(dong_he_pair["ci"]),
     "CI QCVN năm (HAC)": ci_text(tests["qcvn_annual"]["hac_detail"]["ci"]),
     "ε² mùa": format_number_vi(tests["season_effect"]["effect_size"], 4),
     "r_rb weekday": format_number_vi(tests["weekday_effect"]["effect_size"], 4),

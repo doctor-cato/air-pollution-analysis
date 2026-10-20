@@ -15,6 +15,7 @@ báo cáo (SHA-256, 299 ngày, H, p, effect size) để báo cáo không thể t
 """
 
 import math
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -233,16 +234,37 @@ class TestBootstrapCI(unittest.TestCase):
 
 
 class TestBootstrapDifferenceCI(unittest.TestCase):
+    """
+    CI của chênh lệch trung vị giữa hai nhóm.
+
+    Trước đây lớp này kiểm `bootstrap_difference_ci()` — resample trên **mảng đã
+    lọc**, không giữ lịch, và là một trong hai phương pháp CI cùng tồn tại cho
+    cùng một estimand (review `5589500408`). Nay phương pháp đó **đã bị gỡ**;
+    lớp này chuyển sang kiểm `calendar_contrast_ci()` — nguồn CI duy nhất.
+    """
+
+    def _calendar(self, a, b):
+        values = np.concatenate([np.asarray(a, dtype=float), np.asarray(b, dtype=float)])
+        return _two_group_calendar(values, split=len(a))
+
     def test_point_is_difference_of_medians(self):
         a = np.arange(100.0, 110.0)
         b = np.arange(1.0, 11.0)
-        result = inf.bootstrap_difference_ci(a, b, n_bootstrap=100, seed=42)
+        calendar = self._calendar(a, b)
+        result = inf.calendar_contrast_ci(
+            calendar, calendar.labels == 0, calendar.labels == 1,
+            n_bootstrap=100, seed=42,
+        )
         self.assertAlmostEqual(result["point"], float(np.median(a) - np.median(b)))
 
     def test_clear_separation_excludes_zero(self):
         a = np.arange(100.0, 120.0)
         b = np.arange(0.0, 20.0)
-        result = inf.bootstrap_difference_ci(a, b, n_bootstrap=200, seed=42)
+        calendar = self._calendar(a, b)
+        result = inf.calendar_contrast_ci(
+            calendar, calendar.labels == 0, calendar.labels == 1,
+            n_bootstrap=200, seed=42,
+        )
         self.assertTrue(result["excludes_zero"])
         self.assertGreater(result["ci_low"], 0.0)
 
@@ -250,12 +272,29 @@ class TestBootstrapDifferenceCI(unittest.TestCase):
         rng = np.random.default_rng(0)
         a = rng.normal(10.0, 1.0, 200)
         b = rng.normal(10.0, 1.0, 200)
-        result = inf.bootstrap_difference_ci(a, b, statistic="mean", n_bootstrap=200, seed=42)
+        calendar = self._calendar(a, b)
+        result = inf.calendar_contrast_ci(
+            calendar, calendar.labels == 0, calendar.labels == 1,
+            statistic="mean", n_bootstrap=200, seed=42,
+        )
         self.assertFalse(result["excludes_zero"])
 
-    def test_validation_requires_five_per_group(self):
+    def test_validation_rejects_masks_of_the_wrong_length(self):
+        calendar = self._calendar(np.arange(10.0), np.arange(10.0))
         with self.assertRaises(ValueError):
-            inf.bootstrap_difference_ci([1, 2, 3, 4], [1, 2, 3, 4, 5], n_bootstrap=10)
+            inf.calendar_contrast_ci(
+                calendar, np.ones(3, dtype=bool), np.zeros(3, dtype=bool),
+                n_bootstrap=10,
+            )
+
+    def test_validation_rejects_a_group_without_observed_days(self):
+        calendar = self._calendar(np.arange(10.0), np.arange(10.0))
+        empty = calendar.labels == 0
+        empty[empty] = False
+        with self.assertRaises(ValueError):
+            inf.calendar_contrast_ci(
+                calendar, empty, calendar.labels == 1, n_bootstrap=10,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -820,6 +859,59 @@ class TestRunInferenceSynthetic(unittest.TestCase):
             self.assertGreaterEqual(pair["p_holm"], pair["p_value"] - 1e-15)
             self.assertIn("p_value_independence", pair)
 
+    def test_main_analysis_and_posthoc_share_one_ci_for_dong_vs_he(self):
+        """
+        Regression review `5589500408`: §5 và §5.1 phải báo cáo **cùng một CI**
+        cho cùng estimand "trung vị(Đông) − trung vị(Hè)".
+        """
+        season_ci = self.results["tests"]["season_effect"]["ci_dong_vs_he"]
+        self.assertIsNotNone(season_ci)
+        pair = next(
+            p
+            for p in self.results["posthoc_season"]["pairs"]
+            if p["label_a"] == SEASON_LABELS_VI["Dong"]
+            and p["label_b"] == SEASON_LABELS_VI["He"]
+        )
+        self.assertEqual(season_ci["point"], pair["ci"]["point"])
+        self.assertEqual(season_ci["ci_low"], pair["ci"]["ci_low"])
+        self.assertEqual(season_ci["ci_high"], pair["ci"]["ci_high"])
+
+    def test_every_season_pair_has_a_valid_contrast_ci(self):
+        """Cả sáu cặp mùa, không riêng cặp Đông − Hè."""
+        pairs = self.results["posthoc_season"]["pairs"]
+        self.assertEqual(len(pairs), 6)
+        for pair in pairs:
+            ci = pair["ci"]
+            self.assertTrue(np.isfinite(ci["ci_low"]), pair["pair"])
+            self.assertTrue(np.isfinite(ci["ci_high"]), pair["pair"])
+            self.assertLessEqual(ci["ci_low"], ci["ci_high"], pair["pair"])
+            self.assertLessEqual(ci["ci_low"], ci["point"], pair["pair"])
+            self.assertGreaterEqual(ci["ci_high"], ci["point"], pair["pair"])
+            # Ước lượng điểm đúng hướng: trung vị(A) − trung vị(B).
+            self.assertAlmostEqual(
+                ci["point"], pair["median_a"] - pair["median_b"], places=12, msg=pair["pair"]
+            )
+            self.assertEqual(
+                ci["excludes_zero"], bool(ci["ci_low"] > 0.0 or ci["ci_high"] < 0.0)
+            )
+            self.assertEqual(
+                ci["contains_point_estimate"],
+                bool(ci["ci_low"] <= ci["point"] <= ci["ci_high"]),
+            )
+
+    def test_posthoc_null_uses_the_scale_free_statistic(self):
+        """
+        p-value hậu định so sánh thống kê **chuẩn hoá theo cỡ mẫu** (r_rb) để
+        thống kê quan sát và thống kê null cùng thang đo (U thô phụ thuộc cỡ mẫu
+        mà bản sao null dựng trên footprint lịch, khác cỡ mẫu quan sát).
+        """
+        for pair in self.results["posthoc_season"]["pairs"]:
+            null_boot = pair["null_bootstrap"]
+            self.assertEqual(null_boot["statistic_name"], "r_rb")
+            self.assertAlmostEqual(
+                null_boot["observed_statistic"], pair["effect_size"], places=12
+            )
+
     def test_sensitivity_block_has_all_three_checks(self):
         sensitivity = self.results["sensitivity"]
         self.assertEqual(sensitivity["paired_weeks"]["n_weeks"], 60)
@@ -1069,6 +1161,54 @@ class TestRealDataset(unittest.TestCase):
     def test_confirmatory_family_keeps_four_members(self):
         """Family Holm phải giữ nguyên 4 kiểm định đã chốt trước — không thu hẹp sau khi xem kết quả."""
         self.assertEqual(len(self.results["holm_confirmatory"]), 4)
+
+    def test_dong_he_contrast_ci_is_one_payload_and_contains_the_point(self):
+        """
+        Regression review `5589500408` trên dataset thật: CI của Đông − Hè ở §5
+        và ở bảng hậu định §5.1 là **cùng một** số, hữu hạn, có thứ tự và **chứa
+        ước lượng điểm**.
+        """
+        season_ci = self.results["tests"]["season_effect"]["ci_dong_vs_he"]
+        pair = next(
+            p
+            for p in self.results["posthoc_season"]["pairs"]
+            if p["label_a"] == SEASON_LABELS_VI["Dong"]
+            and p["label_b"] == SEASON_LABELS_VI["He"]
+        )
+        self.assertEqual(season_ci["point"], pair["ci"]["point"])
+        self.assertEqual(season_ci["ci_low"], pair["ci"]["ci_low"])
+        self.assertEqual(season_ci["ci_high"], pair["ci"]["ci_high"])
+        self.assertTrue(np.isfinite(season_ci["ci_low"]))
+        self.assertTrue(np.isfinite(season_ci["ci_high"]))
+        self.assertLessEqual(season_ci["ci_low"], season_ci["ci_high"])
+        self.assertLessEqual(season_ci["ci_low"], season_ci["point"])
+        self.assertGreaterEqual(season_ci["ci_high"], season_ci["point"])
+        self.assertTrue(season_ci["contains_point_estimate"])
+        # Cỡ mẫu quan sát của hai mùa (Hè mất cửa sổ hè 2026 vì dữ liệu kết thúc).
+        self.assertEqual(season_ci["n_a"], 79)
+        self.assertEqual(season_ci["n_b"], 53)
+        # Đông cao hơn Hè → ước lượng điểm dương.
+        self.assertGreater(season_ci["point"], 0.0)
+
+    def test_every_real_season_pair_has_a_finite_ordered_ci(self):
+        """Cả sáu cặp mùa trên dữ liệu thật — không riêng cặp Đông − Hè."""
+        pairs = self.results["posthoc_season"]["pairs"]
+        self.assertEqual(len(pairs), 6)
+        for pair in pairs:
+            ci = pair["ci"]
+            self.assertTrue(np.isfinite(ci["ci_low"]), pair["pair"])
+            self.assertTrue(np.isfinite(ci["ci_high"]), pair["pair"])
+            self.assertLessEqual(ci["ci_low"], ci["ci_high"], pair["pair"])
+            self.assertLessEqual(ci["ci_low"], ci["point"], pair["pair"])
+            self.assertGreaterEqual(ci["ci_high"], ci["point"], pair["pair"])
+            self.assertAlmostEqual(
+                ci["point"], pair["median_a"] - pair["median_b"], places=12, msg=pair["pair"]
+            )
+            # Nếu CI loại trừ 0 thì dấu của nó phải khớp dấu của effect size.
+            if ci["ci_low"] > 0.0:
+                self.assertGreater(pair["effect_size"], 0.0, pair["pair"])
+            elif ci["ci_high"] < 0.0:
+                self.assertLess(pair["effect_size"], 0.0, pair["pair"])
 
     def test_qcvn_context_keeps_rolling_and_daily_denominators(self):
         context = self.results["qcvn_context"]
@@ -1426,6 +1566,92 @@ class TestNotebookGeneratorMatchesNotebook(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Hiện vật: báo cáo và notebook phải dùng CÙNG một CI cho Đông − Hè
+# (review 5589500408 — PR #43)
+# ---------------------------------------------------------------------------
+
+
+def _vi_number(text: str) -> float:
+    """'−29,80' → -29.80 (dấu thập phân kiểu Việt Nam, dấu trừ U+2212)."""
+    return float(text.replace("−", "-").replace(",", "."))
+
+
+class TestReportContrastConsistency(unittest.TestCase):
+    """
+    Báo cáo sinh tự động và notebook 05 phải **tự nhất quán**: CI ở phân tích
+    chính (§5) và CI ở bảng hậu định (§5.1) phải là **cùng một số** cho cùng
+    estimand "trung vị(Đông) − trung vị(Hè)".
+
+    Test này đọc **artifact đã commit** nên chạy được trên CI (không cần `data/`)
+    và bắt được đúng lỗi mà review `5589500408` đã chỉ ra.
+    """
+
+    REPORT_PATH = REPO_ROOT / "reports" / "inference_results.md"
+    NOTEBOOK_PATH = REPO_ROOT / "notebooks" / "05_statistical_inference.ipynb"
+
+    def setUp(self):
+        self.report = self.REPORT_PATH.read_text(encoding="utf-8")
+
+    def _main_ci(self):
+        match = re.search(
+            r"\*\*Đông − Hè\*\*: ([\d−,]+) µg/m³, \[([\d−,; ]+)\]",
+            self.report,
+        )
+        self.assertIsNotNone(match, "Không tìm thấy dòng CI Đông − Hè trong báo cáo")
+        return match
+
+    def _posthoc_row(self):
+        match = re.search(
+            r"^\| Đông – Hè \| ([\d−,]+) \| ([\d−,]+) \|[^\n]*\| \[([\d−,; ]+)\] \|$",
+            self.report,
+            re.MULTILINE,
+        )
+        self.assertIsNotNone(match, "Không tìm thấy dòng Đông – Hè trong bảng hậu định")
+        return match
+
+    def test_main_and_posthoc_report_the_same_interval(self):
+        main_point, main_ci = self._main_ci().groups()
+        median_a, median_b, posthoc_ci = self._posthoc_row().groups()
+        self.assertEqual(
+            main_ci.replace(" ", ""),
+            posthoc_ci.replace(" ", ""),
+            "§5 và §5.1 phải báo cáo CÙNG một CI cho Đông − Hè",
+        )
+        # Ước lượng điểm ở §5 phải bằng trung vị(A) − trung vị(B) ở §5.1.
+        self.assertAlmostEqual(
+            _vi_number(main_point),
+            _vi_number(median_a) - _vi_number(median_b),
+            places=6,
+        )
+
+    def test_notebook_output_shows_the_same_interval_as_the_report(self):
+        nb = nbformat.read(self.NOTEBOOK_PATH, as_version=4)
+        streams = []
+        for cell in nb.cells:
+            if cell.cell_type != "code":
+                continue
+            for output in cell.get("outputs", []):
+                streams.append("".join(output.get("text", [])))
+        text = "\n".join(streams)
+        match = re.search(
+            r"Đông − Hè: ([\d−,]+) µg/m³, \[([\d−,; ]+)\]", text
+        )
+        self.assertIsNotNone(match, "Notebook không in CI Đông − Hè")
+        point, ci = match.groups()
+        self.assertIn(ci.replace(" ", ""), self.report.replace(" ", ""))
+        self.assertIn(point, self.report)
+
+    def test_generator_keeps_the_notebook_and_the_report_in_sync(self):
+        """Generator là nguồn sự thật — phải chứa phép kiểm nhất quán CI."""
+        source = (
+            REPO_ROOT / "scripts" / "generate_05_notebook.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("dong_he_pair", source)
+        self.assertIn("ci_dong_vs_he", source)
+        self.assertIn("CI Đông − Hè (§5)", source)
+
+
+# ---------------------------------------------------------------------------
 # Bootstrap THEO LỊCH — giữ khoảng cách ngày và mặt nạ thiếu (review 5588255357)
 # ---------------------------------------------------------------------------
 
@@ -1674,18 +1900,249 @@ class TestCalendarBootstrapCI(unittest.TestCase):
         self.assertGreaterEqual(ci["ci_high"], ci["point"])
         self.assertEqual(ci["block_length_days"], 14)
 
-    def test_difference_ci_uses_one_shared_calendar(self):
+    def test_contrast_ci_is_calendar_aware(self):
         rng = np.random.default_rng(11)
         values = inf._ar1_daily(80, 0.7, 1.0, rng)
         calendar = _calendar_with_gaps(values, [7, 8])
         mask_a = calendar.labels == 0
         mask_b = calendar.labels == 1
-        ci = inf.calendar_bootstrap_difference_ci(
+        ci = inf.calendar_contrast_ci(
             calendar, mask_a, mask_b, statistic="median",
             block_length_days=14, n_bootstrap=200, seed=42,
         )
         self.assertLessEqual(ci["ci_low"], ci["point"])
         self.assertGreaterEqual(ci["ci_high"], ci["point"])
+
+
+# ---------------------------------------------------------------------------
+# CI của hiệu ứng cho chênh lệch trung vị giữa hai nhóm — regression review
+# 5589500408 (PR #43): §5 và §5.1 phải báo cáo CÙNG một CI cho cùng estimand.
+# ---------------------------------------------------------------------------
+
+
+def _two_group_calendar(
+    values: Sequence[float],
+    *,
+    split: int,
+    missing_positions: Sequence[int] = (),
+) -> inf.DailyCalendar:
+    """
+    Lịch giả với **hai nhóm** dán nhãn 0 (nửa đầu) và 1 (nửa sau).
+
+    Hai nhóm nằm ở hai đoạn lịch **không chồng nhau** — đúng hình dạng của hai mùa
+    (Đông và Hè) trên dữ liệu thật.
+    """
+    n = len(values)
+    dates = pd.date_range("2025-01-01", periods=n, freq="D")
+    data = np.asarray(values, dtype=float).copy()
+    data[list(missing_positions)] = np.nan
+    labels = np.zeros(n, dtype=np.int64)
+    labels[split:] = 1
+    is_weekend = (dates.dayofweek.to_numpy() >= 5).astype(np.int64)
+    return inf.DailyCalendar(
+        dates=dates.to_numpy(dtype="datetime64[D]"),
+        values=data,
+        labels=labels,
+        valid_hours=np.where(np.isfinite(data), 24, 0).astype(np.int64),
+        season=np.array(["A"] * split + ["B"] * (n - split), dtype=object),
+        is_weekend=is_weekend,
+        week_key=np.asarray([f"2025-W{i:02d}" for i in range(n)], dtype=object),
+    )
+
+
+class TestSeasonalContrastCI(unittest.TestCase):
+    """
+    Regression cho CI của **hiệu ứng** (`calendar_contrast_ci`).
+
+    Review `5589500408`: ước lượng điểm 29,32 µg/m³ cho median(Đông) − median(Hè)
+    nhưng CI ở §5 là [−29,80; 24,99] còn bảng hậu định ở §5.1 là [9,95; 38,65] —
+    hai phương pháp khác nhau cho cùng một estimand. Các test dưới đây ghim:
+
+    * đúng **hướng phép trừ** và đúng **estimand**;
+    * CI là CI **hiệu ứng** (nhãn đi theo ngày nguồn), không phải phân phối null;
+    * §5 và §5.1 dùng **cùng một payload**;
+    * bootstrap **giữ ngày lịch thực tế** và **không trộn nhóm**;
+    * tái lập theo seed; CI hữu hạn và `lower ≤ upper`;
+    * **tất cả** sáu cặp mùa, không riêng cặp Đông − Hè.
+    """
+
+    def setUp(self):
+        rng = np.random.default_rng(2024)
+        # Hai đoạn lịch rời nhau: nhóm A cao hơn nhóm B rõ rệt.
+        values = np.concatenate(
+            [40.0 + inf._ar1_daily(60, 0.6, 6.0, rng), 20.0 + inf._ar1_daily(60, 0.6, 6.0, rng)]
+        )
+        self.calendar = _two_group_calendar(values, split=60, missing_positions=[5, 6, 70])
+        self.mask_a = self.calendar.labels == 0
+        self.mask_b = self.calendar.labels == 1
+
+    # -- estimand và hướng phép trừ -----------------------------------------
+
+    def test_point_estimate_is_median_a_minus_median_b_on_observed_days(self):
+        ci = inf.calendar_contrast_ci(
+            self.calendar, self.mask_a, self.mask_b, n_bootstrap=200, seed=42
+        )
+        observed = np.isfinite(self.calendar.values)
+        median_a = float(np.median(self.calendar.values[self.mask_a & observed]))
+        median_b = float(np.median(self.calendar.values[self.mask_b & observed]))
+        self.assertAlmostEqual(ci["point"], median_a - median_b, places=12)
+        self.assertGreater(ci["point"], 0.0)
+        self.assertEqual(ci["n_a"], int((self.mask_a & observed).sum()))
+        self.assertEqual(ci["n_b"], int((self.mask_b & observed).sum()))
+
+    def test_sign_follows_the_group_order(self):
+        """
+        Đảo thứ tự hai nhóm phải **đảo dấu** ước lượng điểm và lật dấu khoảng
+        CI. Ước lượng điểm đảo dấu **chính xác**; hai khoảng CI là ấn phủm
+        bootstrap nên chỉ đối xứng đến bộc lọc (bootstrap chỉ lấy mẫu, không
+        kéo theo tính đối xứng tuyệt đối).
+        """
+        forward = inf.calendar_contrast_ci(
+            self.calendar, self.mask_a, self.mask_b, n_bootstrap=200, seed=42
+        )
+        backward = inf.calendar_contrast_ci(
+            self.calendar, self.mask_b, self.mask_a, n_bootstrap=200, seed=42
+        )
+        self.assertAlmostEqual(forward["point"], -backward["point"], places=12)
+        self.assertGreater(forward["ci_low"], 0.0)
+        self.assertLess(backward["ci_high"], 0.0)
+        for ci in (forward, backward):
+            self.assertLessEqual(ci["ci_low"], ci["point"])
+            self.assertGreaterEqual(ci["ci_high"], ci["point"])
+
+    # -- CI là hiệu ứng, không phải phân phối null ----------------------------
+
+    def test_ci_is_an_effect_interval_not_a_null_interval(self):
+        """
+        CI của hiệu ứng phải **chứa** ước lượng điểm và phải **lệch khỏi 0** khi
+        hiệu ứng lớn. Một CI dựng theo quy ước null (nhãn ở vị trí đích) sẽ
+        luôn căng quanh 0 và **không** chứa ước lượng điểm — đó chính là lỗi
+        của bản cũ (review `5589500408`).
+        """
+        ci = inf.calendar_contrast_ci(
+            self.calendar, self.mask_a, self.mask_b, n_bootstrap=400, seed=42
+        )
+        self.assertTrue(ci["contains_point_estimate"])
+        self.assertLessEqual(ci["ci_low"], ci["point"])
+        self.assertGreaterEqual(ci["ci_high"], ci["point"])
+        self.assertTrue(ci["excludes_zero"])
+        self.assertNotAlmostEqual(ci["ci_low"], ci["ci_high"], places=3)
+
+    # -- bootstrap giữ lịch thực tế, không trộn nhóm --------------------------
+
+    def test_replicates_keep_calendar_days_and_never_mix_groups(self):
+        """
+        Bản sao bootstrap phải (i) giữ **đúng số ngày quan sát** của nhóm,
+        (ii) chỉ chứa giá trị thuộc chính nhóm đó, (iii) không chứa giá trị của
+        ngày thiếu (không nội suy, không tạo quan sát giả).
+        """
+        observed = np.isfinite(self.calendar.values)
+        for mask, tag in ((self.mask_a, "A"), (self.mask_b, "B")):
+            group_values = self.calendar.values[mask & observed]
+            n_obs = int(group_values.size)
+            replicates = inf._group_calendar_block_replicates(
+                self.calendar,
+                mask,
+                block_length_days=14,
+                n_bootstrap=50,
+                seed=42,
+            )
+            self.assertEqual(replicates.shape, (50, n_obs), tag)
+            # (ii) không giá trị nào của nhóm khác lọt vào bản sao
+            for row in replicates:
+                for value in row:
+                    self.assertIn(value, set(group_values.tolist()), tag)
+            # (iii) không ngày thiếu nào được "lấp" bằng giá trị khác
+            self.assertTrue(np.isfinite(replicates).all(), tag)
+
+    def test_blocks_stay_within_the_calendar_span_of_the_group(self):
+        """
+        Block phải là **ngày lịch liên tiếp**: độ dài block tính bằng ngày lịch,
+        và không vượt qua khoảng lịch không thuộc nhóm.
+        """
+        block_days = 14
+        dates = np.asarray(self.calendar.dates, dtype="datetime64[D]")
+        for mask in (self.mask_a, self.mask_b):
+            days = np.flatnonzero(mask)
+            window_end = np.searchsorted(
+                dates[days],
+                dates[days] + np.timedelta64(block_days, "D"),
+                side="left",
+            )
+            for i in range(days.size):
+                span = dates[days[i:window_end[i]]] - dates[days[i]]
+                self.assertTrue(np.all(span < np.timedelta64(block_days, "D")))
+
+    def test_missing_days_are_not_imputed_across_the_gap(self):
+        """Ngày thiếu phải **vẫn thiếu**: số ngày quan sát của nhóm không đổi."""
+        observed = np.isfinite(self.calendar.values)
+        n_obs_before = int((self.mask_a & observed).sum())
+        ci = inf.calendar_contrast_ci(
+            self.calendar, self.mask_a, self.mask_b, n_bootstrap=200, seed=42
+        )
+        self.assertEqual(ci["n_a"], n_obs_before)
+        self.assertEqual(ci["n_replicates_dropped"], 0)
+
+    # -- tính tái lập và hình dạng CI ---------------------------------------
+
+    def test_same_seed_gives_identical_interval(self):
+        kwargs = dict(n_bootstrap=200, seed=42)
+        first = inf.calendar_contrast_ci(
+            self.calendar, self.mask_a, self.mask_b, **kwargs
+        )
+        second = inf.calendar_contrast_ci(
+            self.calendar, self.mask_a, self.mask_b, **kwargs
+        )
+        self.assertEqual(first["ci_low"], second["ci_low"])
+        self.assertEqual(first["ci_high"], second["ci_high"])
+        self.assertEqual(first["point"], second["point"])
+
+    def test_interval_is_finite_and_ordered(self):
+        ci = inf.calendar_contrast_ci(
+            self.calendar, self.mask_a, self.mask_b, n_bootstrap=200, seed=42
+        )
+        self.assertTrue(np.isfinite(ci["ci_low"]))
+        self.assertTrue(np.isfinite(ci["ci_high"]))
+        self.assertTrue(np.isfinite(ci["point"]))
+        self.assertLessEqual(ci["ci_low"], ci["ci_high"])
+        self.assertEqual(
+            ci["excludes_zero"], bool(ci["ci_low"] > 0.0 or ci["ci_high"] < 0.0)
+        )
+
+    def test_containment_is_checked_and_falls_back_explicitly(self):
+        """
+        Việc CI chứa ước lượng điểm **không phải định lý** với mọi CI bootstrap.
+        Hàm phải **kiểm tra tường minh** và, khi khoảng percentile không chứa
+        ước lượng điểm, chuyển sang khoảng **đối xứng theo độ lệch tuyệt đối**
+        (chứa ước lượng điểm theo cấu tạo) và **ghi rõ** cách dựng đã dùng.
+        """
+        original = inf._percentile_ci
+
+        def shifted(replicates):
+            low, high = original(replicates)
+            # Dịch cả khoảng sang khỏi ước lượng điểm để ép nhánh fallback.
+            return low + 10.0, high + 10.0
+
+        inf._percentile_ci = shifted
+        try:
+            ci = inf.calendar_contrast_ci(
+                self.calendar, self.mask_a, self.mask_b, n_bootstrap=200, seed=42
+            )
+        finally:
+            inf._percentile_ci = original
+        self.assertFalse(ci["contains_point_estimate"])
+        self.assertEqual(ci["ci_method"], "symmetric_absolute_deviation")
+        self.assertLessEqual(ci["ci_low"], ci["point"])
+        self.assertGreaterEqual(ci["ci_high"], ci["point"])
+
+    def test_only_one_contrast_ci_implementation_exists(self):
+        """
+        Không được tồn tại hai phương pháp CI cho cùng estimand — đó là nguyên
+        nhân gốc của mâu thuẫn bị review `5589500408` chỉ ra.
+        """
+        self.assertFalse(hasattr(inf, "calendar_bootstrap_difference_ci"))
+        self.assertFalse(hasattr(inf, "bootstrap_difference_ci"))
+        self.assertTrue(hasattr(inf, "calendar_contrast_ci"))
 
 
 class TestMonteCarloValidation(unittest.TestCase):

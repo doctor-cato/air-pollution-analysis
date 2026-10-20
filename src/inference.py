@@ -760,57 +760,6 @@ def bootstrap_ci(
     }
 
 
-def bootstrap_difference_ci(
-    a: Sequence[float],
-    b: Sequence[float],
-    *,
-    statistic: str = "median",
-    block_length: int = BLOCK_LENGTH_DAYS,
-    n_bootstrap: int = N_BOOTSTRAP,
-    seed: int = BOOTSTRAP_SEED,
-) -> Dict[str, Any]:
-    """
-    CI percentile cho `thống kê(a) − thống kê(b)`, resample **theo block từng nhóm**.
-
-    Stratified (không gộp chung) để cỡ mẫu hai nhóm được giữ nguyên trong mọi lặp;
-    cái giá là bỏ qua tương quan chéo nhóm, nên đi kèm kiểm tra độ nhạy ghép cặp
-    theo tuần ở `paired_weekly_differences()`.
-    """
-    xa = np.asarray(a, dtype=float)
-    xa = xa[np.isfinite(xa)]
-    xb = np.asarray(b, dtype=float)
-    xb = xb[np.isfinite(xb)]
-    if xa.size < 5 or xb.size < 5:
-        raise ValueError(
-            f"Mỗi nhóm cần ≥ 5 quan sát, nhận {xa.size} và {xb.size}."
-        )
-    reducer = {"median": np.median, "mean": np.mean}.get(statistic)
-    if reducer is None:
-        raise ValueError(f"statistic phải là 'median' hoặc 'mean', nhận {statistic!r}.")
-
-    block = min(block_length, xa.size, xb.size)
-    idx_a = circular_block_indices(
-        xa.size, block_length=block, n_bootstrap=n_bootstrap, seed=seed
-    )
-    idx_b = circular_block_indices(
-        xb.size, block_length=block, n_bootstrap=n_bootstrap, seed=seed + 1
-    )
-    replicates = reducer(xa[idx_a], axis=1) - reducer(xb[idx_b], axis=1)
-    lo, hi = _percentile_ci(replicates)
-    point = float(reducer(xa) - reducer(xb))
-    return {
-        "statistic": statistic,
-        "point": point,
-        "ci_low": lo,
-        "ci_high": hi,
-        "n_bootstrap": n_bootstrap,
-        "block_length": block,
-        "seed": seed,
-        "replicates_sd": float(replicates.std(ddof=1)),
-        "excludes_zero": bool(lo > 0.0 or hi < 0.0),
-    }
-
-
 # ---------------------------------------------------------------------------
 # Các phép kiểm
 # ---------------------------------------------------------------------------
@@ -828,12 +777,18 @@ def mann_whitney(
     seed: int = BOOTSTRAP_SEED,
 ) -> Dict[str, Any]:
     """
-    Mann-Whitney U hai mẫu + rank-biserial + CI bootstrap cho chênh lệch trung vị.
+    Mann-Whitney U hai mẫu + rank-biserial.
 
     Dấu của `r_rb`: ``r_rb = 2U/(n_a·n_b) − 1`` với U của nhóm **a**, nên dương
     nghĩa là a có xu hướng lớn hơn b. Công thức trong roadmap
     ``1 − 2U/(n_a·n_b)`` cho cùng độ lớn nhưng dấu ngược vì U ở đó tính cho nhóm
     đối chứng; dùng một quy ước và nói rõ quy ước đó.
+
+    Hàm này **không** trả về CI: CI của chênh lệch trung vị chỉ được dựng bằng
+    `calendar_contrast_ci()` (CI hiệu ứng, calendar-aware) để mọi bảng trong báo
+    cáo dùng chung **một** nguồn số. Trước đây có thêm một CI resample trên mảng
+    đã lọc (`bootstrap_difference_ci`) → hai số khác nhau cho cùng một estimand
+    (review `5589500408` của PR #43).
     """
     xa = np.asarray(a, dtype=float)
     xa = xa[np.isfinite(xa)]
@@ -848,14 +803,6 @@ def mann_whitney(
     u_a = float(result.statistic)
     n_a, n_b = int(xa.size), int(xb.size)
     r_rb = 2.0 * u_a / (n_a * n_b) - 1.0
-    diff_ci = bootstrap_difference_ci(
-        xa,
-        xb,
-        statistic="median",
-        block_length=block_length,
-        n_bootstrap=n_bootstrap,
-        seed=seed,
-    )
     return {
         "test": "mann_whitney_u",
         "label_a": label_a,
@@ -870,11 +817,10 @@ def mann_whitney(
         "median_b": float(np.median(xb)),
         "mean_a": float(xa.mean()),
         "mean_b": float(xb.mean()),
-        "median_difference": diff_ci["point"],
+        "median_difference": float(np.median(xa) - np.median(xb)),
         "mean_difference": float(xa.mean() - xb.mean()),
         "effect_size_name": "r_rb",
         "effect_size": float(r_rb),
-        "ci": diff_ci,
         "n_zero_differences": None,
     }
 
@@ -1399,6 +1345,29 @@ def mannwhitney_statistic_rows_nan(
     return np.where((n_a > 0) & (n_b > 0), u, np.nan)
 
 
+def mannwhitney_rrb_rows_nan(
+    values_2d: np.ndarray, mask_a: np.ndarray, mask_b: np.ndarray
+) -> np.ndarray:
+    """
+    **r_rb chuẩn hoá theo cỡ mẫu** cho từng hàng: ``r_rb = 2U/(n_a·n_b) − 1``.
+
+    Vì sao cần: thống kê U **không** chuẩn hoá theo cỡ mẫu — phân phối null
+    của U phụ thuộc vào ``n_a·n_b``. Khi phân phối null được dựng trên *footprint
+    lịch* của hai nhóm (số ngày **mang nhãn** trên lịch) trong khi thống kê quan
+    sát tính trên các ngày **quan sát** (Hè có 105 ngày lịch nhưng chỉ 53 ngày
+    quan sát) thì hai thang đo lệch nhau → so sánh trực tiếp là sai. ``r_rb``
+    chuẩn hoá theo cỡ mẫu nên thống kê quan sát và thống kê null cùng thang đo.
+    """
+    matrix = np.asarray(values_2d, dtype=float)
+    u = mannwhitney_statistic_rows_nan(matrix, mask_a, mask_b)
+    observed = np.isfinite(matrix)
+    n_a = (mask_a & observed).sum(axis=1).astype(float)
+    n_b = (mask_b & observed).sum(axis=1).astype(float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        r_rb = 2.0 * u / (n_a * n_b) - 1.0
+    return np.where((n_a > 0) & (n_b > 0), r_rb, np.nan)
+
+
 def signed_rank_statistic_rows_nan(deviations_2d: np.ndarray) -> np.ndarray:
     """Thống kê W⁺ của Wilcoxon signed-rank cho từng hàng, bỏ qua NaN."""
     deviations = np.asarray(deviations_2d, dtype=float)
@@ -1597,7 +1566,84 @@ def calendar_bootstrap_ci(
     }
 
 
-def calendar_bootstrap_difference_ci(
+def _group_calendar_block_replicates(
+    calendar: DailyCalendar,
+    group_mask: np.ndarray,
+    *,
+    block_length_days: int,
+    n_bootstrap: int,
+    seed: int,
+) -> np.ndarray:
+    """
+    Bản sao bootstrap cho **một nhóm** trên lịch ngày — shape ``(B, n_observed)``.
+
+    Mỗi bản sao được dựng bằng cách rút các **block gồm `block_length_days` NGÀY
+    LỊCH liên tiếp** *trong footprint lịch của nhóm* (các ngày mang nhãn nhóm),
+    rồi ghép lại cho tới khi đủ số ngày quan sát của nhóm.
+
+    Ba tính chất bắt buộc:
+
+    1. **Nhãn đi theo ngày nguồn.** Một ngày Đông được rút vẫn là ngày Đông →
+       cấu trúc nhóm được giữ nguyên. Đây là CI **hiệu ứng** (sampling
+       distribution của chênh lệch), *không* phải phân phối null. Ngược lại —
+       nhãn ở vị trí **đích** như `calendar_replicates()` — bản sao sẽ mô phỏng
+       H₀ ("các nhóm không khác nhau") và CI sẽ căng quanh 0, không phải quanh
+       ước lượng điểm.
+    2. **Mặt nạ thiếu đi theo bản sao.** Ngày không tạo được trung bình ngày vẫn
+       không có trong bản sao → không nội suy, không tạo quan sát giả, không nối
+       hai khoảng lịch bị ngắt (block chỉ kéo theo ngày **của nhóm** nằm trong
+       cửa sổ lịch, nên không vượt qua khoảng trống dài hơn block).
+    3. **Cỡ mẫu quan sát của nhóm được giữ** bằng đúng số ngày quan sát gốc → CI
+       phản ánh biến động *vị trí* của thống kê, không phản ánh biến động cỡ mẫu.
+    """
+    mask = np.asarray(group_mask, dtype=bool)
+    if mask.size != calendar.n_days:
+        raise ValueError("Mặt nạ nhóm phải cùng độ dài với lịch.")
+    days = np.flatnonzero(mask)
+    if days.size == 0:
+        raise ValueError("Nhóm không có ngày nào trên lịch.")
+    values = calendar.values
+    n_target = int(np.isfinite(values[days]).sum())
+    if n_target < 1:
+        raise ValueError("Nhóm không có ngày quan sát nào — không dựng được CI.")
+
+    group_dates = np.asarray(calendar.dates, dtype="datetime64[D]")[days]
+    # Block bắt đầu tại `days[i]` = các ngày **của nhóm** nằm trong cửa sổ lịch
+    # [ngày_i, ngày_i + block_length_days). `searchsorted` trên *ngày lịch* nên độ
+    # dài block luôn mang nghĩa ngày lịch, kể cả khi nhóm không chiếm mọi ngày.
+    window_end = np.searchsorted(
+        group_dates,
+        group_dates + np.timedelta64(int(block_length_days), "D"),
+        side="left",
+    )
+
+    rng = np.random.default_rng(seed)
+    replicates = np.empty((n_bootstrap, n_target), dtype=float)
+    for b in range(n_bootstrap):
+        collected: List[np.ndarray] = []
+        filled = 0
+        attempts = 0
+        while filled < n_target:
+            attempts += 1
+            if attempts > 10_000:
+                raise ValueError(
+                    "Không đủ ngày quan sát sau 10.000 lần rút block — kiểm tra mặt nạ nhóm."
+                )
+            i = int(rng.integers(days.size))
+            block = values[days[i:window_end[i]]]
+            block = block[np.isfinite(block)]
+            if block.size == 0:
+                # Block rơi vào vùng không quan sát của nhóm (ví dụ cửa sổ Hè 2026
+                # chưa có dữ liệu) → bỏ qua, không nội suy.
+                continue
+            take = int(min(block.size, n_target - filled))
+            collected.append(block[:take])
+            filled += take
+        replicates[b] = np.concatenate(collected)
+    return replicates
+
+
+def calendar_contrast_ci(
     calendar: DailyCalendar,
     mask_a: np.ndarray,
     mask_b: np.ndarray,
@@ -1608,40 +1654,61 @@ def calendar_bootstrap_difference_ci(
     seed: int = BOOTSTRAP_SEED,
 ) -> Dict[str, Any]:
     """
-    CI percentile cho ``thống kê(A) − thống kê(B)`` tính trên **cùng một lịch**.
+    **CI hiệu ứng** (effect CI) cho ``thống kê(A) − thống kê(B)`` trên cùng lịch.
 
-    Khác với bản trước (resample **riêng** từng nhóm), ở đây hai nhóm được
-    lấy từ **cùng một bản sao lịch** → tương quan chéo giữa nhóm được giữ, và
-    mặt nạ thiếu cũng nhất quán. Khối bootstrap là **ngày lịch liên tiếp**.
+    Đây là **nguồn duy nhất** của CI chênh lệch trong toàn bộ pipeline: phân tích
+    chính (§5) và bảng hậu định (§5.1) đều đọc cùng một payload nên không thể
+    xảy ra tình trạng hai số khác nhau cho cùng một estimand.
+
+    Estimand: ``θ = thống kê(A) − thống kê(B)`` trên **các ngày quan sát** của A
+    và B. Ước lượng điểm tính bằng **đúng** bộ giảm ấn định trên **đúng** các
+    ngày quan sát đó — cùng estimand với CI.
+
+    Cách dựng CI: mỗi nhóm được resample **riêng** (phân tầng theo nhóm) bằng
+    block gồm `block_length_days` **ngày lịch liên tiếp** *trong footprint lịch
+    của chính nhóm đó*; nhãn đi theo ngày nguồn, mặt nạ ngày thiếu đi theo bản
+    sao (xem `_group_calendar_block_replicates`). Vì vậy phân phối bootstrap là
+    phân phối **hiệu ứng**, và nó **khác** phân phối null dùng cho p-value
+    (`calendar_bootstrap_null_test`, nhãn ở vị trí đích).
+
+    Về việc CI có chứa ước lượng điểm hay không: đây **không phải định lý** đúng
+    với mọi loại CI bootstrap (kể cả percentile). Vì vậy hàm này **kiểm tra
+    tường minh** điều đó:
+
+    * nếu khoảng percentile chứa ước lượng điểm → `ci_method="percentile"`,
+      `contains_point_estimate=True`;
+    * nếu **không** chứa (phân phối bootstrap lệch/skew) → chuyển sang khoảng
+      **đối xứng theo độ lệch tuyệt đối** ``θ̂ ± Q_{1−α/2}(|θ* − θ̂|)``, vốn
+      **chứa θ̂ theo cấu tạo** (bán kính ≥ 0) và là khoảng đối xứng chuẩn đi kèm
+      khoảng percentile; `ci_method="symmetric_absolute_deviation"`.
+
+    Cách xử lý này được **ghi rõ** trong payload và trong báo cáo, không phải
+    "tùy tiện nới/rút giới hạn CI".
     """
     mask_a_arr = np.asarray(mask_a, dtype=bool)
     mask_b_arr = np.asarray(mask_b, dtype=bool)
     if mask_a_arr.size != calendar.n_days or mask_b_arr.size != calendar.n_days:
         raise ValueError("Mặt nạ nhóm phải cùng độ dài với lịch.")
-    indices = calendar_block_indices(
-        calendar.n_days,
-        block_length_days=block_length_days,
-        n_bootstrap=n_bootstrap,
-        seed=seed,
+    if statistic not in ("median", "mean"):
+        raise ValueError(f"statistic phải là 'median' hoặc 'mean', nhận {statistic!r}.")
+
+    replicates_a = _group_calendar_block_replicates(
+        calendar, mask_a_arr, block_length_days=block_length_days,
+        n_bootstrap=n_bootstrap, seed=seed,
     )
-    replicates_values, _ = calendar_replicates(
-        calendar.values, calendar.labels, indices
+    replicates_b = _group_calendar_block_replicates(
+        calendar, mask_b_arr, block_length_days=block_length_days,
+        n_bootstrap=n_bootstrap, seed=seed + 1,
     )
-    observed = np.isfinite(calendar.values)
-    stat_a = _nan_reduce_rows(
-        np.where(mask_a_arr[None, :] & observed[None, :], replicates_values, np.nan),
-        statistic,
-    )
-    stat_b = _nan_reduce_rows(
-        np.where(mask_b_arr[None, :] & observed[None, :], replicates_values, np.nan),
-        statistic,
-    )
+    stat_a = _nan_reduce_rows(replicates_a, statistic)
+    stat_b = _nan_reduce_rows(replicates_b, statistic)
     replicates = stat_a - stat_b
     finite = np.isfinite(replicates)
     if not finite.any():
         raise ValueError("Mọi bản sao bootstrap không hữu hạn — không dựng được CI.")
     replicates = replicates[finite]
-    lo, hi = _percentile_ci(replicates)
+
+    observed = np.isfinite(calendar.values)
     point = float(
         _nan_reduce_rows(
             np.where(mask_a_arr & observed, calendar.values, np.nan)[None, :], statistic
@@ -1650,15 +1717,40 @@ def calendar_bootstrap_difference_ci(
             np.where(mask_b_arr & observed, calendar.values, np.nan)[None, :], statistic
         )[0]
     )
+    lo, hi = _percentile_ci(replicates)
+    contains_point = bool(lo <= point <= hi)
+    ci_method = "percentile"
+    if not contains_point:
+        half_width = float(
+            np.quantile(np.abs(replicates - point), 1.0 - CONFIDENCE_LEVEL)
+        )
+        lo, hi = point - half_width, point + half_width
+        ci_method = "symmetric_absolute_deviation"
+
     return {
         "statistic": statistic,
         "point": point,
-        "ci_low": lo,
-        "ci_high": hi,
+        "ci_low": float(lo),
+        "ci_high": float(hi),
+        "ci_method": ci_method,
+        "contains_point_estimate": contains_point,
+        "estimand": (
+            f"{statistic}(A) − {statistic}(B) trên các ngày quan sát của A và B"
+        ),
+        "method": (
+            "Bootstrap block theo lịch, phân tầng theo nhóm: mỗi nhóm resample "
+            "trong footprint lịch của chính nó bằng block gồm "
+            f"{int(block_length_days)} NGÀY LỊCH liên tiếp; nhãn đi theo ngày "
+            "nguồn; mặt nạ ngày thiếu đi theo bản sao; cỡ mẫu quan sát của nhóm "
+            "được giữ. Đây là CI hiệu ứng, KHÁC phân phối null dùng cho p-value."
+        ),
         "n_bootstrap": int(n_bootstrap),
-        "block_length_days": int(min(block_length_days, calendar.n_days)),
+        "block_length_days": int(block_length_days),
         "seed": int(seed),
+        "n_a": int(observed[mask_a_arr].sum()),
+        "n_b": int(observed[mask_b_arr].sum()),
         "replicates_sd": float(replicates.std(ddof=1)) if replicates.size > 1 else float("nan"),
+        "n_replicates_dropped": int((~finite).sum()),
         "excludes_zero": bool(lo > 0.0 or hi < 0.0),
     }
 
@@ -2992,11 +3084,52 @@ def _simulation_procedures(
             "p_bootstrap": float(null_imposed["p_value"]),
         }
 
+    def pair(calendar: DailyCalendar) -> Dict[str, float]:
+        """
+        Phép kiểm **hậu định một cặp mùa** (Đông − Hè: mã 0 và 2) — thống kê
+        chuẩn hoá ``r_rb`` với null block bootstrap theo lịch.
+
+        Cặp hậu định dùng chung cơ chế null của phép kiểm mùa nhưng thống kê
+        phải **chuẩn hoá theo cỡ mẫu** (r_rb) mới so sánh được với thống kê quan
+        sát — xem `mannwhitney_rrb_rows_nan()`.
+        """
+        values = calendar.values
+        observed = np.isfinite(values)
+        mask_a = calendar.labels == 0
+        mask_b = calendar.labels == 2
+        xa = values[observed & mask_a]
+        xb = values[observed & mask_b]
+        if xa.size < 3 or xb.size < 3:
+            return {"p_independence": np.nan, "p_bootstrap": np.nan, "p_hac": np.nan}
+        mw = stats.mannwhitneyu(xa, xb, alternative="two-sided")
+        r_rb = 2.0 * float(mw.statistic) / (xa.size * xb.size) - 1.0
+
+        def statistic(matrix: np.ndarray, labels: np.ndarray) -> np.ndarray:
+            selected = (labels == 0) | (labels == 2)
+            restricted = np.where(selected, matrix, np.nan)
+            return mannwhitney_rrb_rows_nan(restricted, labels == 0, labels == 2)
+
+        boot = calendar_bootstrap_null_test(
+            calendar,
+            statistic=statistic,
+            observed_statistic=r_rb,
+            alternative="two-sided",
+            block_length_days=block_length_days,
+            n_bootstrap=n_bootstrap,
+            seed=seed,
+        )
+        return {
+            "p_independence": float(mw.pvalue),
+            "p_bootstrap": float(boot["p_value"]),
+            "p_hac": np.nan,
+        }
+
     return {
         "season": {"callable": season, "effect": "seasonal"},
         "weekday": {"callable": weekday, "effect": "weekly"},
         "median": {"callable": median, "effect": "location"},
         "mean": {"callable": mean, "effect": "location"},
+        "pair": {"callable": pair, "effect": "seasonal"},
     }
 
 
@@ -3533,6 +3666,7 @@ def _posthoc_pairs(
     *,
     block_length: int = BLOCK_LENGTH_DAYS,
     n_bootstrap: int = N_NULL_BOOTSTRAP,
+    n_ci_bootstrap: int = N_BOOTSTRAP,
     seed: int = BOOTSTRAP_SEED,
 ) -> Dict[str, Any]:
     """
@@ -3543,6 +3677,11 @@ def _posthoc_pairs(
     định là "các mùa không khác nhau"), với nhãn của **hai mùa được so sánh** đi
     theo ngày nguồn. Hạng được tính **trong tập A ∪ B** để thống kê U của bản
     sao null và bản sao quan sát cùng thang đo.
+
+    **CI của mỗi cặp** do `calendar_contrast_ci()` dựng (CI **hiệu ứng**,
+    calendar-aware, phân tầng theo nhóm) — cùng hàm và cùng payload mà phân tích
+    chính dùng cho Đông − Hè, nên hai bảng không thể lệch nhau (review
+    `5589500408` của PR #43).
     """
     names = [s for s in SEASON_DISPLAY_ORDER if s in groups]
     values = panel["pm25_mean"].to_numpy(dtype=float)
@@ -3561,6 +3700,15 @@ def _posthoc_pairs(
             )
             result["pair"] = f"{SEASON_LABELS_VI[a]} – {SEASON_LABELS_VI[b]}"
             result["p_value_independence"] = float(result["p_value"])
+            result["ci"] = calendar_contrast_ci(
+                calendar,
+                calendar.season == a,
+                calendar.season == b,
+                statistic="median",
+                block_length_days=block_length,
+                n_bootstrap=n_ci_bootstrap,
+                seed=seed,
+            )
 
             code_a, code_b = season_code[a], season_code[b]
 
@@ -3572,14 +3720,14 @@ def _posthoc_pairs(
             ) -> np.ndarray:
                 selected = (labels == code_a) | (labels == code_b)
                 restricted = np.where(selected, matrix, np.nan)
-                return mannwhitney_statistic_rows_nan(
+                return mannwhitney_rrb_rows_nan(
                     restricted, labels == code_a, labels == code_b
                 )
 
             null_boot = calendar_bootstrap_null_test(
                 calendar,
                 statistic=statistic,
-                observed_statistic=float(result["statistic"]),
+                observed_statistic=float(result["effect_size"]),
                 alternative="two-sided",
                 block_length_days=block_length,
                 n_bootstrap=n_bootstrap,
@@ -3587,9 +3735,10 @@ def _posthoc_pairs(
                 null_construction=(
                     "Chuỗi GỘP trên lịch ngày đầy đủ, resample theo block gồm NGÀY "
                     "LỊCH liên tiếp; nhãn của hai mùa so sánh đi theo ngày nguồn; "
-                    "hạng tính trong tập A ∪ B."
+                    "hạng tính trong tập A ∪ B; thống kê so sánh là r_rb (chuẩn hoá "
+                    "theo cỡ mẫu) để thống kê quan sát và thống kê null cùng thang đo."
                 ),
-                statistic_name="U",
+                statistic_name="r_rb",
             )
             result["p_value"] = float(null_boot["p_value"])
             result["null_bootstrap"] = null_boot
@@ -3819,25 +3968,11 @@ def run_inference(
     if len(season_groups) < 2:
         raise ValueError("Cần ≥ 2 mùa có dữ liệu để so sánh.")
     season_test = _season_effect_test(panel, calendar, seed=seed)
-    pair_ci = None
-    if "Dong" in season_groups and "He" in season_groups:
-        # CI theo lịch: hai mùa lấy từ CÙNG một bản sao lịch → tương quan
-        # chéo giữa hai mùa được giữ, mặt nạ ngày thiếu nhất quán.
-        pair_ci = calendar_bootstrap_difference_ci(
-            calendar,
-            calendar.season == "Dong",
-            calendar.season == "He",
-            statistic="median",
-            block_length_days=BLOCK_LENGTH_DAYS,
-            n_bootstrap=n_bootstrap,
-            seed=seed,
-        )
-    season_test["ci_dong_vs_he"] = pair_ci
 
     weekday_test = _weekday_effect_test(panel, weekend_calendar, seed=seed)
     weekday_values = panel.loc[panel["is_weekend"] == 0, "pm25_mean"].to_numpy(dtype=float)
     weekend_values = panel.loc[panel["is_weekend"] == 1, "pm25_mean"].to_numpy(dtype=float)
-    weekday_test["ci"] = calendar_bootstrap_difference_ci(
+    weekday_test["ci"] = calendar_contrast_ci(
         weekend_calendar,
         weekend_calendar.is_weekend == 0,
         weekend_calendar.is_weekend == 1,
@@ -3928,7 +4063,21 @@ def run_inference(
             }
         )
 
-    posthoc = _posthoc_pairs(panel, calendar, season_groups, seed=seed)
+    posthoc = _posthoc_pairs(
+        panel, calendar, season_groups, n_ci_bootstrap=n_bootstrap, seed=seed
+    )
+    # §5 (phân tích chính) và §5.1 (bảng hậu định) phải báo cáo **cùng một CI**
+    # cho cùng estimand "median(Đông) − median(Hè)" → lấy đúng object CI của
+    # cặp (Đông, Hè) trong bảng hậu định, không dựng lại (review `5589500408`).
+    season_test["ci_dong_vs_he"] = next(
+        (
+            pair["ci"]
+            for pair in posthoc["pairs"]
+            if pair["label_a"] == SEASON_LABELS_VI["Dong"]
+            and pair["label_b"] == SEASON_LABELS_VI["He"]
+        ),
+        None,
+    )
     sensitivity = {
         "paired_weeks": paired_weekly_differences(panel, calendar),
         "season_weekly": season_weekly_sensitivity(panel, calendar),
@@ -4130,11 +4279,16 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         "> từ `notebooks/05_statistical_inference.ipynb`. Không sửa tay: mọi con số",
         "> dưới đây lấy trực tiếp từ `run_inference()` trên dataset đã đóng băng.",
         "",
-        "> **Phiên bản 3 — sửa theo review `5588255357` của PR #43.** Mọi resample giờ",
-        "> chạy trên **lịch ngày đầy đủ** (block = ngày LỊCH liên tiếp, mặt nạ ngày",
-        "> thiếu đi theo bản sao), và phần p-value được kiểm chứng bằng **Monte Carlo",
-        "> đa kịch bản** (mục 9). Kết luận: **2/4** kiểm định bác bỏ H₀ sau Holm; kiểm",
-        "> định mùa ở trạng thái **THĂM DÒ**.",
+        "> **Phiên bản 4 — sửa theo review `5589500408` của PR #43.** CI của chênh lệch",
+        "> trung vị giữa hai nhóm nay dựng bằng **một** phương pháp duy nhất",
+        "> (`calendar_contrast_ci()`: CI **hiệu ứng**, block ngày LỊCH, nhãn đi theo",
+        "> ngày nguồn) và phân tích chính (§5) cùng bảng hậu định (§5.1) đọc **cùng",
+        "> một payload** → không còn hai số khác nhau cho cùng estimand. p-value hậu",
+        "> định dùng thống kê chuẩn hoá **r_rb** để thống kê quan sát và thống kê null",
+        "> cùng thang đo. Mọi resample vẫn chạy trên **lịch ngày đầy đủ** (block = ngày",
+        "> LỊCH liên tiếp, mặt nạ ngày thiếu đi theo bản sao), và phần p-value được",
+        "> kiểm chứng bằng **Monte Carlo đa kịch bản** (mục 9). Kết luận: **2/4** kiểm",
+        "> định bác bỏ H₀ sau Holm; kiểm định mùa ở trạng thái **THĂM DÒ**.",
         "",
         "| Trường | Giá trị |",
         "|---|---|",
@@ -4338,8 +4492,21 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
     if season.get("ci_dong_vs_he"):
         ci = season["ci_dong_vs_he"]
         lines.append(
-            f"- CI 95% block bootstrap (theo lịch) cho chênh lệch trung vị **Đông − Hè**: "
-            f"{format_number_vi(ci['point'], 2)} µg/m³, {_ci_text(ci)}."
+            f"- CI 95% của **hiệu ứng** (bootstrap block theo lịch, phân tầng theo "
+            f"nhóm) cho chênh lệch trung vị **Đông − Hè**: "
+            f"{format_number_vi(ci['point'], 2)} µg/m³, {_ci_text(ci)} "
+            f"(n Đông = {format_int_vi(ci['n_a'])} ngày quan sát, "
+            f"n Hè = {format_int_vi(ci['n_b'])} ngày quan sát; "
+            f"cách dựng: {ci['ci_method']}; CI chứa ước lượng điểm: "
+            f"{'có' if ci['contains_point_estimate'] else '**không**'})."
+        )
+        lines.append(
+            "- **Đây là CI của hiệu ứng, KHÁC phân phối null dùng cho p-value.** "
+            "CI trả lời *\"chênh lệch trung vị giữa hai mùa là bao nhiêu, với độ "
+            "không chắc chắn ra sao\"*; p-value trả lời *\"dữ liệu có tương phản "
+            "với H₀: hai mùa cùng phân phối không\"*. Vì vậy CI có thể **loại trừ 0** "
+            "trong khi p-value của cùng một cặp **không** nhỏ hơn α (và ngược lại) — "
+            "hai câu hỏi khác nhau, hai phương pháp khác nhau."
         )
     lines += [
         "",
@@ -4357,6 +4524,23 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         "nên mang nhãn *exploratory* và được hiệu chỉnh Holm trong family riêng. p-value của mỗi cặp "
         "cũng được dựng lại dưới H₀ có xét phụ thuộc (null block bootstrap **theo lịch** trên chuỗi "
         "gộp, hạng tính trong tập A ∪ B).",
+        "",
+        "**Hai cột p và cột CI trả lời hai câu hỏi khác nhau, và được dựng bằng hai "
+        "cơ chế khác nhau (nêu rõ để không đọc nhầm):**",
+        "",
+        "- **p (hiệu chỉnh)** và **p Holm**: kiểm định H₀ *\"hai mùa có cùng phân phối\"*, "
+        "null dựng bằng block bootstrap theo lịch trên chuỗi gộp với **nhãn ở vị trí "
+        "đích** (nhãn bị tách khỏi giá trị ⇒ mô phỏng H₀). Thống kê so sánh là **r_rb** "
+        "(chuẩn hoá theo cỡ mẫu) vì phân phối null của U phụ thuộc vào cỡ mẫu mà "
+        "bản sao null dựng trên *footprint lịch* (Hè có 105 ngày lịch nhưng chỉ 53 "
+        "ngày quan sát) — dùng U thô sẽ so sánh hai thang đo khác nhau. Cột **U** vẫn "
+        "là thống kê gốc của phép kiểm Mann-Whitney.",
+        "- **CI 95% (A−B)**: CI của **hiệu ứng** cho đại lượng "
+        "`trung vị(A) − trung vị(B)`, dựng bằng `calendar_contrast_ci()` — mỗi nhóm "
+        "resample trong footprint lịch của chính nó bằng block gồm ngày LỊCH liên "
+        "tiếp, **nhãn đi theo ngày nguồn**, mặt nạ ngày thiếu đi theo bản sao. Đây là "
+        "**cùng** hàm và **cùng** payload mà §5 dùng cho Đông − Hè, nên hai bảng không "
+        "thể lệch nhau.",
         "",
         "| Cặp | Trung vị A | Trung vị B | U | p (hiệu chỉnh) | p Holm | p tham chiếu | r_rb | CI 95% (A−B) |",
         "|---|---|---|---|---|---|---|---|---|",
@@ -4386,7 +4570,8 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         f"- p tham chiếu (giả định độc lập) = {_p(weekday['p_value_independence'])}; "
         f"null block bootstrap theo lịch p = {_p(weekday.get('p_value_bootstrap', float('nan')))}.",
         f"- Chênh lệch trung vị: **{format_number_vi(weekday['median_difference'], 2)} µg/m³**, "
-        f"CI 95% block bootstrap (theo lịch) {_ci_text(weekday['ci'])}.",
+        f"CI 95% của **hiệu ứng** (bootstrap block theo lịch, phân tầng theo nhóm) "
+        f"{_ci_text(weekday['ci'])}.",
         f"- Effect size **r_rb = {format_number_vi(weekday['effect_size'], 4)}** "
         "(dương = ngày làm việc cao hơn).",
         "",
@@ -4407,7 +4592,7 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         "thấp** ngưỡng phân giải thực tế).",
         "",
         f"- Chênh lệch quan sát được là {format_number_vi(weekday['median_difference'], 2)} µg/m³, "
-        f"nhỏ hơn MDE, và CI 95% block bootstrap {_ci_text(weekday['ci'])} "
+        f"nhỏ hơn MDE, và CI 95% của hiệu ứng {_ci_text(weekday['ci'])} "
         f"{'chứa 0' if ci_includes_zero else 'không chứa 0'}; |r_rb| = "
         f"{format_number_vi(abs(weekday['effect_size']), 3)}. "
         "Vì vậy dữ liệu **không đủ độ phân giải** để phân biệt 'không có khác biệt' với "
@@ -4566,8 +4751,13 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
                     key = f"rate_{suffix}"
                     if key not in entry:
                         return "—"
+                    rate = entry[key]
+                    if not np.isfinite(rate):
+                        # Phép kiểm không áp dụng cho kịch bản này (ví dụ cặp hậu
+                        # định không có đối chứng HAC) → in "—" chứ không in NaN.
+                        return "—"
                     return (
-                        f"{format_number_vi(entry[key] * 100, 1)}% "
+                        f"{format_number_vi(rate * 100, 1)}% "
                         f"[{format_number_vi(entry[f'ci_low_{suffix}'] * 100, 1)}–"
                         f"{format_number_vi(entry[f'ci_high_{suffix}'] * 100, 1)}]"
                     )
@@ -4600,6 +4790,14 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
             "5. Quy tắc **R4** (size ≤ 2,5α ở các kịch bản áp dụng được cho dữ liệu này: ρ gần "
             "với ρ quan sát và mặt nạ thiếu tương ứng) được áp dụng cho từng kiểm định; kết quả "
             "áp dụng nêu ở từng mục.",
+            "6. **Phép kiểm hậu định một cặp mùa (`pair`)** dùng thống kê chuẩn hoá `r_rb` "
+            "và giữ tỷ lệ bác bỏ gần α ở các kịch bản có ρ gần dữ liệu thật (4,2–5,3%); ở kịch "
+            "bản phụ thuộc rất mạnh (ρ = 0,9) nó lên 10,4% và ở kịch bản phụ thuộc kéo dài lên "
+            "12,5% — ngay ngưỡng 2,5α; ở kịch bản **xu hướng tuyến tính** nó bác bỏ 90,9% vì "
+            "hai mùa là hai **đoạn thời gian** nên bị trộn với xu hướng, đúng như kiểm định mùa "
+            "omnibus. Vì vậy family hậu định **luôn** mang nhãn *exploratory*, và CI của hiệu ứng "
+            "(§5, §5.1) là bằng chứng **mô tả** chênh lệch trung vị trong giai đoạn quan sát, "
+            "không phải bằng chứng suy luận rằng mùa là quy luật nhiều năm.",
             "",
         ]
     else:
