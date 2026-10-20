@@ -38,6 +38,7 @@ jobs:
           python -c "import src.data_quality"
           python -c "import src.cleaning"
           python -c "import src.cleaning_pipeline"
+          python -c "import src.inference"
 
       # Chỉ chạy unit test. KHÔNG chạy run_collection_pipeline() vì cần
       # gọi OpenAQ S3 / Open-Meteo / AirNow qua mạng (không deterministic).
