@@ -50,7 +50,7 @@
 | **1B** | **Cập nhật tài liệu đồng bộ (xen kẽ)** | **29** | **~1 buổi** |
 | 2 | #8 Thống kê mô tả | 13 | ~1–2 buổi |
 | 3 | #9 7 biểu đồ | 13 | ~2 buổi |
-| 4 | #10 Midterm **(nộp W11)** | 8 | ~1 buổi |
+| 4 | #10 Midterm **(chuẩn bị W8–W10; nộp W11; phạm vi M1–M3)** | 8 | ~1 buổi |
 | 5 | #11 Suy luận | 9 | ~1–2 buổi |
 | 6 | #12 Hồi quy | 9 | ~2 buổi |
 | 7 | #13 Phân loại | 11 | ~2 buổi |
@@ -621,7 +621,11 @@ Input: `data/processed/air_pollution_final.parquet` (9.044 dòng × 18 cột, gi
 
 ---
 
-## Phase 4 — Issue #10: Báo cáo giữa kỳ (~1 buổi)
+## Phase 4 — Issue #10: Báo cáo giữa kỳ (chuẩn bị W8–W10, nộp W11; ~1 buổi)
+
+> **Ranh giới đã xác nhận:** #10 phụ thuộc #8 và #9 để nộp báo cáo EDA; không chặn #11,
+> #12 hoặc #13. Phạm vi nghiệm thu là M1–M3. Kết quả W9/W10 chỉ có thể được đưa vào như
+> nội dung bổ sung tùy chọn khi đã sẵn sàng, không phải acceptance criteria hoặc rubric mới.
 
 - [ ] **4.1** Soạn `reports/midterm_report.pdf` — 8–10 trang, đủ 7 phần: đặt vấn đề & câu hỏi nghiên cứu ·
       nguồn dữ liệu & giấy phép · kiểm toán 6 chiều & mẫu hình khuyết thiếu (nêu rõ bất định) ·

@@ -48,8 +48,8 @@
 ### 1.3. Các Milestone chính trong tiến trình môn học
 * **Milestone 1 – Project Setup, Schema & Source Decision (Week 1–2):** Khởi tạo repository [Issue #1], xác lập câu hỏi nghiên cứu và Canonical Schema [Issue #2], thẩm định hồ sơ đa nguồn và quyết định chiến lược nguồn dữ liệu [Issue #19], hiện thực hóa adapter thu thập dữ liệu ô nhiễm [Issue #3] và khí tượng [Issue #4].
 * **Milestone 2 – Data Quality Audit, Cleaning & Leakage-Safe Pipeline (Week 3–5):** Kiểm toán 6 chiều chất lượng dữ liệu [Issue #5], làm sạch tất định & ghi Cleaning Log [Issue #6], tích hợp an toàn không nổ dòng, đóng băng dữ liệu, phân chia chuỗi thời gian và đóng gói Pipeline chống rò rỉ lưu Parquet [Issue #7].
-* **Milestone 3 – Phân tích EDA & Trực quan hóa (Week 6–7):** Phân tích thống kê mô tả 4 họ chỉ số & chu kỳ thời gian [Issue #8], bộ 7 biểu đồ ấn phẩm giải thích FIG-01 đến FIG-07 [Issue #9].
-* **Milestone 4 – Phân tích Nâng cao, Modeling & Báo cáo Giữa kỳ (Week 9–11):** Kiểm định giả thuyết phi tham số bộ bốn [Issue #11], mô hình hóa hồi quy OLS kèm chẩn đoán LINE và điều hòa [Issue #12], phân loại cảnh báo ô nhiễm với tối ưu ngưỡng vận hành và kiểm toán rò rỉ [Issue #13], **Báo cáo Giữa kỳ SCQA 8–10 trang, slide thuyết trình 7 phút + 3 phút viva, gắn tag `midterm-submission`** [Issue #10 — **mốc nộp W11**].
+* **Milestone 3 – Phân tích EDA, Trực quan hóa & Chuẩn bị Midterm (Week 6–8):** Phân tích thống kê mô tả 4 họ chỉ số & chu kỳ thời gian [Issue #8], bộ 7 biểu đồ ấn phẩm giải thích FIG-01 đến FIG-07 [Issue #9], và hợp nhất EDA/chuẩn bị báo cáo giữa kỳ [Issue #10].
+* **Milestone 4 – Phân tích Nâng cao, Modeling & Nộp Báo cáo Giữa kỳ (Week 9–11):** Kiểm định giả thuyết phi tham số bộ bốn [Issue #11], mô hình hóa hồi quy OLS kèm chẩn đoán LINE và điều hòa [Issue #12], phân loại cảnh báo ô nhiễm với tối ưu ngưỡng vận hành và kiểm toán rò rỉ [Issue #13], cùng **mốc nộp Báo cáo Giữa kỳ SCQA 8–10 trang, slide thuyết trình 7 phút + 3 phút viva và tag `midterm-submission` tại W11** [Issue #10]. Chuẩn bị #10 diễn ra W8–W10; phạm vi nghiệm thu vẫn là M1–M3 trừ khi có tài liệu chính thức của giảng viên mở rộng phạm vi.
 * **Milestone 5 – Đạo đức Dữ liệu, Refactor & Báo cáo Cuối kỳ (Week 12–14):** Đo đạc tài nguyên vs Spark, kiểm toán 4 loại định kiến, lập Datasheet for Dataset & Model Card 1 trang, Project Charter [Issue #14], module hóa `src/`, phân tích độ nhạy và theo dõi phản biện cố vấn [Issue #15], hoàn thiện Báo cáo Cuối kỳ SCQA, slide bảo vệ và bộ câu hỏi vấn đáp Viva [Issue #16].
 * **Milestone 6 – Final Defense & Handoff (Week 15):** Kiểm toán kỹ thuật toàn diện repository, kiểm chứng thực thi tự động chuỗi notebooks trong môi trường sạch, chuẩn bị biên bản đánh giá, gắn tag `final-defense-submission` và bảo vệ đồ án [Issue #17].
 
@@ -551,9 +551,10 @@ air-pollution-analysis/
 | **W5: Transformation & Integration** | Ghép nối tránh nổ dòng, đóng băng dữ liệu, split thời gian tuyến tính, Sklearn Pipeline fit trên Train, Parquet | #7 | **Bắt buộc** |
 | **W6: Descriptive Statistics** | 4 họ chỉ số, hình dạng phân phối quyết định chỉ số, Pearson & Spearman, Anscombe check | #8 | **Bắt buộc** |
 | **W7: Data Visualization** | Nguyên tắc Tufte (Data-ink), Cleveland ranking, SCQA storytelling, tiêu đề kết luận, quy chuẩn chu kỳ lấy mẫu | #9 | **Bắt buộc** |
-| **W8 → W11: Midterm Project** | Báo cáo giữa kỳ 8–10 trang, slide thuyết trình 7 phút + 3 phút viva, gắn tag nộp bài | #10 | **Bắt buộc** |
+| **W8: EDA Consolidation & Midterm Preparation** | Hợp nhất EDA, chuẩn bị báo cáo/slide và danh sách notebook M1–M3 cho midterm; chưa phải hạn nộp | #10 | **Bắt buộc** |
 | **W9: Statistical Inference** | Kiểm định Mann-Whitney U, so sánh quy chuẩn, báo cáo bộ bốn: Thống kê, $p$-value, Effect Size, 95% Bootstrap CI | #11 | **Bắt buộc** |
 | **W10: Regression Analysis** | Hồi quy OLS, biến đổi mục tiêu ứng viên, chẩn đoán LINE, VIF, Cook's dist, điều hòa Ridge/Lasso trên Train | #12 | **Bắt buộc** |
+| **W11: Midterm Submission & Presentation** | Nộp PDF, slide SCQA, notebook thuộc phạm vi M1–M3 đã kiểm chứng và tag nộp bài; kết quả W9/W10 chỉ có thể là bổ sung tùy chọn | #10 | **Bắt buộc** |
 | **W11: Classification & Features** | Dự báo cảnh báo ô nhiễm, đặc trưng trễ/trượt, xử lý imbalance, threshold tuning Train/Val, kiểm toán 4 dạng leakage | #13 | **Bắt buộc** |
 | **W12: Big Data, Ethics & Bias** | Đo đạc tài nguyên thực tế vs Spark, kiểm toán 4 loại bias, lập Datasheet & Model Card, Project Charter | #14 | **Bắt buộc** |
 | **W13: Code Refactoring & Mentoring** | Module hóa `src/`, phân tích độ nhạy ngưỡng kỹ thuật (40, 45, 50, 55 $\mu\text{g/m}^3$), theo dõi cố vấn | #15 | **Bắt buộc** |
@@ -573,9 +574,10 @@ air-pollution-analysis/
 | **W05** | **Tích hợp & Pipeline**<br>Ghép nối an toàn và chống rò rỉ | Merge tránh nổ dòng, đóng băng dữ liệu, split thời gian tuyến tính, đóng gói Scikit-Learn Pipeline fit trên Train, xuất Parquet | File `air_pollution_final.parquet`, script `src/cleaning_pipeline.py` | #7 | Kiểm soát số dòng sau merge (`len <= len_air`); phân chia thời gian nghiêm ngặt; pipeline fit strictly trên Train |
 | **W06** | **Thống kê Mô tả**<br>Xác lập hồ sơ 4 họ chỉ số & chu kỳ | Tính 4 họ chỉ số cho $\text{PM}_{2.5}$ & khí tượng, phân tích chu kỳ giờ/ngày/tháng/mùa từ số liệu thực tế, ma trận tương quan kép | Notebook EDA thống kê, bảng `reports/statistical_profile.csv` | #8 | 4 họ chỉ số đầy đủ; chứng minh khách quan lựa chọn Median/IQR dựa trên hình dạng phân phối thực nghiệm |
 | **W07** | **Trực quan hóa Ấn phẩm**<br>Thiết kế 7 biểu đồ giải thích | Lập trình FIG-01 đến FIG-07 theo Tufte/Cleveland, đối chiếu ngưỡng quy chuẩn tương thích thời gian, viết tiêu đề kết luận | 7 biểu đồ PNG 300 DPI trong `figures/`, module `src/visualizer.py` | #9 | 100% biểu đồ có tiêu đề kết luận dẫn xuất từ dữ liệu; đường ngưỡng quy chuẩn tương thích về chu kỳ tính toán |
-| **W08 → W11** | **MIDTERM MILESTONE**<br>Báo cáo & Thuyết trình giữa kỳ | Hoàn thiện báo cáo giữa kỳ SCQA 8–10 trang, slide thuyết trình 7 phút, kiểm chứng tái lập notebook W1–W3, gắn git tag | `reports/midterm_report.pdf`, slide deck, git tag `midterm-submission` | #10 | Báo cáo nộp đúng hạn; toàn bộ notebook Milestone 1–3 chạy Restart & Run All thành công không lỗi |
+| **W08** | **EDA CONSOLIDATION & MIDTERM PREPARATION**<br>Chuẩn bị giữa kỳ | Hợp nhất EDA, lập dàn ý SCQA, chuẩn bị slide và xác định notebook M1–M3 cần kiểm chứng; không tạo dependency kỹ thuật ngược tới W9/W10 | Bản nháp báo cáo/slide và kế hoạch kiểm chứng | #10 | Tài liệu chuẩn bị và phạm vi M1–M3 được xác định; chưa đánh dấu nộp bài |
 | **W09** | **Suy luận Thống kê**<br>Kiểm định giả thuyết có đối chứng | Chạy kiểm định phi tham số (mùa, ngày làm việc vs cuối tuần, quy chuẩn), tính Effect Size ($r_{rb}$) và 95% Bootstrap CI | Notebook inference, bảng tổng hợp kết quả kiểm định | #11 | 100% kết luận kiểm định có đủ bộ bốn: thống kê, $p$-value, Effect Size ($r_{rb}$) và 95% Bootstrap CI |
 | **W10** | **Phân tích Hồi quy**<br>Hồi quy OLS & Chẩn đoán LINE | Fit OLS trên Train, chẩn đoán 4 giả định LINE trên phần dư, phân tích VIF, Cook's dist, điều hòa Ridge/Lasso trên Train | Notebook regression, biểu đồ chẩn đoán LINE, câu diễn giải $\beta$ phi nhân quả | #12 | Đánh giá độc lập trên Test; chẩn đoán đủ 4 giả định LINE; diễn giải $\beta$ chuẩn 3 nghĩa vụ, không ngụy biện nhân quả |
+| **W11** | **MIDTERM SUBMISSION & PRESENTATION**<br>Nộp và trình bày giữa kỳ | Nộp báo cáo SCQA 8–10 trang, slide, kiểm chứng tái lập notebook M1–M3 và gắn git tag; W9/W10 là nội dung bổ sung tùy chọn, không phải acceptance criteria | `reports/midterm_report.pdf`, slide deck, git tag `midterm-submission` | #10 | Báo cáo nộp đúng hạn; toàn bộ notebook Milestone 1–3 chạy Restart & Run All thành công không lỗi |
 | **W11** | **Phân loại Cảnh báo**<br>Dự báo ngày ô nhiễm vượt ngưỡng | Tạo đặc trưng trễ/trượt, train Random Forest, tuning threshold theo mục tiêu vận hành trên Train/Val, kiểm toán rò rỉ | Notebook classification, đường cong PR, biên bản kiểm toán rò rỉ | #13 | Đánh giá trên Test độc lập bằng Recall, PR-AUC, Confusion Matrix; biên bản kiểm toán 4 dạng rò rỉ đạt chuẩn |
 | **W12** | **Đạo đức, Quy mô & Charter**<br>Đo đạc tài nguyên & Định kiến | Đo đạc dung lượng đĩa, RAM, I/O vs Spark; khảo sát 4 giả thuyết bias; viết Datasheet, Model Card, Project Charter | `docs/datasheet.md`, `docs/model_card.md`, `docs/project_charter.md`, AI declaration | #14 | Lập luận Spark dẫn xuất từ số liệu đo đạc thực nghiệm; hoàn thành 100% checklist đạo đức và Project Charter |
 | **W13** | **Refactor & Độ nhạy**<br>Module hóa code & Tiếp thu cố vấn | Đưa hàm dùng chung vào `src/`, phân tích độ nhạy ngưỡng kỹ thuật (40, 45, 50, 55 $\mu\text{g/m}^3$), lập bảng theo dõi feedback | Mã nguồn `src/`, tài liệu `docs/mentoring_feedback.md`, notebook dọn sạch | #15 | Import module độc lập không lỗi; phân tích độ nhạy dán nhãn kỹ thuật minh bạch; 100% góp ý được truy vết đối chiếu |
@@ -586,9 +588,12 @@ air-pollution-analysis/
 
 ### D. Research Pipeline (Sơ đồ Luồng Nghiên cứu Toàn diện)
 
-Quy trình nghiên cứu đồ án tuân thủ nghiêm ngặt cấu trúc luồng phụ thuộc đơn hướng:
+Quy trình nghiên cứu tách rõ **dependency kỹ thuật** với **công việc chuẩn bị/nộp báo cáo**. #10 phụ thuộc #8 và #9 để hoàn tất báo cáo EDA, nhưng không chặn #11 hoặc #12; #11 và #12 lần lượt thuộc W9 và W10.
 ```text
-#1 → #2 → #19 → {#3, #4} → #5 → #6 → #7 → #8 → #9 → #10 → #11 → #12 → #13 → #14 → #15 → #16 → #17
+#1 → #2 → #19 → {#3, #4} → #5 → #6 → #7
+                                      ├→ #8 → #9 → #10  (midterm: chuẩn bị W8–W10, nộp W11)
+                                      └→ #8 → #11 → #12 → #13
+                                                       └→ #14 → #15 → #16 → #17
 ```
 
 Chi tiết luồng thực hiện:
@@ -619,23 +624,19 @@ Chi tiết luồng thực hiện:
   Tích hợp Ô nhiễm - Khí tượng, Đóng băng Dữ liệu, Split Thời gian & Pipeline (#7)
        │
        ▼
-[ GIAI ĐOẠN 3: KHÁM PHÁ DỮ LIỆU (EDA) & BÁO CÁO GIỮA KỲ ]
+[ GIAI ĐOẠN 3: KHÁM PHÁ DỮ LIỆU (EDA), CHUẨN BỊ & NỘP BÁO CÁO GIỮA KỲ ]
   Thống kê Mô tả 4 Họ Chỉ số & Quy luật Chu kỳ Thời gian Đa tầng (#8)
-       │
-       ▼
-  Bộ 7 Biểu đồ Ấn phẩm Giải thích FIG-01 đến FIG-07 (#9)
-       │
-       ▼
-  MIDTERM MILESTONE: Báo cáo EDA Giữa kỳ, Slide SCQA & Tag Nộp bài (#10)
-       │
-       ▼
-[ GIAI ĐOẠN 4: SUY LUẬN THỐNG KÊ & MÔ HÌNH HÓA ]
-  Kiểm định Giả thuyết Phi tham số kèm Effect Size & Bootstrap CI (#11)
-       │
-       ▼
-  Hồi quy Tuyến tính OLS với Chẩn đoán 4 Giả định LINE & Điều hòa (#12)
-       │
-       ▼
+       ├─────────────────────────────────────────────┐
+       ▼                                             ▼
+  Bộ 7 Biểu đồ Ấn phẩm Giải thích FIG-01 đến     Kiểm định Giả thuyết Phi tham số
+  FIG-07 (#9)                                     kèm Effect Size & Bootstrap CI (#11)
+       │                                             │
+       ▼                                             ▼
+  MIDTERM (#10): chuẩn bị W8–W10, nộp W11;       Hồi quy Tuyến tính OLS với Chẩn đoán
+  phụ thuộc #8, #9; không chặn nhánh modeling    4 Giả định LINE & Điều hòa (#12)
+                                                     │
+                                                     ▼
+[ GIAI ĐOẠN 4: SUY LUẬN THỐNG KÊ & MÔ HÌNH HÓA — KHÔNG BỊ #10 CHẶN ]
   Pipeline Phân loại Cảnh báo Ô nhiễm với Tối ưu Ngưỡng & Kiểm toán Rò rỉ (#13)
        │
        ▼
@@ -1273,22 +1274,23 @@ Con số cần đọc đúng: tổng số hàng `pm25` bị `NaN` là **1.549**,
 
 ---
 
-### Week 08 → Week 11 – BÁO CÁO & ĐÁNH GIÁ GIỮA KỲ (MIDTERM PROJECT MILESTONE)
+### Week 08–11 – CHUẨN BỊ, NỘP & ĐÁNH GIÁ GIỮA KỲ (MIDTERM PROJECT MILESTONE)
 
 > [!NOTE]
 > **MỐC NỘP ĐÃ DỊCH.** Giảng viên cho nộp bài sang sau Chương 10 (Regression Analysis,
-> tuần 10), nên mốc cũ ở tuần 8 đã chuyển sang **tuần 11**. Ký hiệu `W08 → W11`
-> trong roadmap là do đó.
+> tuần 10), nên hạn nộp chính thức là **W11**. W8 vẫn là thời gian hợp nhất EDA và
+> chuẩn bị midterm; W9–W10 là thời gian chuẩn bị song song với học phần suy luận/hồi quy.
 >
-> **Phạm vi nội dung chưa được xác nhận.** Số trang, thời gian thuyết trình, Q&A, rubric
-> và phạm vi chấm đều **chưa** được giảng viên xác nhận. Issue #13 **không di chuyển**
-> vì **chưa có căn cứ**; milestone **không** đổi. Chi tiết:
-> `docs/PLAN_MIDTERM_RESCHEDULE_PR36.md`.
+> **Phạm vi báo cáo giữ nguyên M1–M3.** Không có bằng chứng chính thức để đưa kết quả
+> W9 (Statistical Inference), W10 (Regression) hoặc W11 (Classification) thành acceptance
+> criteria của midterm. Kết quả W9/W10, nếu sẵn sàng, chỉ là nội dung bổ sung tùy chọn.
+> Issue #13 không di chuyển; việc #13 có cùng W11 hay không không biến nó thành điều kiện
+> nghiệm thu #10. Rubric chỉ thay đổi khi có tài liệu chính thức của giảng viên.
 
 * **Phân loại tuần:** Milestone Báo cáo & Thuyết trình Giữa kỳ.
 * **Mục tiêu tuần:** Hoàn thiện và nộp Báo cáo Khám phá Dữ liệu (Midterm EDA Report) dung lượng 8–10 trang PDF theo cấu trúc SCQA; thiết kế slide thuyết trình 7 phút; kiểm chứng tính tái lập của toàn bộ các notebook thuộc phạm vi giữa kỳ (Milestone 1–3); gắn git tag nộp bài.
 * **Kiến thức INFO3020 áp dụng:** Toàn bộ kiến thức Chương 1, Chương 2, Chương 3; Rubric đánh giá Midterm trên slide W7 (Làm sạch tất định 25%, Độ sâu EDA 25%, Chất lượng biểu đồ ấn phẩm 20%, Diễn giải thống kê trung thực 20%, Thuyết trình & Báo cáo 10%); Cấu trúc kể chuyện SCQA.
-* **Mã Issue sở hữu:** **#10** (Phụ thuộc: #8, #9; Chặn: #11, #12, #13).
+* **Mã Issue sở hữu:** **#10** (phụ thuộc để nộp báo cáo: #8, #9; **không chặn** #11, #12 hoặc #13).
 * **Tasks chi tiết:**
   1. Soạn thảo Báo cáo Giữa kỳ `reports/midterm_report.pdf` (8–10 trang) bao gồm: Đặt vấn đề & câu hỏi nghiên cứu, Nguồn dữ liệu & giấy phép, Kết quả kiểm toán 6 chiều & mẫu hình khuyết thiếu (nêu rõ tính bất định), Quy trình làm sạch tất định & trích lược Cleaning Log, Hồ sơ thống kê 4 họ chỉ số, Bộ biểu đồ ấn phẩm FIG-01 đến FIG-05 lồng ghép mạch kể chuyện SCQA, Ý nghĩa thực tiễn ban đầu [Issue #10].
   2. Thiết kế slide thuyết trình (8–10 slides) tập trung vào các phát hiện rút ra từ dữ liệu thực tế [Issue #10].
@@ -1297,7 +1299,7 @@ Con số cần đọc đúng: tổng số hàng `pm25` bị `NaN` là **1.549**,
   5. Tạo và đẩy git tag chính thức `midterm-submission` lên GitHub repository [Issue #10].
 * **Deliverables:** File `reports/midterm_report.pdf`, slide thuyết trình giữa kỳ, git tag `midterm-submission`.
 * **Definition of Done:** Báo cáo nộp đúng hạn, đáp ứng đầy đủ rubric; toàn bộ notebook Milestone 1–3 thực thi thông suốt từ đầu đến cuối; git tag `midterm-submission` được tạo thành công trên commit nộp bài.
-* **Dependencies:** Kết quả làm sạch, EDA và trực quan hóa từ Week 05, 06, 07 (#7, #8, #9).
+* **Dependencies:** Kết quả EDA và trực quan hóa từ Week 06–07 (#8, #9). Các dependency dữ liệu của M1–M2 là tiền đề chuyển tiếp của #8/#9, không phải dependency trực tiếp của #10.
 
 ---
 
