@@ -36,12 +36,12 @@ Không test nào gọi mạng. Không test nào phụ thuộc thứ tự chạy.
 | `tests/test_cleaning_pipeline_guards.py` | 43 | Guard chống rò rỉ (`validate_no_leakage`) |
 | `tests/test_fetch_dataset.py` | 9 | `scripts/fetch_dataset.py` |
 | `tests/test_flag_evidence.py` | 44 | Bằng chứng tái lập được cho `is_high_humidity_fog` |
-| `tests/test_inference.py` | 155 | W9 — Holm, block bootstrap, effect size, chẩn đoán phân phối, QCVN; **hiệu chỉnh phụ thuộc thời gian** (HAC/Newey–West, null block bootstrap, mô phỏng size, chẩn đoán khái quát hóa) — số liệu thật: `TestRealDataset` |
+| `tests/test_inference.py` | 177 | W9 — Holm, effect size, chẩn đoán phân phối, QCVN; **bootstrap theo lịch ngày** (mặt nạ thiếu, nhãn theo vị trí đích), **HAC/Newey–West**, kiểm chứng **Monte Carlo đa kịch bản**, chẩn đoán khái quát hóa — số liệu thật: `TestRealDataset` |
 | `tests/test_pipeline_runtime_log.py` | 40 | Nhật ký thực thi pipeline, dấu phân cách Windows |
 | `tests/test_validate_issue8.py` | 29 | Checksum, đồng bộ generator, circular stats, smoke fixture, canh số liệu tài liệu |
 | `tests/test_verify_claims_rolling.py` | 7 | Biên rolling 24h — dữ liệu đồng nhất che lỗi |
 | `tests/test_visualizer.py` | 35 | Bộ 7 biểu đồ ấn phẩm FIG-01..FIG-07 (300 DPI, Tufte, zero-baseline, chuỳ 24h, font tiếng Việt) |
-| **Tổng** | **621** | |
+| **Tổng** | **643** | |
 
 Đếm lại sau mỗi thay đổi:
 
@@ -57,14 +57,14 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 | Con số | Ý nghĩa |
 |---|---|
-| **621** | Số **test method được định nghĩa** trong mã nguồn |
-| **607** | Số unittest **thực sự chạy và báo cáo** trên CI (thiếu `data/`) |
-| **603** | Số test **chạy và pass** trên CI (607 − 4 skip nằm trong `Ran`) |
+| **643** | Số **test method được định nghĩa** trong mã nguồn |
+| **629** | Số unittest **thực sự chạy và báo cáo** trên CI (thiếu `data/`) |
+| **625** | Số test **chạy và pass** trên CI (629 − 4 skip nằm trong `Ran`) |
 
 > ⚠ **`skipped=6` không trừ thẳng vào `Ran`.** Hai trong sáu dòng skip là *class holder*
 > (`setUpClass` raise `SkipTest`): unittest bỏ qua cả class nên các method của nó **không
 > bao giờ vào `Ran`**, nhưng vẫn hiện một dòng trong `skipped=`. Vì vậy
-> `pass = Ran − (skipped − holders) = 607 − (6 − 2) = 603`, **không phải** `607 − 6`.
+> `pass = Ran − (skipped − holders) = 629 − (6 − 2) = 625`, **không phải** `629 − 6`.
 >
 > Đính chính: bản trước của tài liệu này ghi `462 − 5 = 457`, tức đã trừ cả holder và
 > **đếm thiếu 1** so với số test thật sự chạy-pass (đúng phải là `462 − 4 = 458`).
@@ -74,12 +74,12 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 | Môi trường | Lệnh | Kết quả |
 |---|---|---|
-| Windows local, **có `data/`** | `python -m unittest discover tests` | `Ran 621 tests` + `OK` → **621 pass, 0 skip** |
-| Ubuntu CI `ubuntu-latest`, **không `data/`** | `python -m unittest discover tests -v` | `Ran 607 tests` + `OK (skipped=6)` → **603 pass, 6 skip (2 holder)** |
+| Windows local, **có `data/`** | `python -m unittest discover tests` | `Ran 643 tests` + `OK` → **643 pass, 0 skip** |
+| Ubuntu CI `ubuntu-latest`, **không `data/`** | `python -m unittest discover tests -v` | `Ran 629 tests` + `OK (skipped=6)` → **625 pass, 6 skip (2 holder)** |
 
 > `data/` bị `.gitignore` loại khỏi repository, nên **CI không bao giờ có dataset**.
 
-### Vì sao 621 − 607 = 14
+### Vì sao 643 − 629 = 14
 
 Hai lớp có `setUpClass` raise `unittest.SkipTest` khi thiếu dữ liệu, và unittest bỏ qua
 **cả class** — mọi method của chúng không bao giờ được tính vào bộ đếm `Ran`:
@@ -141,10 +141,16 @@ python -m unittest tests.test_inference -v
 > **Ngược lại — những gì CI *có* kiểm chứng được cho W9:** các phép kiểm hiệu chỉnh phụ
 > thuộc thời gian chạy trên dữ liệu **tổng hợp** nên CI kiểm được: hiệp phương sai HAC
 > khớp `statsmodels` (`TestNeweyWestCovariance`), null bootstrap dựng dưới H₀ và bất biến
-> dịch chuyển (`TestNullImposedTest`), **kiểm soát sai lầm loại I** bằng mô phỏng
-> (`TestTypeIErrorControl`), hiệu chỉnh Holm khớp `statsmodels`
+> dịch chuyển (`TestNullImposedTest`), **bootstrap theo lịch** giữ mặt nạ thiếu và không
+> tạo quan sát giả (`TestCalendarBlockIndices`, `TestCalendarReplicates`,
+> `TestCalendarNullTestWithGaps`), hợp đồng của kiểm chứng Monte Carlo
+> (`TestMonteCarloValidation`), hiệu chỉnh Holm khớp `statsmodels`
 > (`TestHolmMatchesStatsmodels`), và cấu trúc notebook ↔ generator
 > (`TestNotebookGeneratorMatchesNotebook`). CI **không** kiểm được *số liệu thật* của W9.
+>
+> **Kiểm chứng Monte Carlo đầy đủ** (1.000 lần × 9 kịch bản) là **công việc khoa học có
+> chi phí**, chạy bằng `python scripts/validate_inference_montecarlo.py --n-sim 1000`; kết quả
+> được commit ở `reports/inference_montecarlo.csv` và **không** chạy lại trong CI.
 
 `TestNotebookFixtureSmoke` (3 test) chạy **cả 37 cell** của notebook 04 trên dữ liệu
 **tổng hợp** tất định (seed 42, 4 cửa sổ 14 ngày theo 4 mùa, 1.344 dòng, schema 18 cột

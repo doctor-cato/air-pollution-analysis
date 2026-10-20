@@ -4,20 +4,22 @@
 > từ `notebooks/05_statistical_inference.ipynb`. Không sửa tay: mọi con số
 > dưới đây lấy trực tiếp từ `run_inference()` trên dataset đã đóng băng.
 
-> **Phiên bản 2 — sửa theo review `5586524840` của PR #43.** Toàn bộ p-value
-> xác nhận được **dựng lại dưới H₀ có xét tới tự tương quan thời gian**;
-> p-value cũ (giả định quan sát độc lập) được giữ lại **để đối chiếu**, và
-> kết luận đã thay đổi — xem mục 8.
+> **Phiên bản 3 — sửa theo review `5588255357` của PR #43.** Mọi resample giờ
+> chạy trên **lịch ngày đầy đủ** (block = ngày LỊCH liên tiếp, mặt nạ ngày
+> thiếu đi theo bản sao), và phần p-value được kiểm chứng bằng **Monte Carlo
+> đa kịch bản** (mục 9). Kết luận: **2/4** kiểm định bác bỏ H₀ sau Holm; kiểm
+> định mùa ở trạng thái **THĂM DÒ**.
 
 | Trường | Giá trị |
 |---|---|
 | Issue | #11 |
 | Mức ý nghĩa α (chốt trước khi xem dữ liệu) | 0,05 |
-| CI bootstrap | 1.000 lặp · block 28 ngày · seed 42 · CI percentile 95% |
-| Null bootstrap (p-value) | 5.000 lặp · block 28 ngày · seed 42 |
+| CI bootstrap | 1.000 lặp · block 28 NGÀY LỊCH · seed 42 · CI percentile 95% |
+| Null bootstrap (p-value) | 5.000 lặp · block 28 NGÀY LỊCH · seed 42 |
 | HAC (Newey–West) | lag 28 ngày |
+| Lịch ngày (đơn vị resample) | 378 ngày lịch · 299 ngày có trung bình · 79 ngày thiếu |
 | Đơn vị phân tích | Trung bình ngày (≥ 18/24 giờ có `pm25`) |
-| Nguồn dữ liệu | `C:\Users\Admin\Documents\code_workspace\khdl\data\processed\air_pollution_final.parquet` |
+| Nguồn dữ liệu | `data/processed/air_pollution_final.parquet (đường dẫn tương đối tới repo)` |
 | SHA-256 dataset | `866f39de1720c7273dc1f09c4932e508835589383820ad425c19521592586efd` |
 | NumPy / SciPy | 2.5.3 / 1.18.1 |
 
@@ -27,9 +29,9 @@
 
 - Chuỗi giờ: **9.044** dòng, trong đó **7.495** giờ có `pm25` và **1.549** giờ thiếu.
 - Dải quan sát (giờ có `pm25`): **2025-07-03 → 2026-07-15** (378 ngày lịch, 1 trạm); ngày đủ độ phủ đầu–cuối: 2025-07-04 → 2026-05-29.
-- Ngày có ít nhất một giờ đo: **351**; ngày đủ 24/24 giờ: **223**.
+- Ngày có ít nhất một giờ đo: **351**; ngày đủ 24/24 giờ: **223**; ngày **không có** giờ đo nào: **27**.
 - Ngày đạt tiêu chí ≥ 18/24 giờ: **299** — đây là cỡ mẫu của mọi kiểm định (n = 299).
-- Ngày bị loại vì thiếu độ phủ: **52**.
+- Ngày có quan sát nhưng thiếu độ phủ (bị loại khỏi panel): **52**.
 - Ngày làm việc / cuối tuần trong panel: **213** / **86**.
 
 **Vì sao không dùng từng giờ làm đơn vị phân tích.** ACF bậc 1 của chuỗi giờ là 0,9403 — 9.044 giờ không phải bấy nhiêu quan sát độc lập. Tổng hợp về ngày là bước giảm tự tương quan **bắt buộc**, không phải tuỳ chọn trình bày. Tiêu chí ≥ 18/24 giờ là **lựa chọn phân tích của dự án** (độ phủ 75%), không phải điều khoản của QCVN 05:2023/BTNMT.
@@ -38,7 +40,30 @@
 
 ---
 
-## 2. Chẩn đoán phân phối (không mặc định chuẩn / không chuẩn)
+## 2. Lịch ngày và mặt nạ thiếu — đơn vị của mọi resample
+
+Đây là phần **quan trọng nhất** của bản sửa: mọi bootstrap trước đây resample **mảng trung bình ngày đã lọc**, nên hai phần tử liền nhau của mảng **không** phải hai ngày lịch liên tiếp. Với 79 ngày thiếu trong 378 ngày lịch, "block 28 phần tử" thực tế trải tới **52 ngày lịch** — sai lệch đúng cái mà tham số phụ thuộc cần giữ.
+
+| Đại lượng lịch | Giá trị |
+|---|---|
+| Số ngày lịch trong dải quan sát | 378 |
+| Ngày có trung bình ngày (dùng được) | 299 |
+| Ngày thiếu (không đủ độ phủ hoặc không có quan sát) | 79 (20,9%) |
+| Số cụm ngày thiếu liên tiếp | 17 |
+| Cụm thiếu dài nhất | 47 ngày |
+| Ngày lịch đầu – cuối | 2025-07-02 → 2026-07-14 |
+
+**Ba điều kiện của thuật toán mới.**
+
+1. **Block = ngày LỊCH liên tiếp.** `calendar_block_indices()` chọn các khối gồm `block_length_days` ngày lịch liên tiếp (cuộn vòng ở cuối lịch), nên tham số luôn mang nghĩa **ngày**, không phải **phần tử mảng**.
+2. **Mặt nạ thiếu đi theo bản sao.** Một khối chứa 3 ngày thiếu thì bản sao cũng thiếu đúng 3 ngày đó. **Không** nội suy, **không** tạo quan sát giả, **không** nối hai khoảng thời gian bị ngắt.
+3. **Nhãn nhóm ở vị trí j của bản sao là nhãn lịch của vị trí j**; *giá trị* tại vị trí j được lấy ngẫu nhiên từ chuỗi gộp. Nhờ vậy null H₀ (các nhóm cùng phân phối) được dựng **đúng**, còn phụ thuộc trong block vẫn được giữ vì block là ngày lịch liên tiếp. Nếu nhãn đi theo **ngày nguồn** thì cấu trúc mùa vụ được giữ lại và null biến thành chứa hiệu ứng — p-value bị thổi phồng.
+
+**Hệ quả phải nói rõ:** vì mặt nạ đi theo bản sao, số ngày quan sát của mỗi bản sao **không cố định** (TB 299,7 ± 29,5 ngày, khoảng 165–365 so với 299 ngày gốc). Các thống kê kiểm dùng **NaN-aware** nên tự tính đúng số quan sát của từng bản sao; phân phối null vì vậy **đã bao hàm** cả biến động cỡ mẫu này. Đổi lại, khoảng tin cậy bootstrap rộng hơn một chút so với CI trên mẫu cố định.
+
+---
+
+## 3. Chẩn đoán phân phối (không mặc định chuẩn / không chuẩn)
 
 | Chỉ số | Giá trị |
 |---|---|
@@ -53,67 +78,60 @@
 | D'Agostino K² | K² = 56,328, p = 5,87·10⁻¹³ |
 | Số ngày ngoài ±3 SD | 2 |
 
-Cả hai kiểm định chuẩn tắc đều bác bỏ tính chuẩn, nhưng **đó không phải lý do duy nhất** để chọn phép kiểm phi tham số. Với n cỡ này, Shapiro-Wilk có power đủ để phát hiện lệch nhỏ không có ý nghĩa thực tiễn; vì vậy quyết định dựa thêm vào (a) skewness và kurtosis quan sát được, (b) bản chất thang đo — nồng độ bị chặn dưới 0, phân phối lệch phải, có outlier đợt ô nhiễm, và (c) các phép kiểm phi tham số so sánh **trung vị/hạng**, đúng với câu hỏi về mức nền phơi nhiễm hơn là về trung bình số học. Q-Q plot: `figures/FIG-08.png`.
+Cả hai kiểm định chuẩn tắc đều bác bỏ tính chuẩn, nhưng **đó không phải lý do duy nhất** để chọn phép kiểm phi tham số. Với n cỡ này, Shapiro-Wilk có power đủ để phát hiện lệch nhỏ không có ý nghĩa thực tiễn; vì vậy quyết định dựa thêm vào (a) skewness và kurtosis quan sát được, (b) bản chất thang đo — nồng độ bị chặn dưới 0, phân phối lệch phải, có outlier đợt ô nhiễm, và (c) các phép kiểm so sánh **trung vị/hạng**, đúng với câu hỏi về mức nền phơi nhiễm hơn là về trung bình số học. Q-Q plot: `figures/FIG-08.png`.
 
 ---
 
-## 3. Tự tương quan, cỡ mẫu hiệu dụng — giả định nào bị vi phạm
+## 4. Tự tương quan, cỡ mẫu hiệu dụng và khung phương pháp
+
+### 4.1. Tự tương quan
 
 - ACF chuỗi **giờ**: lag 1 = 0,9403 · lag 2 = 0,8371 · lag 3 = 0,7432 · lag 24 = 0,5988 · lag 168 = 0,3449.
 - ACF chuỗi **ngày**: lag 1 = 0,7276 · lag 2 = 0,5484 · lag 3 = 0,4239 · lag 7 = 0,3700 · lag 14 = 0,3172.
 - AR(1) của chuỗi ngày: ρ = 0,7276 → n_eff ≈ **47,1** so với n = 299 (hệ số lạm phát ×6,34).
 
-**Hệ quả — và cách xử lý sau review.** Mann-Whitney, Kruskal-Wallis, Wilcoxon và t-test đều giả định quan sát **độc lập**. Ở mức ngày, giả định đó **không** được bảo đảm (ρ = 0,73), nên p-value của chúng là **lạc quan**. Ở phiên bản trước, biện pháp duy nhất là block bootstrap cho **khoảng tin cậy** — **không** sửa p-value. Đó là thiếu sót mà review `5586524840` chỉ ra. Phiên bản này sửa đúng chỗ đó:
-
-1. Hạ đơn vị phân tích từ **giờ** xuống **ngày** (vẫn giữ).
-2. **Dựng lại phân phối null dưới H₀** cho từng kiểm định (mục 4) — đây mới là phần sửa p-value.
-3. Mọi CI dùng **circular moving block bootstrap**, block 28 ngày (1.000 lặp, seed 42).
-4. Kiểm soát sai lầm loại I bằng **mô phỏng dưới H₀** (mục 9).
-5. Mọi kết luận đọc kèm **effect size + CI**, không đọc p đơn độc.
-
----
-
-## 4. Khung phương pháp: dựng phân phối null dưới H₀ có xét phụ thuộc thời gian
+### 4.2. Khung phương pháp: null dựng DƯỚI H₀ có xét phụ thuộc
 
 Bốn kiểm định xác nhận dùng **bốn cách dựng null khác nhau**, mỗi cách được chọn vì hợp với cấu trúc dữ liệu và với H₀ của chính kiểm định đó:
 
-| Kiểm định | H₀ | Cách dựng phân phối null | Tham số phụ thuộc | Giả định chính |
+| Kiểm định | H₀ | Phương pháp **chính** | Đối chứng | Tham số phụ thuộc |
 |---|---|---|---|---|
-| Mùa | 4 mùa cùng phân phối (quá trình ổn định) | Null **circular moving block bootstrap** trên chuỗi **gộp**; nhãn mùa **giữ theo vị trí lịch**, KHÔNG hoán đổi nhãn | block 28 ngày | Chuỗi gộp ổn định; block bao trọn phụ thuộc còn lại |
-| Weekday vs cuối tuần | Hai nhóm cùng phân phối | Null **circular moving block bootstrap** trên chuỗi **gộp**; nhãn nhóm giữ theo vị trí lịch | block 28 ngày | Như trên; xen kẽ tuần được giữ nguyên |
-| QCVN 24h (trung vị = 50) | P(trung bình ngày > 50) = 0,5 | **HAC/Newey–West** cho tỷ lệ vượt ngưỡng (tương đương trung vị = 50 với phân phối liên tục) | lag 28 ngày | Sai số tự tương quan tới bậc L; phân phối liên tục |
-| QCVN năm (trung bình = 25) | E(trung bình ngày) = 25 | **HAC/Newey–West** (mô hình chỉ có hệ số chặn) | lag 28 ngày | Như trên |
+| Mùa | 4 mùa cùng phân phối (quá trình ổn định) | Kruskal-Wallis + **null block bootstrap THEO LỊCH** trên chuỗi **gộp** | Hồi quy HAC có xu hướng (**không dùng để quyết định** — xem 4.3) | block 28 ngày lịch |
+| Weekday vs cuối tuần | Hai nhóm cùng phân phối | Hồi quy **HAC/Newey–West** `[1, xu hướng, dummy cuối tuần]` | Mann-Whitney + **null block bootstrap THEO LỊCH** | lag 28 ngày |
+| QCVN 24h (trung vị = 50) | P(trung bình ngày > 50) = 0,5 | **HAC/Newey–West** cho tỷ lệ vượt ngưỡng | Null áp đặt H₀ **theo lịch** (signed-rank) + p đảo CI | lag 28 ngày |
+| QCVN năm (trung bình = 25) | E(trung bình ngày) = 25 | **HAC/Newey–West** (hệ số chặn) | Null áp đặt H₀ **theo lịch** (t) + p đảo CI | lag 28 ngày |
 
-**Ba điều kiện mà phương pháp này tuân thủ (và phương pháp cũ không tuân thủ).**
+**Ba nguyên tắc mà phương pháp này tuân thủ.**
 
-1. **Null được dựng dưới H₀.** Với kiểm định theo nhóm, null là chuỗi **gộp** (H₀: các nhóm cùng phân phối). Với kiểm định vị trí, H₀ được **áp đặt** bằng cách dựng bản sao `x* = μ + resample(x − θ̂)` — tức mốc của H₀ nằm trong bản sao, không phải trong dữ liệu gốc.
-2. **Nhãn nhóm đi theo vị trí lịch, không bị hoán đổi ngẫu nhiên.** Hoán đổi nhãn mùa sẽ phá vỡ cấu trúc mùa vụ (mùa là các đoạn thời gian liên tiếp, không phải nhãn rời rạc).
+1. **Null được dựng DƯỚI H₀.** Với kiểm định theo nhóm, null là chuỗi **gộp** (H₀: các nhóm cùng phân phối). Với kiểm định vị trí, H₀ được **áp đặt** bằng cách dựng bản sao `x* = μ + resample(x − θ̂)` trên lịch — mốc của H₀ nằm trong bản sao. **Không** dùng bootstrap trên chuỗi quan sát rồi đếm tỷ lệ thống kê cực đoan.
+2. **Nhãn nhóm theo vị trí lịch của bản sao, không theo nguồn.** Hoán đổi nhãn mùa ngẫu nhiên sẽ phá vỡ cấu trúc mùa vụ; giữ nhãn theo nguồn sẽ giữ cả hiệu ứng mùa trong null. Cách đúng là giữ nhãn theo **vị trí lịch của bản sao** và lấy giá trị ngẫu nhiên từ chuỗi gộp.
 3. **CI ≠ p-value.** CI là khoảng tin cậy của ước lượng; p-value là xác suất của dữ liệu **có điều kiện H₀ đúng**. Báo cáo luôn in cả hai và không dùng CI để suy ra p (hay ngược lại).
 
-### 4.1. Quy tắc hạ mức kết luận — chốt trước khi xem kết quả
-
-Mỗi kiểm định mang một **trạng thái** được máy tính theo ba quy tắc cố định:
+### 4.3. Quy tắc hạ mức kết luận — chốt trước khi xem kết quả
 
 | Quy tắc | Điều kiện | Hệ quả |
 |---|---|---|
-| R1 — Ổn định | Kết luận (bác bỏ / không bác bỏ) **đổi chiều** khi đổi độ dài block hoặc lag HAC trong lưới độ nhạy | Hạ xuống **THĂM DÒ** |
-| R2 — Đồng thuận | Phương pháp đối chứng cho kết luận **khác chiều** phương pháp chính tại tham số đã chốt | Hạ xuống **THĂM DÒ** |
+| R1 — Ổn định | Kết luận đổi chiều khi đổi độ dài block hoặc lag HAC trong lưới độ nhạy | Hạ xuống **THĂM DÒ** |
+| R2 — Đồng thuận | Phương pháp đối chứng cho kết luận **khác chiều** phương pháp chính | Hạ xuống **THĂM DÒ** |
 | R3 — Tính được | Không dựng được p hợp lệ | **KHÔNG XÁC NHẬN ĐƯỢC** |
+| R4 — Hiệu lực | Tỷ lệ bác bỏ dưới H₀ của phương pháp chính vượt **2,5α** ở kịch bản áp dụng được (mục 9) | Hạ xuống **THĂM DÒ** |
+| R5 — Một chu kỳ mùa | Bốn mùa là bốn **đoạn thời gian liên tiếp** trong **một** chu kỳ mùa duy nhất ⇒ không tách được 'mùa' khỏi 'xu hướng' | Kiểm định mùa **luôn** là **THĂM DÒ** |
 
 > **Family hiệu chỉnh Holm vẫn gồm đúng 4 kiểm định** như đã chốt trước khi xem dữ liệu.
 > Việc một kiểm định bị hạ xuống *thăm dò* **không** làm thay đổi family — thay đổi family
 > sau khi nhìn kết quả là p-hacking.
 
+> **Vì sao kiểm định mùa không dùng hồi quy HAC làm đối chứng.** Với bốn mùa là bốn đoạn thời gian liên tiếp, ba dummy mùa gần **cộng tuyến** với xu hướng ⇒ ma trận hiệp phương sai của ba hệ số mùa gần suy biến ⇒ kiểm định Wald **thổi phồng** (Monte Carlo: size 30–55% thay vì 5%). Đây là lý do R5 hạ kiểm định mùa xuống thăm dò và vì sao hồi quy HAC chỉ được in ra như **chẩn đoán**, không quyết định trạng thái.
+
 ---
 
 ## 5. Kiểm định 1 — Khác biệt giữa bốn mùa
 
-**H₀:** Phân phối trung bình ngày giống nhau ở cả bốn mùa (trong một quá trình ổn định trong giai đoạn quan sát).
-**H₁:** Có ít nhất một mùa khác.
-**α = 0,05, omnibus (đuôi trên của H).**
+- **H₀:** Phân phối trung bình ngày giống nhau ở cả bốn mùa (trong một quá trình ổn định trong giai đoạn quan sát).
+- **H₁:** Có ít nhất một mùa khác.
+- **α = 0,05, omnibus (đuôi trên của H).**
 
-**Phương pháp chính:** Kruskal-Wallis + null circular moving block bootstrap (chuỗi gộp) (block 28 ngày, 5.000 lặp, seed 42).
-**Phương pháp đối chứng:** OLS + HAC (Newey–West) với xu hướng thời gian, Wald đồng thời (lag 28 ngày) — dùng để **tách mùa khỏi xu hướng**.
+**Phương pháp chính:** Kruskal-Wallis + null circular moving block bootstrap THEO LỊCH (chuỗi gộp trên lịch ngày đầy đủ) (block 28 ngày lịch, 5.000 lặp, seed 42).
 
 | Mùa | n (ngày) | Trung vị (µg/m³) |
 |---|---|---|
@@ -123,81 +141,69 @@ Mỗi kiểm định mang một **trạng thái** được máy tính theo ba qu
 | Thu | 84 | 36,30 |
 
 - **H = 61,5344**, df = 3, n = 299.
-- **p (hiệu chỉnh phụ thuộc thời gian) = 0,0444** → bác bỏ H₀; **p Holm = 0,0888** → không bác bỏ H₀.
-- p tham chiếu (giả định độc lập) = 2,76·10⁻¹³.
+- **p (hiệu chỉnh phụ thuộc thời gian) = 0,0280** → bác bỏ H₀; **p Holm = 0,0560** → không bác bỏ H₀.
+- p tham chiếu (giả định độc lập) = 2,76·10⁻¹³; hồi quy HAC (chẩn đoán, xem 4.3) p = 2,36·10⁻¹⁰.
 - Effect size **ε² = 0,2065** (tỷ lệ phương sai hạng giải thích bởi mùa).
-- Đối chứng (HAC, có xu hướng): F = 17,265 (3, 294), p = 2,36·10⁻¹⁰; với xu hướng bậc hai: p = 3,39·10⁻¹²; xu hướng tuyến tính ước lượng −2,29 µg/m³ mỗi tháng.
-- CI 95% block bootstrap cho chênh lệch trung vị **Đông − Hè**: 29,32 µg/m³, [9,95; 38,65].
+- CI 95% block bootstrap (theo lịch) cho chênh lệch trung vị **Đông − Hè**: 29,32 µg/m³, [−29,80; 24,99].
 
-**Độ nhạy theo độ dài block (phương pháp chính).**
+**Độ nhạy theo độ dài block (ngày lịch).**
 
-| Block (ngày) | p | Kết luận |
+| Block (ngày lịch) | p | Kết luận |
 |---|---|---|
-| block = 7 | 0,0004 | bác bỏ H₀ |
-| block = 14 | 0,0064 | bác bỏ H₀ |
-| block = 21 | 0,0186 | bác bỏ H₀ |
-| block = 28 | 0,0444 | bác bỏ H₀ |
-| block = 42 | 0,0788 | không bác bỏ H₀ |
+| block = 7 | 0,0002 | bác bỏ H₀ |
+| block = 14 | 0,0032 | bác bỏ H₀ |
+| block = 21 | 0,0136 | bác bỏ H₀ |
+| block = 28 | 0,0280 | bác bỏ H₀ |
+| block = 42 | 0,0550 | không bác bỏ H₀ |
 
-**Độ nhạy theo lag HAC (phương pháp đối chứng).**
-
-| Lag (ngày) | p | Kết luận |
-|---|---|---|
-| lag = 7 | 3,02·10⁻⁷ | bác bỏ H₀ |
-| lag = 14 | 5,26·10⁻⁸ | bác bỏ H₀ |
-| lag = 21 | 4,52·10⁻⁹ | bác bỏ H₀ |
-| lag = 28 | 2,36·10⁻¹⁰ | bác bỏ H₀ |
-| lag = 42 | 3,71·10⁻¹⁰ | bác bỏ H₀ |
-
-> **Trạng thái kết luận: THĂM DÒ (EXPLORATORY).** Kết luận không ổn định theo độ dài block / lag HAC → hạ xuống thăm dò. p-value của kiểm định mùa nhạy với lựa chọn cách hiệu chỉnh phụ thuộc (từ 0,0004 ở block 7 ngày tới 0,0788 ở block 42 ngày) — nghĩa là bằng chứng thống kê cho H₀ 'các mùa bằng nhau' **không vững**; khác biệt mùa vẫn được báo cáo như **mô tả** của giai đoạn 07/2025–07/2026 (mục 10), không phải quy luật nhiều năm.
+> **Trạng thái kết luận: THĂM DÒ (EXPLORATORY).** Một chu kỳ mùa duy nhất và mùa là các đoạn thời gian liên tiếp → không tách được 'mùa' khỏi 'xu hướng'; hồi quy HAC dùng làm đối chứng **không** kiểm soát được sai lầm loại I trong cấu trúc này (Monte Carlo: size 30–55% vì dummy mùa gần cộng tuyến với xu hướng) nên không dùng để quyết định trạng thái.
 
 ### 5.1. Hậu định sáu cặp mùa (exploratory — family Holm riêng)
 
-Sáu cặp này **không** thuộc family xác nhận: chúng được khảo sát sau khi kiểm định omnibus bác bỏ H₀, nên mang nhãn *exploratory* và được hiệu chỉnh Holm trong family riêng. p-value của mỗi cặp cũng được dựng lại dưới H₀ có xét phụ thuộc (null block bootstrap trên chuỗi gộp, nhãn của hai mùa so sánh giữ theo vị trí lịch).
+Sáu cặp này **không** thuộc family xác nhận: chúng được khảo sát sau khi kiểm định omnibus, nên mang nhãn *exploratory* và được hiệu chỉnh Holm trong family riêng. p-value của mỗi cặp cũng được dựng lại dưới H₀ có xét phụ thuộc (null block bootstrap **theo lịch** trên chuỗi gộp, hạng tính trong tập A ∪ B).
 
 | Cặp | Trung vị A | Trung vị B | U | p (hiệu chỉnh) | p Holm | p tham chiếu | r_rb | CI 95% (A−B) |
 |---|---|---|---|---|---|---|---|---|
-| Đông – Xuân | 60,46 | 32,81 | 5191 | 0,0144 | 0,0720 | 1,49·10⁻¹⁰ | 0,583 | [8,82; 36,68] |
-| Đông – Hè | 60,46 | 31,14 | 3519 | 0,0120 | 0,0720 | 3,72·10⁻¹¹ | 0,681 | [9,95; 38,65] |
-| Đông – Thu | 60,46 | 36,30 | 4951 | 0,0624 | 0,2496 | 5,93·10⁻⁸ | 0,492 | [5,31; 33,82] |
-| Xuân – Hè | 32,81 | 31,14 | 2512 | 0,6543 | 1,0000 | 0,1639 | 0,142 | [−4,31; 7,81] |
-| Xuân – Thu | 32,81 | 36,30 | 3140 | 0,6887 | 1,0000 | 0,2688 | −0,099 | [−8,65; 3,55] |
-| Hè – Thu | 31,14 | 36,30 | 1731 | 0,4471 | 1,0000 | 0,0289 | −0,222 | [−9,59; 0,50] |
+| Đông – Xuân | 60,46 | 32,81 | 5191 | 0,0084 | 0,0504 | 1,49·10⁻¹⁰ | 0,583 | [8,82; 36,68] |
+| Đông – Hè | 60,46 | 31,14 | 3519 | 0,5975 | 1,0000 | 3,72·10⁻¹¹ | 0,681 | [9,95; 38,65] |
+| Đông – Thu | 60,46 | 36,30 | 4951 | 0,0192 | 0,0960 | 5,93·10⁻⁸ | 0,492 | [5,31; 33,82] |
+| Xuân – Hè | 32,81 | 31,14 | 2512 | 0,6623 | 1,0000 | 0,1639 | 0,142 | [−4,31; 7,81] |
+| Xuân – Thu | 32,81 | 36,30 | 3140 | 0,6055 | 1,0000 | 0,2688 | −0,099 | [−8,65; 3,55] |
+| Hè – Thu | 31,14 | 36,30 | 1731 | 0,2464 | 0,9854 | 0,0289 | −0,222 | [−9,59; 0,50] |
 
 ---
 
 ## 6. Kiểm định 2 — Ngày làm việc vs ngày cuối tuần
 
-**H₀:** Phân phối PM2.5 trung bình ngày của ngày làm việc và cuối tuần giống nhau.
-**H₁:** Hai phân phối khác nhau.
-**α = 0,05, hai phía.**
+- **H₀:** Phân phối PM2.5 trung bình ngày của ngày làm việc và cuối tuần giống nhau.
+- **H₁:** Hai phân phối khác nhau.
+- **α = 0,05, hai phía.**
 
-**Phương pháp chính:** Mann-Whitney U + null circular moving block bootstrap (chuỗi gộp) (block 28 ngày).
-**Phương pháp đối chứng:** OLS + HAC (Newey–West), hệ số dummy cuối tuần (lag 28 ngày).
+**Phương pháp chính:** OLS + HAC (Newey–West), hệ số dummy cuối tuần (lag 28 ngày).
+**Đối chứng:** Mann-Whitney U + null circular moving block bootstrap THEO LỊCH (chuỗi gộp trên lịch ngày đầy đủ) (block 28 ngày lịch).
 
 - Ngày làm việc: n = 213, trung vị 36,72 µg/m³.
 - Ngày cuối tuần: n = 86, trung vị 39,45 µg/m³.
-- **U = 8083,0**, **p (hiệu chỉnh phụ thuộc) = 0,0780** → không bác bỏ H₀; **p Holm = 0,0888** → không bác bỏ H₀.
-- p tham chiếu (giả định độc lập) = 0,1120.
-- Chênh lệch trung vị: **−2,74 µg/m³**, CI 95% block bootstrap [−20,12; 6,21].
+- **U = 8083,0**, **p (hiệu chỉnh phụ thuộc) = 0,1082** → không bác bỏ H₀; **p Holm = 0,1082** → không bác bỏ H₀.
+- p tham chiếu (giả định độc lập) = 0,1120; null block bootstrap theo lịch p = 0,5379.
+- Chênh lệch trung vị: **−2,74 µg/m³**, CI 95% block bootstrap (theo lịch) [−6,62; 5,07].
 - Effect size **r_rb = −0,1175** (dương = ngày làm việc cao hơn).
-- Đối chứng (HAC): t = 1,611, p = 0,1082.
 
-**Độ nhạy theo độ dài block.**
+**Độ nhạy theo lag HAC (phương pháp chính).**
 
-| Block (ngày) | p | Kết luận |
+| Lag (ngày) | p | Kết luận |
 |---|---|---|
-| block = 7 | 0,0788 | không bác bỏ H₀ |
-| block = 14 | 0,0840 | không bác bỏ H₀ |
-| block = 21 | 0,0828 | không bác bỏ H₀ |
-| block = 28 | 0,0780 | không bác bỏ H₀ |
-| block = 42 | 0,0792 | không bác bỏ H₀ |
+| lag = 7 | 0,1089 | không bác bỏ H₀ |
+| lag = 14 | 0,1121 | không bác bỏ H₀ |
+| lag = 21 | 0,1144 | không bác bỏ H₀ |
+| lag = 28 | 0,1082 | không bác bỏ H₀ |
+| lag = 42 | 0,1318 | không bác bỏ H₀ |
 
 > **Trạng thái kết luận: XÁC NHẬN.** Phương pháp chính và phương pháp đối chứng cùng chiều.
 
 **Ý nghĩa thống kê ≠ ý nghĩa thực tiễn — và power có giới hạn.** Với SD gộp 21,65 µg/m³, n₁ = 213, n₂ = 86, chênh lệch nhỏ nhất phát hiện được ở power 80%, α = 0,05 là **MDE ≈ 7,75 µg/m³** (xấp xỉ chuẩn, tính hậu nghiệm từ SD quan sát — lưu ý: công thức này **giả định độc lập**, nên với chuỗi tự tương quan nó **đánh giá thấp** ngưỡng phân giải thực tế).
 
-- Chênh lệch quan sát được là −2,74 µg/m³, nhỏ hơn MDE, và CI 95% block bootstrap [−20,12; 6,21] chứa 0; |r_rb| = 0,117. Vì vậy dữ liệu **không đủ độ phân giải** để phân biệt 'không có khác biệt' với 'khác biệt nhỏ hơn MDE' — đây không phải bằng chứng khẳng định hai nhóm bằng nhau.
+- Chênh lệch quan sát được là −2,74 µg/m³, nhỏ hơn MDE, và CI 95% block bootstrap [−6,62; 5,07] chứa 0; |r_rb| = 0,117. Vì vậy dữ liệu **không đủ độ phân giải** để phân biệt 'không có khác biệt' với 'khác biệt nhỏ hơn MDE' — đây không phải bằng chứng khẳng định hai nhóm bằng nhau.
 - Ước lượng điểm nằm trong khoảng sai số thực hành của một trạm đo, nên không được dùng để quy kết nguồn phát thải hay hành vi giao thông.
 
 ---
@@ -208,19 +214,18 @@ Hai ngưỡng được kiểm định **tách biệt**, mỗi ngưỡng đi vớ
 
 ### 7.1. Ngưỡng trung bình 24 giờ — 50 µg/m³
 
-**H₀:** Trung vị của trung bình ngày bằng 50 µg/m³.
-**H₁:** Trung vị khác 50 µg/m³.
-**α = 0,05, hai phía.**
+- **H₀:** Trung vị của trung bình ngày bằng 50 µg/m³.
+- **H₁:** Trung vị khác 50 µg/m³.
+- **α = 0,05, hai phía.**
 
 **Phương pháp chính:** H₀ 'trung vị = μ' tương đương 'P(trung bình ngày > μ) = 0,5' với phân phối liên tục; thống kê là tỷ lệ ngày vượt ngưỡng, SE là sandwich HAC.
-**Phương pháp đối chứng:** Bootstrap áp đặt H₀ + p-value đảo CI (cùng phân phối bootstrap).
+**Đối chứng:** Bootstrap áp đặt H₀ resample theo lịch + p-value đảo CI (cùng phân phối bootstrap).
 
 - n = 299 ngày; trung vị 37,20 µg/m³; trung bình 43,38 ± 21,68 µg/m³.
 - **t = −2,6558** (tỷ lệ ngày vượt ngưỡng, SE HAC), **p (hiệu chỉnh phụ thuộc) = 0,0083** → bác bỏ H₀; **p Holm = 0,0250** → bác bỏ H₀.
-- p tham chiếu (Wilcoxon giả định độc lập) = 7,88·10⁻¹⁰.
-- Đối chứng: bootstrap áp đặt H₀ p = 0,0064; p suy ra từ phân phối bootstrap của ước lượng (đảo CI) = 0,0072; Wilcoxon có HAC p = 0,0493.
+- p tham chiếu (Wilcoxon giả định độc lập) = 7,88·10⁻¹⁰; null áp đặt H₀ theo lịch p = 0,0444.
 - Effect size **r = −0,4102** (âm = trung vị nằm dưới ngưỡng).
-- CI 95% block bootstrap cho trung vị: [32,81; 45,36].
+- CI 95% block bootstrap (theo lịch) cho trung vị: [32,78; 44,83].
 - Số ngày có trung bình ≥ 50 µg/m³: **84/299 = 28,09%** (CI 95% Wilson: 23,30% – 33,44%).
 
 **Độ nhạy theo lag HAC.**
@@ -241,19 +246,18 @@ Hai ngưỡng được kiểm định **tách biệt**, mỗi ngưỡng đi vớ
 
 ### 7.2. Ngưỡng trung bình năm — 25 µg/m³
 
-**H₀:** Trung bình của trung bình ngày bằng 25 µg/m³.
-**H₁:** Trung bình khác 25 µg/m³.
-**α = 0,05, hai phía.**
+- **H₀:** Trung bình của trung bình ngày bằng 25 µg/m³.
+- **H₁:** Trung bình khác 25 µg/m³.
+- **α = 0,05, hai phía.**
 
 **Phương pháp chính:** t-test một mẫu với sai số chuẩn HAC: mô hình chỉ có hệ số chặn, SE là ước lượng sandwich của phương sai dài hạn.
-**Phương pháp đối chứng:** Bootstrap áp đặt H₀ + p-value đảo CI (cùng phân phối bootstrap).
+**Đối chứng:** Bootstrap áp đặt H₀ resample theo lịch + p-value đảo CI (cùng phân phối bootstrap).
 
 - n = 299 ngày; trung bình 43,38 ± 21,68 µg/m³.
 - **t = 4,3535** (HAC), **p (hiệu chỉnh phụ thuộc) = 1,84·10⁻⁵** → bác bỏ H₀; **p Holm = 7,38·10⁻⁵** → bác bỏ H₀.
-- p tham chiếu (t-test giả định độc lập) = 5,33·10⁻³⁷.
-- Đối chứng: bootstrap áp đặt H₀ p = 0,0004; p suy ra từ phân phối bootstrap của ước lượng = 0,0006.
+- p tham chiếu (t-test giả định độc lập) = 5,33·10⁻³⁷; null áp đặt H₀ theo lịch p = 0,0004.
 - Cohen's d = **0,8476** (đơn vị: độ lệch chuẩn của trung bình ngày, không phải của một quan sát năm).
-- CI 95% theo HAC (tôn trọng tự tương quan): [35,07; 51,69]; CI 95% block bootstrap: [35,75; 52,32]; CI 95% theo t (giả định độc lập — tham chiếu): [40,91; 45,85].
+- CI 95% theo HAC (tôn trọng tự tương quan): [35,07; 51,69]; CI 95% block bootstrap theo lịch: [36,11; 51,76]; CI 95% theo t (giả định độc lập — tham chiếu): [40,91; 45,85].
 
 **Độ nhạy theo lag HAC.**
 
@@ -275,12 +279,12 @@ Hai ngưỡng được kiểm định **tách biệt**, mỗi ngưỡng đi vớ
 
 | Kiểm định | Thống kê | p (hiệu chỉnh phụ thuộc) | p Holm | Effect size | Trạng thái |
 |---|---|---|---|---|---|
-| Mùa (4 nhóm, có xét phụ thuộc thời gian) | H = 61,534 | 0,0444 | 0,0888 | ε² = 0,206 | THĂM DÒ (EXPLORATORY) |
-| Ngày làm việc vs cuối tuần (có xét phụ thuộc thời gian) | U = 8083,000 | 0,0780 | 0,0888 | r_rb = −0,117 | XÁC NHẬN |
+| Mùa (4 nhóm, có xét phụ thuộc thời gian) | H = 61,534 | 0,0280 | 0,0560 | ε² = 0,206 | THĂM DÒ (EXPLORATORY) |
+| Ngày làm việc vs cuối tuần (có xét phụ thuộc thời gian) | U = 8083,000 | 0,1082 | 0,1082 | r_rb = −0,117 | XÁC NHẬN |
 | Trung bình 24h vs 50 µg/m³ (có xét phụ thuộc thời gian) | t (share, HAC) = −2,656 | 0,0083 | 0,0250 | r (cặp) = −0,410 | XÁC NHẬN |
 | Trung bình giai đoạn vs 25 µg/m³ (có xét phụ thuộc thời gian) | t (HAC) = 4,354 | 1,84·10⁻⁵ | 7,38·10⁻⁵ | Cohen's d = 0,848 | XÁC NHẬN |
 
-**Kết luận sau hiệu chỉnh Holm: 2/4 kiểm định bác bỏ H₀** (α = 0,05), trong đó 1 kiểm định bị hạ xuống *thăm dò* theo quy tắc R1–R3 của mục 4.1.
+**Kết luận sau hiệu chỉnh Holm: 2/4 kiểm định bác bỏ H₀** (α = 0,05), trong đó 1 kiểm định bị hạ xuống *thăm dò* theo quy tắc R1–R5 của mục 4.3.
 
 **Đối chiếu với phương pháp cũ (giả định quan sát độc lập).**
 
@@ -291,24 +295,64 @@ Hai ngưỡng được kiểm định **tách biệt**, mỗi ngưỡng đi vớ
 | Trung bình 24h vs 50 µg/m³ (có xét phụ thuộc thời gian) | 7,88·10⁻¹⁰ | 1,58·10⁻⁹ | bác bỏ H₀ |
 | Trung bình giai đoạn vs 25 µg/m³ (có xét phụ thuộc thời gian) | 5,33·10⁻³⁷ | 2,13·10⁻³⁶ | bác bỏ H₀ |
 
-Phương pháp cũ cho **3/4 bác bỏ H₀**; phương pháp có xét phụ thuộc thời gian cho **2/4**. Đây là **thay đổi kết luận do phương pháp**, không phải do dữ liệu thay đổi: p-value của SciPy trên chuỗi tự tương quan coi 299 ngày như 299 quan sát độc lập, trong khi thực tế n_eff ≈ 47,1 (lạm phát ×6,34) — p-value cũ vì vậy **lạc quan**. Mục 9 định lượng mức lạc quan đó bằng mô phỏng.
+Phương pháp cũ cho **3/4 bác bỏ H₀**; phương pháp có xét phụ thuộc thời gian cho **2/4**. Đây là **thay đổi kết luận do phương pháp**, không phải do dữ liệu thay đổi: p-value của SciPy coi 299 ngày như 299 quan sát độc lập, trong khi thực tế n_eff ≈ 47,1 (lạm phát ×6,34) — p-value cũ vì vậy **lạc quan**. Mục 9 đo trực tiếp mức lạc quan đó bằng Monte Carlo.
 
 ---
 
-## 9. Kiểm soát sai lầm loại I bằng mô phỏng dưới H₀
+## 9. Kiểm soát sai lầm loại I bằng Monte Carlo đa kịch bản
 
-Mô phỏng trên chuỗi **AR(1)** có cùng mức tự tương quan như dữ liệu thật (ρ = 0,7276, n = 299 ngày, 100 lần lặp, seed 42). Cột **size** là tỷ lệ bác bỏ H₀ khi H₀ **đúng**; cột **power** là tỷ lệ bác bỏ khi có hiệu ứng +1 đơn vị.
+Kiểm chứng **có chi phí**, chạy bằng `python scripts/validate_inference_montecarlo.py --n-sim 1.000`; kết quả lưu ở `reports/inference_montecarlo.csv` và được báo cáo này đọc lại (không chạy lại trong notebook).
 
-| Phép kiểm | size (giả định độc lập) | size (phương pháp chính) | size (đối chứng) | power (độc lập) | power (chính) | power (đối chứng) |
-|---|---|---|---|---|---|---|
-| season | 75,0% | 8,0% | 31,0% | 93,0% | 34,0% | 58,0% |
-| weekday | 2,0% | 2,0% | 5,0% | 100,0% | 100,0% | 100,0% |
-| median | 36,0% | 5,0% | 3,0% | 100,0% | 100,0% | 100,0% |
-| mean | 39,0% | 8,0% | 8,0% | 100,0% | 100,0% | 100,0% |
+- Số lần mô phỏng **mỗi kịch bản**: 1.000; n = 299 ngày; null bootstrap 200 lặp; HAC lag 28 ngày; seed 42.
+- Sai số Monte Carlo chuẩn tại p̂ = α: ±0,69 điểm phần trăm; khoảng tin cậy Wilson 95% được in kèm mỗi tỷ lệ.
+- **Cột 'độc lập'** là phép kiểm SciPy giả định quan sát độc lập — tham chiếu để thấy mức lạc quan.
 
-**Đọc kết quả.** Ở α = 0%, một phép kiểm hợp lệ phải bác bỏ khoảng 5% số lần dưới H₀. Các phép kiểm SciPy dùng trong phiên bản cũ bác bỏ **hàng chục tới gần 80%** số lần dưới H₀ — bằng chứng định lượng rằng chúng **không** kiểm soát được sai lầm loại I trên dữ liệu này. Phương pháp có xét phụ thuộc thời gian đưa tỷ lệ này về gần α (vẫn hơi lạc quan ở mức ~2–3 lần α do quá trình gần phân kỳ đơn vị và vì bản số hữu hạn).
+| Kịch bản | Phép kiểm | Độc lập | Null bootstrap (lịch) | HAC |
+|---|---|---|---|---|
+| Quan sát độc lập (i.i.d.) | season | 4,8% [3,6–6,3] | 2,7% [1,9–3,9] | 30,4% [27,6–33,3] |
+| Quan sát độc lập (i.i.d.) | weekday | 4,9% [3,7–6,4] | 4,5% [3,4–6,0] | 7,4% [5,9–9,2] |
+| Quan sát độc lập (i.i.d.) | median | 6,0% [4,7–7,6] | 13,1% [11,1–15,3] | 9,2% [7,6–11,2] |
+| Quan sát độc lập (i.i.d.) | mean | 6,1% [4,8–7,8] | 8,7% [7,1–10,6] | 9,4% [7,7–11,4] |
+| AR(1) yếu (ρ = 0,3) | season | 22,6% [20,1–25,3] | 3,7% [2,7–5,1] | 31,6% [28,8–34,5] |
+| AR(1) yếu (ρ = 0,3) | weekday | 6,3% [5,0–8,0] | 4,8% [3,6–6,3] | 7,4% [5,9–9,2] |
+| AR(1) yếu (ρ = 0,3) | median | 15,7% [13,6–18,1] | 11,7% [9,9–13,8] | 9,4% [7,7–11,4] |
+| AR(1) yếu (ρ = 0,3) | mean | 16,6% [14,4–19,0] | 9,2% [7,6–11,2] | 9,9% [8,2–11,9] |
+| AR(1) trung bình (ρ = 0,6) | season | 56,0% [52,9–59,0] | 4,6% [3,5–6,1] | 34,5% [31,6–37,5] |
+| AR(1) trung bình (ρ = 0,6) | weekday | 4,1% [3,0–5,5] | 3,5% [2,5–4,8] | 7,0% [5,6–8,8] |
+| AR(1) trung bình (ρ = 0,6) | median | 33,2% [30,4–36,2] | 10,7% [8,9–12,8] | 9,4% [7,7–11,4] |
+| AR(1) trung bình (ρ = 0,6) | mean | 33,4% [30,5–36,4] | 9,5% [7,8–11,5] | 10,3% [8,6–12,3] |
+| AR(1) mạnh (ρ = 0,9) | season | 94,2% [92,6–95,5] | 15,6% [13,5–18,0] | 49,5% [46,4–52,6] |
+| AR(1) mạnh (ρ = 0,9) | weekday | 0,0% [0,0–0,4] | 0,8% [0,4–1,6] | 4,2% [3,1–5,6] |
+| AR(1) mạnh (ρ = 0,9) | median | 65,3% [62,3–68,2] | 14,9% [12,8–17,2] | 16,8% [14,6–19,2] |
+| AR(1) mạnh (ρ = 0,9) | mean | 66,1% [63,1–69,0] | 14,4% [12,4–16,7] | 16,6% [14,4–19,0] |
+| AR(1) mạnh (ρ = 0,73) + xu hướng tuyến tính (mùa trùng với thời gian) | season | 100,0% [99,6–100,0] | 100,0% [99,6–100,0] | 37,8% [34,8–40,8] |
+| AR(1) mạnh (ρ = 0,73) + xu hướng tuyến tính (mùa trùng với thời gian) | weekday | 0,0% [0,0–0,4] | 0,8% [0,4–1,6] | 7,3% [5,8–9,1] |
+| AR(1) mạnh (ρ = 0,73) + xu hướng tuyến tính (mùa trùng với thời gian) | median | 100,0% [99,6–100,0] | 100,0% [99,6–100,0] | 100,0% [99,6–100,0] |
+| AR(1) mạnh (ρ = 0,73) + xu hướng tuyến tính (mùa trùng với thời gian) | mean | 100,0% [99,6–100,0] | 100,0% [99,6–100,0] | 100,0% [99,6–100,0] |
+| Phụ thuộc kéo dài (MA, cửa sổ 30 ngày) | season | 98,0% [96,9–98,7] | 21,7% [19,3–24,4] | 55,5% [52,4–58,6] |
+| Phụ thuộc kéo dài (MA, cửa sổ 30 ngày) | weekday | 0,0% [0,0–0,4] | 0,2% [0,1–0,7] | 3,0% [2,1–4,3] |
+| Phụ thuộc kéo dài (MA, cửa sổ 30 ngày) | median | 1,7% [1,1–2,7] | 0,0% [0,0–0,4] | 0,0% [0,0–0,4] |
+| Phụ thuộc kéo dài (MA, cửa sổ 30 ngày) | mean | 0,0% [0,0–0,4] | 0,0% [0,0–0,4] | 0,0% [0,0–0,4] |
+| AR(1) mạnh + thiếu ngẫu nhiên 20% | season | 66,8% [63,8–69,6] | 5,5% [4,2–7,1] | 42,9% [39,9–46,0] |
+| AR(1) mạnh + thiếu ngẫu nhiên 20% | weekday | 1,8% [1,1–2,8] | 0,5% [0,2–1,2] | 8,8% [7,2–10,7] |
+| AR(1) mạnh + thiếu ngẫu nhiên 20% | median | 39,3% [36,3–42,4] | 9,8% [8,1–11,8] | 10,2% [8,5–12,2] |
+| AR(1) mạnh + thiếu ngẫu nhiên 20% | mean | 39,3% [36,3–42,4] | 9,3% [7,7–11,3] | 11,6% [9,8–13,7] |
+| AR(1) mạnh + thiếu thành cụm 20% | season | 64,6% [61,6–67,5] | 6,4% [5,0–8,1] | 48,6% [45,5–51,7] |
+| AR(1) mạnh + thiếu thành cụm 20% | weekday | 3,0% [2,1–4,3] | 0,2% [0,1–0,7] | 8,8% [7,2–10,7] |
+| AR(1) mạnh + thiếu thành cụm 20% | median | 37,1% [34,2–40,1] | 6,8% [5,4–8,5] | 11,0% [9,2–13,1] |
+| AR(1) mạnh + thiếu thành cụm 20% | mean | 36,9% [34,0–39,9] | 9,1% [7,5–11,0] | 12,0% [10,1–14,2] |
+| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | season | 72,3% [69,4–75,0] | 5,6% [4,3–7,2] | 40,3% [37,3–43,4] |
+| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | weekday | 1,7% [1,1–2,7] | 0,4% [0,2–1,0] | 7,6% [6,1–9,4] |
+| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | median | 41,5% [38,5–44,6] | 10,5% [8,7–12,6] | 11,9% [10,0–14,1] |
+| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | mean | 42,3% [39,3–45,4] | 10,3% [8,6–12,3] | 12,0% [10,1–14,2] |
 
-> **Giới hạn của bằng chứng này:** mô phỏng dùng chuỗi AR(1) — một xấp xỉ của phụ thuộc quan sát được. Nó **không** thay thế lý thuyết: mọi phương pháp hiệu chỉnh đều là xấp xỉ, và cỡ mẫu hiệu dụng nhỏ (n_eff ≈ 47) giới hạn mọi phép kiểm.
+**Đọc kết quả — đây là bằng chứng hiệu lực, không phải phỏng đoán.**
+
+1. Cột **độc lập** vỡ tung khi có tự tương quan: kiểm định mùa bác bỏ H₀ tới 94–100% số lần, kiểm định vị trí tới 65%, chỉ với dữ liệu **không** có hiệu ứng. Đây là lý do phải hiệu chỉnh — và là lý do p-value của SciPy trên bộ dữ liệu này không được dùng để kết luận.
+2. Cột **null bootstrap theo lịch** giữ tỷ lệ bác bỏ gần α cho kiểm định mùa (2,7–6,4% ở các kịch bản có ρ gần với dữ liệu thật) và weekday (0,2–4,8%); nó **bảo thủ** khi phụ thuộc rất mạnh (ρ = 0,9 → 15,6%) hoặc phụ thuộc kéo dài (21,7%) — mất sức mạnh chứ không sai hướng.
+3. Cột **HAC** giữ tỷ lệ bác bỏ gần α cho kiểm định vị trí (9,2–12,0%) và weekday (3,0–8,8%), nhưng **vỡ** cho kiểm định mùa (30–55%): ba dummy mùa là bốn **đoạn thời gian liên tiếp** nên gần cộng tuyến với xu hướng ⇒ ma trận hiệp phương sai của ba hệ số mùa gần suy biến. Đây là lý do kiểm định mùa **luôn** ở trạng thái thăm dò (R5) và hồi quy HAC cho mùa không dùng để quyết định trạng thái.
+4. Kịch bản **“xu hướng tuyến tính”** cố tình làm H₀ **sai** cho các kiểm định vị trí (xu hướng dịch trung bình khỏi 0) — nên tỷ lệ 100% ở đó là **hành vi đúng**, không phải lỗi hiệu lực. Kịch bản này dùng để kiểm tra nhiễu *mùa ↔ xu hướng* ở kiểm định mùa.
+5. Quy tắc **R4** (size ≤ 2,5α ở các kịch bản áp dụng được cho dữ liệu này: ρ gần với ρ quan sát và mặt nạ thiếu tương ứng) được áp dụng cho từng kiểm định; kết quả áp dụng nêu ở từng mục.
 
 ## 10. Khả năng khái quát hóa kết quả theo mùa
 
@@ -333,7 +377,7 @@ Câu hỏi mà bốn kiểm định trên **không** trả lời được: khác
 | Thu | 2025 | 84 | 36,30 |
 | Xuân | 2026 | 83 | 32,81 |
 
-> **Kết luận về khả năng khái quát hóa.** Kết quả mùa trong báo cáo này là **mô tả của một giai đoạn quan sát duy nhất**, ở một trạm duy nhất, với điều kiện khí tượng của chính năm đó. Không có bằng chứng nào trong bộ dữ liệu cho phép nói rằng đây là quy luật mùa vụ ổn định nhiều năm. Vì vậy kiểm định mùa ở mục 5 bị hạ xuống **THĂM DÒ** và kết luận mùa được trình bày như **hiệu ứng mô tả**, không phải xác nhận.
+> **Kết luận về khả năng khái quát hóa.** Kết quả mùa trong báo cáo này là **mô tả của một giai đoạn quan sát duy nhất**, ở một trạm duy nhất, với điều kiện khí tượng của chính năm đó. Không có bằng chứng nào trong bộ dữ liệu cho phép nói rằng đây là quy luật mùa vụ ổn định nhiều năm. Vì vậy kiểm định mùa ở mục 5 ở trạng thái **THĂM DÒ** và kết luận mùa được trình bày như **hiệu ứng mô tả**, không phải xác nhận.
 
 ---
 
@@ -342,15 +386,15 @@ Câu hỏi mà bốn kiểm định trên **không** trả lời được: khác
 ### 11.1. Ghép cặp theo tuần cho weekday/weekend
 
 - Số tuần đủ điều kiện (≥ 3 ngày trong tuần và ≥ 2 ngày cuối tuần): **40**.
-- Trung vị chênh lệch (weekday − weekend): **−2,70 µg/m³**, CI 95% bootstrap [−10,41; 2,69].
+- Trung vị chênh lệch (weekday − weekend): **−2,70 µg/m³**, CI 95% bootstrap [−7,92; 2,69].
 - Tỷ lệ tuần có weekday cao hơn: 37,5%.
-- Signed-rank có HAC (Newey–West, lag 4 tuần) trên 40 chênh lệch tuần: t = −1,433, p = 0,1598 → không bác bỏ H₀ ở α = 0,05 (tham chiếu, giả định độc lập: p = 0,2064).
+- Signed-rank có HAC (Newey–West, lag 4 tuần) trên 40 chênh lệch tuần: t = 315,000, p = 0,9838 → không bác bỏ H₀ ở α = 0,05 (tham chiếu, giả định độc lập: p = 0,2064).
 
 Phép thử này loại bỏ biến thiên giữa các tuần và không dựa vào giả định các ngày độc lập. Nếu kết luận khác với kiểm định ở mục 6, kết luận đúng là **không ổn định** — và đó phải là điều được viết ra.
 
 ### 11.2. Kruskal-Wallis trên trung bình tuần theo mùa
 
-- Số tuần dùng được: 48; H = 19,310, df = 3, p (hiệu chỉnh phụ thuộc) = 0,0194, p tham chiếu = 0,0002, ε² = 0,4109.
+- Số tuần dùng được: 55; H = 19,310, df = 3, p (hiệu chỉnh theo lịch tuần) = 0,0190, p tham chiếu = 0,0002, ε² = 0,4109.
 - Ở mức tuần, cỡ mẫu nhỏ hơn nhiều nên power thấp; p không có ý nghĩa **không** phủ định kết quả mức ngày, và p có ý nghĩa thì củng cố. Mục đích duy nhất là kiểm tra kết luận mùa có phụ thuộc vào giả định độc lập của từng ngày hay không.
 
 ---
@@ -366,7 +410,7 @@ p-value là xác suất **của dữ liệu, có điều kiện H₀ đúng** �
 | p nhỏ = hiệu ứng lớn | p phụ thuộc cỡ mẫu; n_eff ≈ 47 mới là cỡ mẫu có ý nghĩa ở đây | Luôn đọc kèm effect size và CI |
 | p > α = 'không có hiệu ứng' | Đó là 'không đủ bằng chứng', không phải bằng chứng không | Nêu rõ giới hạn power của từng phép kiểm |
 
-**Power = 1 − β, và độ phân giải của phép kiểm có giới hạn cụ thể.** Với SD gộp 21,65 µg/m³, n₁ = 213, n₂ = 86, chênh lệch nhỏ nhất phát hiện được ở power 80%, α = 0,05 là **MDE ≈ 7,75 µg/m³** (xấp xỉ chuẩn, giả định độc lập). Chênh lệch trung vị quan sát ở mục 6 là 2,74 µg/m³, tức nhỏ hơn MDE. Vì thế kết quả ở mục 6 **không** chứng minh hai nhóm bằng nhau: nó chỉ cho thấy dữ liệu không đủ độ phân giải để tách 'không có khác biệt' khỏi 'khác biệt nhỏ hơn MDE'. Với bài toán cảnh báo, sai lầm loại II (bỏ lọt một đợt ô nhiễm) tốn kém hơn sai lầm loại I, nên ngưỡng vận hành của mô hình ở Issue #13 sẽ được chọn theo Recall chứ không theo Accuracy.
+**Power = 1 − β, và độ phân giải của phép kiểm có giới hạn cụ thể.** Với SD gộp 21,65 µg/m³, n₁ = 213, n₂ = 86, chênh lệch nhỏ nhất phát hiện được ở power 80%, α = 0,05 là **MDE ≈ 7,75 µg/m³** (xấp xỉ chuẩn, giả định độc lập). Chênh lệch trung vị quan sát ở mục 6 là 2,74 µg/m³, tức nhỏ hơn MDE. Vì thế kết luận ở mục 6 **không** chứng minh hai nhóm bằng nhau: nó chỉ cho thấy dữ liệu không đủ độ phân giải để tách 'không có khác biệt' khỏi 'khác biệt nhỏ hơn MDE'. Với bài toán cảnh báo, sai lầm loại II (bỏ lọt một đợt ô nhiễm) tốn kém hơn sai lầm loại I, nên ngưỡng vận hành của mô hình ở Issue #13 sẽ được chọn theo Recall chứ không theo Accuracy.
 
 ---
 
@@ -381,13 +425,13 @@ Vì vậy mọi tỷ lệ trong báo cáo này đều nêu rõ **tử số và m
 ## 14. Giới hạn khoa học
 
 1. **Một chu kỳ mùa, một trạm.** Dải 07/2025–07/2026 chỉ chứa một vòng mùa và toàn bộ dữ liệu đến từ một trạm đô thị. Khác biệt theo mùa là mô tả của **giai đoạn này**, không ngoại suy được sang năm khác hay trạm khác (mục 10).
-2. **Hiệu chỉnh phụ thuộc thời gian là xấp xỉ, không phải định nghĩa.** Mọi phương pháp ở mục 4 đều là phương pháp bậc cao với giả định ổn định; mô phỏng (mục 9) cho thấy tỷ lệ bác bỏ dưới H₀ còn cao hơn α khoảng 2–3 lần. p-value vì vậy là **chỉ báo độ tương thích**, không phải xác suất chính xác tuyệt đối.
-3. **Kết luận mùa đã bị hạ xuống thăm dò** vì p-value của kiểm định omnibus mùa không ổn định theo độ dài block (mục 5). Đây là hạn chế thật, không phải khiêm tốn hình thức.
-4. **Block bootstrap là xấp xỉ.** Block 28 ngày giữ cấu trúc theo tuần nhưng không mô phỏng được phụ thuộc dài hạn hơn nữa; với so sánh hai nhóm, resample trên chuỗi gộp bỏ qua tương quan chéo nhóm — kiểm tra ghép cặp theo tuần ở mục 11.1 là biện pháp bù.
+2. **Thiếu dữ liệu không ngẫu nhiên.** 79 ngày trong 378 ngày lịch không tạo được trung bình ngày, tập trung thành 17 cụm (cụm dài nhất 47 ngày). Cơ chế thiếu **không** được biết là ngẫu nhiên; nếu độ phủ phụ thuộc thời tiết (ngày mưa nhiều mây thì thiếu dữ liệu) thì mức nền ước lượng có thể bị lệch. Báo cáo **không** giả định MCAR.
+3. **Hiệu chỉnh phụ thuộc là xấp xỉ, không phải định nghĩa.** Mọi phương pháp ở mục 4 đều là phương pháp bậc cao với giả định ổn định; Monte Carlo (mục 9) cho thấy tỷ lệ bác bỏ dưới H₀ có kịch bản vượt 2,5α. p-value vì vậy là **chỉ báo độ tương thích**, không phải xác suất chính xác tuyệt đối.
+4. **Block bootstrap không mô phỏng được phụ thuộc dài hạn hơn 4 tuần**; kịch bản phụ thuộc kéo dài (mục 9) cho thấy phương pháp **bảo thủ** ở đó (size thấp hơn α), tức mất sức mạnh chứ không sai hướng.
 5. **Ngưỡng 18/24 giờ** là quy ước phân tích (độ phủ 75%), không phải điều khoản QCVN. Đổi ngưỡng sẽ đổi n; bảng nhật ký lọc ở mục 1 làm việc đổi ngưỡng trở nên minh bạch.
 6. **QCVN 05:2023/BTNMT quy định ở điều kiện chuẩn (µg/Nm³, 25 °C, 760 mmHg)**, còn trạm OpenAQ báo nồng độ môi trường (µg/m³). So sánh định lượng với ngưỡng vì vậy là xấp xỉ.
 7. **Không có kết luận nhân quả.** Khác biệt theo mùa/ngày trong tuần là liên hệ thống kê; nguồn phát thải, khí tượng và điều kiện biên không được phân tách ở đây.
-8. **Kết quả mô phỏng không thay thế lý thuyết và không được tái lập ngoài dữ liệu này** — mô phỏng dùng mô hình AR(1), không phải dữ liệu thật.
+8. **Kết quả mô phỏng không thay thế lý thuyết** — mô phỏng dùng mô hình AR(1)/MA và một mặt nạ thiếu lấy từ dữ liệu thật; nó không bao hàm mọi cơ chế sinh dữ liệu có thể có.
 
 ---
 
@@ -395,6 +439,7 @@ Vì vậy mọi tỷ lệ trong báo cáo này đều nêu rõ **tử số và m
 
 ```bash
 python -m unittest tests.test_inference -v          # kiểm thử tất định
+python scripts/validate_inference_montecarlo.py --n-sim 1000   # kiểm chứng Monte Carlo
 python -c "from src.inference import run_inference, render_inference_report, DEFAULT_REPORT_PATH; " \
           "DEFAULT_REPORT_PATH.write_text(render_inference_report(run_inference()), encoding='utf-8')"
 ```
