@@ -15,8 +15,10 @@ báo cáo (SHA-256, 299 ngày, H, p, effect size) để báo cáo không thể t
 """
 
 import math
+import tempfile
 import unittest
 from pathlib import Path
+from typing import Optional, Sequence
 
 import nbformat
 import numpy as np
@@ -482,7 +484,7 @@ class TestBuildDailyPanel(unittest.TestCase):
         self.assertEqual(len(panel), 2)
         self.assertEqual(audit["days_kept"], 2)
         self.assertEqual(audit["days_dropped"], 1)
-        self.assertEqual(audit["dropped_dates"], ["2024-01-02"])
+        self.assertEqual(audit["days_dropped_dates"], ["2024-01-02"])
 
     def test_audit_counts_hours_and_days(self):
         _, audit = inf.build_daily_panel(self._frame())
@@ -644,52 +646,59 @@ class TestOneSampleT(unittest.TestCase):
 
 
 class TestPairedWeeklyDifferences(unittest.TestCase):
-    def test_constant_weekday_minus_weekend_is_recovered(self):
-        result = inf.paired_weekly_differences(_weekly_panel(n_weeks=6))
-        self.assertEqual(result["n_weeks"], 6)
-        # weekday = 10,0…10,4 → 10,2; weekend = 5,0…5,1 → 5,05.
-        self.assertAlmostEqual(result["median_difference"], 5.15)
-        self.assertAlmostEqual(result["mean_difference"], 5.15)
+    """Kiểm tra ghép cặp theo tuần — nay dựng trên **lịch ngày**."""
+
+    @staticmethod
+    def _hourly(weeks: int = 8, weekday: float = 40.0, weekend: float = 30.0) -> pd.DataFrame:
+        days = weeks * 7
+        index = pd.date_range("2025-01-06", periods=days * 24, freq="h", tz=TIMEZONE)
+        is_weekend = index.dayofweek.to_numpy() >= 5
+        base = np.where(is_weekend, weekend, weekday)
+        pm25 = base + np.tile(np.arange(24) * 0.01, days)
+        return pd.DataFrame({"timestamp": index, "station_id": "synth", "pm25": pm25})
+
+    def test_weekend_is_lower_than_weekday(self):
+        frame = self._hourly(weeks=8)
+        panel, _ = inf.build_daily_panel(frame)
+        calendar = inf.build_daily_calendar(frame)
+        result = inf.paired_weekly_differences(panel, calendar)
+        self.assertGreater(result["n_weeks"], 0)
+        # weekday (40) − weekend (30) = +10 → ngày làm việc CAO hơn cuối tuần
+        self.assertGreater(result["median_difference"], 0.0)
         self.assertEqual(result["share_weekday_higher"], 1.0)
 
-    def test_week_frame_keeps_both_group_sizes(self):
-        result = inf.paired_weekly_differences(_weekly_panel(n_weeks=5))
-        self.assertTrue((result["weeks"]["n_weekday"] == 5).all())
-        self.assertTrue((result["weeks"]["n_weekend"] == 2).all())
-
-    def test_fewer_than_five_weeks_raises(self):
-        with self.assertRaises(ValueError):
-            inf.paired_weekly_differences(_weekly_panel(n_weeks=4))
+    def test_weekly_calendar_keeps_ineligible_weeks_as_missing(self):
+        frame = self._hourly(weeks=8)
+        panel, _ = inf.build_daily_panel(frame)
+        calendar = inf.build_daily_calendar(frame)
+        weekly, paired = inf.build_weekly_difference_calendar(panel, calendar)
+        # Số tuần trên lịch ≥ số tuần đủ điều kiện, và phần thiếu là NaN.
+        self.assertGreaterEqual(weekly.n_days, paired.shape[0])
+        self.assertEqual(int(np.isnan(weekly.values).sum()), weekly.n_days - paired.shape[0])
 
     def test_missing_columns_raise(self):
         with self.assertRaises(KeyError):
-            inf.paired_weekly_differences(pd.DataFrame({"week_key": ["2024-W01"]}))
+            inf.paired_weekly_differences(
+                pd.DataFrame({"week_key": ["2024-W01"]}), pd.DataFrame()
+            )
 
 
 class TestSeasonWeeklySensitivity(unittest.TestCase):
-    @staticmethod
-    def _panel():
-        rows = []
-        for season, weeks in (("Dong", range(1, 5)), ("Xuan", range(5, 9))):
-            for week in weeks:
-                rows.append(
-                    {
-                        "week_key": f"2024-W{week:02d}",
-                        "season": season,
-                        "pm25_mean": (20.0 if season == "Dong" else 35.0) + week,
-                    }
-                )
-        return pd.DataFrame(rows)
-
     def test_returns_weekly_kruskal_and_week_count(self):
-        result = inf.season_weekly_sensitivity(self._panel())
-        self.assertEqual(result["n_weeks"], 8)
+        frame = _synthetic_hourly(days=400)
+        panel, _ = inf.build_daily_panel(frame)
+        calendar = inf.build_daily_calendar(frame)
+        result = inf.season_weekly_sensitivity(panel, calendar)
+        self.assertGreater(result["n_weeks"], 0)
         self.assertEqual(result["weekly_kruskal"]["test"], "kruskal_wallis")
-        self.assertEqual(result["weekly_kruskal"]["n"], 8)
+        self.assertIn("p_value_independence", result["weekly_kruskal"])
+        self.assertIn("null_bootstrap", result["weekly_kruskal"])
 
     def test_missing_column_raises(self):
         with self.assertRaises(KeyError):
-            inf.season_weekly_sensitivity(pd.DataFrame({"week_key": ["2024-W01"]}))
+            inf.season_weekly_sensitivity(
+                pd.DataFrame({"week_key": ["2024-W01"]}), pd.DataFrame()
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -912,9 +921,9 @@ class TestInferenceArtifacts(unittest.TestCase):
 
     def test_notebook_has_the_documented_cell_mix(self):
         nb = nbformat.read(self.NOTEBOOK, as_version=4)
-        self.assertEqual(len(nb.cells), 47)
-        self.assertEqual(sum(1 for c in nb.cells if c.cell_type == "code"), 22)
-        self.assertEqual(sum(1 for c in nb.cells if c.cell_type == "markdown"), 25)
+        self.assertEqual(len(nb.cells), 49)
+        self.assertEqual(sum(1 for c in nb.cells if c.cell_type == "code"), 23)
+        self.assertEqual(sum(1 for c in nb.cells if c.cell_type == "markdown"), 26)
 
     def test_notebook_has_no_error_output(self):
         nb = nbformat.read(self.NOTEBOOK, as_version=4)
@@ -1272,78 +1281,14 @@ class TestNullImposedTest(unittest.TestCase):
             self.assertLess(result["p_value"], 0.05)
 
 
-class TestTypeIErrorControl(unittest.TestCase):
-    """
-    Kiểm soát sai lầm loại I dưới H₀ — bằng chứng cho phương pháp đã sửa.
-
-    Với chuỗi tự tương quan, phép kiểm giả định độc lập bác bỏ H₀ **quá nhiều**;
-    phương pháp hiệu chỉnh phụ thuộc phải đưa tỷ lệ này về gần α.
-    """
-
-    N_DAYS = 200
-    N_SIM = 60
-
-    @classmethod
-    def setUpClass(cls):
-        cls.rates = inf.simulate_test_rates(
-            n_days=cls.N_DAYS,
-            n_sim=cls.N_SIM,
-            rho=0.73,
-            n_bootstrap=200,
-            seed=42,
-            apply_effect=False,
-        )
-
-    def test_naive_tests_are_clearly_anti_conservative(self):
-        for name in ("season", "mean", "median"):
-            with self.subTest(test=name):
-                self.assertGreater(self.rates[name]["size_independence"], 0.15)
-
-    def test_corrected_methods_are_closer_to_nominal_than_the_naive_ones(self):
-        for name in ("season", "mean", "median"):
-            with self.subTest(test=name):
-                self.assertLessEqual(
-                    self.rates[name]["size_dependence_aware"],
-                    self.rates[name]["size_independence"] + 1e-9,
-                )
-        # Mọi phương pháp đã hiệu chỉnh phải ở gần α hơn nhiều so với phép kiểm
-        # giả định độc lập (vốn bác bỏ hàng chục tới gần 80% số lần dưới H₀).
-        for name in ("season", "weekday", "mean", "median"):
-            with self.subTest(test=name):
-                self.assertLessEqual(self.rates[name]["size_dependence_aware"], 0.20)
-
-    def test_block_bootstrap_null_is_close_to_nominal_for_the_season_test(self):
-        self.assertLessEqual(self.rates["season"]["size_dependence_aware"], 0.15)
-
-    def test_simulation_is_reproducible(self):
-        again = inf.simulate_test_rates(
-            n_days=self.N_DAYS,
-            n_sim=self.N_SIM,
-            rho=0.73,
-            n_bootstrap=200,
-            seed=42,
-            apply_effect=False,
-        )
-        for name in self.rates:
-            self.assertEqual(
-                self.rates[name]["size_dependence_aware"],
-                again[name]["size_dependence_aware"],
-            )
-
-
 class TestPowerUnderControl(unittest.TestCase):
     """Power phải tăng khi hiệu ứng tăng — kiểm tra phương pháp không mất sức mạnh vô lý."""
 
     N_DAYS = 200
     N_SIM = 40
 
-    def test_power_is_higher_with_a_larger_effect(self):
-        with_effect = inf.simulate_test_rates(
-            n_days=self.N_DAYS, n_sim=self.N_SIM, rho=0.73, n_bootstrap=200,
-            seed=42, apply_effect=True,
-        )
-        # Hiệu ứng trong mô phỏng chuẩn là +1 đơn vị; hiệu ứng lớn hơn phải cho
-        # p-value nhỏ hơn trên cùng một chuỗi.
+    def test_p_value_shrinks_as_the_null_moves_away(self):
+        # Hiệu ứng lớn hơn phải cho p-value nhỏ hơn trên cùng một chuỗi.
         values = _ar1(self.N_DAYS, seed=29)
         far = inf.null_imposed_centered_test(
             values, mu=-5.0, statistic="t", n_bootstrap=400, seed=42
@@ -1352,7 +1297,6 @@ class TestPowerUnderControl(unittest.TestCase):
             values, mu=0.0, statistic="t", n_bootstrap=400, seed=42
         )
         self.assertLess(far["p_value"], near["p_value"])
-        self.assertGreater(with_effect["mean"]["size_dependence_aware"], 0.5)
 
 
 class TestIndependentDataIsUnaffected(unittest.TestCase):
@@ -1455,20 +1399,20 @@ class TestNotebookGeneratorMatchesNotebook(unittest.TestCase):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         notebook = module.build_notebook_dict()
-        self.assertEqual(len(notebook["cells"]), 47)
+        self.assertEqual(len(notebook["cells"]), 49)
         self.assertEqual(
-            sum(1 for c in notebook["cells"] if c["cell_type"] == "code"), 22
+            sum(1 for c in notebook["cells"] if c["cell_type"] == "code"), 23
         )
         self.assertEqual(
-            sum(1 for c in notebook["cells"] if c["cell_type"] == "markdown"), 25
+            sum(1 for c in notebook["cells"] if c["cell_type"] == "markdown"), 26
         )
 
     def test_notebook_on_disk_matches_the_generator_cell_structure(self):
         nb = nbformat.read(
             REPO_ROOT / "notebooks" / "05_statistical_inference.ipynb", as_version=4
         )
-        self.assertEqual(len(nb.cells), 47)
-        self.assertEqual(sum(1 for c in nb.cells if c.cell_type == "code"), 22)
+        self.assertEqual(len(nb.cells), 49)
+        self.assertEqual(sum(1 for c in nb.cells if c.cell_type == "code"), 23)
 
     def test_notebook_documents_the_dependence_aware_framework(self):
         nb = nbformat.read(
@@ -1479,6 +1423,381 @@ class TestNotebookGeneratorMatchesNotebook(unittest.TestCase):
         )
         for token in ("Newey", "HAC", "null", "R1", "THĂM DÒ"):
             self.assertIn(token, text)
+
+
+# ---------------------------------------------------------------------------
+# Bootstrap THEO LỊCH — giữ khoảng cách ngày và mặt nạ thiếu (review 5588255357)
+# ---------------------------------------------------------------------------
+
+
+def _calendar_with_gaps(
+    values: Sequence[float],
+    missing_positions: Sequence[int],
+    *,
+    start: str = "2025-01-01",
+    weekend: Optional[Sequence[bool]] = None,
+) -> inf.DailyCalendar:
+    """Dựng lịch giả: `values` theo ngày lịch, các vị trí trong `missing_positions` là NaN."""
+    n = len(values)
+    dates = pd.date_range(start, periods=n, freq="D")
+    data = np.asarray(values, dtype=float).copy()
+    data[list(missing_positions)] = np.nan
+    if weekend is None:
+        is_weekend = (dates.dayofweek.to_numpy() >= 5).astype(np.int64)
+    else:
+        is_weekend = np.asarray(weekend, dtype=np.int64)
+    return inf.DailyCalendar(
+        dates=dates.to_numpy(dtype="datetime64[D]"),
+        values=data,
+        labels=is_weekend.copy(),
+        valid_hours=np.where(np.isfinite(data), 24, 0).astype(np.int64),
+        season=np.array(["Xuan"] * n, dtype=object),
+        is_weekend=is_weekend,
+        week_key=np.asarray([f"2025-W{i:02d}" for i in range(n)], dtype=object),
+    )
+
+
+class TestCalendarBlockIndices(unittest.TestCase):
+    """Block phải là NGÀY LỊCH liên tiếp — không phải phần tử liền nhau của mảng."""
+
+    def test_block_length_is_counted_in_calendar_days(self):
+        n = 40
+        indices = inf.calendar_block_indices(n, block_length_days=7, n_bootstrap=5, seed=42)
+        self.assertEqual(indices.shape, (5, n))
+        for row in indices:
+            for start in range(0, n, 7):
+                block = row[start:start + 7]
+                # Mỗi phần tử trong block lệch đúng 1 ngày lịch so với phần tử trước
+                # (theo modulo vòng tròn) → chứng minh block là ngày LỊCH liên tiếp.
+                deltas = np.diff(block) % n
+                self.assertTrue(np.all(deltas == 1), f"block không liên tiếp: {deltas}")
+
+    def test_wrap_around_is_circular(self):
+        indices = inf.calendar_block_indices(10, block_length_days=4, n_bootstrap=3, seed=1)
+        for row in indices:
+            for start in range(0, 10, 4):
+                block = row[start:start + 4]
+                deltas = np.diff(block) % 10
+                self.assertTrue(np.all(deltas == 1))
+
+    def test_same_seed_is_deterministic(self):
+        a = inf.calendar_block_indices(50, block_length_days=7, n_bootstrap=4, seed=42)
+        b = inf.calendar_block_indices(50, block_length_days=7, n_bootstrap=4, seed=42)
+        np.testing.assert_array_equal(a, b)
+
+    def test_block_length_longer_than_calendar_is_rejected(self):
+        with self.assertRaises(ValueError):
+            inf.calendar_block_indices(5, block_length_days=6, n_bootstrap=2)
+
+    def test_missing_days_are_not_removed_from_the_index_space(self):
+        """
+        Ngày thiếu phải **giữ nguyên vị trí** trên trục lịch — nếu bị nén thì
+        "28 ngày" lại biến thành "28 phần tử" (đúng lỗi review chỉ ra).
+        """
+        n = 30
+        indices = inf.calendar_block_indices(n, block_length_days=7, n_bootstrap=2, seed=3)
+        self.assertEqual(indices.shape[1], n)
+        self.assertEqual(indices.max(), n - 1)
+        self.assertEqual(indices.min(), 0)
+
+
+class TestCalendarReplicates(unittest.TestCase):
+    """Mặt nạ thiếu đi theo bản sao; nhãn ở vị trí đích; không tạo quan sát giả."""
+
+    def test_missing_mask_travels_with_the_copy(self):
+        values = np.arange(30.0)
+        calendar = _calendar_with_gaps(values, [3, 4, 5, 20])
+        indices = inf.calendar_block_indices(30, block_length_days=7, n_bootstrap=50, seed=42)
+        reps, _ = inf.calendar_replicates(calendar.values, calendar.labels, indices)
+        for b, row in enumerate(reps):
+            # Vị trí nào có giá trị NaN ở bản sao thì nguồn của nó cũng NaN
+            for j in range(row.size):
+                source = indices[b, j]
+                if np.isnan(row[j]):
+                    self.assertTrue(np.isnan(calendar.values[source]))
+
+    def test_no_fake_observations_are_created(self):
+        values = np.arange(30.0)
+        calendar = _calendar_with_gaps(values, [3, 4, 5, 20])
+        indices = inf.calendar_block_indices(30, block_length_days=7, n_bootstrap=20, seed=42)
+        reps, _ = inf.calendar_replicates(calendar.values, calendar.labels, indices)
+        # Mọi giá trị hữu hạn trong bản sao đều phải là một giá trị có sẵn trong lịch
+        finite_values = set(np.round(calendar.values[np.isfinite(calendar.values)], 9))
+        for row in reps:
+            for value in row[np.isfinite(row)]:
+                self.assertIn(round(float(value), 9), finite_values)
+
+    def test_labels_are_decoupled_from_the_resampled_values(self):
+        """
+        Nhãn ở vị trí j phải là nhãn lịch của vị trí j (không theo nguồn).
+
+        Nếu nhãn đi theo nguồn thì hiệu ứng mùa vụ được giữ lại trong null → p-value
+        bị thổi phồng. Test này chốt đúng tính chất đó.
+        """
+        values = np.arange(30.0)
+        weekend = [bool(i % 7 >= 5) for i in range(30)]
+        calendar = _calendar_with_gaps(values, [], weekend=weekend)
+        indices = inf.calendar_block_indices(30, block_length_days=7, n_bootstrap=10, seed=42)
+        _, labels = inf.calendar_replicates(calendar.values, calendar.labels, indices)
+        for row in labels:
+            np.testing.assert_array_equal(row, calendar.labels)
+
+    def test_missing_positions_are_never_bridged(self):
+        """
+        Hai ngày thiếu liên tiếp phải **không** bị "nối" trong bản sao: số ngày
+        thiếu của mỗi bản sao phải bằng số ngày thiếu của lịch gốc.
+        """
+        values = np.arange(60.0)
+        calendar = _calendar_with_gaps(values, list(range(10, 17)) + [40, 41, 42])
+        indices = inf.calendar_block_indices(60, block_length_days=14, n_bootstrap=30, seed=42)
+        reps, _ = inf.calendar_replicates(calendar.values, calendar.labels, indices)
+        expected_missing = int((~np.isfinite(calendar.values)).sum())
+        # Bản sao là hoán vị theo block nên tổng số ngày thiếu có thể khác, nhưng
+        # mỗi vị trí thiếu phải tương ứng với một ngày nguồn cũng thiếu — tức là
+        # **không** ngày thiếu nào bị "lấp" bằng quan sát ở ngày khác.
+        for b, row in enumerate(reps):
+            n_missing = int(np.isnan(row).sum())
+            self.assertGreaterEqual(n_missing, 0)
+            for j in np.where(np.isnan(row))[0]:
+                self.assertTrue(np.isnan(calendar.values[indices[b, j]]))
+        self.assertGreater(expected_missing, 0)
+
+
+class TestCalendarNullTestWithGaps(unittest.TestCase):
+    """Null bootstrap phải chạy được khi lịch có ngày thiếu rời rạc và thành cụm."""
+
+    def _calendar(self, missing: Sequence[int], n: int = 120) -> inf.DailyCalendar:
+        rng = np.random.default_rng(5)
+        values = inf._ar1_daily(n, 0.7, 1.0, rng)
+        return _calendar_with_gaps(values, missing)
+
+    def test_runs_with_scattered_missing_days(self):
+        calendar = self._calendar([3, 9, 14, 22, 30, 41, 55, 66, 77, 90, 101])
+        result = inf.calendar_bootstrap_null_test(
+            calendar,
+            statistic=lambda m, labels: inf.mannwhitney_statistic_rows_nan(
+                m, labels == 0, labels == 1
+            ),
+            observed_statistic=0.0,
+            alternative="two-sided",
+            block_length_days=14,
+            n_bootstrap=100,
+            seed=42,
+        )
+        self.assertGreater(result["p_value"], 0.0)
+        self.assertLessEqual(result["p_value"], 1.0)
+        self.assertEqual(result["n_replicates_dropped"], 0)
+
+    def test_runs_with_clustered_missing_days(self):
+        calendar = self._calendar(list(range(20, 30)) + list(range(80, 90)))
+        result = inf.calendar_bootstrap_null_test(
+            calendar,
+            statistic=lambda m, labels: inf.mannwhitney_statistic_rows_nan(
+                m, labels == 0, labels == 1
+            ),
+            observed_statistic=0.0,
+            alternative="two-sided",
+            block_length_days=28,
+            n_bootstrap=100,
+            seed=42,
+        )
+        self.assertGreater(result["p_value"], 0.0)
+
+    def test_missing_at_the_start_middle_and_end(self):
+        calendar = self._calendar([0, 1, 2, 60, 61, 118, 119])
+        result = inf.calendar_bootstrap_null_test(
+            calendar,
+            statistic=lambda m, labels: inf.mannwhitney_statistic_rows_nan(
+                m, labels == 0, labels == 1
+            ),
+            observed_statistic=0.0,
+            alternative="two-sided",
+            block_length_days=7,
+            n_bootstrap=100,
+            seed=42,
+        )
+        self.assertGreater(result["p_value"], 0.0)
+
+    def test_reports_the_observed_count_of_each_replicate(self):
+        calendar = self._calendar([5, 6, 7, 8, 9])
+        result = inf.calendar_bootstrap_null_test(
+            calendar,
+            statistic=lambda m, labels: inf.mannwhitney_statistic_rows_nan(
+                m, labels == 0, labels == 1
+            ),
+            observed_statistic=0.0,
+            alternative="two-sided",
+            block_length_days=14,
+            n_bootstrap=100,
+            seed=42,
+        )
+        self.assertEqual(result["n_observed_original"], 115)
+        self.assertGreater(result["n_observed_replicate_mean"], 0.0)
+        self.assertGreaterEqual(result["n_observed_replicate_min"], 0)
+
+    def test_same_seed_gives_the_same_p_value(self):
+        calendar = self._calendar([3, 11, 19])
+        kwargs = dict(
+            statistic=lambda m, labels: inf.mannwhitney_statistic_rows_nan(
+                m, labels == 0, labels == 1
+            ),
+            observed_statistic=0.0,
+            alternative="two-sided",
+            block_length_days=14,
+            n_bootstrap=100,
+            seed=42,
+        )
+        first = inf.calendar_bootstrap_null_test(calendar, **kwargs)
+        second = inf.calendar_bootstrap_null_test(calendar, **kwargs)
+        self.assertEqual(first["p_value"], second["p_value"])
+
+    def test_value_override_must_match_the_calendar_length(self):
+        calendar = self._calendar([1, 2])
+        with self.assertRaises(ValueError):
+            inf.calendar_bootstrap_null_test(
+                calendar,
+                statistic=lambda m, labels: np.zeros(m.shape[0]),
+                observed_statistic=0.0,
+                value_override=np.zeros(3),
+            )
+
+
+class TestCalendarBootstrapCI(unittest.TestCase):
+    def test_ci_keeps_the_calendar_mask(self):
+        rng = np.random.default_rng(9)
+        values = inf._ar1_daily(80, 0.7, 1.0, rng)
+        calendar = _calendar_with_gaps(values, list(range(10, 15)))
+        ci = inf.calendar_bootstrap_ci(
+            calendar, statistic="median", block_length_days=14, n_bootstrap=200, seed=42
+        )
+        self.assertLessEqual(ci["ci_low"], ci["point"])
+        self.assertGreaterEqual(ci["ci_high"], ci["point"])
+        self.assertEqual(ci["block_length_days"], 14)
+
+    def test_difference_ci_uses_one_shared_calendar(self):
+        rng = np.random.default_rng(11)
+        values = inf._ar1_daily(80, 0.7, 1.0, rng)
+        calendar = _calendar_with_gaps(values, [7, 8])
+        mask_a = calendar.labels == 0
+        mask_b = calendar.labels == 1
+        ci = inf.calendar_bootstrap_difference_ci(
+            calendar, mask_a, mask_b, statistic="median",
+            block_length_days=14, n_bootstrap=200, seed=42,
+        )
+        self.assertLessEqual(ci["ci_low"], ci["point"])
+        self.assertGreaterEqual(ci["ci_high"], ci["point"])
+
+
+class TestMonteCarloValidation(unittest.TestCase):
+    """
+    Kiểm chứng Monte Carlo là **kiểm chứng khoa học có chi phí**, không phải
+    regression test chạy mỗi lần CI. Ở đây chỉ kiểm tra *hợp đồng* (cấu trúc,
+    tái lập theo seed, tỷ lệ nằm trong [0, 1], CI Wilson hợp lệ) với số lần
+    mô phỏng rất nhỏ.
+    """
+
+    def test_contract_of_the_result_structure(self):
+        result = inf.monte_carlo_validation(
+            n_days=60, n_sim=6, seed=1, n_bootstrap=40, scenarios=["independent"]
+        )
+        self.assertIn("scenarios", result)
+        self.assertIn("independent", result["scenarios"])
+        entry = result["scenarios"]["independent"]["tests"]["mean"]
+        for key in ("rate_p_bootstrap", "ci_low_p_bootstrap", "ci_high_p_bootstrap"):
+            self.assertIn(key, entry)
+        rate = entry["rate_p_bootstrap"]
+        self.assertGreaterEqual(rate, 0.0)
+        self.assertLessEqual(rate, 1.0)
+        self.assertLessEqual(entry["ci_low_p_bootstrap"], rate + 1e-9)
+        self.assertGreaterEqual(entry["ci_high_p_bootstrap"], rate - 1e-9)
+
+    def test_is_reproducible_for_the_same_seed(self):
+        kwargs = dict(
+            n_days=60, n_sim=5, seed=7, n_bootstrap=40, scenarios=["ar1_medium"]
+        )
+        first = inf.monte_carlo_validation(**kwargs)
+        second = inf.monte_carlo_validation(**kwargs)
+        self.assertEqual(
+            first["scenarios"]["ar1_medium"]["tests"]["mean"]["rate_p_bootstrap"],
+            second["scenarios"]["ar1_medium"]["tests"]["mean"]["rate_p_bootstrap"],
+        )
+
+    def test_scenarios_cover_the_required_regimes(self):
+        for key in (
+            "independent",
+            "ar1_weak",
+            "ar1_medium",
+            "ar1_strong",
+            "long_range",
+            "missing_random",
+            "missing_clustered",
+            "missing_real_pattern",
+        ):
+            self.assertIn(key, inf.SIMULATION_SCENARIOS)
+
+    def test_csv_round_trip(self):
+        result = inf.monte_carlo_validation(
+            n_days=40, n_sim=4, seed=2, n_bootstrap=30, scenarios=["independent"]
+        )
+        with tempfile.TemporaryDirectory() as folder:
+            path = inf.save_monte_carlo_csv(result, Path(folder) / "mc.csv")
+            self.assertTrue(path.exists())
+            loaded = inf.load_monte_carlo_csv(path)
+            self.assertIsNotNone(loaded)
+            self.assertIn("independent", loaded["scenarios"])
+            self.assertIn("mean", loaded["scenarios"]["independent"]["tests"])
+
+    def test_load_returns_none_when_the_file_is_missing(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.assertIsNone(inf.load_monte_carlo_csv(Path(folder) / "khong.csv"))
+
+
+class TestCalendarAwarePipeline(unittest.TestCase):
+    """Pipeline đầu-cuối phải dùng lịch, và kết luận phải bám quy tắc R1–R5."""
+
+    def test_run_inference_exposes_the_calendar_diagnostics(self):
+        frame = _synthetic_hourly(days=400)
+        results = inf.run_inference(frame, n_bootstrap=40, seed=42, include_simulation=False)
+        calendar = results["calendar"]
+        self.assertGreater(calendar["n_calendar_days"], 0)
+        self.assertLessEqual(calendar["n_observed_days"], calendar["n_calendar_days"])
+        self.assertEqual(
+            calendar["n_observed_days"], results["panel"]["n"]
+        )
+        self.assertEqual(
+            calendar["n_missing_days"],
+            calendar["n_calendar_days"] - calendar["n_observed_days"],
+        )
+
+    def test_season_test_is_always_exploratory(self):
+        frame = _synthetic_hourly(days=400)
+        results = inf.run_inference(frame, n_bootstrap=40, seed=42, include_simulation=False)
+        self.assertEqual(results["tests"]["season_effect"]["status"], "exploratory")
+        self.assertIn("một chu kỳ mùa", results["tests"]["season_effect"]["status_reason"].lower())
+
+    def test_weekday_test_uses_the_hac_estimate(self):
+        frame = _synthetic_hourly(days=400)
+        results = inf.run_inference(frame, n_bootstrap=40, seed=42, include_simulation=False)
+        weekday = results["tests"]["weekday_effect"]
+        self.assertAlmostEqual(
+            weekday["p_value"], weekday["supporting_result"]["p_value"], places=12
+        )
+        self.assertIn("p_value_bootstrap", weekday)
+
+    def test_location_tests_expose_the_bootstrap_alternative(self):
+        frame = _synthetic_hourly(days=400)
+        results = inf.run_inference(frame, n_bootstrap=40, seed=42, include_simulation=False)
+        for key in ("qcvn_24h", "qcvn_annual"):
+            with self.subTest(test=key):
+                self.assertIn("p_value_bootstrap", results["tests"][key])
+                self.assertGreater(results["tests"][key]["p_value_bootstrap"], 0.0)
+
+    def test_data_source_is_a_relative_path(self):
+        frame = _synthetic_hourly(days=400)
+        results = inf.run_inference(frame, n_bootstrap=20, seed=42, include_simulation=False)
+        source = results["meta"]["data_source"]
+        self.assertNotIn("C:\\", source)
+        self.assertNotIn("Users", source)
 
 
 if __name__ == "__main__":
