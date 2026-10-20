@@ -60,7 +60,11 @@ jobs:
           assert "scenario" in frame.columns and "test" in frame.columns
           for column in frame.columns:
               if column.startswith("rate_"):
-                  assert frame[column].between(0, 1).all(), f"{column} ngoài [0, 1]"
+                  # Ô trống = phương pháp **không áp dụng** cho kịch bản đó
+                  # (ví dụ cặp mùa hậu định không có đối chứng HAC) → bỏ qua,
+                  # chỉ kiểm các tỷ lệ **có** mặt.
+                  present = frame[column].dropna()
+                  assert present.between(0, 1).all(), f"{column} ngoài [0, 1]"
           print(f"OK  {path} ({len(frame)} dòng, {frame['scenario'].nunique()} kịch bản)")
           PY
 

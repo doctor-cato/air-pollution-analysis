@@ -2208,6 +2208,31 @@ class TestMonteCarloValidation(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             self.assertIsNone(inf.load_monte_carlo_csv(Path(folder) / "khong.csv"))
 
+    def test_committed_monte_carlo_csv_respects_the_rate_contract(self):
+        """
+        CSV kiểm chứng đã commit phải giữ **hợp đồng**: đủ dòng, có cột bắt buộc,
+        mọi tỷ lệ **có mặt** nằm trong [0, 1], và mỗi kịch bản có **cùng** bộ phép
+        kiểm (không mất dòng khi thêm phép kiểm mới).
+
+        Ô trống là hợp lệ: một phép kiểm có thể **không áp dụng** cho kịch bản đó
+        (ví dụ cặp mùa hậu định không có đối chứng HAC).
+        """
+        path = REPO_ROOT / "reports" / "inference_montecarlo.csv"
+        if not path.exists():
+            self.skipTest("Thiếu reports/inference_montecarlo.csv")
+        frame = pd.read_csv(path)
+        self.assertGreaterEqual(len(frame), 30)
+        self.assertIn("scenario", frame.columns)
+        self.assertIn("test", frame.columns)
+        for column in frame.columns:
+            if column.startswith("rate_"):
+                present = frame[column].dropna()
+                self.assertTrue(present.between(0, 1).all(), column)
+        per_scenario = frame.groupby("scenario")["test"].nunique()
+        self.assertTrue((per_scenario == per_scenario.iloc[0]).all())
+        # Bằng chứng cho p-value hậu định (thống kê chuẩn hoá r_rb) phải có mặt.
+        self.assertIn("pair", set(frame["test"]))
+
 
 class TestCalendarAwarePipeline(unittest.TestCase):
     """Pipeline đầu-cuối phải dùng lịch, và kết luận phải bám quy tắc R1–R5."""
