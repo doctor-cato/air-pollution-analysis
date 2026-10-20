@@ -787,26 +787,32 @@ W01–W15.
 >   `#12`, `#13`) **đã được mở lại** và không còn bị chặn.
 > - Các số liệu thực nghiệm nêu trong các báo cáo (#4, #5) là **kết quả của một lần thực thi cụ thể**
 >   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
-> - Bộ kiểm thử hiện gồm **466 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
+> - Bộ kiểm thử hiện gồm **580 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
 >   [`docs/TEST_SUITE.md`](TEST_SUITE.md) — nguồn chuẩn duy nhất cho số liệu kiểm thử).
 >   Số mà unittest **thực sự chạy và báo cáo** phụ thuộc cả nền tảng lẫn việc có
->   `data/` hay không — **không phải con số 466 trên mọi nền tảng**:
->   - **Windows local (có `data/interim/*.parquet`)**: `Ran 466 tests` + `OK` → **466 pass, 0 skip**.
->   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`)**: `Ran 462 tests` + `OK (skipped=5)`
->     → **457 pass, 5 skip**.
+>   `data/` hay không — **không phải con số 580 trên mọi nền tảng**:
+>   - **Windows local (có `data/interim/*.parquet`)**: `Ran 580 tests` + `OK` → **580 pass, 0 skip**.
+>   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`)**: `Ran 569 tests` + `OK (skipped=6)`
+>     → **565 pass, 6 skip**.
 >
->   CI báo **462 chứ không phải 466** vì `TestDocumentedReproduction.setUpClass` ném
->   `unittest.SkipTest` khi thiếu `data/interim/*.parquet` → cả lớp bị bỏ qua và **4 phương
->   thức của nó không chạy, không được tính vào "Ran"**. Danh sách **5** skip CI báo gồm:
->   `setUpClass` đó; `TestScriptsUseTheComputation.test_progress_report_bullet_carries_the_computed_f_statistic`
+>   CI báo **569 chứ không phải 580** vì **11** phương thức nằm trong **2** lớp mà
+>   `setUpClass` ném `unittest.SkipTest` khi thiếu `data/` — `TestDocumentedReproduction`
+>   (4) và `TestRealDataset` của `tests/test_inference.py` (7); cả hai lớp bị bỏ qua nên
+>   các phương thức **không chạy, không được tính vào "Ran"**, nhưng mỗi lớp vẫn đóng góp
+>   **1 dòng** vào `skipped=`. Vì vậy `pass = Ran − (skipped − holder) = 569 − (6 − 2) = 565`.
+>   Danh sách skip còn lại: `TestScriptsUseTheComputation.test_progress_report_bullet_carries_the_computed_f_statistic`
 >   (cùng lý do thiếu dữ liệu); hai test `@unittest.skipUnless(os.name == "nt")` trong
 >   `tests/test_pipeline_runtime_log.py`; và `test_live_restart_kernel_and_run_all` trong
 >   `tests/test_validate_issue8.py` (thiếu `data/processed/…parquet`). Nguyên nhân từng cái:
->   [`docs/TEST_SUITE.md`](TEST_SUITE.md) §4.
+>   [`docs/TEST_SUITE.md`](TEST_SUITE.md) §3–§4.
 >
 >   ⚠️ **CI xanh KHÔNG đồng nghĩa F-test của Issue #38 đã được tái lập** — CI không có
 >   `data/`. Chỉ lần chạy local có dữ liệu mới ghim được `F = 16,78` / `p = 7,4·10⁻¹¹`
 >   vào một lần fit thật (`tests/test_flag_evidence.py::TestDocumentedReproduction`).
+>   Cùng lý do, CI **cũng không** kiểm chứng được các số suy luận của Issue #11
+>   (Kruskal–Wallis, Mann–Whitney, Wilcoxon, t một mẫu, effect size, block bootstrap CI)
+>   hay nội dung `reports/inference_results.md`; `TestRunInferenceSynthetic` chỉ chạy
+>   toàn pipeline trên dữ liệu tổng hợp để chứng minh mã thực thi được.
 >   Cả hai nền tảng đều `OK`, **0 fail**. Trong đó **43 test hồi quy** của #7 **FAIL trên
 >   bản gốc** và PASS sau khi sửa.
 >
