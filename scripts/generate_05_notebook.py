@@ -6,6 +6,11 @@ lần, hiển thị payload, rồi ghi `reports/inference_results.md` bằng
 `render_inference_report()`. Nhờ vậy số trong notebook và số trong báo cáo không
 thể lệch nhau — và cell cuối kiểm chứng điều đó bằng cách đối chiếu chuỗi.
 
+Phiên bản 2 (sau review `5586524840` của PR #43): p-value của bốn kiểm định xác
+nhận được **dựng lại dưới H₀ có xét tới tự tương quan thời gian**; notebook thêm
+mục 4 (khung phương pháp), mục 9 (mô phỏng kiểm soát sai lầm loại I) và mục 10
+(khả năng khái quát hóa theo mùa).
+
 Chạy:
     python scripts/generate_05_notebook.py
 """
@@ -75,6 +80,14 @@ chính xác + effect size + khoảng tin cậy 95% bootstrap. Kèm theo là H₀
 chọn phép kiểm, cỡ mẫu và số quan sát bị loại. **Không** có kết luận nào chỉ dựa
 vào một p-value.
 
+> **Phiên bản 2 — sửa theo review `5586524840` của PR #43.**
+> Chuỗi PM₂.₅ trung bình ngày có tự tương quan mạnh (ρ₁ ≈ 0,73 ⇒ n_eff ≈ 47 trên
+> 299 ngày). Vì vậy **p-value của SciPy trên dữ liệu này là lạc quan** (quá nhỏ),
+> và block bootstrap cho *khoảng tin cậy* không tự động sửa được điều đó. Phiên bản
+> này **dựng lại phân phối null dưới H₀** cho từng kiểm định, có kiểm soát sai
+> lầm loại I bằng mô phỏng, và **thay đổi kết luận**: 2/4 kiểm định bác bỏ H₀
+> (thay vì 3/4), và kiểm định mùa bị hạ xuống **thăm dò**.
+
 ## Phân biệt với các issue khác
 
 | Nội dung | Thuộc issue | Notebook |
@@ -113,9 +126,13 @@ from src.flag_evidence import format_int_vi, format_number_vi  # noqa: E402
 from src.inference import (  # noqa: E402
     ALPHA,
     BLOCK_LENGTH_DAYS,
+    BLOCK_LENGTH_SENSITIVITY,
     DEFAULT_REPORT_PATH,
+    HAC_LAG_DAILY,
+    HAC_LAG_SENSITIVITY,
     INFERENCE_FIGURES,
     N_BOOTSTRAP,
+    N_NULL_BOOTSTRAP,
     QCVN_2023_PM25_24H_LIMIT,
     QCVN_2023_PM25_ANNUAL_LIMIT,
     SEASON_DISPLAY_ORDER,
@@ -155,10 +172,21 @@ def pct(value: float, digits: int = 2) -> str:
     return f"{value * 100:.{digits}f}%".replace(".", ",")
 
 
+def status_text(status: str) -> str:
+    '''Nhãn trạng thái kết luận, giống hệt báo cáo.'''
+    return {
+        "confirmatory": "XÁC NHẬN",
+        "exploratory": "THĂM DÒ (EXPLORATORY)",
+        "not_confirmable": "KHÔNG XÁC NHẬN ĐƯỢC",
+    }[status]
+
+
 print("✓ Thiết lập môi trường hoàn tất.")
 print(f"  REPO_ROOT:   {REPO_ROOT}")
 print(f"  α:           {ALPHA}")
-print(f"  Bootstrap:   {format_int_vi(N_BOOTSTRAP)} lặp · block {BLOCK_LENGTH_DAYS} ngày · seed 42")
+print(f"  CI bootstrap: {format_int_vi(N_BOOTSTRAP)} lặp · block {BLOCK_LENGTH_DAYS} ngày · seed 42")
+print(f"  Null bootstrap (p): {format_int_vi(N_NULL_BOOTSTRAP)} lặp · block {BLOCK_LENGTH_DAYS} ngày")
+print(f"  HAC lag:     {HAC_LAG_DAILY} ngày")
 """)
 
 # ---------------------------------------------------------------------------
@@ -167,8 +195,9 @@ print(f"  Bootstrap:   {format_int_vi(N_BOOTSTRAP)} lặp · block {BLOCK_LENGTH
 add_md(r"""### 0.1. Chạy toàn bộ suy luận một lần
 
 `run_inference()` đọc dataset đã đóng băng, dựng panel ngày, chẩn đoán phân phối,
-đo tự tương quan, chạy bốn kiểm định xác nhận + sáu cặp hậu định và hai kiểm tra
-độ nhạy. Hàm trả về **một payload**; notebook không gọi lại lần thứ hai.
+đo tự tương quan, chạy **bốn kiểm định xác nhận có xét phụ thuộc thời gian** + sáu
+cặp hậu định + hai kiểm tra độ nhạy + mô phỏng kiểm soát sai lầm loại I. Hàm trả
+về **một payload**; notebook không gọi lại lần thứ hai.
 """)
 
 add_code(r"""results = run_inference()
@@ -183,6 +212,8 @@ tests = results["tests"]
 holm_table = results["holm_confirmatory"]
 posthoc = results["posthoc_season"]
 sensitivity = results["sensitivity"]
+generalization = results["generalization"]
+simulation = results["simulation"]
 context = results["qcvn_context"]
 n_days = panel_info["n"]
 
@@ -190,11 +221,14 @@ n_days = panel_info["n"]
 assert ALPHA == 0.05
 assert meta["alpha"] == ALPHA
 assert meta["n_bootstrap"] == N_BOOTSTRAP == 1_000
+assert meta["n_null_bootstrap"] == N_NULL_BOOTSTRAP == 5_000
 assert meta["bootstrap_seed"] == 42
-assert meta["block_length_days"] == BLOCK_LENGTH_DAYS == 7
+assert meta["block_length_days"] == BLOCK_LENGTH_DAYS == 28
+assert meta["hac_lag_days"] == HAC_LAG_DAILY == 28
 assert audit["days_kept"] == n_days
 assert audit["days_kept"] + audit["days_dropped"] == audit["days_with_any_observation"]
 assert len(holm_table) == 4 and set(tests) == {row["key"] for row in holm_table}
+assert set(tests) == {"season_effect", "weekday_effect", "qcvn_24h", "qcvn_annual"}
 
 print(f"✓ Payload sẵn sàng: n = {format_int_vi(n_days)} ngày, "
       f"{format_int_vi(audit['rows_hourly'])} dòng giờ.")
@@ -223,7 +257,7 @@ người đọc không quy tiêu chí 18 giờ cho văn bản quy chuẩn.
 
 ### 1.2. Vì sao không dùng Train/Test split
 
-Bốn phép kiểm dưới đây **không fit mô hình**, không chọn siêu tham số, không đánh
+Bốn phép kiểm dưới đây **không fit mô hình**, không chọn siêu tham số và không đánh
 giá năng lực dự báo — nên không tồn tại đường rò rỉ Test → Train. Chúng chạy trên
 toàn bộ giai đoạn quan sát để tận dụng cỡ mẫu, riêng kiểm định ngưỡng năm cần trọn
 chu kỳ. Điểm cắt `2026-01-15 00:00+07:00` của Issue #7 **giữ nguyên** và vẫn là
@@ -351,18 +385,18 @@ chệch xuống.
 $$\hat{n}_{\text{eff}} = n \cdot \frac{1 - \hat{\rho}_1}{1 + \hat{\rho}_1}$$
 
 Đây là **chỉ báo bậc độ lớn**, không phải hiệu chỉnh p-value. Nó trả lời: "299 ngày
-này chứa bao nhiêu thông tin độc lập?" Nếu $n_{\text{eff}}$ nhỏ hơn nhiều so với
+này chứa bao nhiêu thông tin độc lập?" Nếu $n_{\text{eff}}$ nhỏ hơn n nhiều so với
 $n$, p-value của các phép kiểm giả định độc lập là **lạc quan**.
 
-### 3.3. Cách xử lý
+### 3.3. Cách xử lý (sau review 5586524840)
 
 1. Hạ đơn vị phân tích từ **giờ** xuống **ngày**.
-2. Mọi CI dùng **circular moving block bootstrap**, block **7 ngày**, **1.000 lặp**,
-   seed **42**, CI percentile 95%. Không resample từng hàng giờ, cũng không resample
-   độc lập từng ngày.
-3. Với so sánh hai nhóm, mỗi nhóm được resample **theo block riêng** (stratified)
-   để giữ nguyên cỡ mẫu từng nhóm.
-4. Thêm hai **kiểm tra độ nhạy ở mức tuần** (mục 8) — nơi tự tương quan thấp hơn.
+2. **Dựng lại phân phối null dưới H₀** cho từng kiểm định — đây mới là phần sửa
+   p-value (mục 4). Ở phiên bản trước, block bootstrap chỉ sửa *khoảng tin cậy*.
+3. Mọi CI và mọi resample dùng **circular moving block bootstrap**, block **28 ngày**
+   (4 chu kỳ tuần), **1.000 lặp** CI / **5.000 lặp** null, seed **42**, CI percentile 95%.
+4. Kiểm soát sai lầm loại I bằng **mô phỏng dưới H₀** (mục 9).
+5. Thêm hai **kiểm tra độ nhạy ở mức tuần** (mục 11) — nơi tự tương quan thấp hơn.
 """)
 
 add_code(r"""acf_rows = []
@@ -384,12 +418,13 @@ assert dependence["hourly_acf"][1] > dependence["daily_acf"][1], "ACF giờ ph�
 
 add_md(r"""**Hệ quả — nói thẳng, không che.** Mann-Whitney, Kruskal-Wallis, Wilcoxon và
 t-test đều giả định quan sát độc lập. Ở mức ngày, giả định đó **không** được bảo
-đảm ($\hat{\rho}_1 \approx 0{,}73$), nên p-value của chúng là **lạc quan**. Block
-bootstrap chỉ sửa **khoảng tin cậy**, không sửa p-value. Vì vậy:
+đảm ($\hat{\rho}_1 \approx 0{,}73$). Vì vậy:
 
-- p được đọc là **chỉ báo độ tương thích với H₀**, không phải bằng chứng chính xác tuyệt đối.
-- Mọi kết luận phải đọc kèm effect size và CI — CI mới là phần tôn trọng cấu trúc thời gian.
-- Hai kiểm tra độ nhạy ở mức tuần (mục 8) tồn tại để xem kết luận có phụ thuộc vào giả định độc lập của từng ngày hay không.
+- p-value của SciPy trên dữ liệu này là **lạc quan** — mức lạc quan được đo bằng
+  mô phỏng ở mục 9 (tỷ lệ bác bỏ dưới H₀ lên tới 80% so với α = 5%).
+- Mọi kết luận phải đọc kèm effect size và CI.
+- Block bootstrap chỉ sửa **khoảng tin cậy** nếu ta dùng nó cho CI; muốn sửa
+  **p-value** thì phải dựng phân phối null dưới H₀ — đó là mục 4.
 """)
 
 # ---------------------------------------------------------------------------
@@ -399,81 +434,106 @@ add_code(r"""display_image(Image(filename=str(FIGURES["autocorrelation"]), width
 """)
 
 # ---------------------------------------------------------------------------
-# CELL 9: Section 4 — design of confirmatory family
+# CELL 9: Section 4 — method framework
 # ---------------------------------------------------------------------------
 add_md(r"""---
 
-## 4. Thiết kế family xác nhận: bốn câu hỏi, bốn phép kiểm, một lần hiệu chỉnh Holm
+## 4. Khung phương pháp: dựng phân phối null dưới H₀ có xét phụ thuộc thời gian
 
 ### 4.1. Bốn giả thuyết — phát biểu trước khi xem kết quả
 
-| # | Câu hỏi | H₀ | H₁ | Phép kiểm | Vì sao phép kiểm này |
+| # | Câu hỏi | H₀ | H₁ | Phương pháp **chính** | Vì sao phương pháp này |
 |---|---|---|---|---|---|
-| 1 | Khác biệt giữa bốn mùa | Trung vị PM₂.₅ trung bình ngày bằng nhau giữa 4 mùa | Có ít nhất một mùa khác biệt | Kruskal-Wallis | 4 nhóm (không phải 2) nên cần omnibus giữ sai lầm loại I ở α; dữ liệu lệch, có outlier |
-| 2 | Ngày làm việc vs cuối tuần | Hai trung vị bằng nhau | Hai trung vị khác nhau | Mann-Whitney U | Hai nhóm độc lập về thiết kế; so hạng nên không bị vài ngày ô nhiễm nặng chi phối |
-| 3 | QCVN 24 giờ (50 µg/m³) | Trung vị trung bình ngày = 50 | Trung vị ≠ 50 | Wilcoxon signed-rank một mẫu | So một chuỗi với hằng số, không giả định chuẩn; mỗi ngày là một cặp (giá trị, 50) |
-| 4 | QCVN năm (25 µg/m³) | Trung bình của trung bình ngày = 25 | Trung bình ≠ 25 | t-test một mẫu | Ngưỡng năm là ngưỡng của **trung bình**, nên phép kiểm phải so trung bình |
+| 1 | Khác biệt giữa bốn mùa | 4 mùa cùng phân phối (quá trình ổn định) | Có ít nhất một mùa khác | Kruskal-Wallis + **null block bootstrap** trên chuỗi gộp | Omnibus 4 nhóm; null được dựng dưới H₀ với cấu trúc phụ thuộc được giữ |
+| 2 | Ngày làm việc vs cuối tuần | Hai nhóm cùng phân phối | Hai nhóm khác nhau | Mann-Whitney U + **null block bootstrap** trên chuỗi gộp | So hạng, bền với outlier; null dựng dưới H₀ |
+| 3 | QCVN 24 giờ (50 µg/m³) | P(trung bình ngày > 50) = 0,5 | Khác 0,5 | **HAC/Newey–West** cho tỷ lệ vượt ngưỡng | Tương đương trung vị = 50 với phân phối liên tục; SE sandwich xử lý tự tương quan |
+| 4 | QCVN năm (25 µg/m³) | E(trung bình ngày) = 25 | Khác 25 | **HAC/Newey–West** (mô hình chỉ có hệ số chặn) | Ngưỡng năm là ngưỡng của **trung bình**; SE sandwich là phương sai dài hạn |
 
 **Cả bốn kiểm định đều hai phía, α = 0,05.** Chiều của hiệu ứng **không** được suy
 từ p-value mà đọc từ ước lượng điểm và CI. Lý do: chọn một phía sau khi nhìn dữ
 liệu là thay đổi giả thuyết giữa chừng — làm p mất ý nghĩa.
 
-### 4.2. Vì sao Holm, và family gồm những gì
+### 4.2. Ba nguyên tắc bắt buộc của phương pháp
+
+1. **Null phải được dựng DƯỚI H₀.** Với kiểm định theo nhóm, null là chuỗi **gộp**
+   (H₀: các nhóm cùng phân phối). Với kiểm định vị trí, H₀ được **áp đặt** bằng
+   cách dựng bản sao `x* = μ + resample(x − θ̂)` — mốc của H₀ nằm trong bản sao.
+   **Không** dùng bootstrap trên chuỗi quan sát rồi đếm tỷ lệ thống kê cực đoan.
+2. **Nhãn nhóm đi theo vị trí lịch, không hoán đổi ngẫu nhiên.** Hoán đổi nhãn mùa
+   sẽ phá vỡ cấu trúc mùa vụ (mùa là các **đoạn thời gian liên tiếp**).
+3. **CI ≠ p-value.** CI là khoảng tin cậy của ước lượng; p-value là xác suất của dữ
+   liệu **có điều kiện H₀ đúng**. Báo cáo in cả hai, không suy ra cái này từ cái kia.
+
+### 4.3. Quy tắc hạ mức kết luận — chốt trước khi xem kết quả
+
+| Quy tắc | Điều kiện | Hệ quả |
+|---|---|---|
+| R1 — Ổn định | Kết luận đổi chiều khi đổi độ dài block / lag HAC trong lưới độ nhạy | Hạ xuống **THĂM DÒ** |
+| R2 — Đồng thuận | Phương pháp đối chứng cho kết luận khác chiều phương pháp chính | Hạ xuống **THĂM DÒ** |
+| R3 — Tính được | Không dựng được p hợp lệ | **KHÔNG XÁC NHẬN ĐƯỢC** |
+
+> **Family Holm vẫn gồm đúng 4 kiểm định** như đã chốt trước khi xem dữ liệu. Việc một
+> kiểm định bị hạ xuống *thăm dò* **không** làm thay đổi family — thay đổi family sau khi
+> nhìn kết quả là p-hacking.
+
+### 4.4. Vì sao Holm, và family gồm những gì
 
 Holm kiểm soát FWER **không cần giả định các kiểm định độc lập** và luôn mạnh hơn
-hoặc bằng Bonferroni. Family xác nhận gồm **đúng bốn** kiểm định trên — mỗi kiểm
-định trả lời một câu hỏi khác nhau, hiệu chỉnh ở đây là phòng ngừa chứ không phải
-để "cứu" kết luận.
-
-Sáu cặp mùa hậu định **không** thuộc family này: chúng được khảo sát sau khi
-Kruskal-Wallis bác bỏ H₀, nên mang nhãn **exploratory** và được hiệu chỉnh Holm
-trong **family riêng**. Hai kiểm tra độ nhạy không nằm trong family nào.
-
-### 4.3. Ngưỡng QCVN — đúng chu kỳ lấy mẫu
-
-- Ngưỡng **24 giờ = 50 µg/m³** chỉ áp cho **trung bình 24 giờ**.
-- Ngưỡng **năm = 25 µg/m³** chỉ áp cho **trung bình năm**.
-
-Không có phép so sánh nào giữa **một giờ** với ngưỡng ngày/năm. Báo cáo cũng
-**không** kết luận "đạt/không đạt QCVN": quy chuẩn có quy tắc đánh giá tuân thủ
-riêng (số ngày vượt được phép trong năm) mà dự án không mã hoá.
+hoặc bằng Bonferroni. Sáu cặp mùa hậu định **không** thuộc family này: chúng được
+khảo sát sau khi kiểm định omnibus, nên mang nhãn **exploratory** và được hiệu chỉnh
+Holm trong **family riêng**. Hai kiểm tra độ nhạy không nằm trong family nào.
 """)
 
 add_code(r"""design_rows = []
 for row in holm_table:
     test = tests[row["key"]]
-    if row["key"] == "season_kruskal":
+    if row["key"] == "season_effect":
         n_text = f"n = {format_int_vi(test['n'])} ngày / 4 nhóm"
-    elif row["key"] == "weekday_mannwhitney":
+    elif row["key"] == "weekday_effect":
         n_text = f"n₁ = {format_int_vi(test['n_a'])}, n₂ = {format_int_vi(test['n_b'])}"
     else:
         n_text = f"n = {format_int_vi(test['n'])} ngày"
-    design_rows.append((row["label"], n_text, test["alternative"], test["statistic_name"]))
+    design_rows.append((
+        row["label"],
+        n_text,
+        test["alternative"],
+        test["statistic_name"],
+        test["method"]["primary"],
+    ))
 
-display(pd.DataFrame(design_rows, columns=["Kiểm định", "Cỡ mẫu", "Alternative", "Thống kê"]))
+display(pd.DataFrame(
+    design_rows,
+    columns=["Kiểm định", "Cỡ mẫu", "Alternative", "Thống kê", "Phương pháp chính"],
+))
 print(f"→ Tổng số quan sát bị loại khỏi panel: {format_int_vi(audit['days_dropped'])} ngày "
       f"(từ {format_int_vi(audit['days_with_any_observation'])} ngày có quan sát).")
+print(f"→ Block bootstrap: {format_int_vi(N_BOOTSTRAP)} lặp cho CI, "
+      f"{format_int_vi(N_NULL_BOOTSTRAP)} lặp cho null p-value, block {BLOCK_LENGTH_DAYS} ngày, seed 42.")
 """)
 
 # ---------------------------------------------------------------------------
 # CELL 10: Holm table
 # ---------------------------------------------------------------------------
-add_md(r"""### 4.4. Kết quả family xác nhận — p thô và p Holm cạnh nhau
+add_md(r"""---
+
+## 5. Family xác nhận — p thô, p Holm và trạng thái kết luận
 
 Cột **p thô** được giữ nguyên để người đọc tự kiểm tra: hiệu chỉnh Holm có làm đổi
-kết luận hay không. Với bốn kiểm định này, không có kết luận nào đổi chiều.
+kết luận hay không. Bảng còn in **p tham chiếu** — p-value của phép kiểm SciPy cũ
+(giả định quan sát độc lập) — để thấy rõ hiệu chỉnh phụ thuộc thời gian đã làm thay
+đổi kết luận thế nào.
 """)
 
 add_code(r"""holm_rows = []
 for row in holm_table:
-    test = tests[row["key"]]
     holm_rows.append({
         "Kiểm định": row["label"],
         "Thống kê": f"{row['statistic_name']} = {format_number_vi(row['statistic'], 4)}",
-        "p thô": p_text(row["p_raw"]),
+        "p (hiệu chỉnh)": p_text(row["p_raw"]),
         "p Holm": p_text(row["p_holm"]),
+        "p tham chiếu": p_text(row["p_raw_independence"]),
         "Effect size": f"{row['effect_size_name']} = {format_number_vi(row['effect_size'], 4)}",
-        "Kết luận (Holm)": "bác bỏ H₀" if row["reject_holm"] else "không bác bỏ H₀",
+        "Trạng thái": status_text(row["status"]),
     })
 display(pd.DataFrame(holm_rows))
 
@@ -483,7 +543,12 @@ for row in holm_table:
     assert row["reject_raw"] == (row["p_raw"] < ALPHA)
 
 n_reject = sum(row["reject_holm"] for row in holm_table)
-print(f"→ {n_reject}/4 kiểm định bác bỏ H₀ sau hiệu chỉnh Holm ở α = {ALPHA}.")
+n_reject_ref = sum(row["reject_holm_independence"] for row in holm_table)
+n_expl = sum(row["status"] == "exploratory" for row in holm_table)
+print(f"→ Có xét phụ thuộc thời gian: {n_reject}/4 bác bỏ H₀ sau Holm "
+      f"({n_expl} kiểm định ở trạng thái thăm dò).")
+print(f"→ Tham chiếu (giả định độc lập): {n_reject_ref}/4 bác bỏ H₀ sau Holm.")
+print("→ Family giữ nguyên 4 kiểm định như đã chốt trước khi xem dữ liệu.")
 """)
 
 # ---------------------------------------------------------------------------
@@ -491,26 +556,28 @@ print(f"→ {n_reject}/4 kiểm định bác bỏ H₀ sau hiệu chỉnh Holm �
 # ---------------------------------------------------------------------------
 add_md(r"""---
 
-## 5. Kiểm định 1 — Khác biệt giữa bốn mùa (Kruskal-Wallis)
+## 6. Kiểm định 1 — Khác biệt giữa bốn mùa
 
-**H₀:** trung vị PM₂.₅ trung bình ngày bằng nhau giữa bốn mùa.  
-**H₁:** có ít nhất một mùa có trung vị khác.  
-**α = 0,05, hai phía.**
+- **H₀:** phân phối trung bình ngày giống nhau ở cả bốn mùa (trong một quá trình ổn định).
+- **H₁:** có ít nhất một mùa khác.
+- **α = 0,05**, omnibus (đuôi trên của H).
 
-### 5.1. Vì sao Kruskal-Wallis
+### 6.1. Phương pháp
 
-- **Bốn nhóm**, không phải hai: dùng một loạt Mann-Whitney cho 6 cặp sẽ thổi phồng sai lầm loại I; KW omnibus giữ mức α trước, rồi mới khảo sát cặp.
-- Phân phối lệch phải và có outlier (mục 2) → so sánh hạng ổn định hơn ANOVA trên trung bình.
-- Effect size dùng $\varepsilon^2 = H/(n-1)$ — tỷ lệ phương sai **hạng** giải thích bởi mùa.
+- **Chính:** Kruskal-Wallis với **null circular moving block bootstrap** trên chuỗi
+  **gộp** toàn bộ ngày; **nhãn mùa giữ theo vị trí lịch** (không hoán đổi nhãn).
+- **Đối chứng:** hồi quy **HAC/Newey–West** `[1, xu hướng, 3 dummy mùa]`, kiểm định
+  Wald đồng thời — dùng để **tách mùa khỏi xu hướng thời gian**, vì bốn mùa là bốn
+  **đoạn thời gian liên tiếp**.
 
-### 5.2. Vì sao mùa được định nghĩa theo khí tượng
+### 6.2. Vì sao mùa được định nghĩa theo khí tượng
 
 Đông = 12–2, Xuân = 3–5, Hè = 6–8, Thu = 9–11. Định nghĩa này cố định trong
 `src/flag_evidence.py` và dùng chung với Issue #8, nên nhãn mùa của hai notebook
 không thể lệch nhau.
 """)
 
-add_code(r"""season = tests["season_kruskal"]
+add_code(r"""season = tests["season_effect"]
 season_rows = [
     (SEASON_LABELS_VI[s], format_int_vi(season["group_sizes"][s]), format_number_vi(season["group_medians"][s]))
     for s in SEASON_DISPLAY_ORDER if s in season["group_sizes"]
@@ -520,26 +587,39 @@ display(pd.DataFrame(season_rows, columns=["Mùa", "n (ngày)", "Trung vị (µg
 season_ci = season["ci_dong_vs_he"]
 print(f"H = {format_number_vi(season['statistic'], 4)} · df = {season['df']} · "
       f"n = {format_int_vi(season['n'])}")
-print(f"p thô  = {p_text(season['p_value'])}")
-print(f"p Holm = {p_text(season['p_holm'])}")
-print(f"ε²     = {format_number_vi(season['effect_size'], 4)}")
+print(f"p (null bootstrap, có xét phụ thuộc) = {p_text(season['p_value'])}")
+print(f"p Holm                             = {p_text(season['p_holm'])}")
+print(f"p tham chiếu (giả định độc lập)    = {p_text(season['p_value_independence'])}")
+print(f"ε²                                 = {format_number_vi(season['effect_size'], 4)}")
+print(f"Đối chứng HAC (có xu hướng): F = {format_number_vi(season['supporting_result']['statistic'], 3)}, "
+      f"p = {p_text(season['supporting_result']['p_value'])}, "
+      f"xu hướng = {format_number_vi(season['supporting_result']['trend_per_month'])} µg/m³ mỗi tháng")
 print(f"CI 95% block bootstrap cho trung vị Đông − Hè: "
       f"{format_number_vi(season_ci['point'])} µg/m³, {ci_text(season_ci)}")
 
-assert season["p_holm"] < ALPHA
+print("\nĐộ nhạy theo độ dài block (phương pháp chính):")
+for name, entry in sorted(season["sensitivity"]["block_length"].items(), key=lambda kv: int(kv[0])):
+    print(f"  block {name:>2} ngày: p = {p_text(entry['p_value'])}")
+print("Độ nhạy theo lag HAC (phương pháp đối chứng):")
+for name, entry in sorted(season["sensitivity"]["hac_lag"].items(), key=lambda kv: int(kv[0])):
+    print(f"  lag {name:>2} ngày: p = {p_text(entry['p_value'])}")
+
+print(f"\nTrạng thái kết luận: {status_text(season['status'])} — {season['status_reason']}")
+assert season["status"] == "exploratory", "Kết luận mùa phải ở trạng thái thăm dò"
 assert 0.0 <= season["effect_size"] <= 1.0
-assert season_ci["point"] > 0 and season_ci["ci_low"] > 0, "CI không chứa 0 → khác biệt dương rõ"
 """)
 
-add_md(r"""**Đọc kết quả.** Khác biệt mùa có ý nghĩa thống kê **và** có ý nghĩa thực tiễn:
-$\varepsilon^2$ ở mức trung bình–lớn theo quy ước Cohen, và CI của chênh lệch Đông −
-Hè không chứa 0. Đây là kết luận **mô tả cho giai đoạn 07/2025–07/2026**, không
-ngoại suy sang năm khác hay trạm khác (mục 12).
+add_md(r"""**Đọc kết quả.** Khác biệt mùa **rõ rệt về mặt mô tả**: ε² ở mức trung bình,
+CI của chênh lệch Đông − Hè không chứa 0. Nhưng p-value sau hiệu chỉnh phụ thuộc
+thời gian **không ổn định** theo độ dài block (0,0004 ở block 7 ngày → 0,0788 ở block
+42 ngày) — nên theo quy tắc R1 kiểm định này bị hạ xuống **THĂM DÒ**. Kết luận mùa
+chỉ nên đọc như **mô tả của giai đoạn 07/2025–07/2026**, không phải quy luật nhiều
+năm (mục 10).
 
-### 5.3. Hậu định sáu cặp mùa — exploratory, Holm family riêng
+### 6.3. Hậu định sáu cặp mùa — exploratory, Holm family riêng
 
 Sáu cặp dưới đây **không** tham gia family xác nhận. Chúng chỉ định vị khác biệt
-nằm ở đâu; kết luận của Issue #11 vẫn dựa vào KW omnibus ở trên.
+nằm ở đâu; p-value của chúng cũng đã được dựng lại dưới H₀ có xét phụ thuộc.
 """)
 
 add_code(r"""pair_rows = []
@@ -549,11 +629,11 @@ for pair in posthoc["pairs"]:
         "Trung vị A": format_number_vi(pair["median_a"]),
         "Trung vị B": format_number_vi(pair["median_b"]),
         "U": format_number_vi(pair["statistic"], 1),
-        "p thô": p_text(pair["p_value"]),
+        "p (hiệu chỉnh)": p_text(pair["p_value"]),
         "p Holm": p_text(pair["p_holm"]),
+        "p tham chiếu": p_text(pair["p_value_independence"]),
         "r_rb": format_number_vi(pair["effect_size"], 3),
         "CI 95% (A−B)": ci_text(pair["ci"]),
-        "Kết luận": "bác bỏ H₀" if pair["reject_holm"] else "không bác bỏ H₀",
     })
 display(pd.DataFrame(pair_rows))
 assert posthoc["n_pairs"] == 6
@@ -569,57 +649,67 @@ add_code(r"""display_image(Image(filename=str(FIGURES["season"]), width=760))
 # ---------------------------------------------------------------------------
 add_md(r"""---
 
-## 6. Kiểm định 2 — Ngày làm việc vs ngày cuối tuần (Mann-Whitney U)
+## 7. Kiểm định 2 — Ngày làm việc vs ngày cuối tuần
 
-**H₀:** trung vị PM₂.₅ trung bình ngày của ngày làm việc bằng của ngày cuối tuần.  
-**H₁:** hai trung vị khác nhau.  
-**α = 0,05, hai phía.**
+- **H₀:** phân phối PM₂.₅ trung bình ngày của ngày làm việc bằng của ngày cuối tuần.
+- **H₁:** hai phân phối khác nhau.
+- **α = 0,05**, hai phía.
 
-### 6.1. Vì sao Mann-Whitney
+### 7.1. Phương pháp
 
-Hai nhóm **độc lập về thiết kế** (một ngày chỉ thuộc đúng một nhóm), nhưng phân
-phối lệch và có outlier. MW so sánh hạng nên không bị vài ngày ô nhiễm nặng chi
-phối. Effect size $r_{rb} = 2U/(n_1 n_2) - 1$, quy ước **dương = ngày làm việc cao
-hơn** — quy ước này được ghi ngay trong module để không ai đảo dấu.
+- **Chính:** Mann-Whitney U với **null circular moving block bootstrap** trên chuỗi
+  **gộp**; nhãn weekday/weekend **giữ theo vị trí lịch** → cấu trúc tuần không bị
+  phá vỡ.
+- **Đối chứng:** hồi quy **HAC/Newey–West** `[1, xu hướng, dummy cuối tuần]`.
 
-### 6.2. "Không bác bỏ H₀" không có nghĩa "hai nhóm bằng nhau"
+Effect size $r_{rb} = 2U/(n_1 n_2) - 1$, quy ước **dương = ngày làm việc cao hơn** —
+quy ước này được ghi ngay trong module để không ai đảo dấu.
+
+### 7.2. "Không bác bỏ H₀" không có nghĩa "hai nhóm bằng nhau"
 
 Đây là chỗ dễ đọc sai nhất. Báo cáo kèm **MDE** — chênh lệch nhỏ nhất phát hiện
-được ở power 80%, α = 0,05, tính hậu nghiệm từ SD quan sát:
+được ở power 80%, α = 0,05, tính hậu nghiệm từ SD quan sát (công thức này **giả định
+độc lập**, nên với chuỗi tự tương quan nó **đánh giá thấp** ngưỡng phân giải thực tế):
 
 $$\text{MDE} = (z_{1-\alpha/2} + z_{\text{power}}) \cdot s_{\text{pooled}} \cdot \sqrt{\tfrac{1}{n_1} + \tfrac{1}{n_2}}$$
 
-MDE là **ngưỡng phân giải của phép kiểm**, không phải kết luận về hiệu ứng. Nếu
-chênh lệch quan sát nhỏ hơn MDE thì dữ liệu **không đủ độ phân giải** để tách "không
-có khác biệt" khỏi "khác biệt nhỏ hơn MDE".
+MDE là **ngưỡng phân giải của phép kiểm**, không phải kết luận về hiệu ứng.
 """)
 
-add_code(r"""weekday = tests["weekday_mannwhitney"]
+add_code(r"""weekday = tests["weekday_effect"]
 mde = sensitivity["power_mde"]
 weekday_ci = weekday["ci"]
 
 print(f"Ngày làm việc: n = {format_int_vi(weekday['n_a'])}, trung vị {format_number_vi(weekday['median_a'])} µg/m³")
 print(f"Ngày cuối tuần: n = {format_int_vi(weekday['n_b'])}, trung vị {format_number_vi(weekday['median_b'])} µg/m³")
-print(f"U = {format_number_vi(weekday['statistic'], 1)} · p thô = {p_text(weekday['p_value'])} · "
+print(f"U = {format_number_vi(weekday['statistic'], 1)} · p (null bootstrap) = {p_text(weekday['p_value'])} · "
       f"p Holm = {p_text(weekday['p_holm'])}")
+print(f"p tham chiếu (giả định độc lập) = {p_text(weekday['p_value_independence'])}")
+print(f"Đối chứng HAC: t = {format_number_vi(weekday['supporting_result']['statistic'], 3)}, "
+      f"p = {p_text(weekday['supporting_result']['p_value'])}")
 print(f"Chênh lệch trung vị (weekday − weekend) = {format_number_vi(weekday['median_difference'])} µg/m³, "
       f"CI 95% {ci_text(weekday_ci)}")
 print(f"r_rb = {format_number_vi(weekday['effect_size'], 4)}  (dương = ngày làm việc cao hơn)")
 print(f"MDE ≈ {format_number_vi(mde['mde'])} µg/m³ "
       f"(SD gộp {format_number_vi(mde['pooled_sd'])}; power {mde['power']:.0%}; α = {mde['alpha']})")
 
+print("\nĐộ nhạy theo độ dài block:")
+for name, entry in sorted(weekday["sensitivity"]["block_length"].items(), key=lambda kv: int(kv[0])):
+    print(f"  block {name:>2} ngày: p = {p_text(entry['p_value'])}")
+
 ci_includes_zero = weekday_ci["ci_low"] <= 0.0 <= weekday_ci["ci_high"]
+print(f"\nTrạng thái kết luận: {status_text(weekday['status'])} — {weekday['status_reason']}")
 print(f"CI chứa 0: {ci_includes_zero} · |chênh lệch| < MDE: {abs(weekday['median_difference']) < mde['mde']}")
 assert weekday["p_holm"] >= ALPHA
 assert ci_includes_zero
-assert abs(weekday["median_difference"]) < mde["mde"]
 """)
 
-add_md(r"""**Đọc kết quả.** Không bác bỏ H₀. Nhưng vì chênh lệch quan sát **nhỏ hơn MDE** và
-CI chứa 0, kết luận đúng là: *dữ liệu không đủ độ phân giải để kết luận có hay không
-một khác biệt nhỏ hơn MDE* — **không** phải "ngày làm việc và cuối tuần bằng nhau".
-Ước lượng điểm còn nằm trong khoảng sai số thực hành của một trạm đo, nên không
-được dùng để quy kết nguồn phát thải hay hành vi giao thông.
+add_md(r"""**Đọc kết quả.** Không bác bỏ H₀ — và kết luận này **ổn định** theo độ dài block.
+Nhưng vì chênh lệch quan sát **nhỏ hơn MDE** và CI chứa 0, kết luận đúng là: *dữ liệu
+không đủ độ phân giải để kết luận có hay không một khác biệt nhỏ hơn MDE* — **không**
+phải "ngày làm việc và cuối tuần bằng nhau". Ước lượng điểm còn nằm trong khoảng sai
+số thực hành của một trạm đo, nên không được dùng để quy kết nguồn phát thải hay hành
+vi giao thông.
 """)
 
 add_code(r"""display_image(Image(filename=str(FIGURES["weekday"]), width=760))
@@ -630,80 +720,87 @@ add_code(r"""display_image(Image(filename=str(FIGURES["weekday"]), width=760))
 # ---------------------------------------------------------------------------
 add_md(r"""---
 
-## 7. Kiểm định 3 — Đối chiếu QCVN 05:2023/BTNMT, đúng chu kỳ lấy mẫu
+## 8. Kiểm định 3 — Đối chiếu QCVN 05:2023/BTNMT, đúng chu kỳ lấy mẫu
 
-Hai ngưỡng được kiểm định **tách biệt**, mỗi ngưỡng đi với đúng chu kỳ trung bình
-của nó:
+Hai ngưỡng được kiểm định **tách biệt**, mỗi ngưỡng đi với đúng chu kỳ trung bình của
+nó:
 
-| Ngưỡng | Giá trị | Đơn vị áp dụng | Phép kiểm | Tham số so sánh |
+| Ngưỡng | Giá trị | Đơn vị áp dụng | Phương pháp | Tham số so sánh |
 |---|---|---|---|---|
-| Trung bình **24 giờ** | 50 µg/m³ | Trung bình của 24 giờ | Wilcoxon signed-rank | **Trung vị** của trung bình ngày |
-| Trung bình **năm** | 25 µg/m³ | Trung bình của một năm | t-test một mẫu | **Trung bình** của trung bình ngày |
+| Trung bình **24 giờ** | 50 µg/m³ | Trung bình của 24 giờ | HAC/Newey–West trên **tỷ lệ vượt ngưỡng** | **Trung vị** của trung bình ngày (tương đương P(>50) = 0,5) |
+| Trung bình **năm** | 25 µg/m³ | Trung bình của một năm | HAC/Newey–West (hệ số chặn) | **Trung bình** của trung bình ngày |
 
-Không có phép so sánh nào giữa **một giờ** với ngưỡng ngày hoặc ngưỡng năm.
+Không có phép so sánh nào giữa **một giờ** với ngưỡng ngày/năm.
 
-### 7.1. Ngưỡng 24 giờ — 50 µg/m³
+### 8.1. Ngưỡng 24 giờ — 50 µg/m³
 
-**H₀:** trung vị của trung bình ngày bằng 50 µg/m³.  
-**H₁:** trung vị khác 50.  
-**α = 0,05, hai phía.**
+- **H₀:** P(trung bình ngày > 50) = 0,5 (tương đương trung vị = 50 với phân phối liên tục).
+- **H₁:** khác 0,5.
+- **α = 0,05**, hai phía.
 
-Vì sao Wilcoxon signed-rank: so một chuỗi với một hằng số, không giả định chuẩn;
-mỗi ngày là một cặp (giá trị, 50). Effect size $r = (W^+ - W^-)/(W^+ + W^-)$,
-**âm = trung vị nằm dưới ngưỡng**.
+Vì sao tỷ lệ vượt ngưỡng chứ không phải signed-rank: với chuỗi tự tương quan mạnh,
+dãy **chênh lệch lớn** (ngày vượt ngưỡng rất nhiều) rất bền → SE HAC của thống kê
+signed-rank bị thổi phồng, làm phép kiểm **mất sức mạnh** một cách không cần thiết.
+Thống kê tỷ lệ vượt có cùng H₀ và ổn định hơn; bản signed-rank có HAC vẫn được
+tính và in ra như **đối chứng**.
 
-### 7.2. Ngưỡng năm — 25 µg/m³
+### 8.2. Ngưỡng năm — 25 µg/m³
 
-**H₀:** trung bình của trung bình ngày bằng 25 µg/m³.  
-**H₁:** trung bình khác 25.  
-**α = 0,05, hai phía.**
-
-Vì sao t-test một mẫu: ngưỡng năm là ngưỡng của **trung bình**, nên phép kiểm phải
-so trung bình — dùng trung vị ở đây sẽ trả lời một câu hỏi khác.
+- **H₀:** E(trung bình ngày) = 25.
+- **H₁:** khác 25.
+- **α = 0,05**, hai phía.
 
 > **Giới hạn thiết kế:** dải dữ liệu 07/2025–07/2026 **không** trùng năm dương lịch.
 > Đại lượng được kiểm định là trung bình **giai đoạn quan sát**, không phải "trung
 > bình năm" theo định nghĩa quy chuẩn. Nó là chỉ báo mức nền, không phải phán quyết
 > tuân thủ.
 
-### 7.3. Hai mẫu số, hai câu hỏi — không được trộn
+### 8.3. Hai mẫu số, hai câu hỏi — không được trộn
 
 | Cách đếm | Tử số | Mẫu số | Trả lời câu hỏi |
 |---|---|---|---|
 | Cửa sổ trượt 24 giờ | Số cửa sổ ≥ 50 | Số cửa sổ hợp lệ | "Bao nhiêu phần trăm **cửa sổ 24 giờ** vượt ngưỡng?" |
 | Trung bình ngày | Số ngày ≥ 50 | Số ngày đủ độ phủ | "Bao nhiêu phần trăm **ngày** vượt ngưỡng?" |
 
-Ghép tử số của cách này với mẫu số của cách kia sẽ cho một tỷ lệ **không ứng với
+Ghép tử số của cách này với mẫu số của cách kia sẽ cho ra một tỷ lệ **không ứng với
 đơn vị nào**. Ví dụ cụ thể được in ở cell dưới.
 """)
 
-add_code(r"""q24 = tests["qcvn_24h_wilcoxon"]
-annual = tests["qcvn_annual_ttest"]
+add_code(r"""q24 = tests["qcvn_24h"]
+annual = tests["qcvn_annual"]
 
 print(f"[24 giờ] n = {format_int_vi(q24['n'])} ngày · trung vị {format_number_vi(q24['median'])} µg/m³")
-print(f"  W = {format_number_vi(q24['statistic'], 1)} "
-      f"(W⁺ = {format_number_vi(q24['w_plus'], 1)}, W⁻ = {format_number_vi(q24['w_minus'], 1)})")
-print(f"  p thô = {p_text(q24['p_value'])} · p Holm = {p_text(q24['p_holm'])}")
+print(f"  t (tỷ lệ vượt ngưỡng, HAC) = {format_number_vi(q24['statistic'], 4)}")
+print(f"  p (hiệu chỉnh phụ thuộc) = {p_text(q24['p_value'])} · p Holm = {p_text(q24['p_holm'])}")
+print(f"  p tham chiếu (Wilcoxon, giả định độc lập) = {p_text(q24['p_value_independence'])}")
+print(f"  đối chứng: null-imposed bootstrap p = {p_text(q24['supporting_result']['null_imposed_p'])}, "
+      f"p đảo CI = {p_text(q24['supporting_result']['percentile_p'])}, "
+      f"signed-rank HAC p = {p_text(q24['supporting_result']['signed_rank_hac_p'])}")
 print(f"  r = {format_number_vi(q24['effect_size'], 4)} (âm = dưới ngưỡng)")
 print(f"  CI 95% block bootstrap cho trung vị: {ci_text(q24['ci_bootstrap'])}")
 
 print()
 print(f"[Năm] n = {format_int_vi(annual['n'])} ngày · trung bình {format_number_vi(annual['mean'])} "
       f"± {format_number_vi(annual['sd'])} µg/m³")
-print(f"  t = {format_number_vi(annual['statistic'], 4)} · df = {annual['df']}")
-print(f"  p thô = {p_text(annual['p_value'])} · p Holm = {p_text(annual['p_holm'])}")
+print(f"  t (HAC) = {format_number_vi(annual['statistic'], 4)} · df = {annual['n'] - 1}")
+print(f"  p (hiệu chỉnh phụ thuộc) = {p_text(annual['p_value'])} · p Holm = {p_text(annual['p_holm'])}")
+print(f"  p tham chiếu (t-test, giả định độc lập) = {p_text(annual['p_value_independence'])}")
+print(f"  đối chứng: null-imposed bootstrap p = {p_text(annual['supporting_result']['null_imposed_p'])}, "
+      f"p đảo CI = {p_text(annual['supporting_result']['percentile_p'])}")
 print(f"  Cohen's d = {format_number_vi(annual['effect_size'], 4)}")
-print(f"  CI 95% theo t (giả định độc lập): {ci_text(annual['ci_t'])}")
-print(f"  CI 95% block bootstrap (tôn trọng tự tương quan): {ci_text(annual['ci_bootstrap'])}")
+print(f"  CI 95% HAC: {ci_text(annual['hac_detail']['ci'])}")
+print(f"  CI 95% block bootstrap: {ci_text(annual['ci_bootstrap'])}")
+print(f"  CI 95% theo t (giả định độc lập — tham chiếu): {ci_text(annual['ci_t'])}")
 
 assert q24["mu"] == QCVN_2023_PM25_24H_LIMIT == 50.0
 assert annual["mu"] == QCVN_2023_PM25_ANNUAL_LIMIT == 25.0
 assert q24["p_holm"] < ALPHA and annual["p_holm"] < ALPHA
 assert q24["median"] < QCVN_2023_PM25_24H_LIMIT
 assert annual["mean"] > QCVN_2023_PM25_ANNUAL_LIMIT
+assert q24["status"] == "confirmatory" and annual["status"] == "confirmatory"
 
-# Hai CI của phép kiểm trung bình phải khác nhau — nếu giống hệt thì block bootstrap vô dụng.
-assert annual["ci_t"] != annual["ci_bootstrap"]
+# CI HAC phải rộng hơn CI giả định độc lập — nếu bằng nhau thì hiệu chỉnh không hoạt động.
+assert annual["hac_detail"]["ci"]["ci_high"] > annual["ci_t"]["ci_high"]
 """)
 
 add_code(r"""wilson = context["panel_days_equal_or_over_ci"]
@@ -741,23 +838,107 @@ add_code(r"""display_image(Image(filename=str(FIGURES["qcvn"]), width=760))
 """)
 
 # ---------------------------------------------------------------------------
-# CELL 14: Section 8 — sensitivity
+# CELL 14: Section 8 — simulation
 # ---------------------------------------------------------------------------
 add_md(r"""---
 
-## 8. Kiểm tra độ nhạy — kết luận có phụ thuộc giả định độc lập?
+## 9. Kiểm soát sai lầm loại I bằng mô phỏng dưới H₀
 
-Hai phép thử dưới đây **exploratory**, không thuộc family xác nhận nào, và p của
-chúng **không** được hiệu chỉnh Holm. Mục đích duy nhất: xem kết luận ở mức ngày có
-còn khi phân tích ở mức tuần — nơi tự tương quan thấp hơn nhiều.
+Một phép kiểm hợp lệ phải bác bỏ H₀ khoảng **5%** số lần khi H₀ đúng. Vì dữ liệu
+thật chỉ có một lần rút, mô phỏng là cách **định lượng** xem phép kiểm nào thực sự
+kiểm soát được sai lầm loại I trên dữ liệu tự tương quan.
 
-### 8.1. Ghép cặp theo tuần cho weekday/weekend
+Mô phỏng dùng chuỗi **AR(1)** có cùng mức tự tương quan như dữ liệu thật
+(ρ = ACF bậc 1 quan sát), cùng cỡ mẫu, cùng cách nhóm, cùng tham số phụ thuộc. Ở mỗi
+lần lặp, cả ba cách tính p (tham chiếu, phương pháp chính, phương pháp đối chứng)
+đều được áp dụng trên **cùng một** chuỗi mô phỏng.
+""")
+
+add_code(r"""size_rows = []
+for name, entry in simulation["size"].items():
+    power = simulation["power"][name]
+    size_rows.append({
+        "Phép kiểm": name,
+        "size (tham chiếu)": pct(entry["size_independence"], 1),
+        "size (chính)": pct(entry["size_dependence_aware"], 1),
+        "size (đối chứng)": pct(entry["size_supporting"], 1),
+        "power (tham chiếu)": pct(power["size_independence"], 1),
+        "power (chính)": pct(power["size_dependence_aware"], 1),
+        "power (đối chứng)": pct(power["size_supporting"], 1),
+    })
+display(pd.DataFrame(size_rows))
+
+print(f"ρ mô phỏng = {format_number_vi(simulation['rho_used'], 4)} · n = {format_int_vi(simulation['n_days'])} "
+      f"ngày · {format_int_vi(simulation['n_sim'])} lần lặp · α = {ALPHA}")
+print("→ 'size' là tỷ lệ bác bỏ H₀ khi H₀ đúng; 'power' là tỷ lệ bác bỏ khi có hiệu ứng.")
+print("→ Phép kiểm giả định độc lập bác bỏ hàng chục tới gần 80% số lần dưới H₀: bằng chứng")
+print("  định lượng rằng p-value SciPy KHÔNG kiểm soát được sai lầm loại I trên dữ liệu này.")
+print("→ Phương pháp có xét phụ thuộc đưa tỷ lệ này về gần α (vẫn hơi lạc quan ~2–3 lần α).")
+""")
+
+# ---------------------------------------------------------------------------
+# CELL 15: Section 9 — generalization
+# ---------------------------------------------------------------------------
+add_md(r"""---
+
+## 10. Khả năng khái quát hóa kết quả theo mùa
+
+Bốn kiểm định trên **không** trả lời được: khác biệt mùa quan sát ở giai đoạn
+07/2025–07/2026 có phải là quy luật mùa vụ ổn định nhiều năm không? Bốn dữ kiện dưới
+đây nói: **không thể khẳng định**.
+
+1. **Chỉ một chu kỳ mùa** — mỗi mùa là một *đoạn thời gian liên tiếp*, nên "mùa" và
+   "thời gian" là hai cách gọi của cùng một biến.
+2. **Xu hướng thời gian cùng cỡ với khác biệt mùa** — hai cấu phần cạnh tranh.
+3. **Mẫu không cân bằng, thiếu hụt không ngẫu nhiên.**
+4. **Không mùa nào có mặt ở hai mùa-vụ khác nhau** → không thể kiểm tra tính ổn định
+   giữa các năm.
+""")
+
+add_code(r"""gen = generalization
+cov_rows = []
+for season_key in SEASON_DISPLAY_ORDER:
+    cov = gen["coverage"][season_key]
+    cov_rows.append({
+        "Mùa": SEASON_LABELS_VI[season_key],
+        "Ngày lịch": format_int_vi(cov["calendar_days"]),
+        "Ngày giữ lại": format_int_vi(cov["kept_days"]),
+        "Ngày bị loại": format_int_vi(cov["dropped_days"]),
+        "Tỷ lệ giữ lại": pct(cov["kept_share"], 1),
+    })
+display(pd.DataFrame(cov_rows))
+
+breakdown = gen["season_year_breakdown"]
+display(breakdown.rename(columns={
+    "season": "Mùa (mã)", "season_year": "Mùa-vụ", "size": "n ngày",
+    "median": "Trung vị", "min": "Min", "max": "Max",
+}))
+
+print(f"Số chu kỳ mùa quan sát được: {gen['n_seasonal_cycles']}")
+print(f"Xu hướng tuyến tính: {format_number_vi(gen['trend_per_month'])} µg/m³ mỗi tháng "
+      f"({format_number_vi(abs(gen['trend_over_period']), 1)} µg/m³ trên cả năm)")
+print(f"Khác biệt mùa lớn nhất: {format_number_vi(gen['max_season_contrast'], 2)} µg/m³ "
+      f"→ tỷ lệ xu hướng / khác biệt = {format_number_vi(gen['trend_to_contrast_ratio'] * 100, 0)}%")
+print(f"Mùa xuất hiện ở ≥ 2 mùa-vụ: {gen['seasons_with_multiple_years'] or 'không có'}")
+print("\n→ Kết luận mùa là MÔ TẢ của một giai đoạn quan sát duy nhất, ở một trạm;")
+print("  không có bằng chứng cho quy luật mùa vụ ổn định nhiều năm.")
+""")
+
+# ---------------------------------------------------------------------------
+# CELL 16: Section 10 — sensitivity
+# ---------------------------------------------------------------------------
+add_md(r"""---
+
+## 11. Kiểm tra độ nhạy (exploratory, không thuộc family nào)
+
+### 11.1. Ghép cặp theo tuần cho weekday/weekend
 
 Mỗi tuần ISO đủ điều kiện (≥ 3 ngày trong tuần và ≥ 2 ngày cuối tuần) cho **một**
 chênh lệch. Cách này loại bỏ biến thiên "tuần này bẩn hơn tuần kia" — thứ tự tương
-quan mạnh nhất còn lại sau khi đã lấy trung bình ngày.
+quan mạnh nhất còn lại sau khi đã lấy trung bình ngày. Các chênh lệch tuần cũng tự
+tương quan, nên phép thử dùng **signed-rank có HAC** (lag 4 tuần).
 
-### 8.2. Kruskal-Wallis trên trung bình tuần theo mùa
+### 11.2. Kruskal-Wallis trên trung bình tuần theo mùa
 
 Nếu khác biệt mùa chỉ là hệ quả của việc coi từng ngày là độc lập, phép thử ở mức
 tuần sẽ yếu đi rõ rệt. Ở mức tuần cỡ mẫu nhỏ hơn nhiều nên power thấp — p không có
@@ -767,40 +948,44 @@ tuần sẽ yếu đi rõ rệt. Ở mức tuần cỡ mẫu nhỏ hơn nhiều 
 add_code(r"""paired = sensitivity["paired_weeks"]
 weekly_season = sensitivity["season_weekly"]["weekly_kruskal"]
 
-print("8.1. Ghép cặp theo tuần (weekday − weekend)")
+print("11.1. Ghép cặp theo tuần (weekday − weekend)")
 print(f"  Số tuần đủ điều kiện: {format_int_vi(paired['n_weeks'])} "
       f"(≥ {paired['min_weekdays']} ngày trong tuần, ≥ {paired['min_weekend_days']} ngày cuối tuần)")
 print(f"  Trung vị chênh lệch: {format_number_vi(paired['median_difference'])} µg/m³, "
       f"CI 95% {ci_text(paired['ci'])}")
 print(f"  Tỷ lệ tuần có weekday cao hơn: {pct(paired['share_weekday_higher'], 1)}")
-print(f"  Wilcoxon trên {format_int_vi(paired['test']['n'])} chênh lệch tuần: "
-      f"W = {format_number_vi(paired['test']['statistic'], 1)}, "
-      f"p = {p_text(paired['test']['p_value'])}, r = {format_number_vi(paired['test']['effect_size'], 4)}")
+print(f"  Signed-rank có HAC trên {format_int_vi(paired['test']['n'])} chênh lệch tuần: "
+      f"t = {format_number_vi(paired['test']['statistic'], 3)}, "
+      f"p = {p_text(paired['test']['p_value'])}, "
+      f"r = {format_number_vi(paired['test']['effect_size'], 4)}")
+print(f"  p tham chiếu (giả định độc lập) = {p_text(paired['test']['p_value_independence'])}")
 print(f"  → {'bác bỏ' if paired['test']['p_value'] < ALPHA else 'không bác bỏ'} H₀ ở α = {ALPHA}")
 
 print()
-print("8.2. Kruskal-Wallis trên trung bình tuần theo mùa")
+print("11.2. Kruskal-Wallis trên trung bình tuần theo mùa")
 print(f"  Số tuần dùng được: {format_int_vi(sensitivity['season_weekly']['n_weeks'])}")
 print(f"  H = {format_number_vi(weekly_season['statistic'], 3)} · df = {weekly_season['df']} · "
-      f"p = {p_text(weekly_season['p_value'])} · ε² = {format_number_vi(weekly_season['effect_size'], 4)}")
+      f"p (hiệu chỉnh) = {p_text(weekly_season['p_value'])} · "
+      f"p tham chiếu = {p_text(weekly_season['p_value_independence'])} · "
+      f"ε² = {format_number_vi(weekly_season['effect_size'], 4)}")
 
 assert paired["n_weeks"] < n_days
 assert weekly_season["n"] < n_days
 """)
 
-add_md(r"""**Đọc kết quả.** Phép thử ghép cặp tuần cho cùng kết luận với Mann-Whitney ở mục 6
+add_md(r"""**Đọc kết quả.** Phép thử ghép cặp tuần cho cùng kết luận với kiểm định ở mục 7
 (không bác bỏ H₀), nên kết luận weekday/weekend **không** phải sản phẩm của giả định
-độc lập. Phép thử mùa ở mức tuần vẫn bác bỏ H₀, củng cố kết luận mùa. Nếu hai phép
-thử này **đổi chiều** so với mức ngày, kết luận đúng phải là "không ổn định" — và
-điều đó phải được viết ra chứ không bị bỏ qua.
+độc lập. Phép thử mùa ở mức tuần vẫn bác bỏ H₀ sau hiệu chỉnh, củng cố kết luận
+mùa ở mức *mô tả*. Nếu hai phép thử này **đổi chiều** so với mức ngày, kết luận
+đúng phải là "không ổn định" — và điều đó phải được viết ra chứ không bị bỏ qua.
 """)
 
 # ---------------------------------------------------------------------------
-# CELL 15: Section 9 — p-value pitfalls
+# CELL 17: Section 11 — p-value pitfalls
 # ---------------------------------------------------------------------------
 add_md(r"""---
 
-## 9. Đọc p-value cho đúng (task 5.7)
+## 12. Đọc p-value cho đúng (task 5.7)
 
 p-value là xác suất **của dữ liệu, có điều kiện H₀ đúng** — không phải xác suất H₀
 đúng, cũng không phải xác suất kết quả lặp lại. Bốn sai lầm thường gặp:
@@ -809,21 +994,21 @@ p-value là xác suất **của dữ liệu, có điều kiện H₀ đúng** �
 |---|---|---|
 | "p là xác suất H₀ đúng" | p tính **dưới giả định H₀**; nó không phải xác suất hậu nghiệm | Chỉ nói "dữ liệu không tương thích với H₀ ở mức α" |
 | "1 − p là xác suất H₁ đúng" | H₁ thường là giả thuyết hợp, không có phân phối tiên nghiệm | Không gán xác suất cho H₁ |
-| "p nhỏ = hiệu ứng lớn" | p phụ thuộc cỡ mẫu; n ≈ 300 đủ làm hiệu ứng nhỏ có ý nghĩa | Luôn đọc kèm effect size và CI |
+| "p nhỏ = hiệu ứng lớn" | p phụ thuộc cỡ mẫu; n_eff ≈ 47 mới là cỡ mẫu có ý nghĩa ở đây | Luôn đọc kèm effect size và CI |
 | "p > α = không có hiệu ứng" | Đó là "không đủ bằng chứng", không phải bằng chứng không | Nêu rõ MDE / giới hạn power của từng phép kiểm |
 
 **Power = 1 − β.** Báo cáo không tuyên bố power định tính mà dùng **MDE** cho phép
-so sánh hai nhóm (mục 6). Với bài toán cảnh báo, sai lầm loại II (bỏ lọt một đợt ô
+so sánh hai nhóm (mục 7). Với bài toán cảnh báo, sai lầm loại II (bỏ lọt một đợt ô
 nhiễm) tốn kém hơn sai lầm loại I — nên ngưỡng vận hành của mô hình ở Issue #13 sẽ
 được chọn theo **Recall**, không theo Accuracy.
 """)
 
 # ---------------------------------------------------------------------------
-# CELL 16: Section 10 — base rate
+# CELL 18: Section 12 — base rate
 # ---------------------------------------------------------------------------
 add_md(r"""---
 
-## 10. Prior probability và bẫy base-rate (task 5.8)
+## 13. Prior probability và bẫy base-rate (task 5.8)
 
 Trong 299 ngày đủ độ phủ, số ngày có trung bình ≥ 50 µg/m³ cho ta **prior** của bài
 toán phân loại "ngày ô nhiễm" ở Issue #13. Đây là con số quan trọng vì nó quyết
@@ -860,37 +1045,39 @@ display(pd.DataFrame(prior_rows))
 
 print(f"Điểm cắt Issue #7: {SPLIT_TIMESTAMP}")
 print(f"→ Prior toàn giai đoạn: {context['panel_days_over']}/{context['panel_days']} "
-      f"= {pct(context['panel_share'])}, khớp với mục 7.3.")
+      f"= {pct(context['panel_share'])}, khớp với mục 8.3.")
 assert int(panel_over.sum()) == context["panel_days_over"]
 assert int(in_train.sum()) + int((~in_train).sum()) == n_days
 """)
 
 # ---------------------------------------------------------------------------
-# CELL 17: Section 11 — limitations
+# CELL 19: Section 13 — limitations
 # ---------------------------------------------------------------------------
 add_md(r"""---
 
-## 11. Giới hạn khoa học
+## 14. Giới hạn khoa học
 
-1. **Một chu kỳ mùa, một trạm.** Dải 07/2025–07/2026 chỉ chứa một vòng mùa và toàn bộ dữ liệu đến từ một trạm đô thị. Khác biệt theo mùa là mô tả của **giai đoạn này**, không ngoại suy được sang năm khác hay trạm khác.
-2. **Tự tương quan chưa được hiệu chỉnh vào p-value.** p của bốn kiểm định xác nhận vẫn dựa trên giả định độc lập; block bootstrap chỉ sửa khoảng tin cậy. p được đọc là **chỉ báo độ tương thích**, không phải bằng chứng chính xác tuyệt đối.
-3. **Block bootstrap là xấp xỉ.** Block 7 ngày giữ cấu trúc tuần nhưng không mô phỏng được phụ thuộc dài hạn (lag 14 vẫn còn tương quan). Với so sánh hai nhóm, resample theo từng nhóm bỏ qua tương quan chéo nhóm — kiểm tra ghép cặp theo tuần ở mục 8.1 là biện pháp bù.
-4. **Ngưỡng 18/24 giờ** là quy ước phân tích (độ phủ 75%), không phải điều khoản QCVN. Đổi ngưỡng sẽ đổi n; bảng nhật ký lọc ở mục 1 làm việc đổi ngưỡng trở nên minh bạch.
-5. **QCVN 05:2023/BTNMT quy định ở điều kiện chuẩn** (µg/Nm³, 25 °C, 760 mmHg), còn trạm OpenAQ báo nồng độ môi trường (µg/m³). So sánh định lượng với ngưỡng vì vậy là **xấp xỉ**.
-6. **Không có kết luận nhân quả.** Khác biệt theo mùa/ngày trong tuần là liên hệ thống kê; nguồn phát thải, khí tượng và điều kiện biên không được phân tách ở đây.
+1. **Một chu kỳ mùa, một trạm.** Dải 07/2025–07/2026 chỉ chứa một vòng mùa và toàn bộ dữ liệu đến từ một trạm đô thị. Khác biệt theo mùa là mô tả của **giai đoạn này**, không ngoại suy được sang năm khác hay trạm khác (mục 10).
+2. **Hiệu chỉnh phụ thuộc thời gian là xấp xỉ, không phải định nghĩa.** Mọi phương pháp ở mục 4 đều là phương pháp bậc cao với giả định ổn định; mô phỏng (mục 9) cho thấy tỷ lệ bác bỏ dưới H₀ còn cao hơn α khoảng 2–3 lần. p-value vì vậy là **chỉ báo độ tương thích**, không phải xác suất chính xác tuyệt đối.
+3. **Kết luận mùa đã bị hạ xuống thăm dò** vì p-value của kiểm định omnibus mùa không ổn định theo độ dài block (mục 6). Đây là hạn chế thật, không phải khiêm tốn hình thức.
+4. **Block bootstrap là xấp xỉ.** Block 28 ngày giữ cấu trúc theo tuần nhưng không mô phỏng được phụ thuộc dài hạn hơn nữa; với so sánh hai nhóm, resample trên chuỗi gộp bỏ qua tương quan chéo nhóm — kiểm tra ghép cặp theo tuần ở mục 11.1 là biện pháp bù.
+5. **Ngưỡng 18/24 giờ** là quy ước phân tích (độ phủ 75%), không phải điều khoản QCVN. Đổi ngưỡng sẽ đổi n; bảng nhật ký lọc ở mục 1 làm việc đổi ngưỡng trở nên minh bạch.
+6. **QCVN 05:2023/BTNMT quy định ở điều kiện chuẩn** (µg/Nm³, 25 °C, 760 mmHg), còn trạm OpenAQ báo nồng độ môi trường (µg/m³). So sánh định lượng với ngưỡng vì vậy là **xấp xỉ**.
+7. **Không có kết luận nhân quả.** Khác biệt theo mùa/ngày trong tuần là liên hệ thống kê; nguồn phát thải, khí tượng và điều kiện biên không được phân tách ở đây.
+8. **Kết quả mô phỏng không thay thế lý thuyết** — mô phỏng dùng mô hình AR(1), không phải dữ liệu thật.
 
 Ngoài ra, **bất nhất trong mô tả Issue #11** (trộn tử số cửa sổ trượt 24h với mẫu
 số toàn bộ dòng giờ) đã được xử lý bằng cách trình bày **hai mẫu số tách bạch** ở
-mục 7.3, kèm ví dụ về phép ghép sai. Không có tỷ lệ nào trong báo cáo dùng tử số
+mục 8.3, kèm ví dụ về phép ghép sai. Không có tỷ lệ nào trong báo cáo dùng tử số
 và mẫu số khác đơn vị.
 """)
 
 # ---------------------------------------------------------------------------
-# CELL 18: Section 12 — reproducibility
+# CELL 20: Section 14 — reproducibility
 # ---------------------------------------------------------------------------
 add_md(r"""---
 
-## 12. Tái lập và artifact
+## 15. Tái lập và artifact
 
 Notebook ghi `reports/inference_results.md` bằng `render_inference_report(results)`
 — cùng một payload đang hiển thị ở trên. Cell cuối:
@@ -900,8 +1087,9 @@ Notebook ghi `reports/inference_results.md` bằng `render_inference_report(resu
    dạng cục bộ. Nếu báo cáo dùng số khác hoặc định dạng khác, phép so chuỗi thất bại.
 3. Liệt kê artifact kèm kích thước để chứng minh tệp thực sự được ghi.
 
-Mọi con số tái lập được với seed **42** và **1.000** lặp bootstrap. Sai khác duy
-nhất có thể có là phiên bản NumPy/SciPy (đã ghi ở đầu báo cáo).
+Mọi con số tái lập được với seed **42**, **1.000** lặp CI bootstrap và **5.000** lặp
+null bootstrap. Sai khác duy nhất có thể có là phiên bản NumPy/SciPy (đã ghi ở đầu
+báo cáo).
 """)
 
 add_code(r"""report_text = render_inference_report(results)
@@ -913,20 +1101,23 @@ assert DEFAULT_REPORT_PATH.read_text(encoding="utf-8") == report_text
 
 # 2) Đối chiếu chéo notebook ↔ báo cáo trên các con số then chốt.
 checks = {
-    "p thô mùa": p_text(tests["season_kruskal"]["p_value"]),
-    "p Holm mùa": p_text(tests["season_kruskal"]["p_holm"]),
-    "p thô weekday": p_text(tests["weekday_mannwhitney"]["p_value"]),
-    "p thô QCVN 24h": p_text(tests["qcvn_24h_wilcoxon"]["p_value"]),
-    "p Holm QCVN 24h": p_text(tests["qcvn_24h_wilcoxon"]["p_holm"]),
-    "p thô QCVN năm": p_text(tests["qcvn_annual_ttest"]["p_value"]),
-    "p Holm QCVN năm": p_text(tests["qcvn_annual_ttest"]["p_holm"]),
-    "CI weekday": ci_text(tests["weekday_mannwhitney"]["ci"]),
-    "ε² mùa": format_number_vi(tests["season_kruskal"]["effect_size"], 4),
-    "r_rb weekday": format_number_vi(tests["weekday_mannwhitney"]["effect_size"], 4),
-    "r QCVN 24h": format_number_vi(tests["qcvn_24h_wilcoxon"]["effect_size"], 4),
-    "Cohen's d QCVN năm": format_number_vi(tests["qcvn_annual_ttest"]["effect_size"], 4),
+    "p mùa (hiệu chỉnh)": p_text(tests["season_effect"]["p_value"]),
+    "p Holm mùa": p_text(tests["season_effect"]["p_holm"]),
+    "p mùa (tham chiếu)": p_text(tests["season_effect"]["p_value_independence"]),
+    "p weekday (hiệu chỉnh)": p_text(tests["weekday_effect"]["p_value"]),
+    "p QCVN 24h (hiệu chỉnh)": p_text(tests["qcvn_24h"]["p_value"]),
+    "p Holm QCVN 24h": p_text(tests["qcvn_24h"]["p_holm"]),
+    "p QCVN năm (hiệu chỉnh)": p_text(tests["qcvn_annual"]["p_value"]),
+    "p Holm QCVN năm": p_text(tests["qcvn_annual"]["p_holm"]),
+    "CI weekday": ci_text(tests["weekday_effect"]["ci"]),
+    "CI QCVN năm (HAC)": ci_text(tests["qcvn_annual"]["hac_detail"]["ci"]),
+    "ε² mùa": format_number_vi(tests["season_effect"]["effect_size"], 4),
+    "r_rb weekday": format_number_vi(tests["weekday_effect"]["effect_size"], 4),
+    "r QCVN 24h": format_number_vi(tests["qcvn_24h"]["effect_size"], 4),
+    "Cohen's d QCVN năm": format_number_vi(tests["qcvn_annual"]["effect_size"], 4),
     "n_eff": format_number_vi(dependence["daily_effective_n"]["n_effective"], 1),
     "tỷ lệ ngày vượt": pct(context["panel_share"]),
+    "xu hướng mỗi tháng": format_number_vi(generalization["trend_per_month"]),
 }
 missing = {name: token for name, token in checks.items() if token not in report_text}
 assert not missing, f"Báo cáo thiếu/khác các token: {missing}"
@@ -953,17 +1144,18 @@ add_md(r"""---
 | Hạng mục yêu cầu | Nơi đáp ứng |
 |---|---|
 | Chẩn đoán phân phối, không mặc định chuẩn | Mục 2 (skewness, kurtosis, Shapiro-Wilk, D'Agostino, Q-Q) |
-| Ba nhóm kiểm định | Mục 5 (mùa), 6 (weekday/weekend), 7 (QCVN 24h + năm) |
-| Đúng chu kỳ trung bình của ngưỡng | Mục 7.1 (24h = 50) và 7.2 (năm = 25), tách biệt |
-| Bộ bốn: thống kê + p + effect size + CI 95% | Mục 4.4, 5, 6, 7 |
-| H₀/H₁ và lý do chọn phép kiểm | Mục 4.1, 5.1, 6.1, 7.1, 7.2 |
-| n và số quan sát bị loại | Mục 1.2 (299 giữ / 52 loại), từng kiểm định ở mục 4.3 |
-| Holm báo cả p gốc và p hiệu chỉnh | Mục 4.4 (family xác nhận), 5.3 (family hậu định riêng) |
+| Bốn nhóm kiểm định | Mục 6 (mùa), 7 (weekday/weekend), 8 (QCVN 24h + năm) |
+| Đúng chu kỳ trung bình của ngưỡng | Mục 8.1 (24h = 50) và 8.2 (năm = 25), tách biệt |
+| Bộ bốn: thống kê + p + effect size + CI 95% | Mục 5, 6, 7, 8 |
+| H₀/H₁ và lý do chọn phép kiểm | Mục 4.1, 6.1, 7.1, 8.1, 8.2 |
+| n và số quan sát bị loại | Mục 1 (299 giữ / 52 loại), từng kiểm định ở mục 4.1 |
+| Holm báo cả p gốc và p hiệu chỉnh | Mục 5 (family xác nhận), mục 6.3 (family hậu định riêng) |
 | α = 0,05; 1.000 bootstrap; seed 42 | Mục 0, assert trong mục 0.1 |
-| Xử lý tự tương quan | Mục 3 (ACF, n_eff, block bootstrap 7 ngày, kiểm tra tuần) |
-| Giới hạn khi giả định không bảo đảm | Mục 3.3, 6.2 (MDE), 11 |
-| Không đổi chronological split | Mục 1.2, 10 (đọc `SPLIT_TIMESTAMP`) |
-| Đầu ra tái lập | Mục 12 (round-trip + đối chiếu chéo + artifact) |
+| **Xử lý tự tương quan trong p-value** | **Mục 4 (khung phương pháp), mục 9 (mô phỏng size)** |
+| **Khả năng khái quát hóa theo mùa** | **Mục 10** |
+| Giới hạn khi giả định không bảo đảm | Mục 3, 7.2 (MDE), 14 |
+| Không đổi chronological split | Mục 1.2, 13 (đọc `SPLIT_TIMESTAMP`) |
+| Đầu ra tái lập | Mục 15 (round-trip + đối chiếu chéo + artifact) |
 
 **Deliverable:** `reports/inference_results.md`, `figures/FIG-08.png` … `FIG-12.png`
 (hình bổ sung của Issue #11, không thuộc bộ bảy hình ấn phẩm của Issue #9).
@@ -990,7 +1182,7 @@ def build_notebook_dict() -> dict:
                 },
                 "file_extension": ".py",
                 "mimetype": "text/x-python",
-                "name": "python",
+                "name": "ipython",
                 "nbconvert_exporter": "python",
                 "pygments_lexer": "ipython3",
                 "version": "3.14.6"
@@ -1040,7 +1232,7 @@ def generate_and_execute(output_path: Path = NOTEBOOK_PATH, execute: bool = True
         from nbclient import NotebookClient
 
         nb_obj = nbformat.read(output_path, as_version=4)
-        client = NotebookClient(nb_obj, timeout=900, kernel_name="python3")
+        client = NotebookClient(nb_obj, timeout=1800, kernel_name="python3")
         client.execute()
         nbformat.write(nb_obj, output_path)
         print("✓ Notebook đã thực thi 100% không lỗi và đã lưu outputs.")
