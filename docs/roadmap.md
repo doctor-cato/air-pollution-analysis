@@ -735,12 +735,21 @@ Chi tiết luồng thực hiện:
               [ #7  MERGE / DATASET FREEZE / SPLIT / PIPELINE ]
               ghép AQ + WX → đóng băng → phân chia thời gian → Parquet
                               ▼
-        [ #8 EDA ] → [ #9 FIGURES ] → [ #10 MIDTERM ]
-                              ▼
-        [ #11 INFERENCE ] → [ #12 OLS/LINE ] → [ #13 CLASSIFICATION ]
-                              ▼
-                    [ #14 → #15 → #16 → #17 ]
+        [ #8 EDA ] ─┬→ [ #9 FIGURES ] → [ #10 MIDTERM ]
+                    │  (chuẩn bị W8–W10, nộp W11; #10 không chặn #11–#13)
+                    └→ [ #11 INFERENCE ] → [ #12 OLS/LINE ] → [ #13 CLASSIFICATION ]
+                                                                       │
+                                                                       ▼
+                                                         [ #14 → #15 → #16 → #17 ]
 ```
+
+**Ghi chú sửa lịch (2026-10-20).** Sơ đồ trên bắt nguồn từ snapshot ngày 2026-09-29; mọi
+kết luận trạng thái của snapshot được giữ nguyên, chỉ hướng mũi tên giữa #10 và #11 được sửa.
+Bản snapshot đó vẽ `#10 → #11` như một bước tuần tự, ngụ ý #10 chặn #11; điều này **không
+còn đúng** sau khi mốc nộp midterm chuyển sang W11. Hướng đúng là #8 rẽ hai nhánh: nhánh
+báo cáo `#9 → #10` (chuẩn bị W8–W10, nộp W11, phạm vi M1–M3) và nhánh phân tích
+`#11 → #12 → #13` (W9–W11). #10 **không** chặn #11, #12 hoặc #13; xem thêm §8 và bảng
+W01–W15.
 
 **Quy tắc phụ thuộc:**
 - `#3` và `#4` **có thể phát triển song song** sau `#19`; nhưng khi *thực thi*, `#4` phải
