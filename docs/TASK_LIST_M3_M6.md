@@ -6,30 +6,37 @@
 > **Ngày lập:** 2026-10-07 · **Sửa đợt 2:** 2026-10-07 · **Sửa đợt 3:** 2026-10-14
 > (đính chính trích dẫn roadmap, trạng thái M3–M6, định nghĩa nhãn cảnh báo, và bỏ các
 > khẳng định kết quả thực nghiệm chưa có bằng chứng thực thi).
-> **Trạng thái repo:** nhánh `docs/audit-delivery`.
+> **Trạng thái repo:** phản ánh `main` @ `6fe8eb6` (M1–M3 đã bàn giao). Đợt audit M3 chạy trên
+> nhánh `audit/m3-deliverables` (PR #42) — chỉ sửa tài liệu + CI, không đụng `src/`/`tests/`/`data/`.
 >
 > **Ký hiệu ưu tiên:** 🔴 bắt buộc (thay đổi kết luận khoa học hoặc là điểm chấm) ·
 > 🟡 nên có (điểm cộng ở viva) · ⚪ housekeeping.
 
-### Tổng quan: 154 task
+### Tổng quan: 155 task
 
 > **Cột `Task` dưới đây là số checkbox `- [ ]` / `- [x]` đếm trực tiếp trong từng phase của file này**
 > (đo bằng `python -c` quét `^\s*- \[( |x)\]` theo từng mục `## Phase …`), **bao gồm cả task lồng**.
-> Tổng **154** = **125 task có số** (`0.1`, `1.2`, …) + **29 task `D*`** của Phase 1B.
-> Trong 125 task có số có **1 task lồng** duy nhất là `0.7b` (thuộc `0.7`), nên **124 việc cấp
-> cao nhất** — đó là lý do đầu Phase 0 nói "8 việc" trong khi bảng này ghi `9`.
-> Trạng thái hiện tại: **30 đánh dấu `[x]` · 124 `[ ]`** (đếm bằng `^\s*- \[( |x)\]` theo công thức ở dòng trên, **bao gồm task lồng** `0.7b`).
-> Các phase M3–M6 (3–11) **chưa bắt đầu**. **Phase 2 (Issue #8) đã triển khai** — đang chờ review trong PR #40, chưa merge. Issue #9–#17 vẫn `OPEN` trên GitHub.
+> Tổng **155** = **126 task có số** (`0.1`, `1.2`, …) + **29 task `D*`** của Phase 1B.
+> Trong 126 task có số có **2 task lồng** là `0.7b` (thuộc `0.7`) và `1.15b` (thuộc `1.15`), nên **124 việc
+> cấp cao nhất** — đó là lý do đầu Phase 0 nói "8 việc" trong khi bảng này ghi `9`.
+> Trạng thái hiện tại: **56 đánh dấu `[x]` · 99 `[ ]`** (đếm bằng `^\s*- \[( |x)\]` theo công thức ở dòng trên, **bao gồm task lồng** `0.7b` và `1.15b`).
+> **Số mốc này được kiểm lại 2026-10-17** (đợt audit M3): trước đó file ghi `154 / 125 / 30 / 124` — sai ở cả
+> bốn con số, vì **`1.15` bị viết trùng ở hai task** (Issue #8 dòng 359 và Issue #9 dòng 365). Task Issue #9
+> đã đổi id thành **`1.15b`**; tham chiếu ở bảng §14 dòng "W7 · Thang đo" cập nhật theo.
+> **Phase 2 (#8) và Phase 3 (#9) đã triển khai và merge** — PR #40 và PR #41 (`6fe8eb6`, 2026-10-16),
+> issue #8 và #9 đã `CLOSED`. **Phase 4–11 (issue #10–#17) chưa bắt đầu**; #10 đã chuyển sang Milestone 4.
 
 > ### Trạng thái triển khai — đọc phần này trước khi tick checkbox
 >
 > | Việc | Trạng thái | Bằng chứng hiện có |
 > |---|---|---|
-> | `notebooks/04_descriptive_stats.ipynb` | **đã có** (chờ review, PR #40) | Sinh từ `scripts/generate_04_notebook.py`; `scripts/validate_issue8.py` 215 assertion, live kernel 0 lỗi |
+> | `notebooks/04_descriptive_stats.ipynb` | **đã merge** (PR #40 → `c078444`, Issue #8 `CLOSED`) | Sinh từ `scripts/generate_04_notebook.py`; `scripts/validate_issue8.py` 215 assertion, live kernel 0 lỗi |
 > | `reports/statistical_profile.csv` | **đã có** | 8 biến × 27 cột; đối chiếu lại từ Parquet trong `validate_issue8.py` §4 |
 > | `notebooks/05`–`07` | **`NOT IMPLEMENTED`** | Chưa tồn tại (đã đổi tiền tố phân loại `06_`→`07_` ở task 0.3). Tương ứng Issue #11–#13 |
-> | `src/visualizer.py`, `tests/test_visualizer.py` | **`NOT IMPLEMENTED`** | Chưa tồn tại — task 3.1 / 3.2 còn `[ ]` |
-> | `figures/FIG-01`…`FIG-07` | **`NOT IMPLEMENTED`** | `figures/` chỉ có `.gitkeep` |
+> | `src/visualizer.py`, `tests/test_visualizer.py` | **VERIFIED / MERGED** (`6fe8eb6`) | Tồn tại; Tufte/Cleveland; 7 PNG render OK |
+> | `figures/FIG-01`…`FIG-07` | **VERIFIED / MERGED** (`6fe8eb6` PR #41, 2026-10-16) | 7 PNG (`300 DPI`, đọc trực tiếp chunk `pHYs`) đã commit; `src/visualizer.py` Tufte/Cleveland; `tests/test_visualizer.py` 35 test |
+> | **Task 2.10** — VIF cho cặp `pm25`/`pm10` | **`NOT IMPLEMENTED`** | Notebook 04 chỉ tính `r = 0,9727` và `r² = 0,9462`, **không** gọi `variance_inflation_factor`; VIF hoàn toàn để dành cho Issue #12. Task này **cố ý để `[ ]`** |
+> | **Task 3.13** — soi từng PNG bằng mắt | **`CHỜ NGƯỜI`** | Bước tự động **không thay thế được** bước này (chính task 3.13 ghi vậy). Test chỉ kiểm được 300 DPI + không tràn nhãn bằng assert, **không** kiểm được mắt thấy |
 > | Kiểm định giả thuyết của Issue #11 (task 5.1–5.6) | **`NOT IMPLEMENTED`** | Không có notebook, không có script, không có p-value nào được tính |
 > | `DummyClassifier` baseline (task 7.4) | **`NOT IMPLEMENTED`** | `git grep DummyClassifier -- src notebooks tests scripts` → rỗng |
 > | PR-AUC / Recall / F1 (task 7.5–7.7) | **`NOT IMPLEMENTED`** | Phụ thuộc nhãn ở 0.7b, chưa có mô hình nào được huấn luyện |
@@ -38,19 +45,24 @@
 > | `F = 16,78`, `p = 7,4·10⁻¹¹` (tương tác `fog × mùa`) | **`VERIFIED`** (Issue #38) | **Đã tái lập bằng mã**: `src/flag_evidence.fog_flag_evidence()` fit `pm25 ~ C(fog) + C(season) + C(fog):C(season)` trên 7.495 dòng → `F(3, 7487) = 16,7754`, `p = 7,3817·10⁻¹¹`. `verify_claims.py` kiểm chứng lại từng số; test hành vi ở `tests/test_flag_evidence.py`, phần ghim vào dữ liệu thật ở `TestDocumentedReproduction` (CI không chạy được vì repo không commit `data/`) |
 > | Mutual information `MI = 0,0024` | **`UNVERIFIED`** | Định nghĩa ước lượng **chưa đóng băng**: `mutual_info_score` cho `0,0024` khi chia `pm25` thành 7, 8 **hoặc** 10 nhóm phân vị (trùng hợp), `mutual_info_regression` cho `0,0081`, `mutual_info_classif` cho `0,0105`. **Không** dùng làm căn cứ kết luận — xem Issue #38 |
 >
-> ⚠️ **Mọi con số trong tài liệu này thuộc Phase 2–11 là số *kỳ vọng* hoặc *giả định*, không
+> ⚠️ **Mọi con số trong tài liệu này thuộc Phase 4–11 là số *kỳ vọng* hoặc *giả định*, không
 > phải kết quả thực nghiệm đã đo.** Khi viết notebook, phải tính lại và trích dẫn đúng nơi sinh ra
 > số; không sao chép con số ở đây vào báo cáo.
+>
+> ⚠️ **Ngoại lệ: Phase 2 (Issue #8) đã đo thật.** Số trong bảng trạng thái §"Trạng thái triển khai" và
+> trong `notebooks/04_descriptive_stats.ipynb` là kết quả chạy trên `data/processed/air_pollution_final.parquet`
+> (9.044 dòng), được `scripts/validate_issue8.py` §4 **tính lại độc lập từ Parquet và đối chiếu với CSV**.
+> Trích dẫn được, nhưng **không** được sửa tay trong notebook — sửa `scripts/generate_04_notebook.py` rồi sinh lại.
 
 
 | Phase | Nội dung | Task | Ước lượng |
 |---|---|---|---|
 | 0 | Dọn nhà trước M3 | 9 | ~40 phút |
-| 1 | Vá issue body | 26 | ~1 giờ |
+| 1 | Vá issue body | 27 | ~1 giờ |
 | **1B** | **Cập nhật tài liệu đồng bộ (xen kẽ)** | **29** | **~1 buổi** |
 | 2 | #8 Thống kê mô tả | 13 | ~1–2 buổi |
 | 3 | #9 7 biểu đồ | 13 | ~2 buổi |
-| 4 | #10 Midterm **(nộp W11)** | 8 | ~1 buổi |
+| 4 | #10 Midterm **(chuẩn bị W8–W10; nộp W11; phạm vi M1–M3)** | 8 | ~1 buổi |
 | 5 | #11 Suy luận | 9 | ~1–2 buổi |
 | 6 | #12 Hồi quy | 9 | ~2 buổi |
 | 7 | #13 Phân loại | 11 | ~2 buổi |
@@ -360,7 +372,7 @@ vì khi đã viết xong thì phải viết lại cả notebook.
       → **56 hệ số** trên cùng tập `N = 7.372`. Với N lớn, một cặp không có quan hệ vật lý vẫn cho `|r|`
       trông đáng kể; xác suất có ít nhất một phát hiện giả là `1 − 0,95²⁸ ≈ 76 %`. Bonferroni `α' = 0,0018`.
       → Đã thêm §A2 vào notebook (commit `7a1ccf8`). **Không** đưa p-value vào EDA — thuộc Issue #11.
-- [x] **1.15** 🟡 **Issue #9** — thang đo (Nominal/Ordinal/Interval/Ratio) quyết định loại biểu đồ (slide W7 §BLOCK 1).
+- [x] **1.15b** 🟡 **Issue #9** — thang đo (Nominal/Ordinal/Interval/Ratio) quyết định loại biểu đồ (slide W7 §BLOCK 1).
 - [x] **1.16** 🟡 **Issue #9** — thứ bậc kênh thị giác Cleveland–McGill (vị trí > độ dài > hướng > góc >
       diện tích > thể tích > màu). Kèm **câu trả lời sẵn** cho câu hỏi "vì sao chọn heatmap (dùng màu,
       kênh hạng 7/7)?" → vì mục đích là tìm mẫu hình cục bộ, không phải so sánh giá trị từng ô.
@@ -538,7 +550,7 @@ Input: `data/processed/air_pollution_final.parquet` (9.044 dòng × 18 cột, gi
 
 - [ ] **2.1** ⚪ Khôi phục pipeline nếu cần: chạy `00` → `01` → `02` → `03_transformation_pipeline`.
       `03_data_cleaning` cần `data/interim/` ở trạng thái **trước** làm sạch.
-- [ ] **2.2** 🔴 **Cấu hình font tiếng Việt — một lần, kiểm chứng tự động, và PHẢI chạy được trên mọi máy.**
+- [x] **2.2** 🔴 **Cấu hình font tiếng Việt — một lần, kiểm chứng tự động, và PHẢI chạy được trên mọi máy.**
       Đặt trong `src/visualizer.py`, notebook `04` chỉ import dùng lại (nguồn sự thật chỉ có một chỗ).
 
       > ⚠️ **Đính chính 2026-10-14 — công việc này được nâng từ 🟡 lên 🔴 vì bản mô tả cũ sai theo
@@ -565,15 +577,15 @@ Input: `data/processed/air_pollution_final.parquet` (9.044 dòng × 18 cột, gi
         `get_text()` — xem đính chính 2 ở trên.
       - Assert font **thực sự dùng** qua `font_manager.findfont(...)` để chắc không rơi về
         fallback im lặng.
-- [ ] **2.3** Tính 4 họ chỉ số cho `pm25` + tất cả biến khí tượng: Mean/Median/Mode; Variance/Std/IQR/Range;
+- [x] **2.3** Tính 4 họ chỉ số cho `pm25` + tất cả biến khí tượng: Mean/Median/Mode; Variance/Std/IQR/Range;
       Skewness/Kurtosis; P10/P25/P50/P75/P90/P95/P99. Mỗi dòng kèm `n` và `n_missing`.
-- [ ] **2.4** Biện luận Mean vs Median dựa trên phân phối thực nghiệm (slide W6: "Shape picks the statistic").
-- [ ] **2.5** Biến thiên theo 24 khung giờ — **không áp đặt trước** khung đỉnh/đáy.
-- [ ] **2.6** Phân phối theo ngày trong tuần (weekday vs weekend) và theo tháng/mùa trong dải dữ liệu thực tế.
-- [ ] **2.7** Trung bình trượt 24h và 7d; kiểm chứng **không gây dịch pha thời gian** (`center=False` hay
+- [x] **2.4** Biện luận Mean vs Median dựa trên phân phối thực nghiệm (slide W6: "Shape picks the statistic").
+- [x] **2.5** Biến thiên theo 24 khung giờ — **không áp đặt trước** khung đỉnh/đáy.
+- [x] **2.6** Phân phối theo ngày trong tuần (weekday vs weekend) và theo tháng/mùa trong dải dữ liệu thực tế.
+- [x] **2.7** Trung bình trượt 24h và 7d; kiểm chứng **không gây dịch pha thời gian** (`center=False` hay
       ghi rõ phương pháp). `seasonal_decompose` chỉ dùng nếu chuỗi đều đặn + có chu kỳ liên tục.
-- [ ] **2.8** Ma trận tương quan kép Pearson + Spearman, kèm scatter plot kiểm chứng quan hệ phi tuyến.
-- [ ] **2.9** 🟡 Xử lý tương tác `fog × mùa` theo addendum của Issue #8: kiểm tra tương tác cho **mọi cờ
+- [x] **2.8** Ma trận tương quan kép Pearson + Spearman, kèm scatter plot kiểm chứng quan hệ phi tuyến.
+- [x] **2.9** 🟡 Xử lý tương tác `fog × mùa` theo addendum của Issue #8: kiểm tra tương tác cho **mọi cờ
       chẩn đoán**; nếu dùng thì dùng dạng tương tác, không dùng cờ trần (marginal `corr(pm25, RH) = −0,0365` rất
       dễ gây kết luận sai). Ghi rõ `pm25_was_stuck` là hằng số 0 → không phân biệt thông tin.
       **Nền đã có sẵn (Issue #38):** `src/flag_evidence.fog_flag_evidence()` đã fit `pm25 ~ C(fog) + C(season) +
@@ -583,9 +595,9 @@ Input: `data/processed/air_pollution_final.parquet` (9.044 dòng × 18 cột, gi
       **⛔ Mutual information (`0,0024`) là UNVERIFIED** — định nghĩa ước lượng chưa đóng băng, không dùng
       làm căn cứ kết luận.
 - [ ] **2.10** 🟡 Kiểm tra VIF sớm cho cặp `pm25`/`pm10` (`r = 0,9727`) để chuẩn bị cho #12–#13.
-- [ ] **2.11** Xuất `reports/statistical_profile.csv` — khớp **chính xác** với kết quả trong notebook.
-- [ ] **2.12** Phân định rõ 3 tầng: mô tả / sinh giả thuyết / suy luận (suy luận → #11).
-- [ ] **2.13** ⚪ `reports/statistical_profile.csv` chưa được `.gitignore` — kiểm tra trước khi commit.
+- [x] **2.11** Xuất `reports/statistical_profile.csv` — khớp **chính xác** với kết quả trong notebook.
+- [x] **2.12** Phân định rõ 3 tầng: mô tả / sinh giả thuyết / suy luận (suy luận → #11).
+- [x] **2.13** ⚪ `reports/statistical_profile.csv` chưa được `.gitignore` — kiểm tra trước khi commit.
 
 **Deliverable:** `notebooks/04_descriptive_stats.ipynb`, `reports/statistical_profile.csv`
 
@@ -593,27 +605,27 @@ Input: `data/processed/air_pollution_final.parquet` (9.044 dòng × 18 cột, gi
 
 ## Phase 3 — Issue #9: 7 biểu đồ ấn phẩm (~2 buổi)
 
-- [ ] **3.1** Tạo `src/visualizer.py` — Matplotlib OO API (`fig, ax = plt.subplots()`), bỏ spines top/right,
+- [x] **3.1** Tạo `src/visualizer.py` — Matplotlib OO API (`fig, ax = plt.subplots()`), bỏ spines top/right,
       làm mờ lưới phụ, chuẩn hóa nhãn trục + đơn vị đo, bảng màu `viridis`/`colorblind`, hàm có tham số hoá.
       Bao gồm cấu hình font tiếng Việt (task 2.2).
-- [ ] **3.2** 🔴 Tạo `tests/test_visualizer.py` — mọi module `src/` hiện có đều có test; `visualizer.py` là
+- [x] **3.2** 🔴 Tạo `tests/test_visualizer.py` — mọi module `src/` hiện có đều có test; `visualizer.py` là
       module đầu tiên không có. Test tối thiểu: mỗi hàm trả về `Figure`, DPI = 300,
       **`fig.canvas.draw()` không phát warning `missing from font`** cho chuỗi tiếng Việt đủ dấu,
       và `bar chart` ylim bắt đầu từ 0.
       ⛔ **Không** viết `assert "�" not in artist.get_text()` — cách đó **luôn đúng** vì Matplotlib
       giữ nguyên chuỗi gốc, xem đính chính ở task 2.2. Test sẽ xanh ngay cả khi biểu đồ ra ô vuông.
-- [ ] **3.3** FIG-01 — Line chart + trượt 24h & 7d, ngưỡng QCVN 24h **chỉ vẽ trên chuỗi trượt 24h**.
-- [ ] **3.4** FIG-02 — Histogram + KDE, hình dạng phân phối thực nghiệm của `pm25`.
-- [ ] **3.5** FIG-03 — Boxplot `pm25` theo tháng/mùa trong chuỗi quan sát thực tế.
-- [ ] **3.6** FIG-04 — 2D heatmap giờ trong ngày × thứ trong tuần.
-- [ ] **3.7** FIG-05 — Scatter biến khí tượng vs `pm25` + LOWESS.
-- [ ] **3.8** FIG-06 — Correlation heatmap chất ô nhiễm × biến khí tượng.
-- [ ] **3.9** FIG-07 — Bar chart phân bố tần suất theo mức chất lượng không khí, **trục tung từ 0**,
+- [x] **3.3** FIG-01 — Line chart + trượt 24h & 7d, ngưỡng QCVN 24h **chỉ vẽ trên chuỗi trượt 24h**.
+- [x] **3.4** FIG-02 — Histogram + KDE, hình dạng phân phối thực nghiệm của `pm25`.
+- [x] **3.5** FIG-03 — Boxplot `pm25` theo tháng/mùa trong chuỗi quan sát thực tế.
+- [x] **3.6** FIG-04 — 2D heatmap giờ trong ngày × thứ trong tuần.
+- [x] **3.7** FIG-05 — Scatter biến khí tượng vs `pm25` + LOWESS.
+- [x] **3.8** FIG-06 — Correlation heatmap chất ô nhiễm × biến khí tượng.
+- [x] **3.9** FIG-07 — Bar chart phân bố tần suất theo mức chất lượng không khí, **trục tung từ 0**,
       phân loại bằng chỉ số có chu kỳ lấy mẫu tương thích toán học.
-- [ ] **3.10** 100% tiêu đề là **Takeaway Conclusion dẫn xuất từ kết quả #8** — không hard-code trước khi có số.
-- [ ] **3.11** Mỗi đường ngưỡng phải ghi rõ: chất ô nhiễm · chu kỳ lấy mẫu · văn bản + phiên bản · đại lượng
+- [x] **3.10** 100% tiêu đề là **Takeaway Conclusion dẫn xuất từ kết quả #8** — không hard-code trước khi có số.
+- [x] **3.11** Mỗi đường ngưỡng phải ghi rõ: chất ô nhiễm · chu kỳ lấy mẫu · văn bản + phiên bản · đại lượng
       toán học tương thích. Không gộp chung QCVN và WHO thành "quy chuẩn" chung chung.
-- [ ] **3.12** Xuất 7 PNG, 300 DPI, `figures/FIG-01.png` … `FIG-07.png`.
+- [x] **3.12** Xuất 7 PNG, 300 DPI, `figures/FIG-01.png` … `FIG-07.png`.
 - [ ] **3.13** ⚪ Mở từng file PNG và **kiểm tra bằng mắt** lần cuối (tiếng Việt, không tràn nhãn, ngưỡng đúng
       chuỳ) — bước tự động không thay thế được bước này.
 
@@ -621,7 +633,11 @@ Input: `data/processed/air_pollution_final.parquet` (9.044 dòng × 18 cột, gi
 
 ---
 
-## Phase 4 — Issue #10: Báo cáo giữa kỳ (~1 buổi)
+## Phase 4 — Issue #10: Báo cáo giữa kỳ (chuẩn bị W8–W10, nộp W11; ~1 buổi)
+
+> **Ranh giới đã xác nhận:** #10 phụ thuộc #8 và #9 để nộp báo cáo EDA; không chặn #11,
+> #12 hoặc #13. Phạm vi nghiệm thu là M1–M3. Kết quả W9/W10 chỉ có thể được đưa vào như
+> nội dung bổ sung tùy chọn khi đã sẵn sàng, không phải acceptance criteria hoặc rubric mới.
 
 - [ ] **4.1** Soạn `reports/midterm_report.pdf` — 8–10 trang, đủ 7 phần: đặt vấn đề & câu hỏi nghiên cứu ·
       nguồn dữ liệu & giấy phép · kiểm toán 6 chiều & mẫu hình khuyết thiếu (nêu rõ bất định) ·
@@ -811,7 +827,7 @@ Input: `data/processed/air_pollution_final.parquet` (9.044 dòng × 18 cột, gi
 | W7 | Bar từ 0, không pie/3D | #9 | 3.9 |
 | W7 | Bảng màu `viridis`/`colorblind` | #9 | 3.1 |
 | W7 | Takeaway titles 100% | #9 | 3.10 |
-| W7 | **Thang đo → loại biểu đồ** | #9 | 1.15 🟡 |
+| W7 | **Thang đo → loại biểu đồ** | #9 | 1.15b 🟡 |
 | W7 | **Cleveland–McGill perceptual hierarchy** | #9 | 1.16 🟡 |
 | W7 | **5 cách bóp méo (3 cách còn lại)** | #9 | 1.17 🟡 |
 | W7 | SCQA | #10, #16 | 4.1, 10.1 |

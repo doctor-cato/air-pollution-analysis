@@ -562,7 +562,9 @@ _SUPERSCRIPT = str.maketrans("0123456789-", "⁰¹²³⁴⁵⁶⁷⁸⁹⁻")
 def format_scientific_vi(value: float, digits: int = 1) -> str:
     """Định dạng số cực nhỏ kiểu Việt Nam: ``7,4·10⁻¹¹``."""
     mantissa, exponent = f"{value:.{digits}e}".split("e")
-    superscript = exponent.translate(_SUPERSCRIPT)
+    sign = "-" if exponent.startswith("-") else ""
+    magnitude = exponent.lstrip("+-").lstrip("0") or "0"
+    superscript = (sign + magnitude).translate(_SUPERSCRIPT)
     return f"{mantissa.replace('.', ',')}·10{superscript}"
 
 

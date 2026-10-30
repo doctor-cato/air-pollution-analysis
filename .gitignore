@@ -43,6 +43,15 @@ data/raw/*.parquet
 reports/*
 !reports/.gitkeep
 !reports/statistical_profile.csv
+# reports/inference_results.md là deliverable của Issue #11 (W9): báo cáo
+# kiểm định giả thuyết được đối chiếu trực tiếp với notebook 05 khi chấm,
+# nên phải nằm trong Git dù toàn bộ reports/ còn lại là output sinh lại.
+!reports/inference_results.md
+# reports/inference_montecarlo.csv là bằng chứng kiểm chứng Monte Carlo của
+# Issue #11 (W9): nó cho phép người đọc kiểm tra tỷ lệ bác bỏ H0 mà không cần
+# chạy lại mô phỏng (vài chục phút). Sinh lại bằng
+# `python scripts/validate_inference_montecarlo.py --n-sim 1000`.
+!reports/inference_montecarlo.csv
 
 # ⚠️ figures/ CỐ Ý KHÔNG bị ignore: FIG-01…FIG-07 là bằng chứng chấm điểm
 # (mục "biểu đồ ấn phẩm" 20% rubric) và hội đồng cần mở repo xem được.

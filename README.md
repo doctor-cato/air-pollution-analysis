@@ -64,11 +64,12 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 > - **Kiểm toán lại M2 đã merge qua PR #34** (`fix/m2-audit-findings`, 2026-09-30): sửa 3 lỗi code, loại `is_high_humidity_fog` khỏi feature, công bố sự cố mất kết nối liên tụp 630 giờ, và hạ giọng một tuyên bố quá tay. Bản tài liệu này phản ánh **sau** PR #34. Chi tiết: `docs/roadmap.md` §G.4.
 > - **Issue #8 (EDA mô tả — 4 họ chỉ số & chu kỳ thời gian):** đã hoàn thành và merge qua PR #40 (`notebooks/04_descriptive_stats.ipynb`, `reports/statistical_profile.csv`, `scripts/generate_04_notebook.py`, `scripts/validate_issue8.py`). Thống kê **circular** cho `wind_direction` được xử lý riêng vì `0° ≡ 360°`; 4 giá trị ghim trong notebook (số giờ thiếu, circular mean/std) được `validate_issue8.py` kiểm lại từ dữ liệu thật.
 > - **Issue #9 (Bộ 7 biểu đồ ấn phẩm giải thích FIG-01..FIG-07):** đã triển khai (`src/visualizer.py`, `figures/FIG-01.png`–`figures/FIG-07.png`, `tests/test_visualizer.py`) tuân thủ nguyên tắc Tufte/Cleveland, zero-baseline cho biểu đồ cột, và tương thích chu kỳ trung bình trượt 24h nhân quả với QCVN 05:2023/BTNMT & WHO 2021.
-> - **Mô hình học máy và phân tích suy luận (Issues #11–#13) vẫn chưa bắt đầu** — `NOT IMPLEMENTED`: `notebooks/05`–`07` chưa tồn tại (đã đổi tiền tố phân loại từ `06_` sang `07_` ở task 0.3).
-> - **Tổng số unit test: 466** (`test_data_collection` 57, `test_data_quality` 44, `test_cleaning` 114, `test_cleaning_pipeline` 44, `test_cleaning_pipeline_guards` 43, `test_fetch_dataset` 9, `test_flag_evidence` 44, `test_pipeline_runtime_log` 40, `test_verify_claims_rolling` 7, `test_validate_issue8` 29, `test_visualizer` 35). Chạy: `python -m unittest discover tests`. Bảng breakdown đầy đủ, lý do từng skip và những gì CI *không* kiểm chứng được nằm ở [`docs/TEST_SUITE.md`](docs/TEST_SUITE.md) — đây là nguồn chuẩn duy nhất.
->   - **Số test mà unittest thực sự chạy và báo cáo phụ thuộc cả nền tảng lẫn việc có `data/` hay không.** Bộ test định nghĩa **466** phương thức. Local Windows (có `data/interim/*.parquet`): `Ran 466 tests` + `OK` → **466 pass, 0 skipped**. CI `ubuntu-latest` — nơi repo **không** commit `data/` — báo **`Ran 462 tests`** + `OK (skipped=5)` → **457 pass, 5 skipped**.
->   - **Vì sao CI ra 462 chứ không phải 466:** `TestDocumentedReproduction.setUpClass` ném `unittest.SkipTest` khi thiếu `data/interim/*.parquet`, nên cả lớp bị bỏ qua và **4 phương thức của nó không bao giờ chạy, cũng không được tính vào "Ran"**. Danh sách 5 skip và nguyên nhân từng cái xem ở [`docs/TEST_SUITE.md`](docs/TEST_SUITE.md) §4.
->   - ⚠️ **CI xanh KHÔNG có nghĩa F-test đã được kiểm chứng lại** — CI không có `data/`. Chỉ lần chạy local có dữ liệu mới tái lập được `F = 16,78`.
+> - **Issue #11 (suy luận thống kê W9) đã triển khai** (`src/inference.py`, `notebooks/05_statistical_inference.ipynb`, `reports/inference_results.md`, `figures/FIG-08.png`–`FIG-12.png`, `tests/test_inference.py`). Đơn vị phân tích là **trung bình ngày** (≥ 18/24 giờ), không phải từng giờ, vì ACF bậc 1 của chuỗi giờ ≈ 0,94; Mọi bootstrap chạy trên **lịch ngày đầy đủ** (block 28 **ngày lịch**, mặt nạ ngày thiếu đi theo bản sao, nhãn nhóm theo vị trí đích) và **p-value của bốn kiểm định xác nhận được dựng lại dưới H₀ có xét tới tự tương quan thời gian**; phương pháp nào làm *chính* được chọn bằng **bằng chứng hiệu lực** từ kiểm chứng Monte Carlo đa kịch bản (`scripts/validate_inference_montecarlo.py`, 1.000 lần × 9 kịch bản, kết quả commit ở `reports/inference_montecarlo.csv`). Kết luận sau hiệu chỉnh Holm là **2/4 bác bỏ H₀** và kiểm định mùa **luôn** ở trạng thái **thăm dò** (một chu kỳ mùa duy nhất ⇒ mùa trùng với thời gian). Hình FIG-08..FIG-12 là **hình bổ sung của Issue #11**, không thuộc bộ 7 hình ấn phẩm FIG-01..FIG-07.
+> - **Mô hình học máy (Issues #12–#13) vẫn chưa bắt đầu** — `NOT IMPLEMENTED`: `notebooks/06`–`07` chưa tồn tại (đã đổi tiền tố phân loại từ `06_` sang `07_` ở task 0.3).
+> - **Tổng số unit test: 663** (`test_data_collection` 57, `test_data_quality` 44, `test_cleaning` 114, `test_cleaning_pipeline` 44, `test_cleaning_pipeline_guards` 43, `test_fetch_dataset` 9, `test_flag_evidence` 44, `test_inference` 197, `test_pipeline_runtime_log` 40, `test_verify_claims_rolling` 7, `test_validate_issue8` 29, `test_visualizer` 35). Chạy: `python -m unittest discover tests`. Bảng breakdown đầy đủ, lý do từng skip và những gì CI *không* kiểm chứng được nằm ở [`docs/TEST_SUITE.md`](docs/TEST_SUITE.md) — đây là nguồn chuẩn duy nhất.
+>   - **Số test mà unittest thực sự chạy và báo cáo phụ thuộc cả nền tảng lẫn việc có `data/` hay không.** Bộ test định nghĩa **663** phương thức. Local Windows (có `data/interim/*.parquet`): `Ran 663 tests` + `OK` → **663 pass, 0 skipped**. CI `ubuntu-latest` — nơi repo **không** commit `data/` — báo **`Ran 647 tests`** + `OK (skipped=6)` → **643 pass, 6 skipped** (trong đó 2 dòng `skipped` là *class holder*, không nằm trong `Ran`: `pass = Ran − (skipped − holder)`).
+>   - **Vì sao CI ra 647 chứ không phải 663:** **16** phương thức nằm trong 2 lớp mà `setUpClass` ném `unittest.SkipTest` khi thiếu `data/` — `TestDocumentedReproduction` (4) và `TestRealDataset` của `test_inference` (12). Chúng **không bao giờ chạy, cũng không được tính vào "Ran"**, nhưng mỗi lớp vẫn đóng góp 1 dòng vào `skipped=`. Danh sách skip và nguyên nhân từng cái xem ở [`docs/TEST_SUITE.md`](docs/TEST_SUITE.md) §3–§4.
+>   - ⚠️ **CI xanh KHÔNG có nghĩa F-test hay các số suy luận W9 đã được kiểm chứng lại** — CI không có `data/`. Chỉ lần chạy local có dữ liệu mới tái lập được `F = 16,78`, cùng Kruskal–Wallis, Mann–Whitney, Wilcoxon, t một mẫu, effect size, CI bootstrap và `reports/inference_results.md`.
 > - **Guard chống rò rỉ đã được kiểm chứng bằng 43 test hồi quy** trong `tests/test_cleaning_pipeline_guards.py`, mỗi test được viết để **FAIL trên bản gốc** (xoá guard, cho target lọt vào feature, cho `transform_with_pipeline()` refit trên chính Test, thêm nhánh `ColumnTransformer` thứ hai, đảo thứ tự đối số, tự vô hiệu hóa tầng kiểm tra thứ tự thời gian).
 >
 >   > [!NOTE]
@@ -104,7 +105,8 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 ### 2.2. Kế hoạch thực hiện tiếp theo (Theo `docs/roadmap.md`)
 - **Tuần 03–05 (Milestone 2):** ~~Kiểm toán 6 chiều chất lượng dữ liệu~~ ([Issue #5] — **đã xong**, PR #27), ~~làm sạch tất định & lập cleaning log~~ ([Issue #6] — **đã xong**) và ~~tích hợp dữ liệu, đóng băng, phân chia chuỗi thời gian tuyến tính, đóng gói Pipeline chống rò rỉ~~ ([Issue #7] — **đã xong**). Milestone 2 đã đủ.
 - **Tuần 06–07 (Milestone 3):** Phân tích khám phá dữ liệu (EDA), tính toán 4 họ chỉ số thống kê ([Issue #8] — **đã xong**, PR #40), thiết kế 7 biểu đồ ấn phẩm giải thích theo nguyên tắc Tufte/Cleveland ([Issue #9] — **đã triển khai**).
-- **Tuần 09–11 (Milestone 4):** Thực hiện kiểm định giả thuyết phi tham số, xây dựng mô hình hồi quy OLS (chẩn đoán LINE), phát triển mô hình phân loại cảnh báo ô nhiễm với điều chỉnh ngưỡng quyết định (*Threshold tuning*) ([Issue #11, #12, #13]) và **hoàn thành Báo Cáo Giữa kỳ** ([Issue #10]) — **mốc nộp W11**, theo xác nhận của GV (dời sang sau Chương 10 — Regression Analysis).
+- **Tuần 08–11 (Midterm):** [Issue #10] chuẩn bị/hợp nhất EDA trong W8–W10 và **nộp Báo cáo Giữa kỳ tại W11**, sau Chương 10 — Regression Analysis. Phạm vi nộp vẫn là Milestone 1–3; W9/W10 chỉ là nội dung bổ sung tùy chọn nếu có bằng chứng hoàn tất.
+- **Tuần 09–11 (Milestone 4):** Thực hiện kiểm định giả thuyết phi tham số, xây dựng mô hình hồi quy OLS (chẩn đoán LINE), và phát triển mô hình phân loại cảnh báo ô nhiễm với điều chỉnh ngưỡng quyết định (*Threshold tuning*) ([Issue #11, #12, #13]). #10 không chặn công việc W9/W10.
 - **Tuần 12–15 (Milestones 5 & 6):** Đánh giá định kiến dữ liệu (*Bias Audit*), đo đạc tài nguyên vs Spark, lập Datasheet for Dataset, Model Card 1 trang, hoàn thiện mã nguồn và bảo vệ đồ án cuối kỳ ([Issue #14, #15, #16, #17]).
 
 ---
@@ -150,11 +152,13 @@ air-pollution-analysis/
 │   ├── 03_transformation_pipeline.ipynb# Merge → freeze → split → fit chống rò rỉ [Issue #7]
 │   ├── 03_processed_data_preview.ipynb # Kiểm tra artifact đã đóng băng — KHÔNG thuộc chuỗi chạy chính
 │   ├── 04_descriptive_stats.ipynb      # 4 họ chỉ số + chu kỳ thời gian đa tầng [Issue #8]
-│   │                                    # ⚠️ NOT IMPLEMENTED: 05–07 chưa tồn tại (Issues #11–#13)
+│   ├── 05_statistical_inference.ipynb  # Chẩn đoán phân phối + 3 nhóm kiểm định + Holm + block bootstrap [Issue #11]
+│   │                                    # ⚠️ NOT IMPLEMENTED: 06–07 chưa tồn tại (Issues #12–#13)
 ├── scripts/
 │   ├── fetch_dataset.py                # Tải & kiểm chứng tập dữ liệu từ nguồn công khai (không cần API key)
 │   ├── verify_claims.py                # Tái lập claim định lượng từ dữ liệu thật → VERIFIED/MISMATCH/UNVERIFIABLE (chỉ đọc)
 │   ├── generate_04_notebook.py         # Sinh notebook 04 — NGUỒN CHUẨN, không sửa notebook tay [Issue #8]
+│   ├── generate_05_notebook.py         # Sinh notebook 05 — NGUỒN CHUẨN, pre-flight compile trước khi execute [Issue #11]
 │   ├── validate_issue8.py              # 215 assertion thẩm định deliverables #8 (checksum, đồng bộ, CSV vs dữ liệu)
 │   └── build_progress_report.py        # Sinh docs/bao_cao_tien_do_M1_M2.docx từ 6 nguồn sự thật (chỉ đọc)
 ├── src/
@@ -164,7 +168,8 @@ air-pollution-analysis/
 │   ├── cleaning.py                     # Làm sạch tất định, kẹt cảm biến, reindex & sinh Cleaning Log [Issue #6]
 │   ├── cleaning_pipeline.py            # Merge, freeze, split thời gian, sklearn Pipeline chống rò rỉ, xuất Parquet [Issue #7]
 │   ├── flag_evidence.py                # Fit lại số cho cờ is_high_humidity_fog từ dữ liệu thật [Issue #38]
-│   └── visualizer.py                   # Module xuất bản 7 biểu đồ giải thích FIG-01..FIG-07 chuẩn Tufte/Cleveland [Issue #9]
+│   ├── visualizer.py                   # Module xuất bản 7 biểu đồ giải thích FIG-01..FIG-07 chuẩn Tufte/Cleveland [Issue #9]
+│   └── inference.py                    # Suy luận thống kê W9: chẩn đoán, 3 nhóm kiểm định, Holm, block bootstrap, report + FIG-08..12 [Issue #11]
 ├── tests/
 │   ├── test_data_collection.py         # 57 unit tests kiểm thử pipeline thu thập và validation [Issue #3, #4]
 │   ├── test_data_quality.py            # 44 unit tests cho bộ kiểm toán 6 chiều [Issue #5]
@@ -176,7 +181,8 @@ air-pollution-analysis/
 │   ├── test_pipeline_runtime_log.py    # 40 unit tests — tách trạng thái runtime khỏi hồ sơ provenance tĩnh
 │   ├── test_verify_claims_rolling.py   # 7 unit tests — ranh giới Train/Test của nhãn cảnh báo trượt 24h
 │   ├── test_validate_issue8.py         # 29 unit tests — checksum 4 trạng thái, đồng bộ generator, circular stats, smoke fixture [Issue #8]
-│   └── test_visualizer.py              # 23 unit tests — 7 biểu đồ ấn phẩm FIG-01..FIG-07 (300 DPI, Tufte, zero-baseline, chu kỳ 24h) [Issue #9]
+│   ├── test_inference.py               # 197 unit tests — chẩn đoán phân phối, 4 nhóm kiểm định có xét phụ thuộc thời gian (bootstrap theo lịch + HAC, Monte Carlo đa kịch bản), Holm, artifact [Issue #11]
+│   └── test_visualizer.py              # 35 unit tests — 7 biểu đồ ấn phẩm FIG-01..FIG-07 (300 DPI, Tufte, zero-baseline, chu kỳ 24h) [Issue #9]
 │   ├── roadmap.md                     # Kế hoạch tổng thể (nguồn chuẩn) — Week 01→15
 │   ├── TEST_SUITE.md                  # NGUỒN CHUẨN số liệu kiểm thử — breakdown, skip, giới hạn CI
 │   ├── TASK_LIST_M3_M6.md             # Task list M3–M6: 154 checkbox, có trạng thái UNVERIFIED
@@ -184,11 +190,13 @@ air-pollution-analysis/
 │   ├── bao_cao_tien_do_M1_M2.docx     # Báo cáo tiến độ sinh tự động (không tái lập byte-for-byte)
 │   ├── history/                       # 4 file nhật ký lịch sử issue / PR / audit
 │   └── data_dictionary.md · cleaning_log.md · data_quality_audit.md · source_profiling*.md
-├── figures/                            # Biểu đồ xuất bản 300 DPI [Issue #9]
-│   ├── FIG-01.png .. FIG-07.png        # 7 biểu đồ giải thích chuẩn Tufte/Cleveland (300 DPI)
+├── figures/                            # Biểu đồ 300 DPI: bộ ấn phẩm [Issue #9] + hình bổ sung [Issue #11]
+│   ├── FIG-01.png .. FIG-07.png        # 7 biểu đồ giải thích chuẩn Tufte/Cleveland (300 DPI) [Issue #9]
+│   ├── FIG-08.png .. FIG-12.png        # Chẩn đoán phân phối, mùa, weekday/weekend, QCVN, ACF — KHÔNG thuộc bộ 7 hình ấn phẩm [Issue #11]
 │   └── .gitkeep
-├── reports/                            # Sinh tự động; claim_audit.csv KHÔNG track, statistical_profile.csv ĐÃ track [Issue #8]
+├── reports/                            # Sinh tự động; claim_audit.csv KHÔNG track, statistical_profile.csv & inference_results.md ĐÃ track
     ├── statistical_profile.csv           # Bảng hồ sơ thống kê 4 họ chỉ số, 8 biến × 27 cột [Issue #8]
+    ├── inference_results.md              # Báo cáo W9: bộ bốn (statistic, p, effect size, CI 95%), Holm, giới hạn [Issue #11]
     └── .gitkeep                            # *_minutes.md sẽ track khi sinh ra (task D28)
 ```
 
@@ -248,12 +256,12 @@ air-pollution-analysis/
    >
    > **Giới hạn cần biết:** bucket OpenAQ S3 là **kho sống** — nhà cung cấp tiếp tục nạp dữ liệu mới, nên một lần tải ở thời điểm sau có thể nhiều dòng hơn bản đã kiểm toán. Ngoài ra, định dạng Parquet **không tái lập được theo byte** giữa các máy (khối nén và metadata nội bộ phụ thuộc phiên bản thư viện), nên SHA-256 kiểm chứng được *tính toàn vẹn của tệp đã lưu* chứ không dựng lại được *tập dữ liệu*. Vì vậy `scripts/fetch_dataset.py` kiểm chứng bằng **so khớp nội dung** (số bản ghi, dải thời gian, độ phủ giao thoa) thay vì so khớp byte.
 
-6. **Chạy bộ Unit Tests kiểm định toàn trình (466 test tất định):**
+6. **Chạy bộ Unit Tests kiểm định toàn trình (663 test tất định):**
    ```bash
    python -m unittest discover tests -v
    ```
-   Bộ gồm **57** unit tests trong `tests/test_data_collection.py` (kiểm chứng adapter OpenAQ, Open-Meteo, AirNow, logic lọc địa lý Hà Nội, kiểm định chất lượng khí tượng `validate_weather_canonical()`, cơ chế đồng bộ thời gian động), **44** unit tests trong `tests/test_data_quality.py` (bộ kiểm toán chất lượng 6 chiều, gồm 9 test cho `temporal_grid_completeness` đa trạm), **114** unit tests trong `tests/test_cleaning.py` (làm sạch tất định: chuẩn hóa múi giờ, khử trùng lặp, ràng buộc khí động học, reindex đa trạm, kẹt cảm biến, cờ chẩn đoán, tính tất định, bảo toàn giá trị cực trị, và 20 test hồi quy cho các lỗi tìm ra khi review đối kháng), **44** unit tests trong `tests/test_cleaning_pipeline.py` (merge có guard, freeze, split thời gian, pipeline, xuất Parquet nguyên tử), **43** unit test hồi quy trong `tests/test_cleaning_pipeline_guards.py` — mỗi test trong đó **FAIL trên bản gốc** và PASS sau khi sửa, nên chúng chứng minh lỗi thật chứ không phải trang trí — và **9** unit tests trong `tests/test_fetch_dataset.py` (cơ chế thu thập & kiểm chứng tập dữ liệu), cùng **40** unit tests trong `tests/test_pipeline_runtime_log.py` (tách trạng thái runtime khỏi hồ sơ provenance tĩnh; gồm ghi atomic tệp log và test dựng lại hợp đồng lỗi của `write_pipeline_runtime_log()`), và **7** unit tests trong `tests/test_verify_claims_rolling.py` (ranh giới Train/Test của nhãn trượt 24h: rolling riêng partition mất đúng `window − 1` quan sát đầu partition, rolling toàn frame chỉ dùng dữ liệu quá khứ, dữ liệu LỆCH ở ranh giới làm prevalence trên cửa sổ hợp lệ lệch thật — đối chiếu bằng vòng lặp tường minh độc lập `pandas.rolling()`, khoảng `NaN` làm hỏng đúng 24 cửa sổ) và **44** unit tests trong `tests/test_flag_evidence.py` (F-test `fog × mùa`: phép tính trả ra F, p, bậc tự do từ dữ liệu có kiểm soát; test phát hiện khi công thức bị đổi sai; thiếu cột / thiếu nhóm phải lỗi tường minh; MI bị gắn `UNVERIFIABLE`; `verify_claims.py` và `build_progress_report.py` phải **gọi** hàm tính chứng không mang bản sao số liệu), **29** unit tests trong `tests/test_validate_issue8.py` (4 trạng thái checksum, đồng bộ tế bào giữa notebook và generator, toán học circular mean/std, bảng claim markdown-vs-output, smoke test thực thi notebook 04 trên fixture tổng hợp, và guard chống trôi số liệu kiểm thử trong tài liệu) [Issue #8], cùng **35** unit tests trong `tests/test_visualizer.py` (bộ 7 biểu đồ ấn phẩm `FIG-01`..`FIG-07`: 300 DPI, nguyên tắc Tufte/Cleveland, zero-baseline, tương thích chu kỳ trung bình trượt 24h, không thay đổi DataFrame đầu vào, font tiếng Việt) [Issue #9].
-   Tổng **466** test. Bảng breakdown đầy đủ theo từng file, lý do từng skip và những gì CI *không* kiểm chứng được: [`docs/TEST_SUITE.md`](docs/TEST_SUITE.md).
+   Bộ gồm **57** unit tests trong `tests/test_data_collection.py` (kiểm chứng adapter OpenAQ, Open-Meteo, AirNow, logic lọc địa lý Hà Nội, kiểm định chất lượng khí tượng `validate_weather_canonical()`, cơ chế đồng bộ thời gian động), **44** unit tests trong `tests/test_data_quality.py` (bộ kiểm toán chất lượng 6 chiều, gồm 9 test cho `temporal_grid_completeness` đa trạm), **114** unit tests trong `tests/test_cleaning.py` (làm sạch tất định: chuẩn hóa múi giờ, khử trùng lặp, ràng buộc khí động học, reindex đa trạm, kẹt cảm biến, cờ chẩn đoán, tính tất định, bảo toàn giá trị cực trị, và 20 test hồi quy cho các lỗi tìm ra khi review đối kháng), **44** unit tests trong `tests/test_cleaning_pipeline.py` (merge có guard, freeze, split thời gian, pipeline, xuất Parquet nguyên tử), **43** unit test hồi quy trong `tests/test_cleaning_pipeline_guards.py` — mỗi test trong đó **FAIL trên bản gốc** và PASS sau khi sửa, nên chúng chứng minh lỗi thật chứ không phải trang trí — và **9** unit tests trong `tests/test_fetch_dataset.py` (cơ chế thu thập & kiểm chứng tập dữ liệu), cùng **40** unit tests trong `tests/test_pipeline_runtime_log.py` (tách trạng thái runtime khỏi hồ sơ provenance tĩnh; gồm ghi atomic tệp log và test dựng lại hợp đồng lỗi của `write_pipeline_runtime_log()`), và **7** unit tests trong `tests/test_verify_claims_rolling.py` (ranh giới Train/Test của nhãn trượt 24h: rolling riêng partition mất đúng `window − 1` quan sát đầu partition, rolling toàn frame chỉ dùng dữ liệu quá khứ, dữ liệu LỆCH ở ranh giới làm prevalence trên cửa sổ hợp lệ lệch thật — đối chiếu bằng vòng lặp tường minh độc lập `pandas.rolling()`, khoảng `NaN` làm hỏng đúng 24 cửa sổ) và **44** unit tests trong `tests/test_flag_evidence.py` (F-test `fog × mùa`: phép tính trả ra F, p, bậc tự do từ dữ liệu có kiểm soát; test phát hiện khi công thức bị đổi sai; thiếu cột / thiếu nhóm phải lỗi tường minh; MI bị gắn `UNVERIFIABLE`; `verify_claims.py` và `build_progress_report.py` phải **gọi** hàm tính chứng không mang bản sao số liệu), **197** unit tests trong `tests/test_inference.py` (chẩn đoán phân phối theo từng đặc điểm chứ không mặc định; bốn nhóm kiểm định mùa / weekday–weekend / QCVN 24h / QCVN năm với đúng chu kỳ lấy mẫu; **hiệu chỉnh phụ thuộc thời gian**: hiệp phương sai HAC khớp `statsmodels`, null block bootstrap dựng dưới H₀ và bất biến dịch chuyển, mô phỏng kiểm soát sai lầm loại I, hiệu chỉnh Holm khớp `statsmodels`, chẩn đoán khả năng khái quát hóa theo mùa; block bootstrap tôn trọng cấu trúc khối và tất định theo seed; ghép cặp tuần; artifact notebook 05 + report + 5 hình) [Issue #11], **29** unit tests trong `tests/test_validate_issue8.py` (4 trạng thái checksum, đồng bộ tế bào giữa notebook và generator, toán học circular mean/std, bảng claim markdown-vs-output, smoke test thực thi notebook 04 trên fixture tổng hợp, và guard chống trôi số liệu kiểm thử trong tài liệu) [Issue #8], cùng **35** unit tests trong `tests/test_visualizer.py` (bộ 7 biểu đồ ấn phẩm `FIG-01`..`FIG-07`: 300 DPI, nguyên tắc Tufte/Cleveland, zero-baseline, tương thích chu kỳ trung bình trượt 24h, không thay đổi DataFrame đầu vào, font tiếng Việt) [Issue #9].
+   Tổng **663** test. Bảng breakdown đầy đủ theo từng file, lý do từng skip và những gì CI *không* kiểm chứng được: [`docs/TEST_SUITE.md`](docs/TEST_SUITE.md).
 
 7. **Kiểm tra cú pháp và quy chuẩn diff:**
    ```bash
@@ -262,6 +270,7 @@ air-pollution-analysis/
    python -c "import src.data_quality"
    python -c "import src.cleaning"
    python -c "import src.cleaning_pipeline"
+   python -c "import src.inference"
    python -c "import src.visualizer"
    git diff --check
    ```
@@ -283,14 +292,14 @@ air-pollution-analysis/
 git clone
   → pip install -r requirements.txt                (bước 2–3)
   → python scripts/fetch_dataset.py                (bước 5, cần mạng, có đối chiếu metadata)
-  → python -m unittest discover tests              (bước 6, 466 test, offline)
+  → python -m unittest discover tests              (bước 6, 663 test, offline)
   → jupyter nbconvert --execute notebooks/01_data_collection.ipynb
   → jupyter nbconvert --execute notebooks/02_quality_audit.ipynb
   → jupyter nbconvert --execute notebooks/03_data_cleaning.ipynb  (sinh docs/cleaning_log.md)
   → jupyter nbconvert --execute notebooks/03_transformation_pipeline.ipynb
-  → jupyter nbconvert --execute notebooks/04_descriptive_stats.ipynb (sinh reports/statistical_profile.csv)
-  → dữ liệu canonical ĐÃ LÀM SẠCH trong data/interim/ sẵn sàng cho Issue #7
   → data/processed/air_pollution_final.parquet (9044 dòng × 18 cột, gitignored)
+  → jupyter nbconvert --execute notebooks/04_descriptive_stats.ipynb (sinh reports/statistical_profile.csv)
+  → jupyter nbconvert --execute notebooks/05_statistical_inference.ipynb (sinh reports/inference_results.md + FIG-08..12)
 ```
 
 > **Lưu ý khi chạy lại:** `03_data_cleaning.ipynb` cần `data/interim/` ở trạng thái **trước** khi làm sạch. Nếu đã chạy notebook này một lần, hãy khôi phục lại interim từ `data/raw/` trước khi chạy lại — nếu không, `docs/cleaning_log.md` sẽ ghi sai số liệu "trước làm sạch".
