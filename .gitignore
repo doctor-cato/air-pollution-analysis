@@ -85,3 +85,4 @@ desktop.ini
 *.egg-info/
 dist/
 build/
+!reports/issue44_mirror_manifest.json

@@ -188,6 +188,29 @@ class TestDataCollectionPipeline(unittest.TestCase):
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
 
+    def test_airnow_adapter_canonicalizes_new_mirror_schema_without_nowcast(self):
+        """New exports use Date (LT)/Raw Conc.; NowCast is not an observation."""
+        import os
+        import tempfile
+        from src.data_collection import AirNowDOSAdapter
+
+        content = (
+            "Site,Parameter,Date (LT),NowCast Conc.,Raw Conc.,QC Name\n"
+            "Hanoi,PM2.5 - Principal,2022-01-01 01:00 AM,99.9,50.0,Valid\n"
+            "Hanoi,PM2.5 - Principal,2022-01-01 02:00 AM,88.8,-999,Missing\n"
+        )
+        with tempfile.NamedTemporaryFile("w", delete=False, suffix=".csv") as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        try:
+            frame = AirNowDOSAdapter(csv_path=tmp_path).load_and_canonicalize()
+            self.assertEqual(frame["pm25"].iloc[0], 50.0)
+            self.assertTrue(np.isnan(frame["pm25"].iloc[1]))
+            self.assertTrue(frame["pm10"].isna().all())
+            self.assertEqual(frame["station_id"].nunique(), 1)
+        finally:
+            os.remove(tmp_path)
+
     def test_actual_timestamps_computed_directly_from_dataframe(self):
         """Kiểm thử actual_min_timestamp và actual_max_timestamp được lấy động từ DataFrame, không hardcode."""
         ts_range = pd.date_range("2023-05-01 00:00:00+07:00", "2023-05-10 23:00:00+07:00", freq="h")

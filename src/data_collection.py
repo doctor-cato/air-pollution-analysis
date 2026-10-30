@@ -951,8 +951,23 @@ class AirNowDOSAdapter:
         df_raw = pd.read_csv(target_file)
         df_raw.columns = [c.strip() for c in df_raw.columns]
 
-        # Kiểm tra cột bắt buộc
-        req_cols = ["Site", "Parameter", "Date (LST)", "Value"]
+        # AirNow historical exports exist in two verified schemas.  Older DOS
+        # exports use ``Date (LST)``/``Value``; the public mirror uses the newer
+        # ``Date (LT)``/``Raw Conc.`` fields.  Raw concentration is the observed
+        # PM2.5 value; NowCast must never be substituted for it.
+        if "Date (LST)" in df_raw.columns and "Value" in df_raw.columns:
+            timestamp_column, value_column = "Date (LST)", "Value"
+        elif "Date (LT)" in df_raw.columns and "Raw Conc." in df_raw.columns:
+            timestamp_column, value_column = "Date (LT)", "Raw Conc."
+        else:
+            raise ValueError(
+                "Tệp AirNow CSV phải có một trong hai schema: "
+                "'Date (LST)' + 'Value' hoặc 'Date (LT)' + 'Raw Conc.'. "
+                f"Các cột hiện có: {list(df_raw.columns)}"
+            )
+
+        # Kiểm tra cột bắt buộc độc lập với phiên bản schema.
+        req_cols = ["Site", "Parameter", timestamp_column, value_column]
         for c in req_cols:
             if c not in df_raw.columns:
                 raise ValueError(f"Tệp AirNow CSV thiếu cột bắt buộc '{c}'! Các cột hiện có: {list(df_raw.columns)}")
@@ -962,10 +977,13 @@ class AirNowDOSAdapter:
         if df_site.empty:
             raise ValueError("Không tìm thấy bản ghi Site == 'Hanoi' trong tệp AirNow CSV!")
 
-        df_pm25 = df_site[df_site["Parameter"].astype(str).str.strip().str.upper() == "PM2.5"].copy()
+        parameter = df_site["Parameter"].astype(str).str.strip().str.upper()
+        df_pm25 = df_site[parameter.isin(["PM2.5", "PM2.5 - PRINCIPAL"])].copy()
 
-        # Parse timestamp (Date (LST) là giờ địa phương UTC+7)
-        df_pm25["timestamp"] = pd.to_datetime(df_pm25["Date (LST)"], errors="coerce")
+        # Parse timestamp (LST/LT đều là giờ địa phương UTC+7).  ``format``
+        # handles the AM/PM values in newer mirror exports without depending on
+        # the machine locale; pandas falls back for older ISO-like values.
+        df_pm25["timestamp"] = pd.to_datetime(df_pm25[timestamp_column], errors="coerce")
         df_pm25 = df_pm25.dropna(subset=["timestamp"]).copy()
         if df_pm25["timestamp"].dt.tz is None:
             df_pm25["timestamp"] = df_pm25["timestamp"].dt.tz_localize(CANONICAL_TIMEZONE)
@@ -973,7 +991,7 @@ class AirNowDOSAdapter:
             df_pm25["timestamp"] = df_pm25["timestamp"].dt.tz_convert(CANONICAL_TIMEZONE)
 
         # Làm sạch giá trị (-999 -> NaN, 0.0 giữ nguyên)
-        df_pm25["pm25"] = df_pm25["Value"].apply(clean_air_quality_values)
+        df_pm25["pm25"] = df_pm25[value_column].apply(clean_air_quality_values)
         df_pm25["pm10"] = np.nan
         df_pm25["station_id"] = self.station_id
         df_pm25["location"] = self.location_name

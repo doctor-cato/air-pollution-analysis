@@ -29,7 +29,7 @@ Không test nào gọi mạng. Không test nào phụ thuộc thứ tự chạy.
 
 | Module | Test methods | Phạm vi |
 |---|---|---|
-| `tests/test_data_collection.py` | 57 | Ingest OpenAQ / Open-Meteo / AirNow, provenance, SHA-256 |
+| `tests/test_data_collection.py` | 58 | Ingest OpenAQ / Open-Meteo / AirNow, provenance, SHA-256 |
 | `tests/test_cleaning.py` | 114 | Làm sạch tất định, `assert_no_imputation()`, cờ chẩn đoán |
 | `tests/test_data_quality.py` | 44 | Kiểm toán chất lượng 6 chiều |
 | `tests/test_cleaning_pipeline.py` | 44 | Merge, freeze, split tuần tự, chống rò rỉ |
@@ -41,7 +41,7 @@ Không test nào gọi mạng. Không test nào phụ thuộc thứ tự chạy.
 | `tests/test_validate_issue8.py` | 29 | Checksum, đồng bộ generator, circular stats, smoke fixture, canh số liệu tài liệu |
 | `tests/test_verify_claims_rolling.py` | 7 | Biên rolling 24h — dữ liệu đồng nhất che lỗi |
 | `tests/test_visualizer.py` | 35 | Bộ 7 biểu đồ ấn phẩm FIG-01..FIG-07 (300 DPI, Tufte, zero-baseline, chuỳ 24h, font tiếng Việt) |
-| **Tổng** | **663** | |
+| **Tổng** | **664** | |
 
 Đếm lại sau mỗi thay đổi:
 
@@ -57,14 +57,14 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 | Con số | Ý nghĩa |
 |---|---|
-| **663** | Số **test method được định nghĩa** trong mã nguồn |
-| **647** | Số unittest **thực sự chạy và báo cáo** trên CI (thiếu `data/`) |
-| **643** | Số test **chạy và pass** trên CI (647 − 4 skip nằm trong `Ran`) |
+| **664** | Số **test method được định nghĩa** trong mã nguồn |
+| **648** | Số unittest **thực sự chạy và báo cáo** trên CI (thiếu `data/`) |
+| **644** | Số test **chạy và pass** trên CI (648 − 4 skip nằm trong `Ran`) |
 
 > ⚠ **`skipped=6` không trừ thẳng vào `Ran`.** Hai trong sáu dòng skip là *class holder*
 > (`setUpClass` raise `SkipTest`): unittest bỏ qua cả class nên các method của nó **không
 > bao giờ vào `Ran`**, nhưng vẫn hiện một dòng trong `skipped=`. Vì vậy
-> `pass = Ran − (skipped − holders) = 647 − (6 − 2) = 643`, **không phải** `647 − 6`.
+> `pass = Ran − (skipped − holders) = 648 − (6 − 2) = 644`, **không phải** `648 − 6`.
 >
 > Đính chính: bản trước của tài liệu này ghi `462 − 5 = 457`, tức đã trừ cả holder và
 > **đếm thiếu 1** so với số test thật sự chạy-pass (đúng phải là `462 − 4 = 458`).
@@ -74,12 +74,12 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 | Môi trường | Lệnh | Kết quả |
 |---|---|---|
-| Windows local, **có `data/`** | `python -m unittest discover tests` | `Ran 663 tests` + `OK` → **663 pass, 0 skip** |
-| Ubuntu CI `ubuntu-latest`, **không `data/`** | `python -m unittest discover tests -v` | `Ran 647 tests` + `OK (skipped=6)` → **643 pass, 6 skip (2 holder)** |
+| Windows local, **có `data/`** | `python -m unittest discover tests` | `Ran 664 tests` + `OK` → **664 pass, 0 skip** |
+| Ubuntu CI `ubuntu-latest`, **không `data/`** | `python -m unittest discover tests -v` | `Ran 648 tests` + `OK (skipped=6)` → **644 pass, 6 skip (2 holder)** |
 
 > `data/` bị `.gitignore` loại khỏi repository, nên **CI không bao giờ có dataset**.
 
-### Vì sao 663 − 647 = 16
+### Vì sao 664 − 648 = 16
 
 Hai lớp có `setUpClass` raise `unittest.SkipTest` khi thiếu dữ liệu, và unittest bỏ qua
 **cả class** — mọi method của chúng không bao giờ được tính vào bộ đếm `Ran`:
