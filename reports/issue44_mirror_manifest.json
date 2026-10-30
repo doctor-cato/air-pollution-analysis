@@ -1,11 +1,16 @@
 {
-  "generated_utc": "2026-10-30T04:37:28Z",
+  "generated_utc": "2026-10-30T05:12:15Z",
   "repository": "dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies",
   "branch": "main",
   "source_commit": "25d08e949c9d01ba57c4e74ff9b3b99328ecf141",
   "repository_license": null,
   "file_count": 46,
-  "wrong_year_or_cross_year_paths": [
+  "files_in_wrong_directory": [
+    "Data/Hanoi/2022/Hanoi_PM2.5_2023_12_MTD.csv",
+    "Data/Hanoi/2023/Hanoi_PM2.5_2024_12_MTD.csv",
+    "Data/Hanoi/2024/Hanoi_PM2.5_2025_12_MTD.csv"
+  ],
+  "files_with_cross_year_records": [
     "Data/Hanoi/2022/Hanoi_PM2.5_2022_YTD.csv",
     "Data/Hanoi/2022/Hanoi_PM2.5_2023_12_MTD.csv",
     "Data/Hanoi/2023/Hanoi_PM2.5_2024_12_MTD.csv",
@@ -33,7 +38,11 @@
     }
   ],
   "coverage": {
-    "duplicate_source_rows_ytd_mtd": 25468,
+    "duplicate_source_rows": 25955,
+    "ytd_mtd_overlap_hours": 0,
+    "identical_duplicate_hours": 24351,
+    "conflicting_duplicate_hours": 1,
+    "conflict_policy": "conflicting timestamps are not selected as valid observations",
     "monthly": [
       {
         "month": "2022-01",
@@ -41,6 +50,7 @@
         "observed_hours": 740,
         "valid_hours": 738,
         "missing_or_invalid_hours": 6,
+        "conflicting_hours": 0,
         "longest_gap_hours": 3
       },
       {
@@ -49,6 +59,7 @@
         "observed_hours": 670,
         "valid_hours": 668,
         "missing_or_invalid_hours": 4,
+        "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
       {
@@ -57,7 +68,8 @@
         "observed_hours": 526,
         "valid_hours": 523,
         "missing_or_invalid_hours": 221,
-        "longest_gap_hours": 112
+        "conflicting_hours": 0,
+        "longest_gap_hours": 952
       },
       {
         "month": "2022-04",
@@ -65,7 +77,8 @@
         "observed_hours": 0,
         "valid_hours": 0,
         "missing_or_invalid_hours": 720,
-        "longest_gap_hours": 720
+        "conflicting_hours": 0,
+        "longest_gap_hours": 952
       },
       {
         "month": "2022-05",
@@ -73,7 +86,8 @@
         "observed_hours": 580,
         "valid_hours": 575,
         "missing_or_invalid_hours": 169,
-        "longest_gap_hours": 138
+        "conflicting_hours": 0,
+        "longest_gap_hours": 952
       },
       {
         "month": "2022-06",
@@ -81,6 +95,7 @@
         "observed_hours": 698,
         "valid_hours": 696,
         "missing_or_invalid_hours": 24,
+        "conflicting_hours": 0,
         "longest_gap_hours": 23
       },
       {
@@ -89,6 +104,7 @@
         "observed_hours": 712,
         "valid_hours": 710,
         "missing_or_invalid_hours": 34,
+        "conflicting_hours": 0,
         "longest_gap_hours": 33
       },
       {
@@ -97,6 +113,7 @@
         "observed_hours": 741,
         "valid_hours": 737,
         "missing_or_invalid_hours": 7,
+        "conflicting_hours": 0,
         "longest_gap_hours": 3
       },
       {
@@ -105,6 +122,7 @@
         "observed_hours": 692,
         "valid_hours": 684,
         "missing_or_invalid_hours": 36,
+        "conflicting_hours": 0,
         "longest_gap_hours": 8
       },
       {
@@ -113,6 +131,7 @@
         "observed_hours": 178,
         "valid_hours": 176,
         "missing_or_invalid_hours": 568,
+        "conflicting_hours": 0,
         "longest_gap_hours": 567
       },
       {
@@ -121,6 +140,7 @@
         "observed_hours": 718,
         "valid_hours": 714,
         "missing_or_invalid_hours": 6,
+        "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
       {
@@ -129,6 +149,7 @@
         "observed_hours": 740,
         "valid_hours": 735,
         "missing_or_invalid_hours": 9,
+        "conflicting_hours": 0,
         "longest_gap_hours": 3
       },
       {
@@ -137,6 +158,7 @@
         "observed_hours": 738,
         "valid_hours": 732,
         "missing_or_invalid_hours": 12,
+        "conflicting_hours": 0,
         "longest_gap_hours": 3
       },
       {
@@ -145,6 +167,7 @@
         "observed_hours": 672,
         "valid_hours": 669,
         "missing_or_invalid_hours": 3,
+        "conflicting_hours": 0,
         "longest_gap_hours": 1
       },
       {
@@ -153,6 +176,7 @@
         "observed_hours": 636,
         "valid_hours": 629,
         "missing_or_invalid_hours": 115,
+        "conflicting_hours": 0,
         "longest_gap_hours": 97
       },
       {
@@ -161,6 +185,7 @@
         "observed_hours": 718,
         "valid_hours": 715,
         "missing_or_invalid_hours": 5,
+        "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
       {
@@ -169,6 +194,7 @@
         "observed_hours": 697,
         "valid_hours": 692,
         "missing_or_invalid_hours": 52,
+        "conflicting_hours": 0,
         "longest_gap_hours": 46
       },
       {
@@ -177,6 +203,7 @@
         "observed_hours": 675,
         "valid_hours": 671,
         "missing_or_invalid_hours": 49,
+        "conflicting_hours": 0,
         "longest_gap_hours": 44
       },
       {
@@ -185,6 +212,7 @@
         "observed_hours": 740,
         "valid_hours": 731,
         "missing_or_invalid_hours": 13,
+        "conflicting_hours": 0,
         "longest_gap_hours": 5
       },
       {
@@ -193,6 +221,7 @@
         "observed_hours": 742,
         "valid_hours": 737,
         "missing_or_invalid_hours": 7,
+        "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
       {
@@ -201,6 +230,7 @@
         "observed_hours": 718,
         "valid_hours": 714,
         "missing_or_invalid_hours": 6,
+        "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
       {
@@ -209,14 +239,16 @@
         "observed_hours": 741,
         "valid_hours": 734,
         "missing_or_invalid_hours": 10,
+        "conflicting_hours": 0,
         "longest_gap_hours": 3
       },
       {
         "month": "2023-11",
         "expected_hours": 720,
         "observed_hours": 717,
-        "valid_hours": 713,
-        "missing_or_invalid_hours": 7,
+        "valid_hours": 712,
+        "missing_or_invalid_hours": 8,
+        "conflicting_hours": 1,
         "longest_gap_hours": 3
       },
       {
@@ -225,7 +257,8 @@
         "observed_hours": 635,
         "valid_hours": 630,
         "missing_or_invalid_hours": 114,
-        "longest_gap_hours": 109
+        "conflicting_hours": 0,
+        "longest_gap_hours": 148
       },
       {
         "month": "2024-01",
@@ -233,7 +266,8 @@
         "observed_hours": 703,
         "valid_hours": 700,
         "missing_or_invalid_hours": 44,
-        "longest_gap_hours": 39
+        "conflicting_hours": 0,
+        "longest_gap_hours": 148
       },
       {
         "month": "2024-02",
@@ -241,6 +275,7 @@
         "observed_hours": 696,
         "valid_hours": 693,
         "missing_or_invalid_hours": 3,
+        "conflicting_hours": 0,
         "longest_gap_hours": 1
       },
       {
@@ -249,6 +284,7 @@
         "observed_hours": 742,
         "valid_hours": 739,
         "missing_or_invalid_hours": 5,
+        "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
       {
@@ -257,6 +293,7 @@
         "observed_hours": 718,
         "valid_hours": 712,
         "missing_or_invalid_hours": 8,
+        "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
       {
@@ -265,6 +302,7 @@
         "observed_hours": 742,
         "valid_hours": 737,
         "missing_or_invalid_hours": 7,
+        "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
       {
@@ -273,6 +311,7 @@
         "observed_hours": 713,
         "valid_hours": 710,
         "missing_or_invalid_hours": 10,
+        "conflicting_hours": 0,
         "longest_gap_hours": 8
       },
       {
@@ -281,6 +320,7 @@
         "observed_hours": 743,
         "valid_hours": 741,
         "missing_or_invalid_hours": 3,
+        "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
       {
@@ -289,7 +329,8 @@
         "observed_hours": 156,
         "valid_hours": 155,
         "missing_or_invalid_hours": 589,
-        "longest_gap_hours": 589
+        "conflicting_hours": 0,
+        "longest_gap_hours": 820
       },
       {
         "month": "2024-09",
@@ -297,7 +338,8 @@
         "observed_hours": 489,
         "valid_hours": 485,
         "missing_or_invalid_hours": 235,
-        "longest_gap_hours": 231
+        "conflicting_hours": 0,
+        "longest_gap_hours": 820
       },
       {
         "month": "2024-10",
@@ -305,6 +347,7 @@
         "observed_hours": 685,
         "valid_hours": 680,
         "missing_or_invalid_hours": 64,
+        "conflicting_hours": 0,
         "longest_gap_hours": 45
       },
       {
@@ -313,6 +356,7 @@
         "observed_hours": 719,
         "valid_hours": 716,
         "missing_or_invalid_hours": 4,
+        "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
       {
@@ -321,7 +365,8 @@
         "observed_hours": 254,
         "valid_hours": 250,
         "missing_or_invalid_hours": 494,
-        "longest_gap_hours": 490
+        "conflicting_hours": 0,
+        "longest_gap_hours": 492
       },
       {
         "month": "2025-01",
@@ -329,7 +374,8 @@
         "observed_hours": 713,
         "valid_hours": 704,
         "missing_or_invalid_hours": 40,
-        "longest_gap_hours": 32
+        "conflicting_hours": 0,
+        "longest_gap_hours": 492
       },
       {
         "month": "2025-02",
@@ -337,6 +383,7 @@
         "observed_hours": 671,
         "valid_hours": 669,
         "missing_or_invalid_hours": 3,
+        "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
       {
@@ -345,6 +392,7 @@
         "observed_hours": 739,
         "valid_hours": 735,
         "missing_or_invalid_hours": 9,
+        "conflicting_hours": 0,
         "longest_gap_hours": 6
       },
       {
@@ -353,7 +401,8 @@
         "observed_hours": 216,
         "valid_hours": 214,
         "missing_or_invalid_hours": 506,
-        "longest_gap_hours": 505
+        "conflicting_hours": 0,
+        "longest_gap_hours": 6385
       },
       {
         "month": "2025-05",
@@ -361,7 +410,8 @@
         "observed_hours": 0,
         "valid_hours": 0,
         "missing_or_invalid_hours": 744,
-        "longest_gap_hours": 744
+        "conflicting_hours": 0,
+        "longest_gap_hours": 6385
       },
       {
         "month": "2025-06",
@@ -369,7 +419,8 @@
         "observed_hours": 0,
         "valid_hours": 0,
         "missing_or_invalid_hours": 720,
-        "longest_gap_hours": 720
+        "conflicting_hours": 0,
+        "longest_gap_hours": 6385
       },
       {
         "month": "2025-07",
@@ -377,7 +428,8 @@
         "observed_hours": 0,
         "valid_hours": 0,
         "missing_or_invalid_hours": 744,
-        "longest_gap_hours": 744
+        "conflicting_hours": 0,
+        "longest_gap_hours": 6385
       },
       {
         "month": "2025-08",
@@ -385,7 +437,8 @@
         "observed_hours": 0,
         "valid_hours": 0,
         "missing_or_invalid_hours": 744,
-        "longest_gap_hours": 744
+        "conflicting_hours": 0,
+        "longest_gap_hours": 6385
       },
       {
         "month": "2025-09",
@@ -393,7 +446,8 @@
         "observed_hours": 0,
         "valid_hours": 0,
         "missing_or_invalid_hours": 720,
-        "longest_gap_hours": 720
+        "conflicting_hours": 0,
+        "longest_gap_hours": 6385
       },
       {
         "month": "2025-10",
@@ -401,7 +455,8 @@
         "observed_hours": 0,
         "valid_hours": 0,
         "missing_or_invalid_hours": 744,
-        "longest_gap_hours": 744
+        "conflicting_hours": 0,
+        "longest_gap_hours": 6385
       },
       {
         "month": "2025-11",
@@ -409,7 +464,8 @@
         "observed_hours": 0,
         "valid_hours": 0,
         "missing_or_invalid_hours": 720,
-        "longest_gap_hours": 720
+        "conflicting_hours": 0,
+        "longest_gap_hours": 6385
       },
       {
         "month": "2025-12",
@@ -417,7 +473,8 @@
         "observed_hours": 0,
         "valid_hours": 0,
         "missing_or_invalid_hours": 744,
-        "longest_gap_hours": 744
+        "conflicting_hours": 0,
+        "longest_gap_hours": 6385
       }
     ],
     "annual": [
@@ -427,15 +484,17 @@
         "observed_hours": 6995,
         "valid_hours": 6956,
         "missing_or_invalid_hours": 1804,
-        "longest_gap_hours": 720
+        "conflicting_hours": 0,
+        "longest_gap_hours": 952
       },
       {
         "year": 2023,
         "expected_hours": 8760,
         "observed_hours": 8429,
-        "valid_hours": 8367,
-        "missing_or_invalid_hours": 393,
-        "longest_gap_hours": 109
+        "valid_hours": 8366,
+        "missing_or_invalid_hours": 394,
+        "conflicting_hours": 1,
+        "longest_gap_hours": 148
       },
       {
         "year": 2024,
@@ -443,7 +502,8 @@
         "observed_hours": 7360,
         "valid_hours": 7318,
         "missing_or_invalid_hours": 1466,
-        "longest_gap_hours": 589
+        "conflicting_hours": 0,
+        "longest_gap_hours": 820
       },
       {
         "year": 2025,
@@ -451,7 +511,8 @@
         "observed_hours": 2339,
         "valid_hours": 2322,
         "missing_or_invalid_hours": 6438,
-        "longest_gap_hours": 744
+        "conflicting_hours": 0,
+        "longest_gap_hours": 6385
       }
     ]
   },
@@ -492,7 +553,9 @@
       "minimum_timestamp": "2022-01-01T01:00:00",
       "maximum_timestamp": "2022-02-01T00:00:00",
       "path": "Data/Hanoi/2022/Hanoi_PM2.5_2022_01_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2022/Hanoi_PM2.5_2022_01_MTD.csv",
       "git_blob_sha": "a470ec823669057a5bf81ca5d9e62718fda203ee",
+      "verified_git_blob_sha": "a470ec823669057a5bf81ca5d9e62718fda203ee",
       "named_year": 2022
     },
     {
@@ -526,7 +589,9 @@
       "minimum_timestamp": "2022-02-01T01:00:00",
       "maximum_timestamp": "2022-03-01T00:00:00",
       "path": "Data/Hanoi/2022/Hanoi_PM2.5_2022_02_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2022/Hanoi_PM2.5_2022_02_MTD.csv",
       "git_blob_sha": "f07d4e7e3a0aa4e1cd326299b6ce8e743717b377",
+      "verified_git_blob_sha": "f07d4e7e3a0aa4e1cd326299b6ce8e743717b377",
       "named_year": 2022
     },
     {
@@ -560,7 +625,9 @@
       "minimum_timestamp": "2022-03-01T01:00:00",
       "maximum_timestamp": "2022-03-28T01:00:00",
       "path": "Data/Hanoi/2022/Hanoi_PM2.5_2022_03_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2022/Hanoi_PM2.5_2022_03_MTD.csv",
       "git_blob_sha": "2a2d9039bdd955ff47db0314de098dc9594881b0",
+      "verified_git_blob_sha": "2a2d9039bdd955ff47db0314de098dc9594881b0",
       "named_year": 2022
     },
     {
@@ -594,7 +661,9 @@
       "minimum_timestamp": "2022-05-06T18:00:00",
       "maximum_timestamp": "2022-06-01T00:00:00",
       "path": "Data/Hanoi/2022/Hanoi_PM2.5_2022_05_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2022/Hanoi_PM2.5_2022_05_MTD.csv",
       "git_blob_sha": "4c0c658f4c22ff04aba3531755ec1ed3d4335f65",
+      "verified_git_blob_sha": "4c0c658f4c22ff04aba3531755ec1ed3d4335f65",
       "named_year": 2022
     },
     {
@@ -628,7 +697,9 @@
       "minimum_timestamp": "2022-06-01T01:00:00",
       "maximum_timestamp": "2022-07-01T00:00:00",
       "path": "Data/Hanoi/2022/Hanoi_PM2.5_2022_06_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2022/Hanoi_PM2.5_2022_06_MTD.csv",
       "git_blob_sha": "542a6073630deef0076b5a05edd018edeba46a29",
+      "verified_git_blob_sha": "542a6073630deef0076b5a05edd018edeba46a29",
       "named_year": 2022
     },
     {
@@ -662,7 +733,9 @@
       "minimum_timestamp": "2022-07-01T01:00:00",
       "maximum_timestamp": "2022-08-01T00:00:00",
       "path": "Data/Hanoi/2022/Hanoi_PM2.5_2022_07_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2022/Hanoi_PM2.5_2022_07_MTD.csv",
       "git_blob_sha": "686b49e6639feb2e43318642735ed5692303c6ba",
+      "verified_git_blob_sha": "686b49e6639feb2e43318642735ed5692303c6ba",
       "named_year": 2022
     },
     {
@@ -696,7 +769,9 @@
       "minimum_timestamp": "2022-08-01T01:00:00",
       "maximum_timestamp": "2022-09-01T00:00:00",
       "path": "Data/Hanoi/2022/Hanoi_PM2.5_2022_08_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2022/Hanoi_PM2.5_2022_08_MTD.csv",
       "git_blob_sha": "cd42049756ccfdc9dfadc542e5e8be0517d2427c",
+      "verified_git_blob_sha": "cd42049756ccfdc9dfadc542e5e8be0517d2427c",
       "named_year": 2022
     },
     {
@@ -730,7 +805,9 @@
       "minimum_timestamp": "2022-09-01T01:00:00",
       "maximum_timestamp": "2022-10-01T00:00:00",
       "path": "Data/Hanoi/2022/Hanoi_PM2.5_2022_09_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2022/Hanoi_PM2.5_2022_09_MTD.csv",
       "git_blob_sha": "9f2291fd0885749e0b9578d496849878c42477d0",
+      "verified_git_blob_sha": "9f2291fd0885749e0b9578d496849878c42477d0",
       "named_year": 2022
     },
     {
@@ -764,7 +841,9 @@
       "minimum_timestamp": "2022-10-01T01:00:00",
       "maximum_timestamp": "2022-11-01T00:00:00",
       "path": "Data/Hanoi/2022/Hanoi_PM2.5_2022_10_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2022/Hanoi_PM2.5_2022_10_MTD.csv",
       "git_blob_sha": "456beee430c09dec68069f8b30f59aa508c23200",
+      "verified_git_blob_sha": "456beee430c09dec68069f8b30f59aa508c23200",
       "named_year": 2022
     },
     {
@@ -798,7 +877,9 @@
       "minimum_timestamp": "2022-11-01T01:00:00",
       "maximum_timestamp": "2022-12-01T00:00:00",
       "path": "Data/Hanoi/2022/Hanoi_PM2.5_2022_11_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2022/Hanoi_PM2.5_2022_11_MTD.csv",
       "git_blob_sha": "9e6d8510ec948ec58017489e5a3962b7b004d5fb",
+      "verified_git_blob_sha": "9e6d8510ec948ec58017489e5a3962b7b004d5fb",
       "named_year": 2022
     },
     {
@@ -832,7 +913,9 @@
       "minimum_timestamp": "2022-12-01T01:00:00",
       "maximum_timestamp": "2022-12-31T00:00:00",
       "path": "Data/Hanoi/2022/Hanoi_PM2.5_2022_12_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2022/Hanoi_PM2.5_2022_12_MTD.csv",
       "git_blob_sha": "eb7885349b4f868a98b21e4541cd434f6503f89f",
+      "verified_git_blob_sha": "eb7885349b4f868a98b21e4541cd434f6503f89f",
       "named_year": 2022
     },
     {
@@ -867,7 +950,9 @@
       "minimum_timestamp": "2022-01-01T01:00:00",
       "maximum_timestamp": "2023-01-01T00:00:00",
       "path": "Data/Hanoi/2022/Hanoi_PM2.5_2022_YTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2022/Hanoi_PM2.5_2022_YTD.csv",
       "git_blob_sha": "033bcdac9348f7e222797915a972fe645a119c9f",
+      "verified_git_blob_sha": "033bcdac9348f7e222797915a972fe645a119c9f",
       "named_year": 2022
     },
     {
@@ -902,7 +987,9 @@
       "minimum_timestamp": "2022-12-01T01:00:00",
       "maximum_timestamp": "2023-01-01T00:00:00",
       "path": "Data/Hanoi/2022/Hanoi_PM2.5_2023_12_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2022/Hanoi_PM2.5_2023_12_MTD.csv",
       "git_blob_sha": "2a149a56dae36a4528c214f70eb8197b0d4de543",
+      "verified_git_blob_sha": "2a149a56dae36a4528c214f70eb8197b0d4de543",
       "named_year": 2023
     },
     {
@@ -936,7 +1023,9 @@
       "minimum_timestamp": "2023-01-01T01:00:00",
       "maximum_timestamp": "2023-02-01T00:00:00",
       "path": "Data/Hanoi/2023/Hanoi_PM2.5_2023_01_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2023/Hanoi_PM2.5_2023_01_MTD.csv",
       "git_blob_sha": "46972249a48c780596e1f46327b3d21e71f9411d",
+      "verified_git_blob_sha": "46972249a48c780596e1f46327b3d21e71f9411d",
       "named_year": 2023
     },
     {
@@ -970,7 +1059,9 @@
       "minimum_timestamp": "2023-02-01T01:00:00",
       "maximum_timestamp": "2023-03-01T00:00:00",
       "path": "Data/Hanoi/2023/Hanoi_PM2.5_2023_02_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2023/Hanoi_PM2.5_2023_02_MTD.csv",
       "git_blob_sha": "cf92a488d85240a9854b3f3cff3d54e0f76060f0",
+      "verified_git_blob_sha": "cf92a488d85240a9854b3f3cff3d54e0f76060f0",
       "named_year": 2023
     },
     {
@@ -1004,7 +1095,9 @@
       "minimum_timestamp": "2023-03-01T01:00:00",
       "maximum_timestamp": "2023-04-01T00:00:00",
       "path": "Data/Hanoi/2023/Hanoi_PM2.5_2023_03_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2023/Hanoi_PM2.5_2023_03_MTD.csv",
       "git_blob_sha": "5b32d7d0bcaa97d0f9fecc8225d91523e602d3e2",
+      "verified_git_blob_sha": "5b32d7d0bcaa97d0f9fecc8225d91523e602d3e2",
       "named_year": 2023
     },
     {
@@ -1038,7 +1131,9 @@
       "minimum_timestamp": "2023-04-01T01:00:00",
       "maximum_timestamp": "2023-05-01T00:00:00",
       "path": "Data/Hanoi/2023/Hanoi_PM2.5_2023_04_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2023/Hanoi_PM2.5_2023_04_MTD.csv",
       "git_blob_sha": "01c7e38362ec45fb8cdf83958c84bfc672a496db",
+      "verified_git_blob_sha": "01c7e38362ec45fb8cdf83958c84bfc672a496db",
       "named_year": 2023
     },
     {
@@ -1072,7 +1167,9 @@
       "minimum_timestamp": "2023-05-01T01:00:00",
       "maximum_timestamp": "2023-06-01T00:00:00",
       "path": "Data/Hanoi/2023/Hanoi_PM2.5_2023_05_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2023/Hanoi_PM2.5_2023_05_MTD.csv",
       "git_blob_sha": "71ee7a7312b8c34341a4be08ffd031a306bdb9e1",
+      "verified_git_blob_sha": "71ee7a7312b8c34341a4be08ffd031a306bdb9e1",
       "named_year": 2023
     },
     {
@@ -1106,7 +1203,9 @@
       "minimum_timestamp": "2023-06-01T01:00:00",
       "maximum_timestamp": "2023-07-01T00:00:00",
       "path": "Data/Hanoi/2023/Hanoi_PM2.5_2023_06_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2023/Hanoi_PM2.5_2023_06_MTD.csv",
       "git_blob_sha": "5db04c5a24e00488b865f883db24a4022fee53db",
+      "verified_git_blob_sha": "5db04c5a24e00488b865f883db24a4022fee53db",
       "named_year": 2023
     },
     {
@@ -1140,7 +1239,9 @@
       "minimum_timestamp": "2023-07-01T01:00:00",
       "maximum_timestamp": "2023-08-01T00:00:00",
       "path": "Data/Hanoi/2023/Hanoi_PM2.5_2023_07_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2023/Hanoi_PM2.5_2023_07_MTD.csv",
       "git_blob_sha": "4a03e18f87d3b15717f5b3085dbe9b652400d102",
+      "verified_git_blob_sha": "4a03e18f87d3b15717f5b3085dbe9b652400d102",
       "named_year": 2023
     },
     {
@@ -1174,7 +1275,9 @@
       "minimum_timestamp": "2023-08-01T01:00:00",
       "maximum_timestamp": "2023-09-01T00:00:00",
       "path": "Data/Hanoi/2023/Hanoi_PM2.5_2023_08_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2023/Hanoi_PM2.5_2023_08_MTD.csv",
       "git_blob_sha": "06020e25ed111592d92b0cf3c943af486a463b82",
+      "verified_git_blob_sha": "06020e25ed111592d92b0cf3c943af486a463b82",
       "named_year": 2023
     },
     {
@@ -1208,7 +1311,9 @@
       "minimum_timestamp": "2023-09-01T01:00:00",
       "maximum_timestamp": "2023-10-01T00:00:00",
       "path": "Data/Hanoi/2023/Hanoi_PM2.5_2023_09_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2023/Hanoi_PM2.5_2023_09_MTD.csv",
       "git_blob_sha": "a6e33dfa105cfe762067209bec3b2fbc06656bb8",
+      "verified_git_blob_sha": "a6e33dfa105cfe762067209bec3b2fbc06656bb8",
       "named_year": 2023
     },
     {
@@ -1242,7 +1347,9 @@
       "minimum_timestamp": "2023-10-01T01:00:00",
       "maximum_timestamp": "2023-11-01T00:00:00",
       "path": "Data/Hanoi/2023/Hanoi_PM2.5_2023_10_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2023/Hanoi_PM2.5_2023_10_MTD.csv",
       "git_blob_sha": "4f163ffa830ac0e07c904a6b38ee406b39096111",
+      "verified_git_blob_sha": "4f163ffa830ac0e07c904a6b38ee406b39096111",
       "named_year": 2023
     },
     {
@@ -1276,7 +1383,9 @@
       "minimum_timestamp": "2023-11-01T01:00:00",
       "maximum_timestamp": "2023-11-07T17:00:00",
       "path": "Data/Hanoi/2023/Hanoi_PM2.5_2023_11_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2023/Hanoi_PM2.5_2023_11_MTD.csv",
       "git_blob_sha": "93e6b13fcd8492bfe800e47e90a82ed507e102ad",
+      "verified_git_blob_sha": "93e6b13fcd8492bfe800e47e90a82ed507e102ad",
       "named_year": 2023
     },
     {
@@ -1310,7 +1419,9 @@
       "minimum_timestamp": "2023-12-01T01:00:00",
       "maximum_timestamp": "2023-12-27T11:00:00",
       "path": "Data/Hanoi/2023/Hanoi_PM2.5_2023_12_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2023/Hanoi_PM2.5_2023_12_MTD.csv",
       "git_blob_sha": "e5b3dd71c7462e733549c49773026d9610c9d9a9",
+      "verified_git_blob_sha": "e5b3dd71c7462e733549c49773026d9610c9d9a9",
       "named_year": 2023
     },
     {
@@ -1344,7 +1455,9 @@
       "minimum_timestamp": "2023-01-01T01:00:00",
       "maximum_timestamp": "2023-12-27T11:00:00",
       "path": "Data/Hanoi/2023/Hanoi_PM2.5_2023_YTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2023/Hanoi_PM2.5_2023_YTD.csv",
       "git_blob_sha": "8dc11459c5b464156d038475ca3b47e69fb2422a",
+      "verified_git_blob_sha": "8dc11459c5b464156d038475ca3b47e69fb2422a",
       "named_year": 2023
     },
     {
@@ -1378,7 +1491,9 @@
       "minimum_timestamp": "2023-12-01T01:00:00",
       "maximum_timestamp": "2023-12-27T11:00:00",
       "path": "Data/Hanoi/2023/Hanoi_PM2.5_2024_12_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2023/Hanoi_PM2.5_2024_12_MTD.csv",
       "git_blob_sha": "e5b3dd71c7462e733549c49773026d9610c9d9a9",
+      "verified_git_blob_sha": "e5b3dd71c7462e733549c49773026d9610c9d9a9",
       "named_year": 2024
     },
     {
@@ -1412,7 +1527,9 @@
       "minimum_timestamp": "2024-01-02T15:00:00",
       "maximum_timestamp": "2024-02-01T00:00:00",
       "path": "Data/Hanoi/2024/Hanoi_PM2.5_2024_01_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2024/Hanoi_PM2.5_2024_01_MTD.csv",
       "git_blob_sha": "088f55215cfe9a2b7f95390aeed71676768bb60f",
+      "verified_git_blob_sha": "088f55215cfe9a2b7f95390aeed71676768bb60f",
       "named_year": 2024
     },
     {
@@ -1446,7 +1563,9 @@
       "minimum_timestamp": "2024-02-01T01:00:00",
       "maximum_timestamp": "2024-03-01T00:00:00",
       "path": "Data/Hanoi/2024/Hanoi_PM2.5_2024_02_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2024/Hanoi_PM2.5_2024_02_MTD.csv",
       "git_blob_sha": "15ee67f93450c8ca1a4f03f278aad6b117c1f6d8",
+      "verified_git_blob_sha": "15ee67f93450c8ca1a4f03f278aad6b117c1f6d8",
       "named_year": 2024
     },
     {
@@ -1480,7 +1599,9 @@
       "minimum_timestamp": "2024-03-01T01:00:00",
       "maximum_timestamp": "2024-04-01T00:00:00",
       "path": "Data/Hanoi/2024/Hanoi_PM2.5_2024_03_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2024/Hanoi_PM2.5_2024_03_MTD.csv",
       "git_blob_sha": "704828dd2e150ceed138d1b6811b8c7ab3c8d44c",
+      "verified_git_blob_sha": "704828dd2e150ceed138d1b6811b8c7ab3c8d44c",
       "named_year": 2024
     },
     {
@@ -1514,7 +1635,9 @@
       "minimum_timestamp": "2024-04-01T01:00:00",
       "maximum_timestamp": "2024-05-01T00:00:00",
       "path": "Data/Hanoi/2024/Hanoi_PM2.5_2024_04_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2024/Hanoi_PM2.5_2024_04_MTD.csv",
       "git_blob_sha": "16a831f09672330739676ed32fc5c41f240ad2cd",
+      "verified_git_blob_sha": "16a831f09672330739676ed32fc5c41f240ad2cd",
       "named_year": 2024
     },
     {
@@ -1548,7 +1671,9 @@
       "minimum_timestamp": "2024-05-01T01:00:00",
       "maximum_timestamp": "2024-06-01T00:00:00",
       "path": "Data/Hanoi/2024/Hanoi_PM2.5_2024_05_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2024/Hanoi_PM2.5_2024_05_MTD.csv",
       "git_blob_sha": "4a50155141305aba9492a26e5c3f798181bcab1b",
+      "verified_git_blob_sha": "4a50155141305aba9492a26e5c3f798181bcab1b",
       "named_year": 2024
     },
     {
@@ -1582,7 +1707,9 @@
       "minimum_timestamp": "2024-06-01T01:00:00",
       "maximum_timestamp": "2024-07-01T00:00:00",
       "path": "Data/Hanoi/2024/Hanoi_PM2.5_2024_06_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2024/Hanoi_PM2.5_2024_06_MTD.csv",
       "git_blob_sha": "b46714ea3da4846c0beaa3ff6a9bd63bb29ee620",
+      "verified_git_blob_sha": "b46714ea3da4846c0beaa3ff6a9bd63bb29ee620",
       "named_year": 2024
     },
     {
@@ -1616,7 +1743,9 @@
       "minimum_timestamp": "2024-07-01T01:00:00",
       "maximum_timestamp": "2024-08-01T00:00:00",
       "path": "Data/Hanoi/2024/Hanoi_PM2.5_2024_07_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2024/Hanoi_PM2.5_2024_07_MTD.csv",
       "git_blob_sha": "e1bcda0016d6cb08694fa8384b1983cea4d284dd",
+      "verified_git_blob_sha": "e1bcda0016d6cb08694fa8384b1983cea4d284dd",
       "named_year": 2024
     },
     {
@@ -1650,7 +1779,9 @@
       "minimum_timestamp": "2024-08-01T01:00:00",
       "maximum_timestamp": "2024-08-07T11:00:00",
       "path": "Data/Hanoi/2024/Hanoi_PM2.5_2024_08_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2024/Hanoi_PM2.5_2024_08_MTD.csv",
       "git_blob_sha": "f3760c28f7bc7677ea89020591091a946a6ac909",
+      "verified_git_blob_sha": "f3760c28f7bc7677ea89020591091a946a6ac909",
       "named_year": 2024
     },
     {
@@ -1684,7 +1815,9 @@
       "minimum_timestamp": "2024-09-10T14:00:00",
       "maximum_timestamp": "2024-10-01T00:00:00",
       "path": "Data/Hanoi/2024/Hanoi_PM2.5_2024_09_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2024/Hanoi_PM2.5_2024_09_MTD.csv",
       "git_blob_sha": "547d01f8f63dc832a59815d14bd275f643fa5a3f",
+      "verified_git_blob_sha": "547d01f8f63dc832a59815d14bd275f643fa5a3f",
       "named_year": 2024
     },
     {
@@ -1718,7 +1851,9 @@
       "minimum_timestamp": "2024-10-01T01:00:00",
       "maximum_timestamp": "2024-11-01T00:00:00",
       "path": "Data/Hanoi/2024/Hanoi_PM2.5_2024_10_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2024/Hanoi_PM2.5_2024_10_MTD.csv",
       "git_blob_sha": "8f11662c38e0617cb762b2d661543c300c173ee0",
+      "verified_git_blob_sha": "8f11662c38e0617cb762b2d661543c300c173ee0",
       "named_year": 2024
     },
     {
@@ -1752,7 +1887,9 @@
       "minimum_timestamp": "2024-11-01T01:00:00",
       "maximum_timestamp": "2024-12-01T00:00:00",
       "path": "Data/Hanoi/2024/Hanoi_PM2.5_2024_11_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2024/Hanoi_PM2.5_2024_11_MTD.csv",
       "git_blob_sha": "03b40989c77b07a9af57cf296c891200aed8315c",
+      "verified_git_blob_sha": "03b40989c77b07a9af57cf296c891200aed8315c",
       "named_year": 2024
     },
     {
@@ -1786,7 +1923,9 @@
       "minimum_timestamp": "2024-12-01T01:00:00",
       "maximum_timestamp": "2024-12-11T14:00:00",
       "path": "Data/Hanoi/2024/Hanoi_PM2.5_2024_12_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2024/Hanoi_PM2.5_2024_12_MTD.csv",
       "git_blob_sha": "41db1ec77df2dc8557f8b369979d8f549abdc866",
+      "verified_git_blob_sha": "41db1ec77df2dc8557f8b369979d8f549abdc866",
       "named_year": 2024
     },
     {
@@ -1820,7 +1959,9 @@
       "minimum_timestamp": "2024-01-02T15:00:00",
       "maximum_timestamp": "2024-12-11T14:00:00",
       "path": "Data/Hanoi/2024/Hanoi_PM2.5_2024_YTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2024/Hanoi_PM2.5_2024_YTD.csv",
       "git_blob_sha": "827224b57c600ebf113c039f98f9c046567d57e4",
+      "verified_git_blob_sha": "827224b57c600ebf113c039f98f9c046567d57e4",
       "named_year": 2024
     },
     {
@@ -1854,7 +1995,9 @@
       "minimum_timestamp": "2024-12-01T01:00:00",
       "maximum_timestamp": "2024-12-11T14:00:00",
       "path": "Data/Hanoi/2024/Hanoi_PM2.5_2025_12_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2024/Hanoi_PM2.5_2025_12_MTD.csv",
       "git_blob_sha": "41db1ec77df2dc8557f8b369979d8f549abdc866",
+      "verified_git_blob_sha": "41db1ec77df2dc8557f8b369979d8f549abdc866",
       "named_year": 2025
     },
     {
@@ -1888,7 +2031,9 @@
       "minimum_timestamp": "2025-01-01T01:00:00",
       "maximum_timestamp": "2025-02-01T00:00:00",
       "path": "Data/Hanoi/2025/Hanoi_PM2.5_2025_01_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2025/Hanoi_PM2.5_2025_01_MTD.csv",
       "git_blob_sha": "c7786c85dd8cff2a7cd3d73fd0620b5c2a84a1f8",
+      "verified_git_blob_sha": "c7786c85dd8cff2a7cd3d73fd0620b5c2a84a1f8",
       "named_year": 2025
     },
     {
@@ -1922,7 +2067,9 @@
       "minimum_timestamp": "2025-02-01T01:00:00",
       "maximum_timestamp": "2025-03-01T00:00:00",
       "path": "Data/Hanoi/2025/Hanoi_PM2.5_2025_02_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2025/Hanoi_PM2.5_2025_02_MTD.csv",
       "git_blob_sha": "c21f90743d03f081c94c0651e2d0590e89c12274",
+      "verified_git_blob_sha": "c21f90743d03f081c94c0651e2d0590e89c12274",
       "named_year": 2025
     },
     {
@@ -1956,7 +2103,9 @@
       "minimum_timestamp": "2025-03-01T01:00:00",
       "maximum_timestamp": "2025-04-01T00:00:00",
       "path": "Data/Hanoi/2025/Hanoi_PM2.5_2025_03_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2025/Hanoi_PM2.5_2025_03_MTD.csv",
       "git_blob_sha": "d838dbec3f3bf646bca2b1157ab6c792cd8e9700",
+      "verified_git_blob_sha": "d838dbec3f3bf646bca2b1157ab6c792cd8e9700",
       "named_year": 2025
     },
     {
@@ -1990,7 +2139,9 @@
       "minimum_timestamp": "2025-04-01T01:00:00",
       "maximum_timestamp": "2025-04-09T23:00:00",
       "path": "Data/Hanoi/2025/Hanoi_PM2.5_2025_04_MTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2025/Hanoi_PM2.5_2025_04_MTD.csv",
       "git_blob_sha": "864ee8bab1e33d7cd2317edcaa11597df55c8fa1",
+      "verified_git_blob_sha": "864ee8bab1e33d7cd2317edcaa11597df55c8fa1",
       "named_year": 2025
     },
     {
@@ -2024,7 +2175,9 @@
       "minimum_timestamp": "2025-01-01T01:00:00",
       "maximum_timestamp": "2025-04-01T00:00:00",
       "path": "Data/Hanoi/2025/Hanoi_PM2.5_2025_YTD.csv",
+      "download_url": "https://raw.githubusercontent.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies/25d08e949c9d01ba57c4e74ff9b3b99328ecf141/Data/Hanoi/2025/Hanoi_PM2.5_2025_YTD.csv",
       "git_blob_sha": "f2941b59bb54f5eaa620b83aa0847ee7be2f2903",
+      "verified_git_blob_sha": "f2941b59bb54f5eaa620b83aa0847ee7be2f2903",
       "named_year": 2025
     }
   ]

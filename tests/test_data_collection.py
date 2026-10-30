@@ -198,6 +198,7 @@ class TestDataCollectionPipeline(unittest.TestCase):
             "Site,Parameter,Date (LT),NowCast Conc.,Raw Conc.,QC Name\n"
             "Hanoi,PM2.5 - Principal,2022-01-01 01:00 AM,99.9,50.0,Valid\n"
             "Hanoi,PM2.5 - Principal,2022-01-01 02:00 AM,88.8,-999,Missing\n"
+            "Hanoi,PM2.5 - Principal,2022-01-01 03:00 PM,77.7,Invalid,Invalid\n"
         )
         with tempfile.NamedTemporaryFile("w", delete=False, suffix=".csv") as tmp:
             tmp.write(content)
@@ -206,8 +207,11 @@ class TestDataCollectionPipeline(unittest.TestCase):
             frame = AirNowDOSAdapter(csv_path=tmp_path).load_and_canonicalize()
             self.assertEqual(frame["pm25"].iloc[0], 50.0)
             self.assertTrue(np.isnan(frame["pm25"].iloc[1]))
+            self.assertTrue(np.isnan(frame["pm25"].iloc[2]))
             self.assertTrue(frame["pm10"].isna().all())
             self.assertEqual(frame["station_id"].nunique(), 1)
+            self.assertEqual(str(frame["timestamp"].dt.tz), CANONICAL_TIMEZONE)
+            self.assertEqual(frame["timestamp"].iloc[2].hour, 15)
         finally:
             os.remove(tmp_path)
 
