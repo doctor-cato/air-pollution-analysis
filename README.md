@@ -1,6 +1,11 @@
 # Phân Tích Mức Độ Ô Nhiễm Không Khí Theo Chuỗi Thời Gian
 ## Time-Series Air Pollution Analysis – Hà Nội, Việt Nam
 
+> **Trạng thái kiểm thử hiện tại (Issue #44):** suite định nghĩa **674** test
+> methods. Xem [`docs/TEST_SUITE.md`](docs/TEST_SUITE.md) để biết breakdown và
+> số `Ran`/skip theo môi trường; các con số lịch sử bên dưới không phải kết quả
+> kiểm thử hiện tại.
+
 > **Môn học:** INFO3020 – Nhập môn Khoa học Dữ liệu (*Introduction to Data Science*)  
 > **Đơn vị:** Khoa Công nghệ Thông tin & Truyền thông, Trường Đại học CMC  
 > **Giảng viên hướng dẫn:** ThS. Phạm Ngọc Đông  
@@ -362,4 +367,3 @@ Xem chi tiết quy trình làm việc, quy ước nhánh, chuẩn commit và ngu
 ## 9. Giấy phép & Bản quyền
 
 Mã nguồn dự án được phân phối theo giấy phép mã nguồn mở **[MIT License](LICENSE)**. Toàn văn các điều khoản cấp phép được quy định chi tiết tại tệp `LICENSE`.
-

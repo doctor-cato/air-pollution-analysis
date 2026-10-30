@@ -1,30 +1,32 @@
 # Issue #44 — Checkpoint evidence and gate status
 
-**Status:** CP0 evidence collected; CP0 source-approval gate **BLOCKED**.  This
-document deliberately does not mark any Issue #44 acceptance criterion complete.
-All values below come from the reproducible command shown in the evidence
-section, not from a synthetic fixture.
+**Status:** CP0 source-approval gate **BLOCKED**. CP1 adapter and CP2/CP3
+preparation helpers are **PARTIAL**; CP4 assessment and CP5 contract are **DONE
+as documentation gates**, not as data integration. Values below come from the
+reproducible command shown in the evidence section, not synthetic fixtures.
 
 ## CP0 — public-mirror inventory
 
-The candidate is `dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies` at its
-`main` branch.  `reports/issue44_mirror_manifest.json` contains the immutable
+The candidate is `dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies`, pinned
+at `25d08e949c9d01ba57c4e74ff9b3b99328ecf141`. The manifest contains the immutable
 Git blob SHA, downloaded-file SHA-256, size, schema, observed time span, and
 row/valid-row counts for all **46** Hanoi CSV files found under
 `Data/Hanoi/2022` through `Data/Hanoi/2025`.
 
 | Year | Expected hours | Observed distinct hours | Valid raw-concentration hours | Missing / invalid hours | Longest gap (h) |
 |---:|---:|---:|---:|---:|---:|
-| 2022 | 8,760 | 6,995 | 6,956 | 1,804 | 720 |
-| 2023 | 8,760 | 8,429 | 8,367 | 393 | 109 |
-| 2024 | 8,784 | 7,360 | 7,318 | 1,466 | 589 |
-| 2025 | 8,760 | 2,339 | 2,322 | 6,438 | 744 |
+| 2022 | 8,760 | 6,995 | 6,956 | 1,804 | 952 |
+| 2023 | 8,760 | 8,429 | 8,366 | 394 | 148 |
+| 2024 | 8,784 | 7,360 | 7,318 | 1,466 | 820 |
+| 2025 | 8,760 | 2,339 | 2,322 | 6,438 | 6,385 |
 
-The union scan found **25,468** duplicate source rows across YTD/MTD payloads.
-It also found cross-year or misfiled payloads, including the 2022 YTD with a
-2023 timestamp and files named for 2023/2024/2025 located under the preceding
-year directory.  The manifest retains these facts; it does not silently rename
-or discard raw payloads.
+The continuous-grid scan found **25,955** duplicate source rows, **24,351**
+identical duplicate hours, **1** conflicting duplicate hour, and **0** detected
+YTD–MTD overlap hours. Conflicts are counted as non-valid, never selected from
+an arbitrary duplicate. It separately records three files in a wrong year
+directory and four payloads with records outside their named year. Downloads
+preserve repository-relative paths, use the pinned commit URL, and verify both
+Git blob SHA-1 and downloaded SHA-256.
 
 **Decision:** the mirror remains **unapproved, reference-only**.  GitHub's
 repository metadata exposes no license, and the mirror has the inconsistencies
@@ -53,27 +55,29 @@ their existing provenance are unchanged.
 
 ## CP2 — missing-data experiment
 
-**Blocked by CP0.** No interpolation experiment, masking-validation metric, or
-derived imputed column is reported without an approved, real historical input.
-The existing canonical observed-value invariant remains binding: observed PM2.5
-and PM10 are never overwritten, and no interpolation may cross station or a
-chronological split.
+**PARTIAL, blocked for real-data results by CP0.**
+`src/issue44_preparation.py` supplies synthetic-fixture-tested derived-column
+interpolation, explicit masking and MAE/RMSE/bias evaluation. It requires a
+caller-chosen gap threshold, preserves observed columns, and rejects crossing a
+station, split, duplicate timestamp, or non-hourly interval. No parameter was
+chosen and no scientific metric is reported.
 
 ## CP3 — EDA / FIG-01
 
-**Blocked by CP0 and CP2.** No historical winter comparison, figure regeneration,
-or revised scientific conclusion is claimed.  The seven existing M3 figures are
-kept as the VN001 legacy baseline and are separately guarded in CI.
+**PARTIAL, blocked for findings by CP0.** Winter is defined as December–February
+with December assigned to the ending `winter_year`; station-separated summaries
+are prepared and tested. No historical comparison, figure regeneration, or
+revised conclusion is claimed; FIG-01 remains the VN001 baseline.
 
 ## CP4 — traffic evidence for FIG-04
 
-**Not started.** No verified Hanoi traffic dataset with applicable license,
-temporal resolution, and geographic correspondence was established in this
-checkpoint.  FIG-04 must not be given a causal traffic interpretation.
+**DONE (negative assessment):** `docs/issue44_traffic_source_assessment.md`
+records the reviewed official sources and their **NOT AVAILABLE / NOT VERIFIED**
+outcomes. FIG-04 receives no traffic causal interpretation.
 
 ## CP5 — integration and modelling boundary
 
-The dataset contract for a future approved extension is fixed here:
+The dataset contract is in `docs/issue44_dataset_contract.md` and fixes:
 
 1. `station_id` is mandatory; VN001 and VN002 remain separate series.
 2. Any extended artifact records source version, raw SHA-256, station metadata,
@@ -95,6 +99,7 @@ python scripts\profile_airnow_mirror.py `
 ```
 
 The raw downloads stay outside Git; the committed manifest is derived evidence.
-The adapter's new-schema regression test passes.  Full unit, notebook, CI, and
-legacy-vs-extended comparisons remain required before this Draft PR can become
-ready, and the extended portion cannot run until CP0 is unblocked.
+The profiler and preparation helpers have independent synthetic tests. Full
+unit, notebook, CI and legacy-vs-extended real-data comparisons remain required
+before this Draft PR can become ready; the extended portion cannot run until CP0
+is unblocked.
