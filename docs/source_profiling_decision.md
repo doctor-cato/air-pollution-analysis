@@ -532,5 +532,28 @@ Pipeline thu thập và chuẩn hóa dữ liệu khí tượng bề mặt Hà N�
    - **Tệp thô không được commit vào Git** (`.gitignore`: `data/raw/*.json`), đúng quy ước kho dữ liệu thô của dự án; được tái tạo lại bằng `run_collection_pipeline()`.
 
 7. **Giới Hạn Nguồn Dữ Liệu (Source Limitations):**
-   - ERA5 là mô hình tái phân tích khí quyển dạng lưới độ phân giải $0.25^\circ \times 0.25^\circ$ ($\approx 25\,\text{km}$), phản ánh điều kiện khí tượng vĩ mô khu vực thay vì hiệu ứng vi khí hậu siêu cục bộ (ví dụ hiệu ứng hẻm phố đô thị - street canyon effect). Hạn chế này cần được ghi nhận minh bạch trong các báo cáo phân tích hồi quy tại Issue #12.
+    - ERA5 là mô hình tái phân tích khí quyển dạng lưới độ phân giải $0.25^\circ \times 0.25^\circ$ ($\approx 25\,\text{km}$), phản ánh điều kiện khí tượng vĩ mô khu vực thay vì hiệu ứng vi khí hậu siêu cục bộ (ví dụ hiệu ứng hẻm phố đô thị - street canyon effect). Hạn chế này cần được ghi nhận minh bạch trong các báo cáo phân tích hồi quy tại Issue #12.
 
+### 14.4. Addendum Issue #44 — Mirror AirNow Hà Nội (2026-10-30)
+
+**Quyết định: BLOCKED, reference-only.** Manifest tái lập
+`reports/issue44_mirror_manifest.json` pin candidate public mirror tại commit
+`25d08e949c9d01ba57c4e74ff9b3b99328ecf141`; mỗi download được đối chiếu Git
+blob SHA-1 và SHA-256. GitHub API của repository trả `license: null`; điều này
+không được suy diễn thành quyền tái sử dụng chỉ vì dữ liệu có liên hệ với cơ
+quan Hoa Kỳ.
+
+Nguồn chính thức đã kiểm tra: [AirNow Department of State map](https://gispub.epa.gov/airnowembassy/)
+cho thấy giao diện archive/current; [AirNow-Tech](https://www.airnowtech.org/)
+tự mô tả là password-protected; và [AirNow API](https://docs.airnowapi.org/)
+ghi dữ liệu preliminary, subject to change. Chúng không cung cấp trong hồ sơ
+này một raw historical Hanoi extract có điều khoản, station/device metadata và
+provenance đủ để phê duyệt mirror. Vì vậy mirror không được nạp, ghép VN001,
+tạo VN002 canonical, hay dùng trong EDA/inference cho đến khi có bằng chứng đó.
+
+**Superseding limit for the 2022–2025 extension:** prior historical references
+to the Hanoi BAM-1020 support neither continuous device identity nor station
+location/operator identity throughout this new window. See
+`docs/issue44_source_verification.md`: OpenAQ locations 7441 and 2539 remain
+independent unless an official provider maps them, and the mirror remains
+reference-only despite any EPA public-domain statement.
