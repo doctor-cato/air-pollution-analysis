@@ -39,6 +39,12 @@ official AirNow/US Department of State source supplies reviewable provenance,
 terms of use, and station/device evidence.  This is a blocker, not a failed
 attempt to join stations.
 
+**Alternative-source feasibility:** public OpenAQ S3 location `7441` is
+technically accessible for 2022–2025, unlike `2539`; the verified POC and
+NO-GO integration decision are in `docs/issue44_feasibility_decision.md` and
+`reports/issue44_openaq_poc.json`. It lacks verified operator/instrument/change
+history and is not approved as a replacement, VN001 or VN002 input.
+
 ## CP1 — collection and schema readiness
 
 `AirNowDOSAdapter` now accepts both verified historical schemas:

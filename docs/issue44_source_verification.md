@@ -12,6 +12,7 @@ mirror. It does not approve VN002 ingestion or join it to VN001.
 | Mirror repository README | <https://github.com/dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies> | **SELF-REPORTED** | It says its author obtained historical data from EPA Public Support and that sharing stopped on 2025-03-04. Neither claim identifies a request, response, archive, file hashes, terms, or station metadata. GitHub API reports repository `license: null` (recorded in the manifest): repository redistribution terms are **UNVERIFIED**. |
 | OpenAQ location 7441, `Hanoi` | <https://explore.openaq.org/locations/7441> | **PARTIALLY VERIFIED** | The public page identifies an AirNow-provided reference-grade stationary PM2.5 location, “Government Monitor”, US Public Domain license, reporting since 2016 and updated two years ago. It does not establish that a mirror CSV is its export, instrument model, coordinates, or availability of a downloadable matching hourly raw series; download requires login. |
 | OpenAQ location 2539, `US Diplomatic Post: Hanoi` | <https://explore.openaq.org/locations/2539> | **PARTIALLY VERIFIED** | The public page identifies a StateAir Hanoi reference-grade stationary PM2.5 location, “Government Monitor”, reporting since 2016, with only 2016 visible in the reviewed patterns. It does not map this identifier to 7441 or to every 2022–2025 mirror record. |
+| OpenAQ public S3 archive, 7441 | <https://openaq-data-archive.s3.amazonaws.com/?prefix=records/csv.gz/locationid=7441/> | **VERIFIED (technical access)** | Public S3 listings and 903 parsed objects establish accessible 2022–2025 PM2.5 records with sensor 21632, `+07:00` timestamps and Hanoi coordinates; aggregate evidence is in `reports/issue44_openaq_poc.json`. This does not prove operator/instrument continuity or mirror provenance. |
 | AirNow Data Exchange Guidelines | <https://docs.airnowapi.org/docs/DataUseGuidelines.pdf> | **PARTIALLY VERIFIED** | Official AirNow URL is available. Its terms must be retained/reviewed with the requested raw extract before use. This review does not treat the guideline as a license grant for the mirror or a provenance certificate for any CSV. |
 | DoS/EPA Embassy archive | <https://gispub.epa.gov/airnowembassy/> | **VERIFIED** | The official map describes reference-grade embassy/consulate monitors, archive access and raw concentration display; it labels current readings preliminary/unvalidated and subject to change. It does not expose a reproducible Hanoi 2022–2025 bulk extract or station/device history in this review. |
 
@@ -21,10 +22,11 @@ mirror. It does not approve VN002 ingestion or join it to VN001.
 downloaded bytes** at mirror commit `25d08e949c9d01ba57c4e74ff9b3b99328ecf141`.
 That is integrity of the mirror snapshot, not provenance of its CSV payload.
 
-No accessible official OpenAQ or AirNow raw endpoint was available in this review
-to compare a common timestamp and `Raw Conc.` value with a mirror CSV. Such a
-comparison is therefore **NOT VERIFIED**. It must not be inferred from shared
-field names, AirNow attribution, or a similar location name.
+OpenAQ public S3 was accessible for location 7441; two one-day comparisons are
+recorded in `reports/issue44_openaq_poc.json` (22/24 equal in a 2022 sample and
+0/24 equal in a 2025 sample). This is **not** a provenance certification: no
+official export linkage, QC-field equivalence, or station-identity mapping is
+available. An AirNow raw comparison remains **NOT VERIFIED**.
 
 OpenAQ 7441 and 2539 are independent records. Neither public page proves they
 are the same physical station, nor that either is the mirror’s station in every
