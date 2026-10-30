@@ -1,7 +1,7 @@
 # Phân Tích Mức Độ Ô Nhiễm Không Khí Theo Chuỗi Thời Gian
 ## Time-Series Air Pollution Analysis – Hà Nội, Việt Nam
 
-> **Trạng thái kiểm thử hiện tại (Issue #44):** suite định nghĩa **674** test
+> **Trạng thái kiểm thử hiện tại (Issue #44):** suite định nghĩa **676** test
 > methods. Xem [`docs/TEST_SUITE.md`](docs/TEST_SUITE.md) để biết breakdown và
 > số `Ran`/skip theo môi trường; các con số lịch sử bên dưới không phải kết quả
 > kiểm thử hiện tại.

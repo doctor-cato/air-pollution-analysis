@@ -550,3 +550,10 @@ ghi dữ liệu preliminary, subject to change. Chúng không cung cấp trong h
 này một raw historical Hanoi extract có điều khoản, station/device metadata và
 provenance đủ để phê duyệt mirror. Vì vậy mirror không được nạp, ghép VN001,
 tạo VN002 canonical, hay dùng trong EDA/inference cho đến khi có bằng chứng đó.
+
+**Superseding limit for the 2022–2025 extension:** prior historical references
+to the Hanoi BAM-1020 support neither continuous device identity nor station
+location/operator identity throughout this new window. See
+`docs/issue44_source_verification.md`: OpenAQ locations 7441 and 2539 remain
+independent unless an official provider maps them, and the mirror remains
+reference-only despite any EPA public-domain statement.

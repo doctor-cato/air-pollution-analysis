@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-10-30T05:12:15Z",
+  "generated_utc": "2026-10-30T05:48:14Z",
   "repository": "dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies",
   "branch": "main",
   "source_commit": "25d08e949c9d01ba57c4e74ff9b3b99328ecf141",
@@ -39,17 +39,51 @@
   ],
   "coverage": {
     "duplicate_source_rows": 25955,
-    "ytd_mtd_overlap_hours": 0,
-    "identical_duplicate_hours": 24351,
+    "ytd_mtd_overlap_hours": 24352,
+    "identical_ytd_mtd_duplicate_hours": 24351,
+    "identical_same_period_type_duplicate_hours": 0,
     "conflicting_duplicate_hours": 1,
+    "conflict_ledger": [
+      {
+        "timestamp": "2023-11-07T17:00:00",
+        "conflicting_numeric_values": true,
+        "missing_vs_valid": false,
+        "invalid_qc_vs_valid": true,
+        "records": [
+          {
+            "source_path": "Data/Hanoi/2023/Hanoi_PM2.5_2023_11_MTD.csv",
+            "raw_value": -999.0,
+            "qc_name": "missing",
+            "unit": "ug/m3",
+            "duration": "1 hr",
+            "quality_status": "invalid"
+          },
+          {
+            "source_path": "Data/Hanoi/2023/Hanoi_PM2.5_2023_YTD.csv",
+            "raw_value": 33.0,
+            "qc_name": "valid",
+            "unit": "ug/m3",
+            "duration": "1 hr",
+            "quality_status": "valid"
+          }
+        ]
+      }
+    ],
+    "source_observation_window": {
+      "start": "2022-01-01T01:00:00",
+      "end": "2025-04-09T23:00:00"
+    },
+    "longest_contiguous_gap_full_series_hours": 1081,
     "conflict_policy": "conflicting timestamps are not selected as valid observations",
     "monthly": [
       {
         "month": "2022-01",
         "expected_hours": 744,
         "observed_hours": 740,
-        "valid_hours": 738,
-        "missing_or_invalid_hours": 6,
+        "qc_valid_hours": 738,
+        "missing_while_source_available_hours": 3,
+        "invalid_qc_or_conflict_hours": 2,
+        "source_unavailable_hours": 1,
         "conflicting_hours": 0,
         "longest_gap_hours": 3
       },
@@ -57,8 +91,10 @@
         "month": "2022-02",
         "expected_hours": 672,
         "observed_hours": 670,
-        "valid_hours": 668,
-        "missing_or_invalid_hours": 4,
+        "qc_valid_hours": 668,
+        "missing_while_source_available_hours": 2,
+        "invalid_qc_or_conflict_hours": 2,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
@@ -66,35 +102,43 @@
         "month": "2022-03",
         "expected_hours": 744,
         "observed_hours": 526,
-        "valid_hours": 523,
-        "missing_or_invalid_hours": 221,
+        "qc_valid_hours": 506,
+        "missing_while_source_available_hours": 218,
+        "invalid_qc_or_conflict_hours": 20,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
-        "longest_gap_hours": 952
+        "longest_gap_hours": 223
       },
       {
         "month": "2022-04",
         "expected_hours": 720,
         "observed_hours": 0,
-        "valid_hours": 0,
-        "missing_or_invalid_hours": 720,
+        "qc_valid_hours": 0,
+        "missing_while_source_available_hours": 720,
+        "invalid_qc_or_conflict_hours": 0,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
-        "longest_gap_hours": 952
+        "longest_gap_hours": 720
       },
       {
         "month": "2022-05",
         "expected_hours": 744,
         "observed_hours": 580,
-        "valid_hours": 575,
-        "missing_or_invalid_hours": 169,
+        "qc_valid_hours": 575,
+        "missing_while_source_available_hours": 164,
+        "invalid_qc_or_conflict_hours": 5,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
-        "longest_gap_hours": 952
+        "longest_gap_hours": 138
       },
       {
         "month": "2022-06",
         "expected_hours": 720,
         "observed_hours": 698,
-        "valid_hours": 696,
-        "missing_or_invalid_hours": 24,
+        "qc_valid_hours": 696,
+        "missing_while_source_available_hours": 22,
+        "invalid_qc_or_conflict_hours": 2,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 23
       },
@@ -102,8 +146,10 @@
         "month": "2022-07",
         "expected_hours": 744,
         "observed_hours": 712,
-        "valid_hours": 710,
-        "missing_or_invalid_hours": 34,
+        "qc_valid_hours": 710,
+        "missing_while_source_available_hours": 32,
+        "invalid_qc_or_conflict_hours": 2,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 33
       },
@@ -111,8 +157,10 @@
         "month": "2022-08",
         "expected_hours": 744,
         "observed_hours": 741,
-        "valid_hours": 737,
-        "missing_or_invalid_hours": 7,
+        "qc_valid_hours": 737,
+        "missing_while_source_available_hours": 3,
+        "invalid_qc_or_conflict_hours": 4,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 3
       },
@@ -120,8 +168,10 @@
         "month": "2022-09",
         "expected_hours": 720,
         "observed_hours": 692,
-        "valid_hours": 684,
-        "missing_or_invalid_hours": 36,
+        "qc_valid_hours": 684,
+        "missing_while_source_available_hours": 28,
+        "invalid_qc_or_conflict_hours": 8,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 8
       },
@@ -129,8 +179,10 @@
         "month": "2022-10",
         "expected_hours": 744,
         "observed_hours": 178,
-        "valid_hours": 176,
-        "missing_or_invalid_hours": 568,
+        "qc_valid_hours": 176,
+        "missing_while_source_available_hours": 566,
+        "invalid_qc_or_conflict_hours": 2,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 567
       },
@@ -138,8 +190,10 @@
         "month": "2022-11",
         "expected_hours": 720,
         "observed_hours": 718,
-        "valid_hours": 714,
-        "missing_or_invalid_hours": 6,
+        "qc_valid_hours": 714,
+        "missing_while_source_available_hours": 2,
+        "invalid_qc_or_conflict_hours": 4,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
@@ -147,8 +201,10 @@
         "month": "2022-12",
         "expected_hours": 744,
         "observed_hours": 740,
-        "valid_hours": 735,
-        "missing_or_invalid_hours": 9,
+        "qc_valid_hours": 735,
+        "missing_while_source_available_hours": 4,
+        "invalid_qc_or_conflict_hours": 5,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 3
       },
@@ -156,8 +212,10 @@
         "month": "2023-01",
         "expected_hours": 744,
         "observed_hours": 738,
-        "valid_hours": 732,
-        "missing_or_invalid_hours": 12,
+        "qc_valid_hours": 732,
+        "missing_while_source_available_hours": 6,
+        "invalid_qc_or_conflict_hours": 6,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 3
       },
@@ -165,8 +223,10 @@
         "month": "2023-02",
         "expected_hours": 672,
         "observed_hours": 672,
-        "valid_hours": 669,
-        "missing_or_invalid_hours": 3,
+        "qc_valid_hours": 669,
+        "missing_while_source_available_hours": 0,
+        "invalid_qc_or_conflict_hours": 3,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 1
       },
@@ -174,8 +234,10 @@
         "month": "2023-03",
         "expected_hours": 744,
         "observed_hours": 636,
-        "valid_hours": 629,
-        "missing_or_invalid_hours": 115,
+        "qc_valid_hours": 629,
+        "missing_while_source_available_hours": 108,
+        "invalid_qc_or_conflict_hours": 7,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 97
       },
@@ -183,8 +245,10 @@
         "month": "2023-04",
         "expected_hours": 720,
         "observed_hours": 718,
-        "valid_hours": 715,
-        "missing_or_invalid_hours": 5,
+        "qc_valid_hours": 715,
+        "missing_while_source_available_hours": 2,
+        "invalid_qc_or_conflict_hours": 3,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
@@ -192,8 +256,10 @@
         "month": "2023-05",
         "expected_hours": 744,
         "observed_hours": 697,
-        "valid_hours": 692,
-        "missing_or_invalid_hours": 52,
+        "qc_valid_hours": 692,
+        "missing_while_source_available_hours": 47,
+        "invalid_qc_or_conflict_hours": 5,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 46
       },
@@ -201,8 +267,10 @@
         "month": "2023-06",
         "expected_hours": 720,
         "observed_hours": 675,
-        "valid_hours": 671,
-        "missing_or_invalid_hours": 49,
+        "qc_valid_hours": 671,
+        "missing_while_source_available_hours": 45,
+        "invalid_qc_or_conflict_hours": 4,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 44
       },
@@ -210,8 +278,10 @@
         "month": "2023-07",
         "expected_hours": 744,
         "observed_hours": 740,
-        "valid_hours": 731,
-        "missing_or_invalid_hours": 13,
+        "qc_valid_hours": 731,
+        "missing_while_source_available_hours": 4,
+        "invalid_qc_or_conflict_hours": 9,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 5
       },
@@ -219,8 +289,10 @@
         "month": "2023-08",
         "expected_hours": 744,
         "observed_hours": 742,
-        "valid_hours": 737,
-        "missing_or_invalid_hours": 7,
+        "qc_valid_hours": 737,
+        "missing_while_source_available_hours": 2,
+        "invalid_qc_or_conflict_hours": 5,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
@@ -228,8 +300,10 @@
         "month": "2023-09",
         "expected_hours": 720,
         "observed_hours": 718,
-        "valid_hours": 714,
-        "missing_or_invalid_hours": 6,
+        "qc_valid_hours": 714,
+        "missing_while_source_available_hours": 2,
+        "invalid_qc_or_conflict_hours": 4,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
@@ -237,8 +311,10 @@
         "month": "2023-10",
         "expected_hours": 744,
         "observed_hours": 741,
-        "valid_hours": 734,
-        "missing_or_invalid_hours": 10,
+        "qc_valid_hours": 734,
+        "missing_while_source_available_hours": 3,
+        "invalid_qc_or_conflict_hours": 7,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 3
       },
@@ -246,8 +322,10 @@
         "month": "2023-11",
         "expected_hours": 720,
         "observed_hours": 717,
-        "valid_hours": 712,
-        "missing_or_invalid_hours": 8,
+        "qc_valid_hours": 712,
+        "missing_while_source_available_hours": 3,
+        "invalid_qc_or_conflict_hours": 5,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 1,
         "longest_gap_hours": 3
       },
@@ -255,26 +333,32 @@
         "month": "2023-12",
         "expected_hours": 744,
         "observed_hours": 635,
-        "valid_hours": 630,
-        "missing_or_invalid_hours": 114,
+        "qc_valid_hours": 630,
+        "missing_while_source_available_hours": 109,
+        "invalid_qc_or_conflict_hours": 5,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
-        "longest_gap_hours": 148
+        "longest_gap_hours": 109
       },
       {
         "month": "2024-01",
         "expected_hours": 744,
         "observed_hours": 703,
-        "valid_hours": 700,
-        "missing_or_invalid_hours": 44,
+        "qc_valid_hours": 700,
+        "missing_while_source_available_hours": 41,
+        "invalid_qc_or_conflict_hours": 3,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
-        "longest_gap_hours": 148
+        "longest_gap_hours": 39
       },
       {
         "month": "2024-02",
         "expected_hours": 696,
         "observed_hours": 696,
-        "valid_hours": 693,
-        "missing_or_invalid_hours": 3,
+        "qc_valid_hours": 693,
+        "missing_while_source_available_hours": 0,
+        "invalid_qc_or_conflict_hours": 3,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 1
       },
@@ -282,8 +366,10 @@
         "month": "2024-03",
         "expected_hours": 744,
         "observed_hours": 742,
-        "valid_hours": 739,
-        "missing_or_invalid_hours": 5,
+        "qc_valid_hours": 739,
+        "missing_while_source_available_hours": 2,
+        "invalid_qc_or_conflict_hours": 3,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
@@ -291,8 +377,10 @@
         "month": "2024-04",
         "expected_hours": 720,
         "observed_hours": 718,
-        "valid_hours": 712,
-        "missing_or_invalid_hours": 8,
+        "qc_valid_hours": 712,
+        "missing_while_source_available_hours": 2,
+        "invalid_qc_or_conflict_hours": 6,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
@@ -300,8 +388,10 @@
         "month": "2024-05",
         "expected_hours": 744,
         "observed_hours": 742,
-        "valid_hours": 737,
-        "missing_or_invalid_hours": 7,
+        "qc_valid_hours": 737,
+        "missing_while_source_available_hours": 2,
+        "invalid_qc_or_conflict_hours": 5,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
@@ -309,8 +399,10 @@
         "month": "2024-06",
         "expected_hours": 720,
         "observed_hours": 713,
-        "valid_hours": 710,
-        "missing_or_invalid_hours": 10,
+        "qc_valid_hours": 710,
+        "missing_while_source_available_hours": 7,
+        "invalid_qc_or_conflict_hours": 3,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 8
       },
@@ -318,8 +410,10 @@
         "month": "2024-07",
         "expected_hours": 744,
         "observed_hours": 743,
-        "valid_hours": 741,
-        "missing_or_invalid_hours": 3,
+        "qc_valid_hours": 741,
+        "missing_while_source_available_hours": 1,
+        "invalid_qc_or_conflict_hours": 2,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
@@ -327,26 +421,32 @@
         "month": "2024-08",
         "expected_hours": 744,
         "observed_hours": 156,
-        "valid_hours": 155,
-        "missing_or_invalid_hours": 589,
+        "qc_valid_hours": 155,
+        "missing_while_source_available_hours": 588,
+        "invalid_qc_or_conflict_hours": 1,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
-        "longest_gap_hours": 820
+        "longest_gap_hours": 589
       },
       {
         "month": "2024-09",
         "expected_hours": 720,
         "observed_hours": 489,
-        "valid_hours": 485,
-        "missing_or_invalid_hours": 235,
+        "qc_valid_hours": 485,
+        "missing_while_source_available_hours": 231,
+        "invalid_qc_or_conflict_hours": 4,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
-        "longest_gap_hours": 820
+        "longest_gap_hours": 231
       },
       {
         "month": "2024-10",
         "expected_hours": 744,
         "observed_hours": 685,
-        "valid_hours": 680,
-        "missing_or_invalid_hours": 64,
+        "qc_valid_hours": 680,
+        "missing_while_source_available_hours": 59,
+        "invalid_qc_or_conflict_hours": 5,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 45
       },
@@ -354,8 +454,10 @@
         "month": "2024-11",
         "expected_hours": 720,
         "observed_hours": 719,
-        "valid_hours": 716,
-        "missing_or_invalid_hours": 4,
+        "qc_valid_hours": 716,
+        "missing_while_source_available_hours": 1,
+        "invalid_qc_or_conflict_hours": 3,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
@@ -363,26 +465,32 @@
         "month": "2024-12",
         "expected_hours": 744,
         "observed_hours": 254,
-        "valid_hours": 250,
-        "missing_or_invalid_hours": 494,
+        "qc_valid_hours": 250,
+        "missing_while_source_available_hours": 490,
+        "invalid_qc_or_conflict_hours": 4,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
-        "longest_gap_hours": 492
+        "longest_gap_hours": 490
       },
       {
         "month": "2025-01",
         "expected_hours": 744,
         "observed_hours": 713,
-        "valid_hours": 704,
-        "missing_or_invalid_hours": 40,
+        "qc_valid_hours": 704,
+        "missing_while_source_available_hours": 31,
+        "invalid_qc_or_conflict_hours": 9,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
-        "longest_gap_hours": 492
+        "longest_gap_hours": 32
       },
       {
         "month": "2025-02",
         "expected_hours": 672,
         "observed_hours": 671,
-        "valid_hours": 669,
-        "missing_or_invalid_hours": 3,
+        "qc_valid_hours": 669,
+        "missing_while_source_available_hours": 1,
+        "invalid_qc_or_conflict_hours": 2,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 2
       },
@@ -390,8 +498,10 @@
         "month": "2025-03",
         "expected_hours": 744,
         "observed_hours": 739,
-        "valid_hours": 735,
-        "missing_or_invalid_hours": 9,
+        "qc_valid_hours": 735,
+        "missing_while_source_available_hours": 5,
+        "invalid_qc_or_conflict_hours": 4,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 6
       },
@@ -399,82 +509,100 @@
         "month": "2025-04",
         "expected_hours": 720,
         "observed_hours": 216,
-        "valid_hours": 214,
-        "missing_or_invalid_hours": 506,
+        "qc_valid_hours": 214,
+        "missing_while_source_available_hours": 0,
+        "invalid_qc_or_conflict_hours": 2,
+        "source_unavailable_hours": 504,
         "conflicting_hours": 0,
-        "longest_gap_hours": 6385
+        "longest_gap_hours": 1
       },
       {
         "month": "2025-05",
         "expected_hours": 744,
         "observed_hours": 0,
-        "valid_hours": 0,
-        "missing_or_invalid_hours": 744,
+        "qc_valid_hours": 0,
+        "missing_while_source_available_hours": 0,
+        "invalid_qc_or_conflict_hours": 0,
+        "source_unavailable_hours": 744,
         "conflicting_hours": 0,
-        "longest_gap_hours": 6385
+        "longest_gap_hours": 0
       },
       {
         "month": "2025-06",
         "expected_hours": 720,
         "observed_hours": 0,
-        "valid_hours": 0,
-        "missing_or_invalid_hours": 720,
+        "qc_valid_hours": 0,
+        "missing_while_source_available_hours": 0,
+        "invalid_qc_or_conflict_hours": 0,
+        "source_unavailable_hours": 720,
         "conflicting_hours": 0,
-        "longest_gap_hours": 6385
+        "longest_gap_hours": 0
       },
       {
         "month": "2025-07",
         "expected_hours": 744,
         "observed_hours": 0,
-        "valid_hours": 0,
-        "missing_or_invalid_hours": 744,
+        "qc_valid_hours": 0,
+        "missing_while_source_available_hours": 0,
+        "invalid_qc_or_conflict_hours": 0,
+        "source_unavailable_hours": 744,
         "conflicting_hours": 0,
-        "longest_gap_hours": 6385
+        "longest_gap_hours": 0
       },
       {
         "month": "2025-08",
         "expected_hours": 744,
         "observed_hours": 0,
-        "valid_hours": 0,
-        "missing_or_invalid_hours": 744,
+        "qc_valid_hours": 0,
+        "missing_while_source_available_hours": 0,
+        "invalid_qc_or_conflict_hours": 0,
+        "source_unavailable_hours": 744,
         "conflicting_hours": 0,
-        "longest_gap_hours": 6385
+        "longest_gap_hours": 0
       },
       {
         "month": "2025-09",
         "expected_hours": 720,
         "observed_hours": 0,
-        "valid_hours": 0,
-        "missing_or_invalid_hours": 720,
+        "qc_valid_hours": 0,
+        "missing_while_source_available_hours": 0,
+        "invalid_qc_or_conflict_hours": 0,
+        "source_unavailable_hours": 720,
         "conflicting_hours": 0,
-        "longest_gap_hours": 6385
+        "longest_gap_hours": 0
       },
       {
         "month": "2025-10",
         "expected_hours": 744,
         "observed_hours": 0,
-        "valid_hours": 0,
-        "missing_or_invalid_hours": 744,
+        "qc_valid_hours": 0,
+        "missing_while_source_available_hours": 0,
+        "invalid_qc_or_conflict_hours": 0,
+        "source_unavailable_hours": 744,
         "conflicting_hours": 0,
-        "longest_gap_hours": 6385
+        "longest_gap_hours": 0
       },
       {
         "month": "2025-11",
         "expected_hours": 720,
         "observed_hours": 0,
-        "valid_hours": 0,
-        "missing_or_invalid_hours": 720,
+        "qc_valid_hours": 0,
+        "missing_while_source_available_hours": 0,
+        "invalid_qc_or_conflict_hours": 0,
+        "source_unavailable_hours": 720,
         "conflicting_hours": 0,
-        "longest_gap_hours": 6385
+        "longest_gap_hours": 0
       },
       {
         "month": "2025-12",
         "expected_hours": 744,
         "observed_hours": 0,
-        "valid_hours": 0,
-        "missing_or_invalid_hours": 744,
+        "qc_valid_hours": 0,
+        "missing_while_source_available_hours": 0,
+        "invalid_qc_or_conflict_hours": 0,
+        "source_unavailable_hours": 744,
         "conflicting_hours": 0,
-        "longest_gap_hours": 6385
+        "longest_gap_hours": 0
       }
     ],
     "annual": [
@@ -482,26 +610,32 @@
         "year": 2022,
         "expected_hours": 8760,
         "observed_hours": 6995,
-        "valid_hours": 6956,
-        "missing_or_invalid_hours": 1804,
+        "qc_valid_hours": 6939,
+        "missing_while_source_available_hours": 1764,
+        "invalid_qc_or_conflict_hours": 56,
+        "source_unavailable_hours": 1,
         "conflicting_hours": 0,
-        "longest_gap_hours": 952
+        "longest_gap_hours": 1081
       },
       {
         "year": 2023,
         "expected_hours": 8760,
         "observed_hours": 8429,
-        "valid_hours": 8366,
-        "missing_or_invalid_hours": 394,
+        "qc_valid_hours": 8366,
+        "missing_while_source_available_hours": 331,
+        "invalid_qc_or_conflict_hours": 63,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 1,
-        "longest_gap_hours": 148
+        "longest_gap_hours": 109
       },
       {
         "year": 2024,
         "expected_hours": 8784,
         "observed_hours": 7360,
-        "valid_hours": 7318,
-        "missing_or_invalid_hours": 1466,
+        "qc_valid_hours": 7318,
+        "missing_while_source_available_hours": 1424,
+        "invalid_qc_or_conflict_hours": 42,
+        "source_unavailable_hours": 0,
         "conflicting_hours": 0,
         "longest_gap_hours": 820
       },
@@ -509,10 +643,12 @@
         "year": 2025,
         "expected_hours": 8760,
         "observed_hours": 2339,
-        "valid_hours": 2322,
-        "missing_or_invalid_hours": 6438,
+        "qc_valid_hours": 2322,
+        "missing_while_source_available_hours": 37,
+        "invalid_qc_or_conflict_hours": 17,
+        "source_unavailable_hours": 6384,
         "conflicting_hours": 0,
-        "longest_gap_hours": 6385
+        "longest_gap_hours": 32
       }
     ]
   },
@@ -525,6 +661,8 @@
     {
       "path_year": 2022,
       "kind": "01_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "01",
       "bytes": 77026,
       "sha256": "1aa39fe7bf6f04ae0c9641624b1a0f4dae09178d2b7e7ceaa0389c0a3d8a8062",
       "schema": [
@@ -548,7 +686,8 @@
       ],
       "row_count": 741,
       "hanoi_principal_rows": 741,
-      "valid_raw_concentration_rows": 739,
+      "qc_valid_rows": 739,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2022-01-01T01:00:00",
       "maximum_timestamp": "2022-02-01T00:00:00",
@@ -561,6 +700,8 @@
     {
       "path_year": 2022,
       "kind": "02_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "02",
       "bytes": 68520,
       "sha256": "75b0489797f094611b128c45a547d868e5503f5de2d3d39f9cdea31a27d31406",
       "schema": [
@@ -584,7 +725,8 @@
       ],
       "row_count": 670,
       "hanoi_principal_rows": 670,
-      "valid_raw_concentration_rows": 668,
+      "qc_valid_rows": 668,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2022-02-01T01:00:00",
       "maximum_timestamp": "2022-03-01T00:00:00",
@@ -597,6 +739,8 @@
     {
       "path_year": 2022,
       "kind": "03_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "03",
       "bytes": 53738,
       "sha256": "4ee212e15b7c82f01fc52f391794e239ca85c39fc14d14e505c3a6bd6068640a",
       "schema": [
@@ -620,7 +764,8 @@
       ],
       "row_count": 525,
       "hanoi_principal_rows": 525,
-      "valid_raw_concentration_rows": 522,
+      "qc_valid_rows": 505,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2022-03-01T01:00:00",
       "maximum_timestamp": "2022-03-28T01:00:00",
@@ -633,6 +778,8 @@
     {
       "path_year": 2022,
       "kind": "05_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "05",
       "bytes": 59375,
       "sha256": "2dd0f1c6c488c801825d092b0059013ea783594af2b54f8513f117ba0f08830a",
       "schema": [
@@ -656,7 +803,8 @@
       ],
       "row_count": 581,
       "hanoi_principal_rows": 581,
-      "valid_raw_concentration_rows": 576,
+      "qc_valid_rows": 576,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2022-05-06T18:00:00",
       "maximum_timestamp": "2022-06-01T00:00:00",
@@ -669,6 +817,8 @@
     {
       "path_year": 2022,
       "kind": "06_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "06",
       "bytes": 71415,
       "sha256": "9d4e45eee4cd841e07d1596d8238e58739ae2e260e7514f3e64b579cbbcd89d5",
       "schema": [
@@ -692,7 +842,8 @@
       ],
       "row_count": 698,
       "hanoi_principal_rows": 698,
-      "valid_raw_concentration_rows": 696,
+      "qc_valid_rows": 696,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2022-06-01T01:00:00",
       "maximum_timestamp": "2022-07-01T00:00:00",
@@ -705,6 +856,8 @@
     {
       "path_year": 2022,
       "kind": "07_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "07",
       "bytes": 71509,
       "sha256": "e2f6d259888f60c00d4e10e0e8e3e8d6f14cd7fdcd5b9bbb037da9eb33b94631",
       "schema": [
@@ -728,7 +881,8 @@
       ],
       "row_count": 712,
       "hanoi_principal_rows": 712,
-      "valid_raw_concentration_rows": 710,
+      "qc_valid_rows": 710,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2022-07-01T01:00:00",
       "maximum_timestamp": "2022-08-01T00:00:00",
@@ -741,6 +895,8 @@
     {
       "path_year": 2022,
       "kind": "08_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "08",
       "bytes": 74412,
       "sha256": "fedee926154fd3c4066026143cfeba60cd7e05a90ca6c1f0d50450a9ef6c637f",
       "schema": [
@@ -764,7 +920,8 @@
       ],
       "row_count": 741,
       "hanoi_principal_rows": 741,
-      "valid_raw_concentration_rows": 737,
+      "qc_valid_rows": 737,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2022-08-01T01:00:00",
       "maximum_timestamp": "2022-09-01T00:00:00",
@@ -777,6 +934,8 @@
     {
       "path_year": 2022,
       "kind": "09_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "09",
       "bytes": 74669,
       "sha256": "5f07ccdba4843a621621e257759944335a916d04cdb6d475bb8a462508babb90",
       "schema": [
@@ -800,7 +959,8 @@
       ],
       "row_count": 692,
       "hanoi_principal_rows": 692,
-      "valid_raw_concentration_rows": 684,
+      "qc_valid_rows": 684,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2022-09-01T01:00:00",
       "maximum_timestamp": "2022-10-01T00:00:00",
@@ -813,6 +973,8 @@
     {
       "path_year": 2022,
       "kind": "10_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "10",
       "bytes": 18598,
       "sha256": "df750f949f4332ecad4fa2dcc6e31ad6965f4615eb41f6c99eb54fdc9515da96",
       "schema": [
@@ -836,7 +998,8 @@
       ],
       "row_count": 178,
       "hanoi_principal_rows": 178,
-      "valid_raw_concentration_rows": 176,
+      "qc_valid_rows": 176,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2022-10-01T01:00:00",
       "maximum_timestamp": "2022-11-01T00:00:00",
@@ -849,6 +1012,8 @@
     {
       "path_year": 2022,
       "kind": "11_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "11",
       "bytes": 74448,
       "sha256": "ae99677c6b36963ec57008149858498da780ae5748b0302cea27ef8944a1168c",
       "schema": [
@@ -872,7 +1037,8 @@
       ],
       "row_count": 718,
       "hanoi_principal_rows": 718,
-      "valid_raw_concentration_rows": 714,
+      "qc_valid_rows": 714,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2022-11-01T01:00:00",
       "maximum_timestamp": "2022-12-01T00:00:00",
@@ -885,6 +1051,8 @@
     {
       "path_year": 2022,
       "kind": "12_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "12",
       "bytes": 74977,
       "sha256": "f2d1c209967e0cca1fd22bf6c93a26616dbc4954e3b0b406c4aa306e28df0b9d",
       "schema": [
@@ -908,7 +1076,8 @@
       ],
       "row_count": 716,
       "hanoi_principal_rows": 716,
-      "valid_raw_concentration_rows": 711,
+      "qc_valid_rows": 711,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2022-12-01T01:00:00",
       "maximum_timestamp": "2022-12-31T00:00:00",
@@ -921,6 +1090,8 @@
     {
       "path_year": 2022,
       "kind": "YTD",
+      "source_period_type": "YTD",
+      "source_period_month": null,
       "bytes": 719923,
       "sha256": "df334642cfaf90d8a86d34916e0092a89808ca2b9c8191d95edb7955ccdf072b",
       "schema": [
@@ -945,7 +1116,8 @@
       ],
       "row_count": 6996,
       "hanoi_principal_rows": 6996,
-      "valid_raw_concentration_rows": 6957,
+      "qc_valid_rows": 6940,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2022-01-01T01:00:00",
       "maximum_timestamp": "2023-01-01T00:00:00",
@@ -958,6 +1130,8 @@
     {
       "path_year": 2022,
       "kind": "12_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "12",
       "bytes": 77353,
       "sha256": "04bd54e0de1d90c9c09f9f25b5e29b3aa82841ac118083c36723562c98756d79",
       "schema": [
@@ -982,7 +1156,8 @@
       ],
       "row_count": 740,
       "hanoi_principal_rows": 740,
-      "valid_raw_concentration_rows": 735,
+      "qc_valid_rows": 735,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2022-12-01T01:00:00",
       "maximum_timestamp": "2023-01-01T00:00:00",
@@ -995,6 +1170,8 @@
     {
       "path_year": 2023,
       "kind": "01_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "01",
       "bytes": 77105,
       "sha256": "67a6f5ffb6a69da8bcbbde01599154ba3cd510db9ef2c96ccd66fedb97425cdc",
       "schema": [
@@ -1018,7 +1195,8 @@
       ],
       "row_count": 738,
       "hanoi_principal_rows": 738,
-      "valid_raw_concentration_rows": 732,
+      "qc_valid_rows": 732,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2023-01-01T01:00:00",
       "maximum_timestamp": "2023-02-01T00:00:00",
@@ -1031,6 +1209,8 @@
     {
       "path_year": 2023,
       "kind": "02_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "02",
       "bytes": 71707,
       "sha256": "ee52e4536c91250729ba1b9dcbd41b16ac3d83c6e3ec50f70e0a806895b8228d",
       "schema": [
@@ -1054,7 +1234,8 @@
       ],
       "row_count": 672,
       "hanoi_principal_rows": 672,
-      "valid_raw_concentration_rows": 669,
+      "qc_valid_rows": 669,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2023-02-01T01:00:00",
       "maximum_timestamp": "2023-03-01T00:00:00",
@@ -1067,6 +1248,8 @@
     {
       "path_year": 2023,
       "kind": "03_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "03",
       "bytes": 66962,
       "sha256": "c4f661a36fd4cb9be9499a605f52fc7907dcee02ebab52c169354c6478c2538b",
       "schema": [
@@ -1090,7 +1273,8 @@
       ],
       "row_count": 636,
       "hanoi_principal_rows": 636,
-      "valid_raw_concentration_rows": 629,
+      "qc_valid_rows": 629,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2023-03-01T01:00:00",
       "maximum_timestamp": "2023-04-01T00:00:00",
@@ -1103,6 +1287,8 @@
     {
       "path_year": 2023,
       "kind": "04_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "04",
       "bytes": 77148,
       "sha256": "9c5b50cb27f4809fd6efa5952f61e95ec574c0b7898e5a29d7147aeab172be09",
       "schema": [
@@ -1126,7 +1312,8 @@
       ],
       "row_count": 718,
       "hanoi_principal_rows": 718,
-      "valid_raw_concentration_rows": 715,
+      "qc_valid_rows": 715,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2023-04-01T01:00:00",
       "maximum_timestamp": "2023-05-01T00:00:00",
@@ -1139,6 +1326,8 @@
     {
       "path_year": 2023,
       "kind": "05_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "05",
       "bytes": 73358,
       "sha256": "1dfb7e8a380cd2d35a72719d141544f3c27737d80f8cafc2711e8495513a19bc",
       "schema": [
@@ -1162,7 +1351,8 @@
       ],
       "row_count": 697,
       "hanoi_principal_rows": 697,
-      "valid_raw_concentration_rows": 692,
+      "qc_valid_rows": 692,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2023-05-01T01:00:00",
       "maximum_timestamp": "2023-06-01T00:00:00",
@@ -1175,6 +1365,8 @@
     {
       "path_year": 2023,
       "kind": "06_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "06",
       "bytes": 69139,
       "sha256": "865543cce2345a93b2189240c3e50f7f18a8686c629be7df22e20fd2b17b234d",
       "schema": [
@@ -1198,7 +1390,8 @@
       ],
       "row_count": 675,
       "hanoi_principal_rows": 675,
-      "valid_raw_concentration_rows": 671,
+      "qc_valid_rows": 671,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2023-06-01T01:00:00",
       "maximum_timestamp": "2023-07-01T00:00:00",
@@ -1211,6 +1404,8 @@
     {
       "path_year": 2023,
       "kind": "07_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "07",
       "bytes": 74474,
       "sha256": "2b91dbb50d7734a2704a881fe05fb70548390a1376cbabfd7f6bc7ecf34d05b1",
       "schema": [
@@ -1234,7 +1429,8 @@
       ],
       "row_count": 740,
       "hanoi_principal_rows": 740,
-      "valid_raw_concentration_rows": 731,
+      "qc_valid_rows": 731,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2023-07-01T01:00:00",
       "maximum_timestamp": "2023-08-01T00:00:00",
@@ -1247,6 +1443,8 @@
     {
       "path_year": 2023,
       "kind": "08_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "08",
       "bytes": 76552,
       "sha256": "ad631ba2a6b9a69069716f45a6342b0569a1dfc4e347593351f7a3bb55f685c7",
       "schema": [
@@ -1270,7 +1468,8 @@
       ],
       "row_count": 742,
       "hanoi_principal_rows": 742,
-      "valid_raw_concentration_rows": 737,
+      "qc_valid_rows": 737,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2023-08-01T01:00:00",
       "maximum_timestamp": "2023-09-01T00:00:00",
@@ -1283,6 +1482,8 @@
     {
       "path_year": 2023,
       "kind": "09_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "09",
       "bytes": 74292,
       "sha256": "c04912c6843a9be3bb5ee9e20957c80bf7032335c979076c5c85e38487e9382d",
       "schema": [
@@ -1306,7 +1507,8 @@
       ],
       "row_count": 718,
       "hanoi_principal_rows": 718,
-      "valid_raw_concentration_rows": 714,
+      "qc_valid_rows": 714,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2023-09-01T01:00:00",
       "maximum_timestamp": "2023-10-01T00:00:00",
@@ -1319,6 +1521,8 @@
     {
       "path_year": 2023,
       "kind": "10_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "10",
       "bytes": 78541,
       "sha256": "8f0d01f8a74d7c921883013d71388bd228663d806c0cd8753fdad45d5a3dae10",
       "schema": [
@@ -1342,7 +1546,8 @@
       ],
       "row_count": 741,
       "hanoi_principal_rows": 741,
-      "valid_raw_concentration_rows": 734,
+      "qc_valid_rows": 734,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2023-10-01T01:00:00",
       "maximum_timestamp": "2023-11-01T00:00:00",
@@ -1355,6 +1560,8 @@
     {
       "path_year": 2023,
       "kind": "11_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "11",
       "bytes": 16777,
       "sha256": "1983099ca13e51446304cb79629d6dbf5af0d61547c30df312897961e8b64829",
       "schema": [
@@ -1378,7 +1585,8 @@
       ],
       "row_count": 161,
       "hanoi_principal_rows": 161,
-      "valid_raw_concentration_rows": 159,
+      "qc_valid_rows": 159,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2023-11-01T01:00:00",
       "maximum_timestamp": "2023-11-07T17:00:00",
@@ -1391,6 +1599,8 @@
     {
       "path_year": 2023,
       "kind": "12_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "12",
       "bytes": 67623,
       "sha256": "38191457edb64c75ea1dd774781fb50a12ab3a03c7ebe63f6d8925db6c33b13b",
       "schema": [
@@ -1414,7 +1624,8 @@
       ],
       "row_count": 634,
       "hanoi_principal_rows": 634,
-      "valid_raw_concentration_rows": 629,
+      "qc_valid_rows": 629,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2023-12-01T01:00:00",
       "maximum_timestamp": "2023-12-27T11:00:00",
@@ -1427,6 +1638,8 @@
     {
       "path_year": 2023,
       "kind": "YTD",
+      "source_period_type": "YTD",
+      "source_period_month": null,
       "bytes": 879704,
       "sha256": "7228070e08b9a5bdfd0493ef75e6d04febc4cbc013f622d28835ac6b7ffad182",
       "schema": [
@@ -1450,7 +1663,8 @@
       ],
       "row_count": 8428,
       "hanoi_principal_rows": 8428,
-      "valid_raw_concentration_rows": 8366,
+      "qc_valid_rows": 8366,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2023-01-01T01:00:00",
       "maximum_timestamp": "2023-12-27T11:00:00",
@@ -1463,6 +1677,8 @@
     {
       "path_year": 2023,
       "kind": "12_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "12",
       "bytes": 67623,
       "sha256": "38191457edb64c75ea1dd774781fb50a12ab3a03c7ebe63f6d8925db6c33b13b",
       "schema": [
@@ -1486,7 +1702,8 @@
       ],
       "row_count": 634,
       "hanoi_principal_rows": 634,
-      "valid_raw_concentration_rows": 629,
+      "qc_valid_rows": 629,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2023-12-01T01:00:00",
       "maximum_timestamp": "2023-12-27T11:00:00",
@@ -1499,6 +1716,8 @@
     {
       "path_year": 2024,
       "kind": "01_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "01",
       "bytes": 74919,
       "sha256": "df61bdfcf95379ba1e25f0eac06b850609d79c32f19d538c36407f846da6a1d9",
       "schema": [
@@ -1522,7 +1741,8 @@
       ],
       "row_count": 704,
       "hanoi_principal_rows": 704,
-      "valid_raw_concentration_rows": 701,
+      "qc_valid_rows": 701,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2024-01-02T15:00:00",
       "maximum_timestamp": "2024-02-01T00:00:00",
@@ -1535,6 +1755,8 @@
     {
       "path_year": 2024,
       "kind": "02_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "02",
       "bytes": 74216,
       "sha256": "c8cf00c0ebf7dd55da46928e802e8fde270cdae30aee514bea2abb7806140fae",
       "schema": [
@@ -1558,7 +1780,8 @@
       ],
       "row_count": 696,
       "hanoi_principal_rows": 696,
-      "valid_raw_concentration_rows": 693,
+      "qc_valid_rows": 693,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2024-02-01T01:00:00",
       "maximum_timestamp": "2024-03-01T00:00:00",
@@ -1571,6 +1794,8 @@
     {
       "path_year": 2024,
       "kind": "03_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "03",
       "bytes": 79593,
       "sha256": "344488fe26cc54fbfbbe994c06eebcf571ba02ac53375131f8ac91bcfc95ce61",
       "schema": [
@@ -1594,7 +1819,8 @@
       ],
       "row_count": 742,
       "hanoi_principal_rows": 742,
-      "valid_raw_concentration_rows": 739,
+      "qc_valid_rows": 739,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2024-03-01T01:00:00",
       "maximum_timestamp": "2024-04-01T00:00:00",
@@ -1607,6 +1833,8 @@
     {
       "path_year": 2024,
       "kind": "04_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "04",
       "bytes": 78822,
       "sha256": "baecc987a89ee7d47c8b4cef7d3a8a9a71d7ae0094504a554e80b444f2e894c5",
       "schema": [
@@ -1630,7 +1858,8 @@
       ],
       "row_count": 718,
       "hanoi_principal_rows": 718,
-      "valid_raw_concentration_rows": 712,
+      "qc_valid_rows": 712,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2024-04-01T01:00:00",
       "maximum_timestamp": "2024-05-01T00:00:00",
@@ -1643,6 +1872,8 @@
     {
       "path_year": 2024,
       "kind": "05_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "05",
       "bytes": 77532,
       "sha256": "08ebdaf42506befa64e974137b3d7e67b1a412196273c52969090525a60f04de",
       "schema": [
@@ -1666,7 +1897,8 @@
       ],
       "row_count": 742,
       "hanoi_principal_rows": 742,
-      "valid_raw_concentration_rows": 737,
+      "qc_valid_rows": 737,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2024-05-01T01:00:00",
       "maximum_timestamp": "2024-06-01T00:00:00",
@@ -1679,6 +1911,8 @@
     {
       "path_year": 2024,
       "kind": "06_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "06",
       "bytes": 72163,
       "sha256": "f5a64916809b2f38e310b602ff749b64a47e832fe117c0ac4182d0dab45ad4bc",
       "schema": [
@@ -1702,7 +1936,8 @@
       ],
       "row_count": 713,
       "hanoi_principal_rows": 713,
-      "valid_raw_concentration_rows": 710,
+      "qc_valid_rows": 710,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2024-06-01T01:00:00",
       "maximum_timestamp": "2024-07-01T00:00:00",
@@ -1715,6 +1950,8 @@
     {
       "path_year": 2024,
       "kind": "07_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "07",
       "bytes": 74108,
       "sha256": "8a2c4ddec059b2875f3020e5e611db137426179151a1d3cbd10272ec1cc4050b",
       "schema": [
@@ -1738,7 +1975,8 @@
       ],
       "row_count": 743,
       "hanoi_principal_rows": 743,
-      "valid_raw_concentration_rows": 741,
+      "qc_valid_rows": 741,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2024-07-01T01:00:00",
       "maximum_timestamp": "2024-08-01T00:00:00",
@@ -1751,6 +1989,8 @@
     {
       "path_year": 2024,
       "kind": "08_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "08",
       "bytes": 15428,
       "sha256": "49b02051f5ed1ce365056b6be2673350ad639e00bee753d700f066f2e5fc1ecf",
       "schema": [
@@ -1774,7 +2014,8 @@
       ],
       "row_count": 155,
       "hanoi_principal_rows": 155,
-      "valid_raw_concentration_rows": 154,
+      "qc_valid_rows": 154,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2024-08-01T01:00:00",
       "maximum_timestamp": "2024-08-07T11:00:00",
@@ -1787,6 +2028,8 @@
     {
       "path_year": 2024,
       "kind": "09_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "09",
       "bytes": 50403,
       "sha256": "ddbee0ca12513eb8ec6a1ac41b156e87aa2fc87e2208437f1de6eb14d70d3739",
       "schema": [
@@ -1810,7 +2053,8 @@
       ],
       "row_count": 490,
       "hanoi_principal_rows": 490,
-      "valid_raw_concentration_rows": 486,
+      "qc_valid_rows": 486,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2024-09-10T14:00:00",
       "maximum_timestamp": "2024-10-01T00:00:00",
@@ -1823,6 +2067,8 @@
     {
       "path_year": 2024,
       "kind": "10_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "10",
       "bytes": 71724,
       "sha256": "f704c86c3378ac80eeaea4fd5f15c1cbf82190d0ce21b618ce357998fdfecdf7",
       "schema": [
@@ -1846,7 +2092,8 @@
       ],
       "row_count": 685,
       "hanoi_principal_rows": 685,
-      "valid_raw_concentration_rows": 680,
+      "qc_valid_rows": 680,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2024-10-01T01:00:00",
       "maximum_timestamp": "2024-11-01T00:00:00",
@@ -1859,6 +2106,8 @@
     {
       "path_year": 2024,
       "kind": "11_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "11",
       "bytes": 75499,
       "sha256": "58df910796b283414e4d38192c6eae8ac8c84dc001e71894068a677336074841",
       "schema": [
@@ -1882,7 +2131,8 @@
       ],
       "row_count": 719,
       "hanoi_principal_rows": 719,
-      "valid_raw_concentration_rows": 716,
+      "qc_valid_rows": 716,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2024-11-01T01:00:00",
       "maximum_timestamp": "2024-12-01T00:00:00",
@@ -1895,6 +2145,8 @@
     {
       "path_year": 2024,
       "kind": "12_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "12",
       "bytes": 26712,
       "sha256": "5ef4fd623f6b286e08c1d935e964c4923f868367a40bd94a1e9fb4769784eef1",
       "schema": [
@@ -1918,7 +2170,8 @@
       ],
       "row_count": 253,
       "hanoi_principal_rows": 253,
-      "valid_raw_concentration_rows": 249,
+      "qc_valid_rows": 249,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2024-12-01T01:00:00",
       "maximum_timestamp": "2024-12-11T14:00:00",
@@ -1931,6 +2184,8 @@
     {
       "path_year": 2024,
       "kind": "YTD",
+      "source_period_type": "YTD",
+      "source_period_month": null,
       "bytes": 770018,
       "sha256": "a1bfb864451e7c2a26ce87d167b3d60fcdecc9d23359c13bdb1dbfb380eab160",
       "schema": [
@@ -1954,7 +2209,8 @@
       ],
       "row_count": 7360,
       "hanoi_principal_rows": 7360,
-      "valid_raw_concentration_rows": 7318,
+      "qc_valid_rows": 7318,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2024-01-02T15:00:00",
       "maximum_timestamp": "2024-12-11T14:00:00",
@@ -1967,6 +2223,8 @@
     {
       "path_year": 2024,
       "kind": "12_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "12",
       "bytes": 26712,
       "sha256": "5ef4fd623f6b286e08c1d935e964c4923f868367a40bd94a1e9fb4769784eef1",
       "schema": [
@@ -1990,7 +2248,8 @@
       ],
       "row_count": 253,
       "hanoi_principal_rows": 253,
-      "valid_raw_concentration_rows": 249,
+      "qc_valid_rows": 249,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2024-12-01T01:00:00",
       "maximum_timestamp": "2024-12-11T14:00:00",
@@ -2003,6 +2262,8 @@
     {
       "path_year": 2025,
       "kind": "01_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "01",
       "bytes": 73379,
       "sha256": "ad720491cb5bb2cd6104bdb61e90556dd5e183a2931cb1fdc8b23ecda8371c99",
       "schema": [
@@ -2026,7 +2287,8 @@
       ],
       "row_count": 714,
       "hanoi_principal_rows": 714,
-      "valid_raw_concentration_rows": 705,
+      "qc_valid_rows": 705,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2025-01-01T01:00:00",
       "maximum_timestamp": "2025-02-01T00:00:00",
@@ -2039,6 +2301,8 @@
     {
       "path_year": 2025,
       "kind": "02_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "02",
       "bytes": 69724,
       "sha256": "c9a33e01366fd1acb9dc7720994925b3c24e49906994c6205b5ec576348cabce",
       "schema": [
@@ -2062,7 +2326,8 @@
       ],
       "row_count": 671,
       "hanoi_principal_rows": 671,
-      "valid_raw_concentration_rows": 669,
+      "qc_valid_rows": 669,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2025-02-01T01:00:00",
       "maximum_timestamp": "2025-03-01T00:00:00",
@@ -2075,6 +2340,8 @@
     {
       "path_year": 2025,
       "kind": "03_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "03",
       "bytes": 77525,
       "sha256": "d25b3e7c90b0ba4e3b1fd6d61dc0a76f459cb5cb3953513e49e1fb4ad32e7acd",
       "schema": [
@@ -2098,7 +2365,8 @@
       ],
       "row_count": 739,
       "hanoi_principal_rows": 739,
-      "valid_raw_concentration_rows": 735,
+      "qc_valid_rows": 735,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2025-03-01T01:00:00",
       "maximum_timestamp": "2025-04-01T00:00:00",
@@ -2111,6 +2379,8 @@
     {
       "path_year": 2025,
       "kind": "04_MTD",
+      "source_period_type": "MTD",
+      "source_period_month": "04",
       "bytes": 23596,
       "sha256": "94f2c124a7f2ed3f5b5e27c9f27aadb7795bc996001fea9e54e5ed9bbc9849c9",
       "schema": [
@@ -2134,7 +2404,8 @@
       ],
       "row_count": 215,
       "hanoi_principal_rows": 215,
-      "valid_raw_concentration_rows": 213,
+      "qc_valid_rows": 213,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2025-04-01T01:00:00",
       "maximum_timestamp": "2025-04-09T23:00:00",
@@ -2147,6 +2418,8 @@
     {
       "path_year": 2025,
       "kind": "YTD",
+      "source_period_type": "YTD",
+      "source_period_month": null,
       "bytes": 220400,
       "sha256": "c5d62825c0ea1f8884e6fc309c2d49136de128b3f7f0b77cab370a315afa245e",
       "schema": [
@@ -2170,7 +2443,8 @@
       ],
       "row_count": 2124,
       "hanoi_principal_rows": 2124,
-      "valid_raw_concentration_rows": 2109,
+      "qc_valid_rows": 2109,
+      "invalid_timestamp_rows": 0,
       "duplicate_timestamps_within_file": 0,
       "minimum_timestamp": "2025-01-01T01:00:00",
       "maximum_timestamp": "2025-04-01T00:00:00",

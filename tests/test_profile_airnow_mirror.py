@@ -26,6 +26,9 @@ def _rows(timestamps: pd.DatetimeIndex, value: float = 10.0) -> pd.DataFrame:
         "Date (LT)": timestamps.strftime("%m/%d/%Y %I:%M:%S %p"),
         "Raw Conc.": value,
         "NowCast Conc.": 999.0,
+        "QC Name": "Valid",
+        "Conc. Unit": "UG/M3",
+        "Duration": "1 Hr",
     })
 
 
@@ -81,13 +84,13 @@ class TestAirNowMirrorProfiler(unittest.TestCase):
             self._write(root, path, _rows(calendar))
             self._write(root, mtd_path, _rows(calendar[:1]))
             coverage = PROFILE.coverage_from_downloads(
-                [self._file(path), self._file(mtd_path, "MTD")], root
+                [self._file(path), self._file(mtd_path, "01_MTD")], root
             )
         self.assertEqual(coverage["duplicate_source_rows"], 1)
         self.assertEqual(coverage["ytd_mtd_overlap_hours"], 1)
-        self.assertEqual(coverage["identical_duplicate_hours"], 1)
+        self.assertEqual(coverage["identical_ytd_mtd_duplicate_hours"], 1)
         self.assertEqual(coverage["conflicting_duplicate_hours"], 0)
-        self.assertEqual(coverage["annual"][0]["valid_hours"], 8760)
+        self.assertEqual(coverage["annual"][0]["qc_valid_hours"], 8760)
 
     def test_conflicting_duplicate_is_not_counted_as_valid(self) -> None:
         path = "Data/Hanoi/2022/Hanoi_PM2.5_2022_YTD.csv"
@@ -98,11 +101,48 @@ class TestAirNowMirrorProfiler(unittest.TestCase):
             self._write(root, path, _rows(calendar, 10.0))
             self._write(root, mtd_path, _rows(calendar[:1], 20.0))
             coverage = PROFILE.coverage_from_downloads(
-                [self._file(path), self._file(mtd_path, "MTD")], root
+                [self._file(path), self._file(mtd_path, "01_MTD")], root
             )
         self.assertEqual(coverage["conflicting_duplicate_hours"], 1)
-        self.assertEqual(coverage["annual"][0]["valid_hours"], 8759)
+        self.assertEqual(coverage["annual"][0]["qc_valid_hours"], 8759)
         self.assertEqual(coverage["annual"][0]["conflicting_hours"], 1)
+        ledger = coverage["conflict_ledger"]
+        self.assertEqual(len(ledger), 1)
+        self.assertTrue(ledger[0]["conflicting_numeric_values"])
+
+    def test_qc_conflicts_and_invalid_fields_are_not_valid_observations(self) -> None:
+        path = "Data/Hanoi/2022/Hanoi_PM2.5_2022_YTD.csv"
+        mtd_path = "Data/Hanoi/2022/Hanoi_PM2.5_2022_01_MTD.csv"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            calendar = self._full_calendar()
+            primary = _rows(calendar, 10.0)
+            secondary = _rows(calendar[:2], 10.0)
+            secondary.loc[0, "Raw Conc."] = float("nan")
+            secondary.loc[0, "QC Name"] = "Missing"
+            secondary.loc[1, "QC Name"] = "Invalid"
+            self._write(root, path, primary)
+            self._write(root, mtd_path, secondary)
+            coverage = PROFILE.coverage_from_downloads(
+                [self._file(path), self._file(mtd_path, "01_MTD")], root
+            )
+        self.assertEqual(coverage["conflicting_duplicate_hours"], 2)
+        self.assertTrue(coverage["conflict_ledger"][0]["missing_vs_valid"])
+        self.assertTrue(coverage["conflict_ledger"][1]["invalid_qc_vs_valid"])
+        self.assertEqual(coverage["annual"][0]["qc_valid_hours"], 8758)
+
+    def test_source_unavailable_after_last_observation_is_not_station_missing(self) -> None:
+        path = "Data/Hanoi/2022/Hanoi_PM2.5_2022_YTD.csv"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            timestamps = pd.date_range("2022-01-01", "2022-01-31 23:00", freq="h")
+            self._write(root, path, _rows(timestamps))
+            coverage = PROFILE.coverage_from_downloads([self._file(path)], root)
+        january = coverage["monthly"][0]
+        february = coverage["monthly"][1]
+        self.assertEqual(january["source_unavailable_hours"], 0)
+        self.assertEqual(february["source_unavailable_hours"], 672)
+        self.assertEqual(february["missing_while_source_available_hours"], 0)
 
     def test_longest_gap_carries_across_month_and_year(self) -> None:
         path = "Data/Hanoi/2022/Hanoi_PM2.5_2022_YTD.csv"
@@ -114,7 +154,8 @@ class TestAirNowMirrorProfiler(unittest.TestCase):
             coverage = PROFILE.coverage_from_downloads([self._file(path)], root)
         monthly = {row["month"]: row for row in coverage["monthly"]}
         annual = {row["year"]: row for row in coverage["annual"]}
-        self.assertEqual(monthly["2022-12"]["longest_gap_hours"], 2)
-        self.assertEqual(monthly["2023-01"]["longest_gap_hours"], 2)
-        self.assertEqual(annual[2022]["longest_gap_hours"], 2)
-        self.assertEqual(annual[2023]["longest_gap_hours"], 2)
+        self.assertEqual(monthly["2022-12"]["longest_gap_hours"], 1)
+        self.assertEqual(monthly["2023-01"]["longest_gap_hours"], 1)
+        self.assertEqual(annual[2022]["longest_gap_hours"], 1)
+        self.assertEqual(annual[2023]["longest_gap_hours"], 1)
+        self.assertEqual(coverage["longest_contiguous_gap_full_series_hours"], 2)

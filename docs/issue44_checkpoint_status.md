@@ -13,20 +13,23 @@ Git blob SHA, downloaded-file SHA-256, size, schema, observed time span, and
 row/valid-row counts for all **46** Hanoi CSV files found under
 `Data/Hanoi/2022` through `Data/Hanoi/2025`.
 
-| Year | Expected hours | Observed distinct hours | Valid raw-concentration hours | Missing / invalid hours | Longest gap (h) |
-|---:|---:|---:|---:|---:|---:|
-| 2022 | 8,760 | 6,995 | 6,956 | 1,804 | 952 |
-| 2023 | 8,760 | 8,429 | 8,366 | 394 | 148 |
-| 2024 | 8,784 | 7,360 | 7,318 | 1,466 | 820 |
-| 2025 | 8,760 | 2,339 | 2,322 | 6,438 | 6,385 |
+| Year | Calendar | Observed | QC-valid | Missing while source available | Invalid/conflict | Source unavailable | Longest annual gap (h) |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 2022 | 8,760 | 6,995 | 6,939 | 1,764 | 56 | 1 | 1,081 |
+| 2023 | 8,760 | 8,429 | 8,366 | 331 | 63 | 0 | 109 |
+| 2024 | 8,784 | 7,360 | 7,318 | 1,424 | 42 | 0 | 820 |
+| 2025 | 8,760 | 2,339 | 2,322 | 37 | 17 | 6,384 | 32 |
 
-The continuous-grid scan found **25,955** duplicate source rows, **24,351**
-identical duplicate hours, **1** conflicting duplicate hour, and **0** detected
-YTD–MTD overlap hours. Conflicts are counted as non-valid, never selected from
-an arbitrary duplicate. It separately records three files in a wrong year
-directory and four payloads with records outside their named year. Downloads
-preserve repository-relative paths, use the pinned commit URL, and verify both
-Git blob SHA-1 and downloaded SHA-256.
+The corrected scan finds **25,955** duplicate source rows: **24,352** YTD–MTD
+overlap hours, of which **24,351** are identical; **1** timestamp conflicts
+(`2023-11-07T17:00`, MTD `-999`/Missing versus YTD `33`/Valid). The ledger is
+committed in the manifest and conflicts are never selected as observations.
+The full source-observation window is `2022-01-01T01:00` through
+`2025-04-09T23:00`; the longest full-series source-available gap is **1,081 h**.
+Consequently post-window 2025 calendar hours are reported as source-unavailable,
+not station missing. It separately records three files in a wrong year directory
+and four payloads with cross-year records. Downloads preserve repository-relative
+paths, use the pinned commit URL, and verify both Git blob SHA-1 and SHA-256.
 
 **Decision:** the mirror remains **unapproved, reference-only**.  GitHub's
 repository metadata exposes no license, and the mirror has the inconsistencies

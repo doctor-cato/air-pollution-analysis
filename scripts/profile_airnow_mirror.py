@@ -21,12 +21,16 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import numpy as np
 
 
 REPOSITORY = "dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies"
 BRANCH = "main"
 PATH_RE = re.compile(r"^Data/Hanoi/(202[2-5])/Hanoi_PM2\.5_(202[2-5])_(YTD|\d{2}_MTD)\.csv$")
 API_BASE = f"https://api.github.com/repos/{REPOSITORY}"
+VALID_QC_NAMES = {"valid"}
+VALID_UNITS = {"ug/m3"}
+VALID_DURATIONS = {"1 hr"}
 
 
 def fetch_bytes(url: str) -> bytes:
@@ -85,32 +89,74 @@ def download_verified_blob(item: dict[str, Any], source_commit: str, raw_dir: Pa
     return destination, actual_blob_sha
 
 
+def source_period(kind: str) -> tuple[str, str | None]:
+    """Split mirror filename suffixes such as ``01_MTD`` into stable metadata."""
+    if kind == "YTD":
+        return "YTD", None
+    month, suffix = kind.split("_", maxsplit=1)
+    if suffix != "MTD" or not month.isdigit() or not 1 <= int(month) <= 12:
+        raise ValueError(f"Unrecognised mirror period suffix: {kind}")
+    return "MTD", month
+
+
+def _normalise_text(values: pd.Series) -> pd.Series:
+    return values.fillna("").astype(str).str.strip().str.casefold()
+
+
+def select_hanoi_pm25(frame: pd.DataFrame, source_path: str, kind: str) -> pd.DataFrame:
+    """Keep raw observation evidence and annotate all QC conditions explicitly."""
+    required = {"Site", "Parameter", "Date (LT)", "Raw Conc.", "QC Name", "Conc. Unit", "Duration"}
+    missing = required.difference(frame.columns)
+    if missing:
+        raise ValueError(f"{source_path} lacks required mirror columns: {sorted(missing)}")
+    keep = (
+        _normalise_text(frame["Site"]).eq("hanoi")
+        & _normalise_text(frame["Parameter"]).eq("pm2.5 - principal")
+    )
+    selected = frame.loc[keep, ["Date (LT)", "Raw Conc.", "QC Name", "Conc. Unit", "Duration"]].copy()
+    selected["timestamp"] = pd.to_datetime(selected["Date (LT)"], errors="coerce", format="mixed")
+    selected["raw_value"] = pd.to_numeric(selected["Raw Conc."], errors="coerce")
+    selected["source_path"] = source_path
+    selected["source_period_type"], selected["source_period_month"] = source_period(kind)
+    selected["qc_name"] = _normalise_text(selected["QC Name"])
+    selected["unit"] = _normalise_text(selected["Conc. Unit"])
+    selected["duration"] = _normalise_text(selected["Duration"])
+    selected["timestamp_valid"] = selected["timestamp"].notna()
+    selected["raw_valid"] = np.isfinite(selected["raw_value"]) & selected["raw_value"].ge(0)
+    selected["qc_valid"] = selected["qc_name"].isin(VALID_QC_NAMES)
+    selected["unit_valid"] = selected["unit"].isin(VALID_UNITS)
+    selected["duration_valid"] = selected["duration"].isin(VALID_DURATIONS)
+    selected["quality_status"] = np.where(
+        selected[["timestamp_valid", "raw_valid", "qc_valid", "unit_valid", "duration_valid"]].all(axis=1),
+        "valid",
+        "invalid",
+    )
+    return selected
+
+
 def profile_csv(path: Path, path_year: int, kind: str) -> dict[str, Any]:
     frame = pd.read_csv(path)
     schema = list(frame.columns)
-    date_column = "Date (LT)" if "Date (LT)" in frame.columns else "Date (LST)"
-    value_column = "Raw Conc." if "Raw Conc." in frame.columns else "Value"
-    principal = frame["Parameter"].astype(str).str.strip().str.upper().eq("PM2.5 - PRINCIPAL")
-    hanoi = frame["Site"].astype(str).str.strip().str.casefold().eq("hanoi")
-    observed = frame.loc[hanoi & principal, [date_column, value_column]].copy()
-    observed["timestamp"] = pd.to_datetime(observed[date_column], errors="coerce", format="mixed")
-    observed["raw"] = pd.to_numeric(observed[value_column], errors="coerce")
-    observed = observed.dropna(subset=["timestamp"])
-    valid = observed["raw"].ge(0)
+    observed = select_hanoi_pm25(frame, str(path), kind)
+    timestamped = observed.loc[observed["timestamp_valid"]]
     duplicate_timestamps = int(observed["timestamp"].duplicated().sum())
+    period_type, period_month = source_period(kind)
     return {
         "path_year": path_year,
         "kind": kind,
+        "source_period_type": period_type,
+        "source_period_month": period_month,
         "bytes": path.stat().st_size,
         "sha256": sha256_file(path),
         "schema": schema,
-        "actual_years": sorted({int(year) for year in observed["timestamp"].dt.year.unique()}),
+        "actual_years": sorted({int(year) for year in timestamped["timestamp"].dt.year.unique()}),
         "row_count": int(len(frame)),
-        "hanoi_principal_rows": int(len(observed)),
-        "valid_raw_concentration_rows": int(valid.sum()),
+        "hanoi_principal_rows": int(len(timestamped)),
+        "qc_valid_rows": int(timestamped["quality_status"].eq("valid").sum()),
+        "invalid_timestamp_rows": int((~observed["timestamp_valid"]).sum()),
         "duplicate_timestamps_within_file": duplicate_timestamps,
-        "minimum_timestamp": None if observed.empty else observed["timestamp"].min().isoformat(),
-        "maximum_timestamp": None if observed.empty else observed["timestamp"].max().isoformat(),
+        "minimum_timestamp": None if timestamped.empty else timestamped["timestamp"].min().isoformat(),
+        "maximum_timestamp": None if timestamped.empty else timestamped["timestamp"].max().isoformat(),
     }
 
 
@@ -119,63 +165,72 @@ def coverage_from_downloads(files: list[dict[str, Any]], raw_dir: Path) -> dict[
     rows: list[pd.DataFrame] = []
     for file in files:
         frame = pd.read_csv(local_raw_path(raw_dir, file["path"]))
-        date_column = "Date (LT)" if "Date (LT)" in frame.columns else "Date (LST)"
-        value_column = "Raw Conc." if "Raw Conc." in frame.columns else "Value"
-        keep = (
-            frame["Site"].astype(str).str.strip().str.casefold().eq("hanoi")
-            & frame["Parameter"].astype(str).str.strip().str.upper().eq("PM2.5 - PRINCIPAL")
-        )
-        selected = frame.loc[keep, [date_column, value_column]].copy()
-        selected["timestamp"] = pd.to_datetime(selected[date_column], errors="coerce", format="mixed")
-        selected["raw_value"] = pd.to_numeric(selected[value_column], errors="coerce")
-        selected["source_path"] = file["path"]
-        selected["source_kind"] = file["kind"]
-        rows.append(selected[["timestamp", "raw_value", "source_path", "source_kind"]].dropna(subset=["timestamp"]))
+        rows.append(select_hanoi_pm25(frame, file["path"], file["kind"]).query("timestamp_valid"))
     all_rows = pd.concat(rows, ignore_index=True)
     duplicate_groups = all_rows.groupby("timestamp", sort=True)
     duplicate_rows = int((duplicate_groups.size() - 1).clip(lower=0).sum())
-    statuses = []
+    statuses, conflict_ledger = [], []
     for timestamp, group in duplicate_groups:
-        values = group["raw_value"].tolist()
-        # Missing is a distinct observation state; it must not be silently
-        # replaced by a concurrent numeric value from another mirror file.
-        tokens = {"<NA>" if pd.isna(value) else repr(float(value)) for value in values}
+        raw_tokens = ["<missing>" if pd.isna(value) else repr(float(value)) for value in group["raw_value"]]
+        record_tuples = list(zip(raw_tokens, group["quality_status"], group["qc_name"], group["unit"], group["duration"]))
+        fingerprints = set(record_tuples)
         is_duplicate = len(group) > 1
-        is_conflict = is_duplicate and len(tokens) > 1
-        value = values[0] if len(tokens) == 1 else None
-        status = "valid" if value is not None and value >= 0 else "invalid"
+        numeric = {token for token, value in zip(raw_tokens, group["raw_value"]) if np.isfinite(value)}
+        valid_present = group["quality_status"].eq("valid").any()
+        missing_vs_valid = bool(valid_present and "<missing>" in raw_tokens)
+        invalid_qc_vs_valid = bool(valid_present and group["quality_status"].eq("invalid").any())
+        conflicting_numeric = bool(len(numeric) > 1)
+        is_conflict = is_duplicate and (len(fingerprints) > 1)
+        status = "conflicting" if is_conflict else ("valid" if valid_present else "invalid")
+        period_types = set(group["source_period_type"])
         if is_conflict:
-            status = "conflicting"
+            conflict_ledger.append({
+                "timestamp": timestamp.isoformat(),
+                "conflicting_numeric_values": conflicting_numeric,
+                "missing_vs_valid": missing_vs_valid,
+                "invalid_qc_vs_valid": invalid_qc_vs_valid,
+                "records": [
+                    {"source_path": row.source_path, "raw_value": None if pd.isna(row.raw_value) else float(row.raw_value), "qc_name": row.qc_name, "unit": row.unit, "duration": row.duration, "quality_status": row.quality_status}
+                    for row in group.itertuples()
+                ],
+            })
         statuses.append({
             "timestamp": timestamp,
             "status": status,
             "source_rows": len(group),
-            "has_ytd_mtd_overlap": {"YTD", "MTD"}.issubset(set(group["source_kind"])),
+            "has_ytd_mtd_overlap": {"YTD", "MTD"}.issubset(period_types),
+            "same_period_type": len(period_types) == 1,
         })
     union = pd.DataFrame(statuses)
-    identical_duplicate_hours = int(sum(1 for row in statuses if row["source_rows"] > 1 and row["status"] != "conflicting"))
+    identical_ytd_mtd_duplicate_hours = int(sum(1 for row in statuses if row["source_rows"] > 1 and row["status"] != "conflicting" and row["has_ytd_mtd_overlap"]))
+    identical_same_period_type_duplicate_hours = int(sum(1 for row in statuses if row["source_rows"] > 1 and row["status"] != "conflicting" and row["same_period_type"]))
     conflicting_duplicate_hours = int(sum(1 for row in statuses if row["status"] == "conflicting"))
     ytd_mtd_overlap_hours = int(sum(1 for row in statuses if row["has_ytd_mtd_overlap"]))
     grid_start, grid_end = pd.Timestamp("2022-01-01"), pd.Timestamp("2025-12-31 23:00")
     calendar = pd.DataFrame({"timestamp": pd.date_range(grid_start, grid_end, freq="h")})
     calendar = calendar.merge(union[["timestamp", "status"]], on="timestamp", how="left")
     calendar["status"] = calendar["status"].fillna("missing")
-    calendar["gap"] = calendar["status"].ne("valid")
+    source_start, source_end = all_rows["timestamp"].min(), all_rows["timestamp"].max()
+    calendar["source_available"] = calendar["timestamp"].between(source_start, source_end)
+    calendar["gap"] = calendar["source_available"] & calendar["status"].ne("valid")
     run_id = calendar["gap"].ne(calendar["gap"].shift(fill_value=False)).cumsum()
     calendar["gap_run"] = run_id
+    full_gap_sizes = calendar.loc[calendar["gap"]].groupby("gap_run").size()
     monthly: list[dict[str, Any]] = []
     for period in pd.period_range("2022-01", "2025-12", freq="M"):
         start, end = period.start_time, period.end_time.floor("h")
         scoped = calendar[(calendar["timestamp"] >= start) & (calendar["timestamp"] <= end)]
-        gap_sizes = calendar.loc[calendar["gap"]].groupby("gap_run").size()
+        gap_sizes = scoped.loc[scoped["gap"]].groupby("gap_run").size()
         scoped_gap_ids = scoped.loc[scoped["gap"], "gap_run"].unique()
         longest_gap = int(gap_sizes.reindex(scoped_gap_ids).max()) if len(scoped_gap_ids) else 0
         monthly.append({
             "month": str(period),
             "expected_hours": int(len(scoped)),
             "observed_hours": int(scoped["status"].ne("missing").sum()),
-            "valid_hours": int(scoped["status"].eq("valid").sum()),
-            "missing_or_invalid_hours": int(scoped["status"].ne("valid").sum()),
+            "qc_valid_hours": int(scoped["status"].eq("valid").sum()),
+            "missing_while_source_available_hours": int((scoped["source_available"] & scoped["status"].eq("missing")).sum()),
+            "invalid_qc_or_conflict_hours": int((scoped["source_available"] & scoped["status"].isin(["invalid", "conflicting"])).sum()),
+            "source_unavailable_hours": int((~scoped["source_available"]).sum()),
             "conflicting_hours": int(scoped["status"].eq("conflicting").sum()),
             "longest_gap_hours": longest_gap,
         })
@@ -183,22 +238,28 @@ def coverage_from_downloads(files: list[dict[str, Any]], raw_dir: Path) -> dict[
     for year in range(2022, 2026):
         start, end = pd.Timestamp(f"{year}-01-01"), pd.Timestamp(f"{year}-12-31 23:00")
         scoped = calendar[(calendar["timestamp"] >= start) & (calendar["timestamp"] <= end)]
-        gap_sizes = calendar.loc[calendar["gap"]].groupby("gap_run").size()
+        gap_sizes = scoped.loc[scoped["gap"]].groupby("gap_run").size()
         scoped_gap_ids = scoped.loc[scoped["gap"], "gap_run"].unique()
         annual.append({
             "year": year,
             "expected_hours": int(len(scoped)),
             "observed_hours": int(scoped["status"].ne("missing").sum()),
-            "valid_hours": int(scoped["status"].eq("valid").sum()),
-            "missing_or_invalid_hours": int(scoped["status"].ne("valid").sum()),
+            "qc_valid_hours": int(scoped["status"].eq("valid").sum()),
+            "missing_while_source_available_hours": int((scoped["source_available"] & scoped["status"].eq("missing")).sum()),
+            "invalid_qc_or_conflict_hours": int((scoped["source_available"] & scoped["status"].isin(["invalid", "conflicting"])).sum()),
+            "source_unavailable_hours": int((~scoped["source_available"]).sum()),
             "conflicting_hours": int(scoped["status"].eq("conflicting").sum()),
             "longest_gap_hours": int(gap_sizes.reindex(scoped_gap_ids).max()) if len(scoped_gap_ids) else 0,
         })
     return {
         "duplicate_source_rows": duplicate_rows,
         "ytd_mtd_overlap_hours": ytd_mtd_overlap_hours,
-        "identical_duplicate_hours": identical_duplicate_hours,
+        "identical_ytd_mtd_duplicate_hours": identical_ytd_mtd_duplicate_hours,
+        "identical_same_period_type_duplicate_hours": identical_same_period_type_duplicate_hours,
         "conflicting_duplicate_hours": conflicting_duplicate_hours,
+        "conflict_ledger": conflict_ledger,
+        "source_observation_window": {"start": source_start.isoformat(), "end": source_end.isoformat()},
+        "longest_contiguous_gap_full_series_hours": int(full_gap_sizes.max()) if not full_gap_sizes.empty else 0,
         "conflict_policy": "conflicting timestamps are not selected as valid observations",
         "monthly": monthly,
         "annual": annual,
