@@ -411,7 +411,7 @@ def build_daily_calendar(
     per_day, _rows, _stations, _observed = _daily_aggregates(df)
     dates = per_day.index
     valid = per_day["valid_hours"].to_numpy(dtype=int)
-    values = per_day["pm25_mean"].to_numpy(dtype=float)
+    values = per_day["pm25_mean"].to_numpy(dtype=float, copy=True)
     values[valid < min_valid_hours] = np.nan
 
     seasons = _season_from_month(dates.month)

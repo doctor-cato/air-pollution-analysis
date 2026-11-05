@@ -22,7 +22,9 @@ import pandas as pd
 from src.data_collection import (
     HANOI_BBOX,
     CANONICAL_TIMEZONE,
+    HANOI_OPENAQ_HISTORICAL_LOCATION_ID,
     STATION_OPENAQ_HANOI,
+    STATION_OPENAQ_7441,
     STATION_AIRNOW_HANOI,
     STATION_WEATHER_ERA5,
     WEATHER_CANONICAL_COLUMNS,
@@ -214,6 +216,77 @@ class TestDataCollectionPipeline(unittest.TestCase):
             self.assertEqual(frame["timestamp"].iloc[2].hour, 15)
         finally:
             os.remove(tmp_path)
+
+    def test_airnow_adapter_enforces_qc_name_unit_duration_and_conflicts(self):
+        """AirNowDOSAdapter must nullify non-Valid QC, bad units/durations, and conflicting YTD/MTD duplicates."""
+        import os
+        import tempfile
+        from src.data_collection import AirNowDOSAdapter
+
+        ytd_content = (
+            "Site,Parameter,Date (LT),Year,Month,Day,Hour,NowCast Conc.,Raw Conc.,Conc. Unit,Duration,QC Name\n"
+            "Hanoi,PM2.5 - Principal,2023-11-07 03:00 PM,2023,11,7,15,25.0,25.0,UG/M3,1 Hr,Valid\n"
+            "Hanoi,PM2.5 - Principal,2023-11-07 04:00 PM,2023,11,7,16,30.0,30.0,UG/M3,1 Hr,Invalid\n"
+            "Hanoi,PM2.5 - Principal,2023-11-07 05:00 PM,2023,11,7,17,22.0,22.0,UG/M3,1 Hr,Valid\n"
+            "Hanoi,PM2.5 - Principal,2023-11-07 06:00 PM,2023,11,7,18,18.0,18.0,PPB,1 Hr,Valid\n"
+            "Hanoi,PM2.5 - Principal,2023-11-07 07:00 PM,2023,11,7,19,19.0,19.0,UG/M3,24 Hr,Valid\n"
+            "Hanoi,PM2.5 - Principal,2023-11-07 08:00 PM,2023,11,7,20,21.0,21.0,UG/M3,1 Hr,Suspect\n"
+        )
+        mtd_content = (
+            "Site,Parameter,Date (LT),Year,Month,Day,Hour,NowCast Conc.,Raw Conc.,Conc. Unit,Duration,QC Name\n"
+            "Hanoi,PM2.5 - Principal,2023-11-07 03:00 PM,2023,11,7,15,25.0,25.0,UG/M3,1 Hr,Valid\n"
+            "Hanoi,PM2.5 - Principal,2023-11-07 05:00 PM,2023,11,7,17,15.0,15.0,UG/M3,1 Hr,Valid\n"
+        )
+        with tempfile.NamedTemporaryFile("w", delete=False, suffix="_YTD.csv") as f1, \
+             tempfile.NamedTemporaryFile("w", delete=False, suffix="_MTD.csv") as f2:
+            f1.write(ytd_content)
+            f2.write(mtd_content)
+            p1, p2 = f1.name, f2.name
+        try:
+            frame = AirNowDOSAdapter().load_and_canonicalize(
+                [p1, p2], include_qc_columns=True
+            )
+            self.assertEqual(len(frame), 6)
+            # 15:00 identical valid duplicate across YTD/MTD -> kept as 25.0
+            self.assertEqual(frame.loc[0, "pm25"], 25.0)
+            self.assertEqual(frame.loc[0, "qc_reason"], "valid")
+            # 16:00 numeric 30.0 but QC Name == Invalid -> NaN
+            self.assertTrue(np.isnan(frame.loc[1, "pm25"]))
+            self.assertEqual(frame.loc[1, "qc_reason"], "qc_invalid")
+            # 17:00 conflicting valid duplicate (22.0 vs 15.0) -> NaN (never picked arbitrarily)
+            self.assertTrue(np.isnan(frame.loc[2, "pm25"]))
+            self.assertEqual(frame.loc[2, "qc_reason"], "conflicting_duplicate")
+            # 18:00 invalid unit PPB -> NaN
+            self.assertTrue(np.isnan(frame.loc[3, "pm25"]))
+            self.assertEqual(frame.loc[3, "qc_reason"], "invalid_unit")
+            # 19:00 invalid duration 24 Hr -> NaN
+            self.assertTrue(np.isnan(frame.loc[4, "pm25"]))
+            self.assertEqual(frame.loc[4, "qc_reason"], "invalid_duration")
+            # 20:00 QC Name == Suspect -> NaN
+            self.assertTrue(np.isnan(frame.loc[5, "pm25"]))
+            self.assertEqual(frame.loc[5, "qc_reason"], "qc_suspect")
+
+            qc_summary = frame.attrs["qc_summary"]
+            self.assertEqual(qc_summary["identical_duplicate_hours"], 1)
+            self.assertEqual(qc_summary["conflicting_duplicate_hours"], 1)
+        finally:
+            for p in (p1, p2):
+                if os.path.exists(p):
+                    os.remove(p)
+
+    def test_openaq_7441_historical_station_resolves_separately_within_hanoi(self):
+        """OpenAQ historical location 7441 resolves to VN003_HANOI_OPENAQ_7441 without coalescing into VN001 or VN002."""
+        sid, loc, coords = resolve_station_metadata("openaq", HANOI_OPENAQ_HISTORICAL_LOCATION_ID)
+        self.assertEqual(sid, STATION_OPENAQ_7441)
+        self.assertNotIn(sid, {STATION_OPENAQ_HANOI, STATION_AIRNOW_HANOI})
+        self.assertIn("7441", loc)
+        df_7441 = pd.DataFrame({
+            "station_id": [STATION_OPENAQ_7441],
+            "latitude": [coords[0]],
+            "longitude": [coords[1]],
+            "pm25": [42.0],
+        })
+        assert_canonical_within_hanoi(df_7441)
 
     def test_actual_timestamps_computed_directly_from_dataframe(self):
         """Kiểm thử actual_min_timestamp và actual_max_timestamp được lấy động từ DataFrame, không hardcode."""

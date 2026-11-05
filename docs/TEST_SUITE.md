@@ -29,7 +29,7 @@ Không test nào gọi mạng. Không test nào phụ thuộc thứ tự chạy.
 
 | Module | Test methods | Phạm vi |
 |---|---|---|
-| `tests/test_data_collection.py` | 58 | Ingest OpenAQ / Open-Meteo / AirNow, provenance, SHA-256 |
+| `tests/test_data_collection.py` | 60 | Ingest OpenAQ / Open-Meteo / AirNow, provenance, SHA-256 |
 | `tests/test_cleaning.py` | 114 | Làm sạch tất định, `assert_no_imputation()`, cờ chẩn đoán |
 | `tests/test_data_quality.py` | 44 | Kiểm toán chất lượng 6 chiều |
 | `tests/test_cleaning_pipeline.py` | 44 | Merge, freeze, split tuần tự, chống rò rỉ |
@@ -37,13 +37,13 @@ Không test nào gọi mạng. Không test nào phụ thuộc thứ tự chạy.
 | `tests/test_fetch_dataset.py` | 9 | `scripts/fetch_dataset.py` |
 | `tests/test_flag_evidence.py` | 44 | Bằng chứng tái lập được cho `is_high_humidity_fog` |
 | `tests/test_inference.py` | 208 | W9 — Holm, effect size, chẩn đoán phân phối, QCVN; **bootstrap theo lịch ngày** (mặt nạ thiếu, nhãn theo vị trí đích), **HAC/Newey–West**, kiểm chứng **Monte Carlo đa kịch bản**, chẩn đoán khái quát hóa — số liệu thật: `TestRealDataset` |
-| `tests/test_issue44_preparation.py` | 4 | CP2/CP3 derived interpolation, masking metrics and winter/station boundaries (synthetic) |
+| `tests/test_issue44_preparation.py` | 5 | CP2/CP3 derived interpolation, masking metrics and winter/station boundaries (synthetic) |
 | `tests/test_profile_airnow_mirror.py` | 8 | CP0 pinned blobs, path preservation, period-aware duplicates/conflicts, QC and source-window gaps (synthetic) |
 | `tests/test_pipeline_runtime_log.py` | 40 | Nhật ký thực thi pipeline, dấu phân cách Windows |
 | `tests/test_validate_issue8.py` | 29 | Checksum, đồng bộ generator, circular stats, smoke fixture, canh số liệu tài liệu |
 | `tests/test_verify_claims_rolling.py` | 7 | Biên rolling 24h — dữ liệu đồng nhất che lỗi |
 | `tests/test_visualizer.py` | 35 | Bộ 7 biểu đồ ấn phẩm FIG-01..FIG-07 (300 DPI, Tufte, zero-baseline, chuỳ 24h, font tiếng Việt) |
-| **Tổng** | **687** | |
+| **Tổng** | **690** | |
 
 Đếm lại sau mỗi thay đổi:
 
@@ -59,14 +59,14 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 | Con số | Ý nghĩa |
 |---|---|
-| **687** | Số **test method được định nghĩa** trong mã nguồn |
-| **671** | Số unittest **thực sự chạy và báo cáo** trên CI (thiếu `data/`) |
-| **667** | Số test **chạy và pass** trên CI (671 − 4 skip nằm trong `Ran`) |
+| **690** | Số **test method được định nghĩa** trong mã nguồn |
+| **674** | Số unittest **thực sự chạy và báo cáo** trên CI (thiếu `data/`) |
+| **670** | Số test **chạy và pass** trên CI (674 − 4 skip nằm trong `Ran`) |
 
 > ⚠ **`skipped=6` không trừ thẳng vào `Ran`.** Hai trong sáu dòng skip là *class holder*
 > (`setUpClass` raise `SkipTest`): unittest bỏ qua cả class nên các method của nó **không
 > bao giờ vào `Ran`**, nhưng vẫn hiện một dòng trong `skipped=`. Vì vậy
-> `pass = Ran − (skipped − holders) = 671 − (6 − 2) = 667`, **không phải** `671 − 6`.
+> `pass = Ran − (skipped − holders) = 674 − (6 − 2) = 670`, **không phải** `674 − 6`.
 >
 > Đính chính: bản trước của tài liệu này ghi `462 − 5 = 457`, tức đã trừ cả holder và
 > **đếm thiếu 1** so với số test thật sự chạy-pass (đúng phải là `462 − 4 = 458`).
@@ -76,12 +76,12 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 | Môi trường | Lệnh | Kết quả |
 |---|---|---|
-| Windows local, **có `data/`** | `python -m unittest discover tests` | `Ran 687 tests` + `OK` → **687 pass, 0 skip** |
-| Ubuntu CI `ubuntu-latest`, **không `data/`** | `python -m unittest discover tests -v` | `Ran 671 tests` + `OK (skipped=6)` → **667 pass, 6 skip (2 holder)** |
+| Windows local, **có `data/`** | `python -m unittest discover tests` | `Ran 690 tests` + `OK` → **690 pass, 0 skip** |
+| Ubuntu CI `ubuntu-latest`, **không `data/`** | `python -m unittest discover tests -v` | `Ran 674 tests` + `OK (skipped=6)` → **670 pass, 6 skip (2 holder)** |
 
 > `data/` bị `.gitignore` loại khỏi repository, nên **CI không bao giờ có dataset**.
 
-### Vì sao 687 − 671 = 16
+### Vì sao 690 − 674 = 16
 
 Hai lớp có `setUpClass` raise `unittest.SkipTest` khi thiếu dữ liệu, và unittest bỏ qua
 **cả class** — mọi method của chúng không bao giờ được tính vào bộ đếm `Ran`:

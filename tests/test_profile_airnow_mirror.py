@@ -144,7 +144,7 @@ class TestAirNowMirrorProfiler(unittest.TestCase):
         self.assertEqual(february["source_unavailable_hours"], 672)
         self.assertEqual(february["missing_while_source_available_hours"], 0)
 
-    def test_longest_gap_carries_across_month_and_year(self) -> None:
+    def test_longest_gap_is_clipped_to_month_and_year_boundaries(self) -> None:
         path = "Data/Hanoi/2022/Hanoi_PM2.5_2022_YTD.csv"
         calendar = self._full_calendar()
         missing = {pd.Timestamp("2022-12-31 23:00"), pd.Timestamp("2023-01-01 00:00")}

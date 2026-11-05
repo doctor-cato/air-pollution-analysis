@@ -534,26 +534,12 @@ Pipeline thu thập và chuẩn hóa dữ liệu khí tượng bề mặt Hà N�
 7. **Giới Hạn Nguồn Dữ Liệu (Source Limitations):**
     - ERA5 là mô hình tái phân tích khí quyển dạng lưới độ phân giải $0.25^\circ \times 0.25^\circ$ ($\approx 25\,\text{km}$), phản ánh điều kiện khí tượng vĩ mô khu vực thay vì hiệu ứng vi khí hậu siêu cục bộ (ví dụ hiệu ứng hẻm phố đô thị - street canyon effect). Hạn chế này cần được ghi nhận minh bạch trong các báo cáo phân tích hồi quy tại Issue #12.
 
-### 14.4. Addendum Issue #44 — Mirror AirNow Hà Nội (2026-10-30)
+### 14.4. Addendum Issue #44 — Mở Rộng Dữ Liệu Lịch Sử 2022–2025 (OpenAQ 7441 vs. Mirror AirNow Hà Nội)
 
-**Quyết định: BLOCKED, reference-only.** Manifest tái lập
-`reports/issue44_mirror_manifest.json` pin candidate public mirror tại commit
-`25d08e949c9d01ba57c4e74ff9b3b99328ecf141`; mỗi download được đối chiếu Git
-blob SHA-1 và SHA-256. GitHub API của repository trả `license: null`; điều này
-không được suy diễn thành quyền tái sử dụng chỉ vì dữ liệu có liên hệ với cơ
-quan Hoa Kỳ.
+1. **Mirror GitHub bên thứ ba (`dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies`) — Quyết định: BLOCKED / Reference-Only.**
+   Manifest tái lập `reports/issue44_mirror_manifest.json` pin snapshot tại commit `25d08e949c9d01ba57c4e74ff9b3b99328ecf141` (đối chiếu Git blob SHA-1 và SHA-256). GitHub API trả `license: null`, phát hiện 3 tệp MTD đặt sai thư mục năm (`794` dòng lệch năm) và 1 mốc giờ xung đột giá trị (`2023-11-07T17:00`: `22.0` ở YTD so với `15.0` ở MTD). Do chưa có xác nhận chuỗi lưu ký từ EPA/DoS/AirNow, mirror này chỉ được giữ làm tài liệu tham chiếu chẩn đoán, tuyệt đối không nạp vào pipeline chính.
 
-Nguồn chính thức đã kiểm tra: [AirNow Department of State map](https://gispub.epa.gov/airnowembassy/)
-cho thấy giao diện archive/current; [AirNow-Tech](https://www.airnowtech.org/)
-tự mô tả là password-protected; và [AirNow API](https://docs.airnowapi.org/)
-ghi dữ liệu preliminary, subject to change. Chúng không cung cấp trong hồ sơ
-này một raw historical Hanoi extract có điều khoản, station/device metadata và
-provenance đủ để phê duyệt mirror. Vì vậy mirror không được nạp, ghép VN001,
-tạo VN002 canonical, hay dùng trong EDA/inference cho đến khi có bằng chứng đó.
-
-**Superseding limit for the 2022–2025 extension:** prior historical references
-to the Hanoi BAM-1020 support neither continuous device identity nor station
-location/operator identity throughout this new window. See
-`docs/issue44_source_verification.md`: OpenAQ locations 7441 and 2539 remain
-independent unless an official provider maps them, and the mirror remains
-reference-only despite any EPA public-domain statement.
+2. **OpenAQ Public S3 Archive Location `7441` (`VN003_HANOI_OPENAQ_7441`) — Quyết định: APPROVED cho phân tích lịch sử độc lập theo trạm (2022–2025).**
+   - **Provenance & Giấy phép:** Siêu dữ liệu trên trang chính thức OpenAQ (`https://explore.openaq.org/locations/7441`) và kho lưu trữ AWS S3 chính chủ (`s3://openaq-data-archive/records/csv.gz/locationid=7441/`) xác nhận `location_id=7441`, `sensors_id=21632` ($\text{PM}_{2.5}\ \mu\text{g/m}^3$), nhà cung cấp `AirNow` (`Government Monitor`), tọa độ `(21.021939°N, 105.818806°E)` nằm trong Bounding Box Hà Nội, và giấy phép `US Public Domain` (`id=33`, `http://www.usa.gov/publicdomain/label/1.0/`) cho phép tái sử dụng, sửa đổi và phân phối lại.
+   - **Độ phủ thực tế (2022–2025):** Tải tái lập không cần API key trọn bộ `903` tệp `.csv.gz` theo ngày (`190` tệp năm 2022, `249` tệp năm 2023, `365` tệp năm 2024, `99` tệp năm 2025), thu được `21.401` mốc giờ duy nhất từ `2022-01-01 01:00:00+07:00` đến `2025-04-09 22:00:00+07:00` (`18.208` giờ hợp lệ $\ge 0\ \mu\text{g/m}^3$, đạt `63,49%` trên lưới `28.678` giờ hoạt động; `3.193` giờ mã lỗi `-999.0`/âm được chuyển thành `NaN`).
+   - **Nguyên tắc phân tách trạm nghiêm ngặt:** `VN003_HANOI_OPENAQ_7441` được thiết kế làm định danh trạm độc lập trong `src/data_collection.py` và lưu tách biệt theo khóa `(station_id, timestamp)` trong `data/processed/air_pollution_extended_2022_2026.parquet` (`37.722` dòng kết hợp cùng `9.044` dòng của `VN001_HANOI_556_NGUYEN_VAN_CU` kèm backfill khí tượng ERA5 `2022-01-01` đến `2025-04-09`). Tuyệt đối không gộp `VN003` thành `VN001` hay `VN002`, không trượt cửa sổ hay nội suy xuyên trạm, và giữ nguyên bất biến 100% tập dữ liệu baseline `data/processed/air_pollution_final.parquet`. Chi tiết đối chiếu nằm tại `docs/issue44_source_verification.md`, `docs/issue44_feasibility_decision.md` và `reports/issue44_legacy_vs_extended_comparison.md`.

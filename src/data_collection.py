@@ -26,7 +26,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -104,6 +104,12 @@ COORDS_OPENAQ_HANOI = (21.0491, 105.8831)
 STATION_AIRNOW_HANOI = "VN002_HANOI_US_EMBASSY"
 LOCATION_AIRNOW_HANOI = "US Diplomatic Post: Hanoi"
 COORDS_AIRNOW_HANOI = (21.0215, 105.8184)
+
+HANOI_OPENAQ_HISTORICAL_LOCATION_ID = 7441  # OpenAQ S3 Historical AirNow Gov Monitor (Hanoi)
+HANOI_OPENAQ_HISTORICAL_SENSOR_ID = 21632   # pm25 µg/m³ sensor for location 7441
+STATION_OPENAQ_7441 = "VN003_HANOI_OPENAQ_7441"
+LOCATION_OPENAQ_7441 = "Hanoi (OpenAQ 7441 / AirNow Gov Monitor)"
+COORDS_OPENAQ_7441 = (21.021939, 105.818806)
 
 STATION_WEATHER_ERA5 = "ERA5_HANOI_GRID_2105_10590"
 LOCATION_WEATHER_ERA5 = "Hanoi ERA5 Grid (21.0545N, 105.8985E)"
@@ -442,6 +448,7 @@ def assert_canonical_within_hanoi(
     known_coords = {
         STATION_OPENAQ_HANOI: COORDS_OPENAQ_HANOI,
         STATION_AIRNOW_HANOI: COORDS_AIRNOW_HANOI,
+        STATION_OPENAQ_7441: COORDS_OPENAQ_7441,
         STATION_WEATHER_ERA5: COORDS_WEATHER_ERA5,
     }
     if station_coords:
@@ -746,6 +753,8 @@ def resolve_station_metadata(
         loc_id = int(source_identifier)
         if loc_id == HANOI_OPENAQ_LOCATION_ID:
             return STATION_OPENAQ_HANOI, LOCATION_OPENAQ_HANOI, COORDS_OPENAQ_HANOI
+        elif loc_id == HANOI_OPENAQ_HISTORICAL_LOCATION_ID:
+            return STATION_OPENAQ_7441, LOCATION_OPENAQ_7441, COORDS_OPENAQ_7441
         elif loc_id == DISQUALIFIED_OPENAQ_LOCATION_ID:
             raise ValueError(
                 "OpenAQ location_id=2178 (Del Norte, Albuquerque, NM) đã bị loại bỏ/disqualified. "
@@ -793,16 +802,35 @@ class OpenAQAdapter:
         self.raw_dir.mkdir(parents=True, exist_ok=True)
         self.interim_dir.mkdir(parents=True, exist_ok=True)
 
-    def _list_s3_keys(self) -> List[str]:
+    def _list_s3_keys(self, years: Optional[Iterable[int]] = None) -> List[str]:
         """Lấy danh sách toàn bộ các khóa tệp S3 lưu trữ cho location_id."""
-        url = f"https://openaq-data-archive.s3.amazonaws.com/?prefix=records/csv.gz/locationid={self.location_id}/"
-        req = urllib.request.Request(url, headers={"User-Agent": "HanoiAirPollutionResearch/1.0"})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            content = resp.read()
-        root = ET.fromstring(content)
         ns = {"s3": "http://s3.amazonaws.com/doc/2006-03-01/"}
-        keys = [elem.text for elem in root.findall(".//s3:Key", ns) if elem.text is not None]
-        return sorted(keys)
+        prefixes = (
+            [f"records/csv.gz/locationid={self.location_id}/year={int(y)}/" for y in years]
+            if years is not None
+            else [f"records/csv.gz/locationid={self.location_id}/"]
+        )
+        keys: List[str] = []
+        for prefix in prefixes:
+            marker: Optional[str] = None
+            while True:
+                query = f"prefix={urllib.parse.quote(prefix, safe='/=')}"
+                if marker:
+                    query += f"&marker={urllib.parse.quote(marker, safe='/=')}"
+                url = f"https://openaq-data-archive.s3.amazonaws.com/?{query}"
+                req = urllib.request.Request(url, headers={"User-Agent": "HanoiAirPollutionResearch/1.0"})
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    content = resp.read()
+                root = ET.fromstring(content)
+                page_keys = [elem.text for elem in root.findall(".//s3:Key", ns) if elem.text is not None]
+                keys.extend(page_keys)
+                is_truncated = root.findtext(".//s3:IsTruncated", default="false", namespaces=ns)
+                if str(is_truncated).strip().lower() == "true" and page_keys:
+                    next_marker = root.findtext(".//s3:NextMarker", default=None, namespaces=ns)
+                    marker = next_marker if next_marker else page_keys[-1]
+                else:
+                    break
+        return sorted(set(keys))
 
     def _fetch_single_s3_file(self, key: str) -> Optional[pd.DataFrame]:
         """Tải và giải nén một tệp CSV.gz từ OpenAQ S3 public archive."""
@@ -820,23 +848,29 @@ class OpenAQAdapter:
 
     def fetch_raw_data(
         self,
-        raw_output_name: str = "openaq_raw_4946811.parquet",
+        raw_output_name: Optional[str] = "openaq_raw_4946811.parquet",
         max_workers: int = 25,
         force_reload: bool = False,
+        years: Optional[Iterable[int]] = None,
     ) -> Tuple[pd.DataFrame, Path]:
         """
-        Thu thập toàn bộ dữ liệu thô từ OpenAQ S3 public archive cho trạm 4946811.
+        Thu thập toàn bộ dữ liệu thô từ OpenAQ S3 public archive cho location_id.
         Payload nguồn được lưu nguyên trạng vào data/raw/ (không chỉnh sửa thủ công);
         mọi biến đổi diễn ra ở lớp chuẩn hóa. Tệp đã có sẽ được nạp lại thay vì
         tải lại từ API, trừ khi `force_reload=True`.
         """
+        if raw_output_name is None or (
+            raw_output_name == "openaq_raw_4946811.parquet"
+            and self.location_id != HANOI_OPENAQ_LOCATION_ID
+        ):
+            raw_output_name = f"openaq_raw_{self.location_id}.parquet"
         raw_path = self.raw_dir / raw_output_name
         if not force_reload and raw_path.exists() and raw_path.stat().st_size > 0:
             logger.info(f"Tệp thô OpenAQ đã tồn tại tại {raw_path}. Đang nạp lại nguyên trạng (không tải lại)...")
             df_raw = pd.read_parquet(raw_path)
             return df_raw, raw_path
 
-        keys = self._list_s3_keys()
+        keys = self._list_s3_keys(years=years)
         if not keys:
             raise RuntimeError(f"Không tìm thấy tệp nào trên S3 cho location_id={self.location_id}!")
 
@@ -854,7 +888,7 @@ class OpenAQAdapter:
         df_raw = pd.concat(daily_dfs, ignore_index=True)
         df_raw.to_parquet(raw_path, index=False, engine="pyarrow", compression="snappy")
         logger.info(
-            f"Đã lưu dữ liệu thô OpenAQ 4946811 vào {raw_path} ({len(df_raw)} dòng thô, {len(df_raw.columns)} cột)."
+            f"Đã lưu dữ liệu thô OpenAQ {self.location_id} vào {raw_path} ({len(df_raw)} dòng thô, {len(df_raw.columns)} cột)."
         )
         return df_raw, raw_path
 
@@ -924,6 +958,9 @@ class AirNowDOSAdapter:
     Trạm: Đại sứ quán Hoa Kỳ tại Hà Nội (Site == "Hanoi", Met One BAM-1020 FEM).
     """
 
+    VALID_UNITS = {"ug/m3", "µg/m3", "μg/m3", "ug/m^3", "µg/m^3", "μg/m^3"}
+    VALID_DURATIONS = {"1 hr", "1h", "1 hour", "60 min", "60 mins"}
+
     def __init__(
         self,
         csv_path: Optional[Union[str, Path]] = None,
@@ -937,11 +974,62 @@ class AirNowDOSAdapter:
             "airnow", "Hanoi"
         )
 
-    def load_and_canonicalize(self, csv_file: Optional[Union[str, Path]] = None) -> pd.DataFrame:
-        """
-        Nạp tệp AirNow DOS Historical CSV và chuẩn hóa sang Canonical Schema.
-        """
-        target_file = Path(csv_file) if csv_file else self.csv_path
+    @classmethod
+    def _parse_airnow_timestamps(cls, series: pd.Series) -> pd.Series:
+        """Parse Date (LT)/Date (LST) with explicit AM/PM support and ISO fallback."""
+        text = series.astype(str).str.strip()
+        parsed_ampm = pd.to_datetime(text, format="%Y-%m-%d %I:%M %p", errors="coerce")
+        needs_fallback = parsed_ampm.isna()
+        if needs_fallback.any():
+            parsed_fallback = pd.to_datetime(text.loc[needs_fallback], errors="coerce")
+            parsed_ampm.loc[needs_fallback] = parsed_fallback
+        return parsed_ampm
+
+    @classmethod
+    def _evaluate_row_qc(
+        cls,
+        raw_val: Any,
+        qc_val: Optional[Any],
+        unit_val: Optional[Any],
+        duration_val: Optional[Any],
+        has_qc_col: bool,
+        has_unit_col: bool,
+        has_duration_col: bool,
+    ) -> Tuple[float, str, str]:
+        """Return (cleaned_pm25, normalized_qc_name, qc_reason) for a single AirNow row."""
+        qc_norm = str(qc_val).strip() if (has_qc_col and not pd.isna(qc_val)) else ("Missing" if has_qc_col else "Valid")
+        qc_lower = qc_norm.lower()
+        cleaned = clean_air_quality_values(raw_val)
+
+        if has_qc_col and qc_lower != "valid":
+            if qc_lower == "missing":
+                return np.nan, qc_norm, "qc_missing"
+            if qc_lower == "invalid":
+                return np.nan, qc_norm, "qc_invalid"
+            if qc_lower == "suspect":
+                return np.nan, qc_norm, "qc_suspect"
+            return np.nan, qc_norm, f"qc_{qc_lower}"
+
+        if has_unit_col:
+            unit_norm = "" if pd.isna(unit_val) else str(unit_val).strip().lower()
+            if unit_norm not in cls.VALID_UNITS:
+                return np.nan, qc_norm, "invalid_unit"
+
+        if has_duration_col:
+            dur_norm = "" if pd.isna(duration_val) else str(duration_val).strip().lower()
+            if dur_norm not in cls.VALID_DURATIONS:
+                return np.nan, qc_norm, "invalid_duration"
+
+        if np.isnan(cleaned):
+            return np.nan, qc_norm, "sentinel_or_invalid_value"
+
+        return float(cleaned), qc_norm, "valid"
+
+    def _load_single_raw_dataframe(
+        self,
+        target_file: Path,
+        expected_year: Optional[int] = None,
+    ) -> Tuple[pd.DataFrame, Dict[str, int]]:
         if not target_file.exists():
             raise FileNotFoundError(
                 f"Tệp AirNow DOS CSV không tồn tại tại {target_file}. "
@@ -966,13 +1054,11 @@ class AirNowDOSAdapter:
                 f"Các cột hiện có: {list(df_raw.columns)}"
             )
 
-        # Kiểm tra cột bắt buộc độc lập với phiên bản schema.
         req_cols = ["Site", "Parameter", timestamp_column, value_column]
         for c in req_cols:
             if c not in df_raw.columns:
                 raise ValueError(f"Tệp AirNow CSV thiếu cột bắt buộc '{c}'! Các cột hiện có: {list(df_raw.columns)}")
 
-        # Lọc trạm Hanoi và thông số PM2.5
         df_site = df_raw[df_raw["Site"].astype(str).str.strip().str.lower() == "hanoi"].copy()
         if df_site.empty:
             raise ValueError("Không tìm thấy bản ghi Site == 'Hanoi' trong tệp AirNow CSV!")
@@ -980,25 +1066,170 @@ class AirNowDOSAdapter:
         parameter = df_site["Parameter"].astype(str).str.strip().str.upper()
         df_pm25 = df_site[parameter.isin(["PM2.5", "PM2.5 - PRINCIPAL"])].copy()
 
-        # Parse timestamp (LST/LT đều là giờ địa phương UTC+7).  ``format``
-        # handles the AM/PM values in newer mirror exports without depending on
-        # the machine locale; pandas falls back for older ISO-like values.
-        df_pm25["timestamp"] = pd.to_datetime(df_pm25[timestamp_column], errors="coerce")
+        df_pm25["timestamp"] = self._parse_airnow_timestamps(df_pm25[timestamp_column])
         df_pm25 = df_pm25.dropna(subset=["timestamp"]).copy()
         if df_pm25["timestamp"].dt.tz is None:
             df_pm25["timestamp"] = df_pm25["timestamp"].dt.tz_localize(CANONICAL_TIMEZONE)
         else:
             df_pm25["timestamp"] = df_pm25["timestamp"].dt.tz_convert(CANONICAL_TIMEZONE)
 
-        # Làm sạch giá trị (-999 -> NaN, 0.0 giữ nguyên)
-        df_pm25["pm25"] = df_pm25[value_column].apply(clean_air_quality_values)
+        has_qc_col = "QC Name" in df_pm25.columns
+        unit_col = "Conc. Unit" if "Conc. Unit" in df_pm25.columns else ("Unit" if "Unit" in df_pm25.columns else None)
+        has_unit_col = unit_col is not None
+        has_duration_col = "Duration" in df_pm25.columns
+
+        pm25_vals: List[float] = []
+        qc_names: List[str] = []
+        qc_reasons: List[str] = []
+        for idx in df_pm25.index:
+            raw_v = df_pm25.at[idx, value_column]
+            qc_v = df_pm25.at[idx, "QC Name"] if has_qc_col else None
+            unit_v = df_pm25.at[idx, unit_col] if unit_col is not None else None
+            dur_v = df_pm25.at[idx, "Duration"] if has_duration_col else None
+            cleaned_v, qc_n, qc_r = self._evaluate_row_qc(
+                raw_v, qc_v, unit_v, dur_v, has_qc_col, has_unit_col, has_duration_col
+            )
+            pm25_vals.append(cleaned_v)
+            qc_names.append(qc_n)
+            qc_reasons.append(qc_r)
+
+        df_pm25["pm25"] = np.asarray(pm25_vals, dtype=float)
+        df_pm25["qc_name"] = qc_names
+        df_pm25["qc_reason"] = qc_reasons
+        df_pm25["source_file"] = target_file.name
+
+        cross_year_rows = 0
+        if "Year" in df_pm25.columns:
+            year_col = pd.to_numeric(df_pm25["Year"], errors="coerce")
+            cross_year_rows += int((year_col.notna() & (df_pm25["timestamp"].dt.year != year_col)).sum())
+        if expected_year is not None:
+            cross_year_rows += int((df_pm25["timestamp"].dt.year != int(expected_year)).sum())
+
+        file_stats = {
+            "raw_rows": int(len(df_raw)),
+            "retained_station_param_rows": int(len(df_pm25)),
+            "cross_year_rows": int(cross_year_rows),
+        }
+        return df_pm25, file_stats
+
+    def load_and_canonicalize(
+        self,
+        csv_file: Optional[Union[str, Path, Sequence[Union[str, Path]]]] = None,
+        *,
+        resolve_duplicates: bool = False,
+        include_qc_columns: bool = False,
+        expected_year: Optional[int] = None,
+    ) -> pd.DataFrame:
+        """
+        Nạp tệp AirNow DOS Historical CSV và chuẩn hóa sang Canonical Schema.
+
+        Bắt buộc kiểm tra:
+        - `Date (LST)`/`Value` hoặc `Date (LT)`/`Raw Conc.` (không bao giờ dùng NowCast).
+        - `QC Name` == 'Valid' (các bản ghi Missing, Invalid, Suspect chuyển thành NaN và lưu lý do).
+        - `Conc. Unit` / `Unit` (UG/M3) và `Duration` (1 Hr) nếu cột tồn tại.
+        - `resolve_duplicates=True` (hoặc khi truyền danh sách nhiều tệp YTD/MTD):
+          gộp các bản ghi trùng lặp đồng nhất và chuyển mọi xung đột (conflict) thành NaN
+          kèm `qc_reason='conflicting_duplicate'`, tuyệt đối không chọn tùy tiện một bản ghi.
+        """
+        if isinstance(csv_file, (list, tuple)):
+            target_files = [Path(p) for p in csv_file]
+            resolve_duplicates = True
+        else:
+            target_files = [Path(csv_file) if csv_file else self.csv_path]
+
+        frames: List[pd.DataFrame] = []
+        raw_rows_total = 0
+        retained_rows_total = 0
+        cross_year_total = 0
+        for tf in target_files:
+            part_df, fstats = self._load_single_raw_dataframe(tf, expected_year=expected_year)
+            frames.append(part_df)
+            raw_rows_total += fstats["raw_rows"]
+            retained_rows_total += fstats["retained_station_param_rows"]
+            cross_year_total += fstats["cross_year_rows"]
+
+        df_pm25 = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0].copy()
+
+        reason_counts = df_pm25["qc_reason"].value_counts().to_dict()
+        identical_duplicate_hours = 0
+        conflicting_duplicate_hours = 0
+        conflict_ledger: List[Dict[str, Any]] = []
+
+        if resolve_duplicates and df_pm25["timestamp"].duplicated().any():
+            dedup_rows: List[Dict[str, Any]] = []
+            for ts, grp in df_pm25.groupby("timestamp", sort=True):
+                if len(grp) == 1:
+                    row0 = grp.iloc[0]
+                    dedup_rows.append({
+                        "timestamp": ts,
+                        "pm25": float(row0["pm25"]) if not pd.isna(row0["pm25"]) else np.nan,
+                        "qc_name": str(row0["qc_name"]),
+                        "qc_reason": str(row0["qc_reason"]),
+                    })
+                    continue
+
+                valid_mask = grp["qc_reason"].eq("valid") & grp["pm25"].notna()
+                unique_valid_vals = sorted({round(float(v), 6) for v in grp.loc[valid_mask, "pm25"]})
+                unique_reasons = sorted(set(grp["qc_reason"].astype(str)))
+
+                if valid_mask.all() and len(unique_valid_vals) == 1:
+                    identical_duplicate_hours += 1
+                    dedup_rows.append({
+                        "timestamp": ts,
+                        "pm25": float(grp["pm25"].iloc[0]),
+                        "qc_name": "Valid",
+                        "qc_reason": "valid",
+                    })
+                elif (not valid_mask.any()) and len(unique_reasons) == 1:
+                    identical_duplicate_hours += 1
+                    dedup_rows.append({
+                        "timestamp": ts,
+                        "pm25": np.nan,
+                        "qc_name": str(grp["qc_name"].iloc[0]),
+                        "qc_reason": unique_reasons[0],
+                    })
+                else:
+                    conflicting_duplicate_hours += 1
+                    conflict_ledger.append({
+                        "timestamp": ts.isoformat(),
+                        "source_files": grp["source_file"].astype(str).tolist(),
+                        "pm25_values": [None if pd.isna(v) else float(v) for v in grp["pm25"]],
+                        "qc_names": grp["qc_name"].astype(str).tolist(),
+                        "qc_reasons": grp["qc_reason"].astype(str).tolist(),
+                    })
+                    dedup_rows.append({
+                        "timestamp": ts,
+                        "pm25": np.nan,
+                        "qc_name": "Conflict",
+                        "qc_reason": "conflicting_duplicate",
+                    })
+            df_pm25 = pd.DataFrame(dedup_rows)
+
         df_pm25["pm10"] = np.nan
         df_pm25["station_id"] = self.station_id
         df_pm25["location"] = self.location_name
 
-        df_canonical = df_pm25[
-            ["timestamp", "station_id", "location", "pm25", "pm10"]
-        ].sort_values("timestamp").reset_index(drop=True)
+        base_cols = ["timestamp", "station_id", "location", "pm25", "pm10"]
+        if include_qc_columns:
+            base_cols.extend(["qc_name", "qc_reason"])
+
+        df_canonical = df_pm25[base_cols].sort_values("timestamp").reset_index(drop=True)
+        df_canonical.attrs["qc_summary"] = {
+            "raw_rows": raw_rows_total,
+            "retained_station_param_rows": retained_rows_total,
+            "canonical_rows": int(len(df_canonical)),
+            "valid_rows": int(reason_counts.get("valid", 0)),
+            "qc_missing_rows": int(reason_counts.get("qc_missing", 0)),
+            "qc_invalid_rows": int(reason_counts.get("qc_invalid", 0)),
+            "qc_suspect_rows": int(reason_counts.get("qc_suspect", 0)),
+            "invalid_unit_rows": int(reason_counts.get("invalid_unit", 0)),
+            "invalid_duration_rows": int(reason_counts.get("invalid_duration", 0)),
+            "sentinel_or_invalid_value_rows": int(reason_counts.get("sentinel_or_invalid_value", 0)),
+            "identical_duplicate_hours": identical_duplicate_hours,
+            "conflicting_duplicate_hours": conflicting_duplicate_hours,
+            "cross_year_rows": cross_year_total,
+            "conflict_ledger": conflict_ledger,
+        }
 
         # Kiểm tra tính duy nhất và không gian
         validate_canonical_uniqueness(df_canonical, key_cols=["station_id", "timestamp"])

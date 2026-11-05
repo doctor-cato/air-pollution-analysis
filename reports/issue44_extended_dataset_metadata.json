@@ -1,0 +1,217 @@
+{
+  "dataset_version": "2.0.0-issue44-extended",
+  "path": "data/processed/air_pollution_extended_2022_2026.parquet",
+  "sha256": "6930557fbfc8e31dbcb062065b1903ccf27c433e9c0f062bd0dc382a9a1f9b02",
+  "total_rows": 37722,
+  "columns": [
+    "timestamp",
+    "station_id",
+    "location",
+    "pm25",
+    "pm10",
+    "pm25_was_stuck",
+    "pm25_was_missing",
+    "is_high_humidity_fog",
+    "temperature",
+    "relative_humidity",
+    "wind_speed",
+    "wind_direction",
+    "precipitation",
+    "surface_pressure",
+    "hour_sin",
+    "hour_cos",
+    "month_sin",
+    "month_cos",
+    "split",
+    "pm25_derived_interpolated",
+    "pm25_is_derived",
+    "winter_year",
+    "season"
+  ],
+  "stations": {
+    "VN003_HANOI_OPENAQ_7441": {
+      "location_id": 7441,
+      "sensors_id": 21632,
+      "coordinates": {
+        "latitude": 21.021939,
+        "longitude": 105.818806
+      },
+      "distance_to_era5_grid_km": 9.026,
+      "grid_rows": 28678,
+      "observed_pm25_rows": 18208,
+      "missing_pm25_rows": 10470,
+      "missing_pm25_pct": 36.51,
+      "derived_interpolated_2h_rows": 194,
+      "min_timestamp": "2022-01-01 01:00:00+07:00",
+      "max_timestamp": "2025-04-09 22:00:00+07:00",
+      "train_rows": 22942,
+      "test_rows": 5736,
+      "split_timestamp": "2024-08-13 23:00:00+07:00",
+      "winter_years_covered": [
+        2022,
+        2023,
+        2024,
+        2025
+      ]
+    },
+    "VN001_HANOI_556_NGUYEN_VAN_CU": {
+      "location_id": 4946811,
+      "coordinates": {
+        "latitude": 21.0491,
+        "longitude": 105.8831
+      },
+      "distance_to_era5_grid_km": 1.704,
+      "grid_rows": 9044,
+      "observed_pm25_rows": 7495,
+      "missing_pm25_rows": 1549,
+      "missing_pm25_pct": 17.13,
+      "derived_interpolated_2h_rows": 148,
+      "min_timestamp": "2025-07-03 22:00:00+07:00",
+      "max_timestamp": "2026-07-15 17:00:00+07:00",
+      "train_rows": 7235,
+      "test_rows": 1809,
+      "split_timestamp": "2026-05-01 09:00:00+07:00",
+      "winter_years_covered": [
+        2026
+      ]
+    }
+  },
+  "weather_backfill": {
+    "station_id": "ERA5_HANOI_GRID_2105_10590",
+    "coordinates": {
+      "latitude": 21.05448,
+      "longitude": 105.89848
+    },
+    "raw_path": "data/raw/open_meteo_raw_2022-01-01_2025-04-09.json",
+    "raw_sha256": "303aacb68798667e2c838be09ad0047a6cedf292282e9ab250a7dfa88160923f",
+    "interim_path": "data/interim/weather_2022_2025_canonical.parquet",
+    "rows": 28680,
+    "max_missing_pct": 0.0,
+    "inter_station_distance_7441_to_vn001_km": 7.324
+  },
+  "winter_summary": [
+    {
+      "station_id": "VN001_HANOI_556_NGUYEN_VAN_CU",
+      "winter_year": 2026,
+      "count": 1958,
+      "mean": 63.15,
+      "sd": 33.56,
+      "median": 57.11,
+      "q25": 37.14,
+      "q75": 85.75,
+      "iqr": 48.61,
+      "p90": 110.19,
+      "valid_days": 79,
+      "qcvn_exceed_days": 47,
+      "qcvn_exceed_pct": 59.49
+    },
+    {
+      "station_id": "VN003_HANOI_OPENAQ_7441",
+      "winter_year": 2022,
+      "count": 739,
+      "mean": 49.55,
+      "sd": 36.93,
+      "median": 39.0,
+      "q25": 24.0,
+      "q75": 64.0,
+      "iqr": 40.0,
+      "p90": 94.2,
+      "valid_days": 31,
+      "qcvn_exceed_days": 12,
+      "qcvn_exceed_pct": 38.71
+    },
+    {
+      "station_id": "VN003_HANOI_OPENAQ_7441",
+      "winter_year": 2023,
+      "count": 1412,
+      "mean": 72.64,
+      "sd": 38.55,
+      "median": 63.0,
+      "q25": 46.0,
+      "q75": 90.0,
+      "iqr": 44.0,
+      "p90": 129.9,
+      "valid_days": 57,
+      "qcvn_exceed_days": 45,
+      "qcvn_exceed_pct": 78.95
+    },
+    {
+      "station_id": "VN003_HANOI_OPENAQ_7441",
+      "winter_year": 2024,
+      "count": 1828,
+      "mean": 45.02,
+      "sd": 26.98,
+      "median": 39.0,
+      "q25": 29.0,
+      "q75": 53.0,
+      "iqr": 24.0,
+      "p90": 73.0,
+      "valid_days": 76,
+      "qcvn_exceed_days": 21,
+      "qcvn_exceed_pct": 27.63
+    },
+    {
+      "station_id": "VN003_HANOI_OPENAQ_7441",
+      "winter_year": 2025,
+      "count": 1579,
+      "mean": 63.67,
+      "sd": 40.96,
+      "median": 54.0,
+      "q25": 32.0,
+      "q75": 88.0,
+      "iqr": 56.0,
+      "p90": 125.0,
+      "valid_days": 66,
+      "qcvn_exceed_days": 38,
+      "qcvn_exceed_pct": 57.58
+    }
+  ],
+  "inference_comparison": {
+    "VN003_HANOI_OPENAQ_7441": {
+      "valid_days_ge18h": 756,
+      "winter_days": 230,
+      "non_winter_days": 526,
+      "winter_daily_median": 50.05,
+      "non_winter_daily_median": 36.34,
+      "winter_daily_mean": 57.7,
+      "non_winter_daily_mean": 40.59,
+      "kruskal_wallis_h": 164.1954,
+      "kruskal_wallis_naive_p": 2.2786024501735895e-35,
+      "winter_vs_nonwinter_u": 82195.0,
+      "winter_vs_nonwinter_naive_p": 3.946102982155553e-15,
+      "winter_vs_nonwinter_r_rb": 0.3588,
+      "daily_lag1_autocorr_rho1": 0.7219,
+      "effective_sample_size_n_eff": 122.1,
+      "qcvn_exceedance_days": 238,
+      "qcvn_exceedance_pct": 31.48
+    },
+    "VN001_HANOI_556_NGUYEN_VAN_CU": {
+      "valid_days_ge18h": 299,
+      "winter_days": 79,
+      "non_winter_days": 220,
+      "winter_daily_median": 60.46,
+      "non_winter_daily_median": 33.58,
+      "winter_daily_mean": 61.72,
+      "non_winter_daily_mean": 36.79,
+      "kruskal_wallis_h": 61.5344,
+      "kruskal_wallis_naive_p": 2.7629736724292755e-13,
+      "winter_vs_nonwinter_u": 13661.0,
+      "winter_vs_nonwinter_naive_p": 4.678586077584993e-14,
+      "winter_vs_nonwinter_r_rb": 0.572,
+      "daily_lag1_autocorr_rho1": 0.717,
+      "effective_sample_size_n_eff": 49.28,
+      "qcvn_exceedance_days": 84,
+      "qcvn_exceedance_pct": 28.09
+    }
+  },
+  "baseline_immutability_verified": true,
+  "baseline_sha256": {
+    "air_interim": "7e7c53509c7a60b70b041d378567055faa85f96f04ecf11832101a1f491c9114",
+    "weather_interim": "9a7d65f4a9088906b2ec92a1489ef0b83355d538bc3ee96531e38fba4314568f",
+    "final_processed": "866f39de1720c7273dc1f09c4932e508835589383820ad425c19521592586efd",
+    "raw_metadata": "4168f5442c6f7078cefbce3e6cf269d876b26836404ae84855dbe07a8d7f3976",
+    "fig01_baseline": "8d36fe1cb470a7adb99de6e8a76efea3c1f7d137c82fd5514f9400bf98118ab5",
+    "statistical_profile": "6b2dd964129cf860481d9477eb7eaec091cc93127c3b55c13b4e938b313d8197",
+    "inference_results": "603bf56a57a5e6e42d580a5bed329d5c77794d9e5ed69d6f7e2e6864cc12661f"
+  }
+}

@@ -1,114 +1,29 @@
-# Issue #44 — Checkpoint evidence and gate status
+# Issue #44 — Checkpoint Status (CP0–CP6)
 
-**Status:** CP0 source-approval gate **BLOCKED**. CP1 adapter and CP2/CP3
-preparation helpers are **PARTIAL**; CP4 assessment and CP5 contract are **DONE
-as documentation gates**, not as data integration. Values below come from the
-reproducible command shown in the evidence section, not synthetic fixtures.
+## Summary of Checkpoints
 
-## CP0 — public-mirror inventory
+| Checkpoint | Status | Deliverable / Evidence |
+|---|---|---|
+| **CP0 — Historical Source Verification** | **COMPLETED (`VN003` APPROVED / Mirror NO-GO)** | OpenAQ S3 Location `7441` (`VN003_HANOI_OPENAQ_7441`, `sensors_id=21632`, `AirNow` Gov Monitor, `US Public Domain` license) is verified and approved for independent station-specific historical analysis (2022–2025). The third-party GitHub mirror (`dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies`) remains `NO-GO / Reference-Only`. See `docs/issue44_source_verification.md` and `docs/issue44_feasibility_decision.md`. |
+| **CP1 — Multi-Year Raw Acquisition & Provenance** | **COMPLETED** | `903` daily `.csv.gz` S3 files (`21,401` raw hourly rows across 2022–2025) and `28,680` hourly Open-Meteo ERA5 weather records (`2022-01-01` to `2025-04-09`) acquired and hashed in `reports/issue44_openaq_7441_manifest.json` and `reports/issue44_extended_dataset_metadata.json`. |
+| **CP2 — Canonicalization, QC & Versioned Extended Dataset** | **COMPLETED** | `AirNowDOSAdapter` upgraded to enforce `QC Name == 'Valid'`, `Conc. Unit` (`UG/M3`), `Duration` (`1 Hr`), and non-arbitrary YTD/MTD conflict nullification (`qc_reason='conflicting_duplicate'`). `OpenAQAdapter` supports `location_id=7441` (`VN003_HANOI_OPENAQ_7441`). Extended station-separated dataset saved to `data/processed/air_pollution_extended_2022_2026.parquet` (`37,722` rows) while baseline `VN001` artifacts remain byte-identical. |
+| **CP3 — Missingness & Masking-Validation Interpolation Experiment** | **COMPLETED (Negative Finding Retained)** | Contiguous gap masking ($L \in \{1, 2, 3, 6\}\text{h}$) across `max_gap_hours` $\in \{1, 2, 3, 6\}$ by station and season saved in `reports/issue44_interpolation_evaluation.csv`. Because short-gap interpolation ($\le 2\text{h}$) recovers only `9.55%` (`VN001`) and `1.85%` (`VN003`) of missing hours while introducing `6.55–10.91 µg/m³` RMSE and future-endpoint leakage, canonical `pm25` remains un-interpolated. |
+| **CP4 — Traffic Covariate Assessment (FIG-04)** | **COMPLETED (Negative Assessment Retained)** | No public hourly Hanoi traffic-volume dataset with verified coordinates, coverage, and redistribution terms exists for 2022–2026 (`docs/issue44_traffic_source_assessment.md`). `FIG-04` retains its observational commute-window framing without causal attribution. |
+| **CP5 — Multi-Year EDA, `FIG-01` Extended & Inference Impact** | **COMPLETED** | Multi-year seasonal and `winter_year` (`W2022`–`W2026`) profiles saved in `reports/issue44_multiyear_eda_summary.csv`, `figures/FIG-01-extended-historical.png`, and `reports/issue44_legacy_vs_extended_comparison.md`. Baseline `figures/FIG-01.png` and `reports/inference_results.md` remain untouched. |
+| **CP6 — Verification & Reproducibility** | **COMPLETED** | Reproducible commands below regenerate all manifests, extended datasets, figures, and comparison reports. |
 
-The candidate is `dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies`, pinned
-at `25d08e949c9d01ba57c4e74ff9b3b99328ecf141`. The manifest contains the immutable
-Git blob SHA, downloaded-file SHA-256, size, schema, observed time span, and
-row/valid-row counts for all **46** Hanoi CSV files found under
-`Data/Hanoi/2022` through `Data/Hanoi/2025`.
+## CP6 — Reproducibility Commands
 
-| Year | Calendar | Observed | QC-valid | Missing while source available | Invalid/conflict | Source unavailable | Longest annual gap (h) |
-|---:|---:|---:|---:|---:|---:|---:|---:|
-| 2022 | 8,760 | 6,995 | 6,939 | 1,764 | 56 | 1 | 1,081 |
-| 2023 | 8,760 | 8,429 | 8,366 | 331 | 63 | 0 | 109 |
-| 2024 | 8,784 | 7,360 | 7,318 | 1,424 | 42 | 0 | 820 |
-| 2025 | 8,760 | 2,339 | 2,322 | 37 | 17 | 6,384 | 32 |
+To build the extended historical dataset, weather backfill, interpolation experiment, multi-year EDA, and extended figure from the approved OpenAQ S3 Location `7441` and Open-Meteo ERA5 archives:
 
-The corrected scan finds **25,955** duplicate source rows: **24,352** YTD–MTD
-overlap hours, of which **24,351** are identical; **1** timestamp conflicts
-(`2023-11-07T17:00`, MTD `-999`/Missing versus YTD `33`/Valid). The ledger is
-committed in the manifest and conflicts are never selected as observations.
-The full source-observation window is `2022-01-01T01:00` through
-`2025-04-09T23:00`; the longest full-series source-available gap is **1,081 h**.
-Consequently post-window 2025 calendar hours are reported as source-unavailable,
-not station missing. It separately records three files in a wrong year directory
-and four payloads with cross-year records. Downloads preserve repository-relative
-paths, use the pinned commit URL, and verify both Git blob SHA-1 and SHA-256.
+```powershell
+python scripts/build_extended_historical_dataset.py
+```
 
-**Decision:** the mirror remains **unapproved, reference-only**.  GitHub's
-repository metadata exposes no license, and the mirror has the inconsistencies
-above.  It must not be added to `data/raw/metadata.json`, ingested into a
-canonical dataset, or used for EDA/inference until the mirror maintainer or
-official AirNow/US Department of State source supplies reviewable provenance,
-terms of use, and station/device evidence.  This is a blocker, not a failed
-attempt to join stations.
-
-**Alternative-source feasibility:** public OpenAQ S3 location `7441` is
-technically accessible for 2022–2025, unlike `2539`; the verified POC and
-NO-GO integration decision are in `docs/issue44_feasibility_decision.md` and
-`reports/issue44_openaq_poc.json`. It lacks verified operator/instrument/change
-history and is not approved as a replacement, VN001 or VN002 input.
-
-## CP1 — collection and schema readiness
-
-`AirNowDOSAdapter` now accepts both verified historical schemas:
-
-- legacy `Date (LST)` + `Value`;
-- mirror `Date (LT)` + `Raw Conc.`.
-
-For the newer schema it uses only `Raw Conc.` and accepts `PM2.5 - Principal`.
-It never treats `NowCast Conc.` as the raw observation; negative/sentinel values
-remain `NaN`, PM10 remains `NaN`, timestamps are localized to
-`Asia/Ho_Chi_Minh`, and the output station is always
-`VN002_HANOI_US_EMBASSY`.
-
-**Blocked:** no historical VN002 canonical output or 2022–2025 ERA5 backfill
-was produced because CP0 has not approved the source.  VN001 baseline files and
-their existing provenance are unchanged.
-
-## CP2 — missing-data experiment
-
-**PARTIAL, blocked for real-data results by CP0.**
-`src/issue44_preparation.py` supplies synthetic-fixture-tested derived-column
-interpolation, explicit masking and MAE/RMSE/bias evaluation. It requires a
-caller-chosen gap threshold, preserves observed columns, and rejects crossing a
-station, split, duplicate timestamp, or non-hourly interval. No parameter was
-chosen and no scientific metric is reported.
-
-## CP3 — EDA / FIG-01
-
-**PARTIAL, blocked for findings by CP0.** Winter is defined as December–February
-with December assigned to the ending `winter_year`; station-separated summaries
-are prepared and tested. No historical comparison, figure regeneration, or
-revised conclusion is claimed; FIG-01 remains the VN001 baseline.
-
-## CP4 — traffic evidence for FIG-04
-
-**DONE (negative assessment):** `docs/issue44_traffic_source_assessment.md`
-records the reviewed official sources and their **NOT AVAILABLE / NOT VERIFIED**
-outcomes. FIG-04 receives no traffic causal interpretation.
-
-## CP5 — integration and modelling boundary
-
-The dataset contract is in `docs/issue44_dataset_contract.md` and fixes:
-
-1. `station_id` is mandatory; VN001 and VN002 remain separate series.
-2. Any extended artifact records source version, raw SHA-256, station metadata,
-   coverage, and missing-data method.
-3. Rolling/lag/interpolation operations group by `station_id`; the existing VN001
-   baseline and chronological split are retained unchanged.
-4. Issue #11 is evaluated as a **legacy-versus-extended comparison**, never
-   overwritten.  OLS/Ridge/Lasso, LINE diagnostics, and model results remain in
-   Issue #12; none is implemented here.
-
-## CP6 — verification and reproducibility
-
-The real-source CP0 command was:
+To re-run the diagnostic profiler on the unapproved third-party GitHub mirror (reference-only):
 
 ```powershell
 python scripts\profile_airnow_mirror.py `
   --output reports\issue44_mirror_manifest.json `
-  --raw-dir C:\Users\Admin\AppData\Local\Temp\opencode\issue44-airnow-mirror
+  --raw-dir data\raw\airnow_mirror
 ```
-
-The raw downloads stay outside Git; the committed manifest is derived evidence.
-The profiler and preparation helpers have independent synthetic tests. Full
-unit, notebook, CI and legacy-vs-extended real-data comparisons remain required
-before this Draft PR can become ready; the extended portion cannot run until CP0
-is unblocked.

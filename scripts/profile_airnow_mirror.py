@@ -221,8 +221,7 @@ def coverage_from_downloads(files: list[dict[str, Any]], raw_dir: Path) -> dict[
         start, end = period.start_time, period.end_time.floor("h")
         scoped = calendar[(calendar["timestamp"] >= start) & (calendar["timestamp"] <= end)]
         gap_sizes = scoped.loc[scoped["gap"]].groupby("gap_run").size()
-        scoped_gap_ids = scoped.loc[scoped["gap"], "gap_run"].unique()
-        longest_gap = int(gap_sizes.reindex(scoped_gap_ids).max()) if len(scoped_gap_ids) else 0
+        longest_gap = int(gap_sizes.max()) if not gap_sizes.empty else 0
         monthly.append({
             "month": str(period),
             "expected_hours": int(len(scoped)),
@@ -239,7 +238,6 @@ def coverage_from_downloads(files: list[dict[str, Any]], raw_dir: Path) -> dict[
         start, end = pd.Timestamp(f"{year}-01-01"), pd.Timestamp(f"{year}-12-31 23:00")
         scoped = calendar[(calendar["timestamp"] >= start) & (calendar["timestamp"] <= end)]
         gap_sizes = scoped.loc[scoped["gap"]].groupby("gap_run").size()
-        scoped_gap_ids = scoped.loc[scoped["gap"], "gap_run"].unique()
         annual.append({
             "year": year,
             "expected_hours": int(len(scoped)),
@@ -249,7 +247,7 @@ def coverage_from_downloads(files: list[dict[str, Any]], raw_dir: Path) -> dict[
             "invalid_qc_or_conflict_hours": int((scoped["source_available"] & scoped["status"].isin(["invalid", "conflicting"])).sum()),
             "source_unavailable_hours": int((~scoped["source_available"]).sum()),
             "conflicting_hours": int(scoped["status"].eq("conflicting").sum()),
-            "longest_gap_hours": int(gap_sizes.reindex(scoped_gap_ids).max()) if len(scoped_gap_ids) else 0,
+            "longest_gap_hours": int(gap_sizes.max()) if not gap_sizes.empty else 0,
         })
     return {
         "duplicate_source_rows": duplicate_rows,
