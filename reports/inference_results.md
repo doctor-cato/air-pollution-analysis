@@ -195,8 +195,8 @@ Sáu cặp này **không** thuộc family xác nhận: chúng được khảo s�
 
 - Ngày làm việc: n = 213, trung vị 36,72 µg/m³.
 - Ngày cuối tuần: n = 86, trung vị 39,45 µg/m³.
-- **U = 8083,0**, **p (hiệu chỉnh phụ thuộc) = 0,1082** → không bác bỏ H₀; **p Holm = 0,1082** → không bác bỏ H₀.
-- p tham chiếu (giả định độc lập) = 0,1120; null block bootstrap theo lịch p = 0,5379.
+- **t (HAC) = 1,611**, **p (hiệu chỉnh phụ thuộc) = 0,1082** → không bác bỏ H₀; **p Holm = 0,1082** → không bác bỏ H₀.
+- Đối chứng phi tham số: Mann-Whitney U = 8083,0, null block bootstrap theo lịch p = 0,5379 (tham chiếu giả định độc lập: p = 0,1120).
 - Chênh lệch trung vị: **−2,74 µg/m³**, CI 95% của **hiệu ứng** (bootstrap block theo lịch, phân tầng theo nhóm) [−16,25; 4,24].
 - Effect size **r_rb = −0,1175** (dương = ngày làm việc cao hơn).
 
@@ -291,7 +291,7 @@ Hai ngưỡng được kiểm định **tách biệt**, mỗi ngưỡng đi vớ
 | Kiểm định | Thống kê | p (hiệu chỉnh phụ thuộc) | p Holm | Effect size | Trạng thái |
 |---|---|---|---|---|---|
 | Mùa (4 nhóm, có xét phụ thuộc thời gian) | H = 61,534 | 0,0280 | 0,0560 | ε² = 0,206 | THĂM DÒ (EXPLORATORY) |
-| Ngày làm việc vs cuối tuần (có xét phụ thuộc thời gian) | U = 8083,000 | 0,1082 | 0,1082 | r_rb = −0,117 | XÁC NHẬN |
+| Ngày làm việc vs cuối tuần (có xét phụ thuộc thời gian) | t (HAC) = 1,611 | 0,1082 | 0,1082 | r_rb = −0,117 | XÁC NHẬN |
 | Trung bình 24h vs 50 µg/m³ (có xét phụ thuộc thời gian) | t (share, HAC) = −2,656 | 0,0083 | 0,0250 | r (cặp) = −0,410 | XÁC NHẬN |
 | Trung bình giai đoạn vs 25 µg/m³ (có xét phụ thuộc thời gian) | t (HAC) = 4,354 | 1,84·10⁻⁵ | 7,38·10⁻⁵ | Cohen's d = 0,848 | XÁC NHẬN |
 
@@ -360,11 +360,11 @@ Kiểm chứng **có chi phí**, chạy bằng `python scripts/validate_inferenc
 | AR(1) mạnh + thiếu thành cụm 20% | median | 37,1% [34,2–40,1] | 6,8% [5,4–8,5] | 11,0% [9,2–13,1] |
 | AR(1) mạnh + thiếu thành cụm 20% | mean | 36,9% [34,0–39,9] | 9,1% [7,5–11,0] | 12,0% [10,1–14,2] |
 | AR(1) mạnh + thiếu thành cụm 20% | pair | 36,5% [33,6–39,5] | 6,6% [5,2–8,3] | — |
-| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | season | 72,3% [69,4–75,0] | 5,6% [4,3–7,2] | 40,3% [37,3–43,4] |
-| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | weekday | 1,7% [1,1–2,7] | 0,4% [0,2–1,0] | 7,6% [6,1–9,4] |
-| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | median | 41,5% [38,5–44,6] | 10,5% [8,7–12,6] | 11,9% [10,0–14,1] |
-| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | mean | 42,3% [39,3–45,4] | 10,3% [8,6–12,3] | 12,0% [10,1–14,2] |
-| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | pair | 41,8% [38,8–44,9] | 5,3% [4,1–6,9] | — |
+| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | season | 74,5% [71,7–77,1] | 5,3% [4,1–6,9] | 37,8% [34,8–40,8] |
+| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | weekday | 1,7% [1,1–2,7] | 3,1% [2,2–4,4] | 7,3% [5,8–9,1] |
+| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | median | 43,9% [40,9–47,0] | 10,9% [9,1–13,0] | 10,4% [8,7–12,4] |
+| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | mean | 43,2% [40,2–46,3] | 10,1% [8,4–12,1] | 11,2% [9,4–13,3] |
+| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | pair | 42,7% [39,7–45,8] | 5,6% [4,3–7,2] | — |
 
 **Đọc kết quả — đây là bằng chứng hiệu lực, không phải phỏng đoán.**
 
@@ -409,7 +409,7 @@ Câu hỏi mà bốn kiểm định trên **không** trả lời được: khác
 - Số tuần đủ điều kiện (≥ 3 ngày trong tuần và ≥ 2 ngày cuối tuần): **40**.
 - Trung vị chênh lệch (weekday − weekend): **−2,70 µg/m³**, CI 95% bootstrap [−7,92; 2,69].
 - Tỷ lệ tuần có weekday cao hơn: 37,5%.
-- Signed-rank có HAC (Newey–West, lag 4 tuần) trên 40 chênh lệch tuần: t = 315,000, p = 0,9838 → không bác bỏ H₀ ở α = 0,05 (tham chiếu, giả định độc lập: p = 0,2064).
+- Wilcoxon signed-rank + null block bootstrap theo lịch (block 4 tuần lịch, B = 5.000) trên 40 chênh lệch tuần: W⁺ = 315,0, p = 0,9838 → không bác bỏ H₀ ở α = 0,05 (tham chiếu, giả định độc lập: p = 0,2064).
 
 Phép thử này loại bỏ biến thiên giữa các tuần và không dựa vào giả định các ngày độc lập. Nếu kết luận khác với kiểm định ở mục 6, kết luận đúng là **không ổn định** — và đó phải là điều được viết ra.
 

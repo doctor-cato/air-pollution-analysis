@@ -1115,7 +1115,10 @@ class TestRealDataset(unittest.TestCase):
         tests = self.results["tests"]
         self.assertAlmostEqual(tests["season_effect"]["statistic"], 61.5344, places=3)
         self.assertAlmostEqual(tests["season_effect"]["effect_size"], 0.2065, places=3)
-        self.assertAlmostEqual(tests["weekday_effect"]["statistic"], 8083.0, places=1)
+        self.assertEqual(tests["weekday_effect"]["statistic_name"], "t (HAC)")
+        self.assertAlmostEqual(tests["weekday_effect"]["statistic"], 1.611, places=2)
+        self.assertEqual(tests["weekday_effect"]["supporting_result"]["statistic_name"], "U")
+        self.assertAlmostEqual(tests["weekday_effect"]["supporting_result"]["statistic"], 8083.0, places=1)
         self.assertAlmostEqual(tests["weekday_effect"]["effect_size"], -0.1175, places=3)
         self.assertAlmostEqual(tests["qcvn_24h"]["effect_size"], -0.4102, places=3)
         self.assertAlmostEqual(tests["qcvn_annual"]["effect_size"], 0.8476, places=3)
@@ -2338,10 +2341,82 @@ class TestCalendarAwarePipeline(unittest.TestCase):
         frame = _synthetic_hourly(days=400)
         results = inf.run_inference(frame, n_bootstrap=40, seed=42, include_simulation=False)
         weekday = results["tests"]["weekday_effect"]
+        self.assertEqual(weekday["statistic_name"], "t (HAC)")
         self.assertAlmostEqual(
-            weekday["p_value"], weekday["supporting_result"]["p_value"], places=12
+            weekday["p_value"], weekday["hac_detail"]["p_value"], places=12
+        )
+        self.assertAlmostEqual(
+            weekday["statistic"], weekday["hac_detail"]["statistic"], places=12
+        )
+        self.assertEqual(weekday["supporting_result"]["name"], "U")
+        self.assertEqual(weekday["supporting_result"]["statistic_name"], "U")
+        self.assertAlmostEqual(
+            weekday["supporting_result"]["p_value"], weekday["p_value_bootstrap"], places=12
         )
         self.assertIn("p_value_bootstrap", weekday)
+        self.assertIn("OLS + HAC", weekday["method"]["primary"])
+        self.assertIn("Mann-Whitney U", weekday["method"]["supporting"])
+
+    def test_blocker3_weekday_and_holm_consistency(self):
+        """
+        Regression test cho Blocker #3 (PR #47 review):
+        Đảm bảo (method, statistic_name, statistic, p_value) nhất quán giữa
+        weekday_effect, bảng Holm, và supporting_result.
+        """
+        frame = _synthetic_hourly(days=400)
+        results = inf.run_inference(frame, n_bootstrap=40, seed=42, include_simulation=False)
+        weekday = results["tests"]["weekday_effect"]
+        holm_rows = {row["key"]: row for row in results["holm_confirmatory"]}
+        weekday_holm = holm_rows["weekday_effect"]
+
+        # 1. weekday test return dictionary
+        self.assertEqual(weekday["statistic_name"], "t (HAC)")
+        self.assertEqual(weekday["statistic"], weekday["hac_detail"]["statistic"])
+        self.assertEqual(weekday["p_value"], weekday["hac_detail"]["p_value"])
+        self.assertIn("OLS + HAC", weekday["method"]["primary"])
+        self.assertIn("Mann-Whitney U", weekday["method"]["supporting"])
+
+        # 2. Holm table row
+        self.assertEqual(weekday_holm["statistic_name"], "t (HAC)")
+        self.assertEqual(weekday_holm["statistic"], weekday["statistic"])
+        self.assertEqual(weekday_holm["p_raw"], weekday["p_value"])
+        self.assertEqual(weekday_holm["method"], weekday["method"]["primary"])
+
+    def test_blocker3_paired_weekly_signed_rank_consistency(self):
+        """
+        Regression test cho Blocker #3 (PR #47 review):
+        Phép thử chênh lệch tuần (paired_weeks) dùng Wilcoxon signed-rank (W⁺)
+        kèm calendar bootstrap p-value, không phải t-test có Newey-West HAC.
+        """
+        frame = _synthetic_hourly(days=400)
+        results = inf.run_inference(frame, n_bootstrap=40, seed=42, include_simulation=False)
+        paired = results["sensitivity"]["paired_weeks"]["test"]
+        self.assertEqual(paired["statistic_name"], "W⁺")
+        self.assertGreaterEqual(paired["statistic"], 0.0)
+
+        # Markdown report rendering
+        report = inf.render_inference_report(results)
+        self.assertNotIn("Signed-rank có HAC (Newey–West, lag 4 tuần)", report)
+        self.assertNotIn("t = 315", report)
+        self.assertIn("Wilcoxon signed-rank + null block bootstrap theo lịch", report)
+        self.assertIn(f"W⁺ = {inf.format_number_vi(paired['statistic'], 1)}", report)
+
+    def test_blocker3_fig10_labels_consistency(self):
+        """
+        Regression test cho Blocker #3:
+        FIG-10 text box không ghép U với p (HAC), mà tách rõ t (HAC) và Mann-Whitney U.
+        """
+        frame = _synthetic_hourly(days=400)
+        results = inf.run_inference(frame, n_bootstrap=40, seed=42, include_simulation=False)
+        fig = inf._figure_weekday(results)
+        self.assertIsNotNone(fig)
+        ax = fig.axes[0]
+        texts = [child.get_text() for child in ax.get_children() if hasattr(child, "get_text")]
+        combined_text = "\n".join(texts)
+        self.assertIn("t (HAC) =", combined_text)
+        self.assertIn("Mann-Whitney U =", combined_text)
+        import matplotlib.pyplot as plt
+        plt.close(fig)
 
     def test_location_tests_expose_the_bootstrap_alternative(self):
         frame = _synthetic_hourly(days=400)

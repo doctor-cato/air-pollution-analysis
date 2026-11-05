@@ -2397,11 +2397,11 @@ def _weekday_effect_test(
     H₀: phân phối trung bình ngày của ngày làm việc và ngày cuối tuần giống
     nhau. H₁: khác nhau.
 
-    * **Phương pháp chính:** Mann-Whitney U với phân phối null dựng bằng
-      **circular moving block bootstrap THEO LỊCH** trên chuỗi **gộp**; nhãn
-      weekday/weekend đi theo **ngày nguồn** của bản sao → cấu trúc tuần không
+    * **Phương pháp chính:** hồi quy **OLS + HAC (Newey–West)** `[1, xu hướng, dummy cuối tuần]`.
+    * **Đối chứng:** Mann-Whitney U với phân phối null dựng bằng
+      **circular moving block bootstrap THEO LỊCH** trên chuỗi **gộp** (block 28 ngày lịch);
+      nhãn weekday/weekend đi theo **ngày nguồn** của bản sao → cấu trúc tuần không
       bị phá vỡ; mặt nạ ngày thiếu đi theo bản sao.
-    * **Đối chứng:** hồi quy **HAC** `[1, xu hướng, dummy cuối tuần]`.
     """
     values = panel["pm25_mean"].to_numpy(dtype=float)
     is_weekend = panel["is_weekend"].to_numpy(dtype=int)
@@ -2484,8 +2484,8 @@ def _weekday_effect_test(
         "h1": "Hai phân phối khác nhau.",
         "unit": "Trung bình ngày (≥ 18/24 giờ có `pm25`).",
         "alternative": "hai phía",
-        "statistic_name": "U",
-        "statistic": float(mw.statistic),
+        "statistic_name": "t (HAC)",
+        "statistic": float(hac_t),
         "p_value": float(hac_p),
         "p_value_independence": float(mw.pvalue),
         "p_value_bootstrap": float(null_boot["p_value"]),
@@ -2501,20 +2501,32 @@ def _weekday_effect_test(
         "effect_size_name": "r_rb",
         "effect_size": float(2.0 * mw.statistic / (mask_a.sum() * mask_b.sum()) - 1.0),
         "method": {
-            "primary": (
+            "primary": "OLS + HAC (Newey–West), hệ số dummy cuối tuần",
+            "primary_lag": int(hac_lag),
+            "supporting": (
                 "Mann-Whitney U + null circular moving block bootstrap THEO LỊCH "
                 "(chuỗi gộp trên lịch ngày đầy đủ)"
             ),
-            "primary_block_length_days": int(block_length),
-            "supporting": "OLS + HAC (Newey–West), hệ số dummy cuối tuần",
-            "supporting_lag": int(hac_lag),
+            "supporting_block_length_days": int(block_length),
             "assumptions": (
-                "Chuỗi gộp ổn định trong giai đoạn quan sát; block ≥ 28 ngày LỊCH bao "
-                "trọn phụ thuộc còn lại; nhãn nhóm đi theo NGÀY NGUỒN của bản sao nên "
-                "xen kẽ tuần được giữ nguyên; mặt nạ ngày thiếu đi theo bản sao."
+                "Hệ số dummy cuối tuần đo chênh lệch kỳ vọng có điều kiện sau khi kiểm soát "
+                "xu hướng tuyến tính; sai số tự tương quan tới bậc lag Newey–West; phân phối "
+                "null bootstrap bảo toàn xen kẽ tuần bằng block ngày lịch liên tiếp."
             ),
         },
-        "supporting_result": {"name": "t (HAC)", "p_value": hac_p, "statistic": hac_t},
+        "supporting_result": {
+            "name": "U",
+            "statistic_name": "U",
+            "statistic": float(mw.statistic),
+            "p_value": float(null_boot["p_value"]),
+            "p_value_independence": float(mw.pvalue),
+        },
+        "hac_detail": {
+            "statistic_name": "t (HAC)",
+            "statistic": float(hac_t),
+            "p_value": float(hac_p),
+            "lag": int(hac_lag),
+        },
         "null_bootstrap": null_boot,
         "sensitivity": {"block_length_days": block_sensitivity, "hac_lag": lag_sensitivity},
         "status": status,
@@ -4593,21 +4605,22 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         f"- **H₁:** {weekday['h1']}",
         f"- **α = {format_number_vi(ALPHA, 2)}, hai phía.**",
         "",
-        f"**Phương pháp chính:** {weekday['method']['supporting']} "
-        f"(lag {weekday['method']['supporting_lag']} ngày).",
-        f"**Đối chứng:** {weekday['method']['primary']} "
-        f"(block {weekday['method']['primary_block_length_days']} ngày lịch).",
+        f"**Phương pháp chính:** {weekday['method']['primary']} "
+        f"(lag {weekday['method']['primary_lag']} ngày).",
+        f"**Đối chứng:** {weekday['method']['supporting']} "
+        f"(block {weekday['method']['supporting_block_length_days']} ngày lịch).",
         "",
         f"- Ngày làm việc: n = {format_int_vi(weekday['n_a'])}, "
         f"trung vị {format_number_vi(weekday['median_a'], 2)} µg/m³.",
         f"- Ngày cuối tuần: n = {format_int_vi(weekday['n_b'])}, "
         f"trung vị {format_number_vi(weekday['median_b'], 2)} µg/m³.",
-        f"- **U = {format_number_vi(weekday['statistic'], 1)}**, "
+        f"- **{weekday['statistic_name']} = {format_number_vi(weekday['statistic'], 3)}**, "
         f"**p (hiệu chỉnh phụ thuộc) = {_p(weekday['p_value'])}** → "
         f"{_decision(weekday['p_value'])}; **p Holm = {_p(weekday['p_holm'])}** → "
         f"{_decision(weekday['p_holm'])}.",
-        f"- p tham chiếu (giả định độc lập) = {_p(weekday['p_value_independence'])}; "
-        f"null block bootstrap theo lịch p = {_p(weekday.get('p_value_bootstrap', float('nan')))}.",
+        f"- Đối chứng phi tham số: Mann-Whitney U = {format_number_vi(weekday['supporting_result']['statistic'], 1)}, "
+        f"null block bootstrap theo lịch p = {_p(weekday.get('p_value_bootstrap', float('nan')))} "
+        f"(tham chiếu giả định độc lập: p = {_p(weekday['p_value_independence'])}).",
         f"- Chênh lệch trung vị: **{format_number_vi(weekday['median_difference'], 2)} µg/m³**, "
         f"CI 95% của **hiệu ứng** (bootstrap block theo lịch, phân tầng theo nhóm) "
         f"{_ci_text(weekday['ci'])}.",
@@ -4928,9 +4941,9 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         f"CI 95% bootstrap {_ci_text(paired['ci'])}.",
         f"- Tỷ lệ tuần có weekday cao hơn: "
         f"{format_number_vi(paired['share_weekday_higher'] * 100, 1)}%.",
-        f"- Signed-rank có HAC (Newey–West, lag 4 tuần) trên "
+        f"- Wilcoxon signed-rank + null block bootstrap theo lịch (block 4 tuần lịch, B = 5.000) trên "
         f"{format_int_vi(paired['test']['n'])} chênh lệch tuần: "
-        f"t = {format_number_vi(paired['test']['statistic'], 3)}, "
+        f"{paired['test']['statistic_name']} = {format_number_vi(paired['test']['statistic'], 1)}, "
         f"p = {_p(paired['test']['p_value'])} → "
         f"{'bác bỏ' if paired['test']['p_value'] < ALPHA else 'không bác bỏ'} H₀ ở α = 0,05 "
         f"(tham chiếu, giả định độc lập: p = {_p(paired['test']['p_value_independence'])}).",
@@ -5315,10 +5328,11 @@ def _figure_weekday(results: Mapping[str, Any]):
             f"{format_number_vi(test['median_b'])} µg/m³\n"
             f"Chênh lệch trung vị = {format_number_vi(test['median_difference'])} "
             f"[{format_number_vi(ci['ci_low'])}; {format_number_vi(ci['ci_high'])}]\n"
-            f"U = {format_number_vi(test['statistic'], 1)}, "
+            f"{test['statistic_name']} = {format_number_vi(test['statistic'], 3)}, "
             f"p (HAC) = {format_number_vi(test['p_value'], 4)}, "
             f"p Holm = {format_number_vi(test['p_holm'], 4)}\n"
-            f"p null bootstrap theo lịch = {format_number_vi(test.get('p_value_bootstrap', float('nan')), 4)}\n"
+            f"Mann-Whitney U = {format_number_vi(test['supporting_result']['statistic'], 1)}, "
+            f"p null bootstrap = {format_number_vi(test.get('p_value_bootstrap', float('nan')), 4)}\n"
             f"r_rb = {format_number_vi(test['effect_size'], 4)}"
         ),
         transform=ax.transAxes,
