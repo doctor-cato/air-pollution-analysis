@@ -129,3 +129,57 @@ jobs:
             --execute \
             --output-dir /tmp/nbci \
             notebooks/00_environment_test.ipynb
+      # Artifact M3 (Issue #8 + #9) được commit có chủ ý — .gitignore giữ ngoại lệ cho
+      # reports/statistical_profile.csv và CỐ Ý KHÔNG chặn figures/. Bước này chỉ canh
+      # "artifact còn nguyên và đúng hình dạng" (PNG giải mã được, đúng 300 DPI; CSV đúng
+      # 8 dòng × 27 cột). Nó KHÔNG kiểm chứng bất kỳ con số khoa học nào trong đó: CI không
+      # có data/, nên không thể. Việc đó chỉ kiểm được ở local với dataset thật.
+      - name: Kiểm tra deliverable Milestone 3 (FIG + CSV)
+        run: |
+          python - <<'PY'
+          import csv, pathlib, struct, sys
+
+          EXPECTED_DPI, TOL = 300.0, 1.0
+          failures = []
+
+          for i in range(1, 8):
+              path = pathlib.Path(f"figures/FIG-{i:02d}.png")
+              if not path.is_file():
+                  failures.append(f"{path}: missing")
+                  continue
+              data = path.read_bytes()
+              if data[:8] != b"\x89PNG\r\n\x1a\n":
+                  failures.append(f"{path}: not a PNG")
+                  continue
+              offset, dpi_x, dpi_y = 8, None, None
+              while offset < len(data):
+                  (length,) = struct.unpack(">I", data[offset:offset + 4])
+                  ctype = data[offset + 4:offset + 8]
+                  if ctype == b"pHYs":
+                      ppu_x, ppu_y, _ = struct.unpack(">IIB", data[offset + 8:offset + 17])
+                      dpi_x, dpi_y = ppu_x * 0.0254, ppu_y * 0.0254
+                  if ctype == b"IEND":
+                      break
+                  offset += 12 + length
+              if dpi_x is None:
+                  failures.append(f"{path}: no pHYs chunk, DPI unknown")
+              elif abs(dpi_x - EXPECTED_DPI) > TOL or abs(dpi_y - EXPECTED_DPI) > TOL:
+                  failures.append(f"{path}: DPI {dpi_x:.2f}x{dpi_y:.2f} != {EXPECTED_DPI}")
+
+          csv_path = pathlib.Path("reports/statistical_profile.csv")
+          if not csv_path.is_file():
+              failures.append(f"{csv_path}: missing")
+          else:
+              with csv_path.open(encoding="utf-8-sig", newline="") as fh:
+                  rows = list(csv.reader(fh))
+              if len(rows) != 9:
+                  failures.append(f"{csv_path}: {len(rows)} lines, expected 1 header + 8 variables")
+              elif any(len(r) != 27 for r in rows):
+                  bad = [r[0] for r in rows if len(r) != 27]
+                  failures.append(f"{csv_path}: rows not 27 columns: {bad}")
+
+          if failures:
+              print("M3 artifact check FAILED:", *failures, sep="\n  - ", file=sys.stderr)
+              sys.exit(1)
+          print("M3 artifacts OK: FIG-01..07 decodable @300 DPI, statistical_profile.csv 8x27")
+          PY
