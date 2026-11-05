@@ -19,12 +19,9 @@
 > Tổng **155** = **126 task có số** (`0.1`, `1.2`, …) + **29 task `D*`** của Phase 1B.
 > Trong 126 task có số có **2 task lồng** là `0.7b` (thuộc `0.7`) và `1.15b` (thuộc `1.15`), nên **124 việc
 > cấp cao nhất** — đó là lý do đầu Phase 0 nói "8 việc" trong khi bảng này ghi `9`.
-> Trạng thái hiện tại: **56 đánh dấu `[x]` · 99 `[ ]`** (đếm bằng `^\s*- \[( |x)\]` theo công thức ở dòng trên, **bao gồm task lồng** `0.7b` và `1.15b`).
-> **Số mốc này được kiểm lại 2026-10-17** (đợt audit M3): trước đó file ghi `154 / 125 / 30 / 124` — sai ở cả
-> bốn con số, vì **`1.15` bị viết trùng ở hai task** (Issue #8 dòng 359 và Issue #9 dòng 365). Task Issue #9
-> đã đổi id thành **`1.15b`**; tham chiếu ở bảng §14 dòng "W7 · Thang đo" cập nhật theo.
-> **Phase 2 (#8) và Phase 3 (#9) đã triển khai và merge** — PR #40 và PR #41 (`6fe8eb6`, 2026-10-16),
-> issue #8 và #9 đã `CLOSED`. **Phase 4–11 (issue #10–#17) chưa bắt đầu**; #10 đã chuyển sang Milestone 4.
+> Trạng thái hiện tại: **65 đánh dấu `[x]` · 90 `[ ]`** (đếm bằng `^\s*- \[( |x)\]` theo công thức ở dòng trên, **bao gồm task lồng** `0.7b` và `1.15b`).
+> **Số mốc này được kiểm lại 2026-11-05** (đợt hoàn thiện W9 / PR #47): Phase 2 (#8) và Phase 3 (#9) đã `CLOSED` (PR #40, #41);
+> Phase 5 (#11) đã triển khai và xác minh đầy đủ (9 task `5.1`–`5.9`). **Phase 4 (#10) nộp W11; Phase 6–11 (issue #12–#17) chưa bắt đầu**.
 
 > ### Trạng thái triển khai — đọc phần này trước khi tick checkbox
 >
@@ -32,12 +29,13 @@
 > |---|---|---|
 > | `notebooks/04_descriptive_stats.ipynb` | **đã merge** (PR #40 → `c078444`, Issue #8 `CLOSED`) | Sinh từ `scripts/generate_04_notebook.py`; `scripts/validate_issue8.py` 215 assertion, live kernel 0 lỗi |
 > | `reports/statistical_profile.csv` | **đã có** | 8 biến × 27 cột; đối chiếu lại từ Parquet trong `validate_issue8.py` §4 |
-> | `notebooks/05`–`07` | **`NOT IMPLEMENTED`** | Chưa tồn tại (đã đổi tiền tố phân loại `06_`→`07_` ở task 0.3). Tương ứng Issue #11–#13 |
+> | `notebooks/05_statistical_inference.ipynb` | **VERIFIED / IMPLEMENTED** | Sinh từ `scripts/generate_05_notebook.py`; `run_inference()` tái lập 100% payload, report và 5 figure [Issue #11] |
+> | `notebooks/06`–`07` | **`NOT IMPLEMENTED`** | Chưa tồn tại (Issue #12 hồi quy OLS và Issue #13 phân loại cảnh báo) |
 > | `src/visualizer.py`, `tests/test_visualizer.py` | **VERIFIED / MERGED** (`6fe8eb6`) | Tồn tại; Tufte/Cleveland; 7 PNG render OK |
 > | `figures/FIG-01`…`FIG-07` | **VERIFIED / MERGED** (`6fe8eb6` PR #41, 2026-10-16) | 7 PNG (`300 DPI`, đọc trực tiếp chunk `pHYs`) đã commit; `src/visualizer.py` Tufte/Cleveland; `tests/test_visualizer.py` 35 test |
 > | **Task 2.10** — VIF cho cặp `pm25`/`pm10` | **`NOT IMPLEMENTED`** | Notebook 04 chỉ tính `r = 0,9727` và `r² = 0,9462`, **không** gọi `variance_inflation_factor`; VIF hoàn toàn để dành cho Issue #12. Task này **cố ý để `[ ]`** |
 > | **Task 3.13** — soi từng PNG bằng mắt | **`CHỜ NGƯỜI`** | Bước tự động **không thay thế được** bước này (chính task 3.13 ghi vậy). Test chỉ kiểm được 300 DPI + không tràn nhãn bằng assert, **không** kiểm được mắt thấy |
-> | Kiểm định giả thuyết của Issue #11 (task 5.1–5.6) | **`NOT IMPLEMENTED`** | Không có notebook, không có script, không có p-value nào được tính |
+> | Kiểm định giả thuyết của Issue #11 (Phase 5, task 5.1–5.9) | **VERIFIED / IMPLEMENTED** | `src/inference.py` (207 tests), `reports/inference_results.md`, `reports/inference_montecarlo.csv`, `figures/FIG-08`..`FIG-12` [Issue #11] |
 > | `DummyClassifier` baseline (task 7.4) | **`NOT IMPLEMENTED`** | `git grep DummyClassifier -- src notebooks tests scripts` → rỗng |
 > | PR-AUC / Recall / F1 (task 7.5–7.7) | **`NOT IMPLEMENTED`** | Phụ thuộc nhãn ở 0.7b, chưa có mô hình nào được huấn luyện |
 > | Tỷ lệ nhãn cảnh báo `31,13%` / `18,30%` | **`UNVERIFIED`** | Phép tính **tái lập được**, nhưng **định nghĩa nhãn chưa chốt** — xem task 0.7b |
@@ -667,22 +665,22 @@ Input: `data/processed/air_pollution_final.parquet` (9.044 dòng × 18 cột, gi
 
 ## Phase 5 — Issue #11: Suy luận thống kê (~1–2 buổi)
 
-- [ ] **5.1** Kiểm định 1 — `pm25` giữa 2 mùa: Shapiro-Wilk trước, Mann-Whitney U sau nếu vi phạm chuẩn.
-- [ ] **5.2** Tính `$r_{rb} = 1 − 2U/(n_1n_2)` + Bootstrap CI 95% cho chênh lệch trung vị
+- [x] **5.1** Kiểm định 1 — `pm25` giữa 2 mùa: Shapiro-Wilk trước, Mann-Whitney U sau nếu vi phạm chuẩn.
+- [x] **5.2** Tính `$r_{rb} = 1 − 2U/(n_1n_2)` + Bootstrap CI 95% cho chênh lệch trung vị
       (1.000 lặp, `np.random.seed(42)`).
-- [ ] **5.3** 🔴 Hiệu chỉnh multiple testing cho **toàn bộ** các kiểm định trong notebook (task 1.1).
-- [ ] **5.4** Kiểm định 2 — weekday vs weekend, Mann-Whitney U; biện luận khoảng cách giữa ý nghĩa thống kê
+- [x] **5.3** 🔴 Hiệu chỉnh multiple testing cho **toàn bộ** các kiểm định trong notebook (task 1.1).
+- [x] **5.4** Kiểm định 2 — weekday vs weekend, Mann-Whitney U; biện luận khoảng cách giữa ý nghĩa thống kê
       và ý nghĩa thực tiện.
-- [ ] **5.5** Kiểm định 3 — đối chiếu `pm25` với QCVN 05:2023/BTNMT bằng phép phi tham số trên chuỗi
+- [x] **5.5** Kiểm định 3 — đối chiếu `pm25` với QCVN 05:2023/BTNMT bằng phép phi tham số trên chuỗi
       **tương thích toán học** về chu kỳ lấy mẫu; báo cáo 95% CI.
-- [ ] **5.6** 🔴 Bảng kết quả: **100% kết luận** trình bày đủ bộ bốn — thống kê kiểm định, p-value (thô + đã
+- [x] **5.6** 🔴 Bảng kết quả: **100% kết luận** trình bày đủ bộ bốn — thống kê kiểm định, p-value (thô + đã
       hiệu chỉnh), effect size `$r_{rb}$`, Bootstrap CI 95%. Tuyệt đối không báo cáo p-value đơn độc.
-- [ ] **5.7** 🔴 Giải thích p-value theo đúng 4 sai lầm kinhiển (task 1.3); nêu Power = 1 − β trong ngữ cảnh
+- [x] **5.7** 🔴 Giải thích p-value theo đúng 4 sai lầm kinhiển (task 1.3); nêu Power = 1 − β trong ngữ cảnh
       cảnh báo sớm.
-- [ ] **5.8** ⚪ Base rate fallacy: diễn giải mọi tỷ lệ khớp quy chuẩn qua prior probability (task 1.2).
-- [ ] **5.9** Tạo `notebooks/05_statistical_inference.ipynb` + bảng tổng hợp kết quả kiểm định.
+- [x] **5.8** ⚪ Base rate fallacy: diễn giải mọi tỷ lệ khớp quy chuẩn qua prior probability (task 1.2).
+- [x] **5.9** Tạo `notebooks/05_statistical_inference.ipynb` + bảng tổng hợp kết quả kiểm định.
 
-**Deliverable:** `notebooks/05_statistical_inference.ipynb`, bảng kết quả kiểm định
+**Deliverable:** `notebooks/05_statistical_inference.ipynb`, bảng kết quả kiểm định (`reports/inference_results.md`), `reports/inference_montecarlo.csv`, 5 figure bổ sung (`figures/FIG-08.png`–`FIG-12.png`)
 
 ---
 

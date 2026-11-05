@@ -181,11 +181,11 @@ air-pollution-analysis/
 │   ├── test_pipeline_runtime_log.py    # 40 unit tests — tách trạng thái runtime khỏi hồ sơ provenance tĩnh
 │   ├── test_verify_claims_rolling.py   # 7 unit tests — ranh giới Train/Test của nhãn cảnh báo trượt 24h
 │   ├── test_validate_issue8.py         # 29 unit tests — checksum 4 trạng thái, đồng bộ generator, circular stats, smoke fixture [Issue #8]
-│   ├── test_inference.py               # 197 unit tests — chẩn đoán phân phối, 4 nhóm kiểm định có xét phụ thuộc thời gian (bootstrap theo lịch + HAC, Monte Carlo đa kịch bản), Holm, artifact [Issue #11]
+│   ├── test_inference.py               # 207 unit tests — chẩn đoán phân phối, 4 nhóm kiểm định có xét phụ thuộc thời gian (bootstrap theo lịch + HAC, Monte Carlo đa kịch bản), Holm, artifact [Issue #11]
 │   └── test_visualizer.py              # 35 unit tests — 7 biểu đồ ấn phẩm FIG-01..FIG-07 (300 DPI, Tufte, zero-baseline, chu kỳ 24h) [Issue #9]
 │   ├── roadmap.md                     # Kế hoạch tổng thể (nguồn chuẩn) — Week 01→15
 │   ├── TEST_SUITE.md                  # NGUỒN CHUẨN số liệu kiểm thử — breakdown, skip, giới hạn CI
-│   ├── TASK_LIST_M3_M6.md             # Task list M3–M6: 154 checkbox, có trạng thái UNVERIFIED
+│   ├── TASK_LIST_M3_M6.md             # Task list M3–M6: 155 checkbox (65 [x] / 90 [ ]), có trạng thái UNVERIFIED
 │   ├── PLAN_MIDTERM_RESCHEDULE_PR36.md# Lịch dời midterm sang W11 + xử lý review PR #36
 │   ├── bao_cao_tien_do_M1_M2.docx     # Báo cáo tiến độ sinh tự động (không tái lập byte-for-byte)
 │   ├── history/                       # 4 file nhật ký lịch sử issue / PR / audit
@@ -194,8 +194,9 @@ air-pollution-analysis/
 │   ├── FIG-01.png .. FIG-07.png        # 7 biểu đồ giải thích chuẩn Tufte/Cleveland (300 DPI) [Issue #9]
 │   ├── FIG-08.png .. FIG-12.png        # Chẩn đoán phân phối, mùa, weekday/weekend, QCVN, ACF — KHÔNG thuộc bộ 7 hình ấn phẩm [Issue #11]
 │   └── .gitkeep
-├── reports/                            # Sinh tự động; claim_audit.csv KHÔNG track, statistical_profile.csv & inference_results.md ĐÃ track
+├── reports/                            # Sinh tự động; claim_audit.csv KHÔNG track; statistical_profile.csv, inference_montecarlo.csv & inference_results.md ĐÃ track
     ├── statistical_profile.csv           # Bảng hồ sơ thống kê 4 họ chỉ số, 8 biến × 27 cột [Issue #8]
+    ├── inference_montecarlo.csv          # Kiểm chứng sai lầm loại I bằng Monte Carlo 1.000 lần × 9 kịch bản [Issue #11]
     ├── inference_results.md              # Báo cáo W9: bộ bốn (statistic, p, effect size, CI 95%), Holm, giới hạn [Issue #11]
     └── .gitkeep                            # *_minutes.md sẽ track khi sinh ra (task D28)
 ```
