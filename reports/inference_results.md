@@ -102,7 +102,7 @@ Bốn kiểm định xác nhận dùng **bốn cách dựng null khác nhau**, m
 | Kiểm định | H₀ | Phương pháp **chính** | Đối chứng | Tham số phụ thuộc |
 |---|---|---|---|---|
 | Mùa | 4 mùa cùng phân phối (quá trình ổn định) | Kruskal-Wallis + **null block bootstrap THEO LỊCH** trên chuỗi **gộp** | Hồi quy HAC có xu hướng (**không dùng để quyết định** — xem 4.3) | block 28 ngày lịch |
-| Weekday vs cuối tuần | Hai nhóm cùng phân phối | Hồi quy **HAC/Newey–West** `[1, xu hướng, dummy cuối tuần]` | Mann-Whitney + **null block bootstrap THEO LỊCH** | lag 28 ngày |
+| Weekday vs cuối tuần | β_weekend = 0 (OLS+HAC; đối chứng: hai phân phối đồng nhất) | Hồi quy **HAC/Newey–West** `[1, xu hướng, dummy cuối tuần]` | Mann-Whitney + **null block bootstrap THEO LỊCH** | lag 28 ngày |
 | QCVN 24h (trung vị = 50) | P(trung bình ngày > 50) = 0,5 | **HAC/Newey–West** cho tỷ lệ vượt ngưỡng | Null áp đặt H₀ **theo lịch** (signed-rank) + p đảo CI | lag 28 ngày |
 | QCVN năm (trung bình = 25) | E(trung bình ngày) = 25 | **HAC/Newey–West** (hệ số chặn) | Null áp đặt H₀ **theo lịch** (t) + p đảo CI | lag 28 ngày |
 
@@ -149,7 +149,7 @@ Bốn kiểm định xác nhận dùng **bốn cách dựng null khác nhau**, m
 - **p (hiệu chỉnh phụ thuộc thời gian) = 0,0280** → bác bỏ H₀; **p Holm = 0,0560** → không bác bỏ H₀.
 - p tham chiếu (giả định độc lập) = 2,76·10⁻¹³; hồi quy HAC (chẩn đoán, xem 4.3) p = 2,36·10⁻¹⁰.
 - Effect size **ε² = 0,2065** (tỷ lệ phương sai hạng giải thích bởi mùa).
-- CI 95% của **hiệu ứng** (bootstrap block theo lịch, phân tầng theo nhóm) cho chênh lệch trung vị **Đông − Hè**: 29,32 µg/m³, [7,58; 38,65] (n Đông = 79 ngày quan sát, n Hè = 53 ngày quan sát; cách dựng: percentile; CI chứa ước lượng điểm: có).
+- CI 95% của **hiệu ứng** (bootstrap block theo lịch, phân tầng theo nhóm) cho chênh lệch trung vị **Đông − Hè**: 29,32 µg/m³, [16,51; 38,76] (n Đông = 79 ngày quan sát, n Hè = 53 ngày quan sát; cách dựng: percentile; CI chứa ước lượng điểm: có).
 - **Đây là CI của hiệu ứng, KHÁC phân phối null dùng cho p-value.** CI trả lời *"chênh lệch trung vị giữa hai mùa là bao nhiêu, với độ không chắc chắn ra sao"*; p-value trả lời *"dữ liệu có tương phản với H₀: hai mùa cùng phân phối không"*. Vì vậy CI có thể **loại trừ 0** trong khi p-value của cùng một cặp **không** nhỏ hơn α (và ngược lại) — hai câu hỏi khác nhau, hai phương pháp khác nhau.
 
 **Độ nhạy theo độ dài block (ngày lịch).**
@@ -175,19 +175,19 @@ Sáu cặp này **không** thuộc family xác nhận: chúng được khảo s�
 
 | Cặp | Trung vị A | Trung vị B | U | p (hiệu chỉnh) | p Holm | p tham chiếu | r_rb | CI 95% (A−B) |
 |---|---|---|---|---|---|---|---|---|
-| Đông – Xuân | 60,46 | 32,81 | 5191 | 0,0224 | 0,1120 | 1,49·10⁻¹⁰ | 0,583 | [3,21; 36,75] |
-| Đông – Hè | 60,46 | 31,14 | 3519 | 0,0052 | 0,0312 | 3,72·10⁻¹¹ | 0,681 | [7,58; 38,65] |
-| Đông – Thu | 60,46 | 36,30 | 4951 | 0,0568 | 0,2272 | 5,93·10⁻⁸ | 0,492 | [−1,82; 32,08] |
-| Xuân – Hè | 32,81 | 31,14 | 2512 | 0,5835 | 1,0000 | 0,1639 | 0,142 | [−3,94; 9,77] |
-| Xuân – Thu | 32,81 | 36,30 | 3140 | 0,7163 | 1,0000 | 0,2688 | −0,099 | [−16,39; 3,85] |
-| Hè – Thu | 31,14 | 36,30 | 1731 | 0,3751 | 1,0000 | 0,0289 | −0,222 | [−18,82; 0,31] |
+| Đông – Xuân | 60,46 | 32,81 | 5191 | 0,0224 | 0,1120 | 1,49·10⁻¹⁰ | 0,583 | [15,91; 38,53] |
+| Đông – Hè | 60,46 | 31,14 | 3519 | 0,0052 | 0,0312 | 3,72·10⁻¹¹ | 0,681 | [16,51; 38,76] |
+| Đông – Thu | 60,46 | 36,30 | 4951 | 0,0568 | 0,2272 | 5,93·10⁻⁸ | 0,492 | [14,45; 35,45] |
+| Xuân – Hè | 32,81 | 31,14 | 2512 | 0,5835 | 1,0000 | 0,1639 | 0,142 | [−4,99; 8,36] |
+| Xuân – Thu | 32,81 | 36,30 | 3140 | 0,7163 | 1,0000 | 0,2688 | −0,099 | [−6,67; 5,61] |
+| Hè – Thu | 31,14 | 36,30 | 1731 | 0,3751 | 1,0000 | 0,0289 | −0,222 | [−7,18; 2,39] |
 
 ---
 
 ## 6. Kiểm định 2 — Ngày làm việc vs ngày cuối tuần
 
-- **H₀:** Phân phối PM2.5 trung bình ngày của ngày làm việc và cuối tuần giống nhau.
-- **H₁:** Hai phân phối khác nhau.
+- **H₀:** Hệ số dummy cuối tuần trong mô hình OLS bằng 0 sau khi kiểm soát xu hướng tuyến tính (không có chênh lệch kỳ vọng có điều kiện giữa ngày làm việc và cuối tuần; đối chứng phi tham số Mann-Whitney kiểm định H₀ hai phân phối đồng nhất).
+- **H₁:** Hệ số dummy cuối tuần khác 0 (có chênh lệch kỳ vọng có điều kiện giữa ngày làm việc và cuối tuần).
 - **α = 0,05, hai phía.**
 
 **Phương pháp chính:** OLS + HAC (Newey–West), hệ số dummy cuối tuần (lag 28 ngày).
@@ -195,9 +195,9 @@ Sáu cặp này **không** thuộc family xác nhận: chúng được khảo s�
 
 - Ngày làm việc: n = 213, trung vị 36,72 µg/m³.
 - Ngày cuối tuần: n = 86, trung vị 39,45 µg/m³.
-- **U = 8083,0**, **p (hiệu chỉnh phụ thuộc) = 0,1082** → không bác bỏ H₀; **p Holm = 0,1082** → không bác bỏ H₀.
-- p tham chiếu (giả định độc lập) = 0,1120; null block bootstrap theo lịch p = 0,5379.
-- Chênh lệch trung vị: **−2,74 µg/m³**, CI 95% của **hiệu ứng** (bootstrap block theo lịch, phân tầng theo nhóm) [−16,25; 4,24].
+- **t (HAC) = 1,611**, **p (hiệu chỉnh phụ thuộc) = 0,1082** → không bác bỏ H₀; **p Holm = 0,1082** → không bác bỏ H₀.
+- Đối chứng phi tham số: Mann-Whitney U = 8083,0, null block bootstrap theo lịch p = 0,5379 (tham chiếu giả định độc lập: p = 0,1120).
+- Chênh lệch trung vị: **−2,74 µg/m³**, CI 95% của **hiệu ứng** (bootstrap block theo lịch, phân tầng theo nhóm) [−11,13; 3,05].
 - Effect size **r_rb = −0,1175** (dương = ngày làm việc cao hơn).
 
 **Độ nhạy theo lag HAC (phương pháp chính).**
@@ -214,7 +214,7 @@ Sáu cặp này **không** thuộc family xác nhận: chúng được khảo s�
 
 **Ý nghĩa thống kê ≠ ý nghĩa thực tiễn — và power có giới hạn.** Với SD gộp 21,65 µg/m³, n₁ = 213, n₂ = 86, chênh lệch nhỏ nhất phát hiện được ở power 80%, α = 0,05 là **MDE ≈ 7,75 µg/m³** (xấp xỉ chuẩn, tính hậu nghiệm từ SD quan sát — lưu ý: công thức này **giả định độc lập**, nên với chuỗi tự tương quan nó **đánh giá thấp** ngưỡng phân giải thực tế).
 
-- Chênh lệch quan sát được là −2,74 µg/m³, nhỏ hơn MDE, và CI 95% của hiệu ứng [−16,25; 4,24] chứa 0; |r_rb| = 0,117. Vì vậy dữ liệu **không đủ độ phân giải** để phân biệt 'không có khác biệt' với 'khác biệt nhỏ hơn MDE' — đây không phải bằng chứng khẳng định hai nhóm bằng nhau.
+- Chênh lệch quan sát được là −2,74 µg/m³, nhỏ hơn MDE, và CI 95% của hiệu ứng [−11,13; 3,05] chứa 0; |r_rb| = 0,117. Vì vậy dữ liệu **không đủ độ phân giải** để phân biệt 'không có khác biệt' với 'khác biệt nhỏ hơn MDE' — đây không phải bằng chứng khẳng định hai nhóm bằng nhau.
 - Ước lượng điểm nằm trong khoảng sai số thực hành của một trạm đo, nên không được dùng để quy kết nguồn phát thải hay hành vi giao thông.
 
 ---
@@ -291,7 +291,7 @@ Hai ngưỡng được kiểm định **tách biệt**, mỗi ngưỡng đi vớ
 | Kiểm định | Thống kê | p (hiệu chỉnh phụ thuộc) | p Holm | Effect size | Trạng thái |
 |---|---|---|---|---|---|
 | Mùa (4 nhóm, có xét phụ thuộc thời gian) | H = 61,534 | 0,0280 | 0,0560 | ε² = 0,206 | THĂM DÒ (EXPLORATORY) |
-| Ngày làm việc vs cuối tuần (có xét phụ thuộc thời gian) | U = 8083,000 | 0,1082 | 0,1082 | r_rb = −0,117 | XÁC NHẬN |
+| Ngày làm việc vs cuối tuần (có xét phụ thuộc thời gian) | t (HAC) = 1,611 | 0,1082 | 0,1082 | r_rb = −0,117 | XÁC NHẬN |
 | Trung bình 24h vs 50 µg/m³ (có xét phụ thuộc thời gian) | t (share, HAC) = −2,656 | 0,0083 | 0,0250 | r (cặp) = −0,410 | XÁC NHẬN |
 | Trung bình giai đoạn vs 25 µg/m³ (có xét phụ thuộc thời gian) | t (HAC) = 4,354 | 1,84·10⁻⁵ | 7,38·10⁻⁵ | Cohen's d = 0,848 | XÁC NHẬN |
 
@@ -360,11 +360,11 @@ Kiểm chứng **có chi phí**, chạy bằng `python scripts/validate_inferenc
 | AR(1) mạnh + thiếu thành cụm 20% | median | 37,1% [34,2–40,1] | 6,8% [5,4–8,5] | 11,0% [9,2–13,1] |
 | AR(1) mạnh + thiếu thành cụm 20% | mean | 36,9% [34,0–39,9] | 9,1% [7,5–11,0] | 12,0% [10,1–14,2] |
 | AR(1) mạnh + thiếu thành cụm 20% | pair | 36,5% [33,6–39,5] | 6,6% [5,2–8,3] | — |
-| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | season | 72,3% [69,4–75,0] | 5,6% [4,3–7,2] | 40,3% [37,3–43,4] |
-| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | weekday | 1,7% [1,1–2,7] | 0,4% [0,2–1,0] | 7,6% [6,1–9,4] |
-| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | median | 41,5% [38,5–44,6] | 10,5% [8,7–12,6] | 11,9% [10,0–14,1] |
-| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | mean | 42,3% [39,3–45,4] | 10,3% [8,6–12,3] | 12,0% [10,1–14,2] |
-| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | pair | 41,8% [38,8–44,9] | 5,3% [4,1–6,9] | — |
+| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | season | 74,5% [71,7–77,1] | 5,3% [4,1–6,9] | 37,8% [34,8–40,8] |
+| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | weekday | 1,7% [1,1–2,7] | 3,1% [2,2–4,4] | 7,3% [5,8–9,1] |
+| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | median | 43,9% [40,9–47,0] | 10,9% [9,1–13,0] | 10,4% [8,7–12,4] |
+| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | mean | 43,2% [40,2–46,3] | 10,1% [8,4–12,1] | 11,2% [9,4–13,3] |
+| AR(1) mạnh + mặt nạ thiếu GIỐNG dữ liệu thật | pair | 42,7% [39,7–45,8] | 5,6% [4,3–7,2] | — |
 
 **Đọc kết quả — đây là bằng chứng hiệu lực, không phải phỏng đoán.**
 
@@ -409,7 +409,7 @@ Câu hỏi mà bốn kiểm định trên **không** trả lời được: khác
 - Số tuần đủ điều kiện (≥ 3 ngày trong tuần và ≥ 2 ngày cuối tuần): **40**.
 - Trung vị chênh lệch (weekday − weekend): **−2,70 µg/m³**, CI 95% bootstrap [−7,92; 2,69].
 - Tỷ lệ tuần có weekday cao hơn: 37,5%.
-- Signed-rank có HAC (Newey–West, lag 4 tuần) trên 40 chênh lệch tuần: t = 315,000, p = 0,9838 → không bác bỏ H₀ ở α = 0,05 (tham chiếu, giả định độc lập: p = 0,2064).
+- Wilcoxon signed-rank + null block bootstrap theo lịch (block 4 tuần lịch, B = 5.000) trên 40 chênh lệch tuần: W⁺ = 315,0, p = 0,9838 → không bác bỏ H₀ ở α = 0,05 (tham chiếu, giả định độc lập: p = 0,2064).
 
 Phép thử này loại bỏ biến thiên giữa các tuần và không dựa vào giả định các ngày độc lập. Nếu kết luận khác với kiểm định ở mục 6, kết luận đúng là **không ổn định** — và đó phải là điều được viết ra.
 

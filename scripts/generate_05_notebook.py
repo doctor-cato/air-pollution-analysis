@@ -755,16 +755,16 @@ add_md(r"""---
 
 ## 7. Kiểm định 2 — Ngày làm việc vs ngày cuối tuần
 
-- **H₀:** phân phối PM₂.₅ trung bình ngày của ngày làm việc bằng của ngày cuối tuần.
-- **H₁:** hai phân phối khác nhau.
+- **H₀ (OLS + HAC, phương pháp chính):** Hệ số dummy cuối tuần $\beta_{\text{weekend}} = 0$ sau khi kiểm soát xu hướng tuyến tính (không có chênh lệch kỳ vọng có điều kiện giữa ngày làm việc và cuối tuần). Đối chứng phi tham số Mann-Whitney kiểm định $H_0$: hai phân phối đồng nhất ($P(X > Y) = 0,5$).
+- **H₁:** $\beta_{\text{weekend}} \neq 0$ (có chênh lệch kỳ vọng có điều kiện giữa hai nhóm).
 - **α = 0,05**, hai phía.
 
 ### 7.1. Phương pháp
 
-- **Chính:** Mann-Whitney U với **null circular moving block bootstrap** trên chuỗi
+- **Chính:** hồi quy **OLS + HAC (Newey–West)** `[1, xu hướng, dummy cuối tuần]`.
+- **Đối chứng:** Mann-Whitney U với **null circular moving block bootstrap** trên chuỗi
   **gộp**; nhãn weekday/weekend **giữ theo vị trí lịch** → cấu trúc tuần không bị
   phá vỡ.
-- **Đối chứng:** hồi quy **HAC/Newey–West** `[1, xu hướng, dummy cuối tuần]`.
 
 Effect size $r_{rb} = 2U/(n_1 n_2) - 1$, quy ước **dương = ngày làm việc cao hơn** —
 quy ước này được ghi ngay trong module để không ai đảo dấu.
@@ -786,10 +786,11 @@ weekday_ci = weekday["ci"]
 
 print(f"Ngày làm việc: n = {format_int_vi(weekday['n_a'])}, trung vị {format_number_vi(weekday['median_a'])} µg/m³")
 print(f"Ngày cuối tuần: n = {format_int_vi(weekday['n_b'])}, trung vị {format_number_vi(weekday['median_b'])} µg/m³")
-print(f"U = {format_number_vi(weekday['statistic'], 1)} · p (HAC, phương pháp chính) = {p_text(weekday['p_value'])} · "
+print(f"{weekday['statistic_name']} = {format_number_vi(weekday['statistic'], 3)} · p (HAC, phương pháp chính) = {p_text(weekday['p_value'])} · "
       f"p Holm = {p_text(weekday['p_holm'])}")
-print(f"p tham chiếu (giả định độc lập) = {p_text(weekday['p_value_independence'])}")
-print(f"Đối chứng (null bootstrap theo lịch) p = {p_text(weekday['p_value_bootstrap'])}")
+print(f"Đối chứng (Mann-Whitney U) = {format_number_vi(weekday['supporting_result']['statistic'], 1)} · "
+      f"null bootstrap p = {p_text(weekday['p_value_bootstrap'])} · "
+      f"tham chiếu độc lập p = {p_text(weekday['p_value_independence'])}")
 print(f"Chênh lệch trung vị (weekday − weekend) = {format_number_vi(weekday['median_difference'])} µg/m³, "
       f"CI 95% của hiệu ứng {ci_text(weekday_ci)}")
 print(f"r_rb = {format_number_vi(weekday['effect_size'], 4)}  (dương = ngày làm việc cao hơn)")
@@ -1046,7 +1047,7 @@ add_md(r"""---
 Mỗi tuần ISO đủ điều kiện (≥ 3 ngày trong tuần và ≥ 2 ngày cuối tuần) cho **một**
 chênh lệch. Cách này loại bỏ biến thiên "tuần này bẩn hơn tuần kia" — thứ tự tương
 quan mạnh nhất còn lại sau khi đã lấy trung bình ngày. Các chênh lệch tuần cũng tự
-tương quan, nên phép thử dùng **signed-rank có HAC** (lag 4 tuần).
+tương quan, nên phép thử dùng **Wilcoxon signed-rank + null block bootstrap theo lịch** (block 4 tuần lịch).
 
 ### 11.2. Kruskal-Wallis trên trung bình tuần theo mùa
 
@@ -1064,8 +1065,8 @@ print(f"  Số tuần đủ điều kiện: {format_int_vi(paired['n_weeks'])} "
 print(f"  Trung vị chênh lệch: {format_number_vi(paired['median_difference'])} µg/m³, "
       f"CI 95% {ci_text(paired['ci'])}")
 print(f"  Tỷ lệ tuần có weekday cao hơn: {pct(paired['share_weekday_higher'], 1)}")
-print(f"  Signed-rank có HAC trên {format_int_vi(paired['test']['n'])} chênh lệch tuần: "
-      f"t = {format_number_vi(paired['test']['statistic'], 3)}, "
+print(f"  Wilcoxon signed-rank + null bootstrap trên {format_int_vi(paired['test']['n'])} chênh lệch tuần: "
+      f"{paired['test']['statistic_name']} = {format_number_vi(paired['test']['statistic'], 1)}, "
       f"p = {p_text(paired['test']['p_value'])}, "
       f"r = {format_number_vi(paired['test']['effect_size'], 4)}")
 print(f"  p tham chiếu (giả định độc lập) = {p_text(paired['test']['p_value_independence'])}")

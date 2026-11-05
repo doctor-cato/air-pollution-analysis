@@ -1115,7 +1115,10 @@ class TestRealDataset(unittest.TestCase):
         tests = self.results["tests"]
         self.assertAlmostEqual(tests["season_effect"]["statistic"], 61.5344, places=3)
         self.assertAlmostEqual(tests["season_effect"]["effect_size"], 0.2065, places=3)
-        self.assertAlmostEqual(tests["weekday_effect"]["statistic"], 8083.0, places=1)
+        self.assertEqual(tests["weekday_effect"]["statistic_name"], "t (HAC)")
+        self.assertAlmostEqual(tests["weekday_effect"]["statistic"], 1.611, places=2)
+        self.assertEqual(tests["weekday_effect"]["supporting_result"]["statistic_name"], "U")
+        self.assertAlmostEqual(tests["weekday_effect"]["supporting_result"]["statistic"], 8083.0, places=1)
         self.assertAlmostEqual(tests["weekday_effect"]["effect_size"], -0.1175, places=3)
         self.assertAlmostEqual(tests["qcvn_24h"]["effect_size"], -0.4102, places=3)
         self.assertAlmostEqual(tests["qcvn_annual"]["effect_size"], 0.8476, places=3)
@@ -2115,6 +2118,9 @@ class TestSeasonalContrastCI(unittest.TestCase):
         Hàm phải **kiểm tra tường minh** và, khi khoảng percentile không chứa
         ước lượng điểm, chuyển sang khoảng **đối xứng theo độ lệch tuyệt đối**
         (chứa ước lượng điểm theo cấu tạo) và **ghi rõ** cách dựng đã dùng.
+
+        Regression review PR #47: phân vị độ lệch tuyệt đối phải dùng
+        `CONFIDENCE_LEVEL = 0.95`, không phải `1.0 - CONFIDENCE_LEVEL = 0.05`.
         """
         original = inf._percentile_ci
 
@@ -2135,6 +2141,28 @@ class TestSeasonalContrastCI(unittest.TestCase):
         self.assertLessEqual(ci["ci_low"], ci["point"])
         self.assertGreaterEqual(ci["ci_high"], ci["point"])
 
+        # Xác minh CI bao phủ ước lượng điểm với bán kính đúng phân vị 95%:
+        half_width = ci["ci_high"] - ci["point"]
+        self.assertAlmostEqual(ci["point"] - ci["ci_low"], half_width, places=6)
+        self.assertGreater(half_width, 0.0)
+
+        # Tái hiện phân phối replicates dưới cùng seed để so sánh chính xác quantile:
+        reps_a = inf._group_calendar_block_replicates(
+            self.calendar, self.mask_a, block_length_days=inf.BLOCK_LENGTH_DAYS,
+            n_bootstrap=200, seed=42,
+        )
+        reps_b = inf._group_calendar_block_replicates(
+            self.calendar, self.mask_b, block_length_days=inf.BLOCK_LENGTH_DAYS,
+            n_bootstrap=200, seed=43,
+        )
+        diffs = inf._nan_reduce_rows(reps_a, "median") - inf._nan_reduce_rows(reps_b, "median")
+        abs_dev = np.abs(diffs[np.isfinite(diffs)] - ci["point"])
+        expected_q95 = float(np.quantile(abs_dev, inf.CONFIDENCE_LEVEL))
+        buggy_q05 = float(np.quantile(abs_dev, 1.0 - inf.CONFIDENCE_LEVEL))
+        self.assertAlmostEqual(half_width, expected_q95, places=6)
+        self.assertGreater(expected_q95, buggy_q05)
+        self.assertNotAlmostEqual(half_width, buggy_q05, places=3)
+
     def test_only_one_contrast_ci_implementation_exists(self):
         """
         Không được tồn tại hai phương pháp CI cho cùng estimand — đó là nguyên
@@ -2143,6 +2171,222 @@ class TestSeasonalContrastCI(unittest.TestCase):
         self.assertFalse(hasattr(inf, "calendar_bootstrap_difference_ci"))
         self.assertFalse(hasattr(inf, "bootstrap_difference_ci"))
         self.assertTrue(hasattr(inf, "calendar_contrast_ci"))
+
+
+class TestGroupCalendarBlockReplicates(unittest.TestCase):
+    """
+    Unit tests cho `_group_calendar_block_replicates` giải quyết Blocker 4 và 5:
+    * Ranh giới mùa: khối không bị cắt ngắn (non-truncated full windows);
+    * Phân đoạn mùa và ngày thiếu: không nhảy qua khoảng cách, không nội suy;
+    * Độ dài khối: kích thước khối đồng nhất và fallback khi nhóm nhỏ;
+    * Tính tái lập: seed tất định;
+    * Thống kê bootstrap: CI trung vị và trung bình hợp lệ;
+    * Quy tắc nhãn nhóm: nhãn đích cho null bootstrap, nhãn nguồn cho effect CI.
+    """
+
+    def setUp(self):
+        rng = np.random.default_rng(42)
+        # 120 ngày liên tiếp, 2 nhóm mỗi nhóm 60 ngày
+        values_a = 40.0 + inf._ar1_daily(60, 0.6, 5.0, rng)
+        values_b = 20.0 + inf._ar1_daily(60, 0.6, 5.0, rng)
+        values = np.concatenate([values_a, values_b])
+        self.calendar = _two_group_calendar(values, split=60, missing_positions=[10, 11, 80])
+        self.mask_a = self.calendar.labels == 0
+        self.mask_b = self.calendar.labels == 1
+
+    def test_season_boundary_blocks_are_never_truncated(self):
+        """
+        Tại ranh giới cuối mùa, các khối được rút phải có độ dài đầy đủ (non-truncated),
+        không bị cắt cụt thành khối 1–3 ngày. Đồng thời, 100% các ngày của nhóm
+        (kể cả những ngày cuối) phải nằm trong không gian lấy mẫu.
+        """
+        days = np.flatnonzero(self.mask_a)
+        gdates = np.asarray(self.calendar.dates, dtype="datetime64[D]")[days]
+        block_len = 14
+        wend = np.searchsorted(gdates, gdates + np.timedelta64(block_len, "D"), side="left")
+        lens = wend - np.arange(days.size)
+        max_len = int(lens.max())
+        self.assertEqual(max_len, block_len)
+
+        # Start positions có lens < max_len (13 ngày cuối của 60 ngày) không được là điểm bắt đầu
+        invalid_starts = set(np.flatnonzero(lens < max_len).tolist())
+        self.assertEqual(len(invalid_starts), block_len - 1)
+
+        reps = inf._group_calendar_block_replicates(
+            self.calendar, self.mask_a, block_length_days=block_len, n_bootstrap=200, seed=42
+        )
+        self.assertEqual(reps.shape, (200, int(np.isfinite(self.calendar.values[days]).sum())))
+
+        # Mọi ngày quan sát đều được bao phủ (100% coverage)
+        all_sampled_values = set(reps.flatten().tolist())
+        observed_values = set(self.calendar.values[days][np.isfinite(self.calendar.values[days])].tolist())
+        self.assertEqual(all_sampled_values, observed_values)
+
+    def test_multi_segment_season_never_crosses_gap_or_truncates(self):
+        """
+        Với nhóm gồm hai phân đoạn rời nhau (như mùa Hè gồm 2 năm cách nhau 9 tháng),
+        các khối không bao giờ nhảy qua khoảng trống giữa 2 phân đoạn, và ranh giới
+        cuối của từng phân đoạn không tạo ra khối bị cắt ngắn.
+        """
+        # Tạo calendar có 2 phân đoạn cách nhau 100 ngày
+        dates_part1 = np.arange(np.datetime64("2025-06-01"), np.datetime64("2025-08-01"), dtype="datetime64[D]")
+        dates_part2 = np.arange(np.datetime64("2026-06-01"), np.datetime64("2026-07-15"), dtype="datetime64[D]")
+        all_dates = np.concatenate([dates_part1, dates_part2])
+        rng = np.random.default_rng(123)
+        vals = 30.0 + rng.normal(0, 3, size=all_dates.size)
+        group_mask = np.ones(all_dates.size, dtype=bool)
+
+        cal = inf.DailyCalendar(
+            dates=all_dates,
+            values=vals,
+            labels=np.zeros(all_dates.size, dtype=np.int64),
+            valid_hours=np.full(all_dates.size, 24, dtype=np.int64),
+            season=np.full(all_dates.size, "He", dtype=object),
+            is_weekend=np.zeros(all_dates.size, dtype=np.int64),
+            week_key=np.full(all_dates.size, "2025-W01", dtype=object),
+        )
+
+        reps = inf._group_calendar_block_replicates(
+            cal, group_mask, block_length_days=14, n_bootstrap=100, seed=42
+        )
+        self.assertEqual(reps.shape, (100, all_dates.size))
+        self.assertTrue(np.all(np.isin(reps, vals)))
+
+    def test_missing_days_are_preserved_without_imputation(self):
+        """
+        Ngày thiếu (NaN) trong nhóm không được nội suy; số phần tử hữu hạn của nhóm
+        được bảo toàn chính xác.
+        """
+        observed_before = int(np.isfinite(self.calendar.values[self.mask_a]).sum())
+        reps = inf._group_calendar_block_replicates(
+            self.calendar, self.mask_a, block_length_days=14, n_bootstrap=50, seed=42
+        )
+        self.assertEqual(reps.shape[1], observed_before)
+        self.assertTrue(np.isfinite(reps).all())
+        original_finite = set(self.calendar.values[self.mask_a & np.isfinite(self.calendar.values)].tolist())
+        for row in reps:
+            for v in row:
+                self.assertIn(v, original_finite)
+
+    def test_group_replicates_exact_block_length_and_small_group_fallback(self):
+        """
+        Khi nhóm có số ngày nhỏ hơn `block_length_days`, thuật toán tự co về
+        `min(block_length_days, days.size)` mà không báo lỗi hay lặp vô hạn.
+        """
+        days_small = np.flatnonzero(self.mask_a)[:5]
+        mask_small = np.zeros(self.calendar.n_days, dtype=bool)
+        mask_small[days_small] = True
+
+        reps = inf._group_calendar_block_replicates(
+            self.calendar, mask_small, block_length_days=14, n_bootstrap=20, seed=42
+        )
+        n_obs = int(np.isfinite(self.calendar.values[days_small]).sum())
+        self.assertEqual(reps.shape, (20, n_obs))
+
+    def test_reproducibility_with_seed(self):
+        """Cùng seed sinh ra replicates hoàn toàn trùng khớp; khác seed sinh ra replicates khác nhau."""
+        reps1 = inf._group_calendar_block_replicates(
+            self.calendar, self.mask_a, block_length_days=14, n_bootstrap=50, seed=99
+        )
+        reps2 = inf._group_calendar_block_replicates(
+            self.calendar, self.mask_a, block_length_days=14, n_bootstrap=50, seed=99
+        )
+        reps3 = inf._group_calendar_block_replicates(
+            self.calendar, self.mask_a, block_length_days=14, n_bootstrap=50, seed=100
+        )
+        np.testing.assert_array_equal(reps1, reps2)
+        self.assertFalse(np.array_equal(reps1, reps3))
+
+    def test_multi_segment_with_short_segment_positive_sampling_coverage_and_fallback(self):
+        """
+        Regression test cho trường hợp nhóm gồm 2 phân đoạn liên tục: 40 ngày và 5 ngày,
+        cách nhau 100 ngày (> 3 tháng), với block_length_days = 28.
+
+        Lỗi cũ: `valid_starts = np.flatnonzero(lens == max_len)` với `max_len = 28`
+        loại bỏ hoàn toàn phân đoạn 5 ngày (xác suất lấy mẫu bằng 0 tuyệt đối).
+
+        Thiết kế mới theo từng contiguous segment bảo đảm:
+        1. Phân đoạn 5 ngày có xác suất dương (> 0) được chọn;
+        2. Fallback khi segment ngắn hơn block length: block length co về đúng 5 ngày;
+        3. Không bao giờ nhảy qua khoảng cách 100 ngày;
+        4. Trọng số giữa các đoạn phản ánh đúng tỷ lệ quan sát thực tế;
+        5. Tính tái lập theo seed;
+        6. Không khẳng định 100% finite-sample coverage nếu không có bằng chứng.
+        """
+        dates1 = pd.date_range("2025-01-01", periods=40, freq="D")
+        dates2 = pd.date_range("2025-06-01", periods=5, freq="D")
+        all_dates = pd.date_range("2025-01-01", "2025-06-05", freq="D")
+        n = len(all_dates)
+
+        values = np.full(n, np.nan)
+        season = np.array(["Other"] * n, dtype=object)
+        idx1 = all_dates.get_indexer(dates1)
+        values[idx1] = 10.0
+        season[idx1] = "Target"
+        idx2 = all_dates.get_indexer(dates2)
+        values[idx2] = 999.0
+        season[idx2] = "Target"
+
+        cal = inf.DailyCalendar(
+            dates=all_dates.values.astype("datetime64[D]"),
+            values=values,
+            labels=np.zeros(n, dtype=int),
+            valid_hours=np.full(n, 24, dtype=int),
+            season=season,
+            is_weekend=np.zeros(n, dtype=int),
+            week_key=np.full(n, "2025-W01", dtype=object),
+        )
+        mask = season == "Target"
+        n_target = 45
+
+        reps = inf._group_calendar_block_replicates(
+            cal, mask, block_length_days=28, n_bootstrap=200, seed=42
+        )
+        self.assertEqual(reps.shape, (200, n_target))
+
+        # 1. Phân đoạn 5 ngày có quan sát hợp lệ trong các bản sao bootstrap (không bị loại 100%)
+        count_seg2 = int(np.sum(reps == 999.0))
+        self.assertGreater(count_seg2, 0, "Phân đoạn 5 ngày bị loại bỏ hoàn toàn (0 lần xuất hiện)!")
+
+        # 2. Mọi giá trị lấy mẫu đều thuộc 2 phân đoạn quan sát hợp lệ (không nội suy hay tạo giá trị giả)
+        valid_vals = {10.0, 999.0}
+        unique_sampled = set(np.unique(reps))
+        self.assertEqual(unique_sampled, valid_vals)
+
+        # 3. Phân đoạn 5 ngày nhận tỷ lệ lấy mẫu tương ứng với tỷ lệ mẫu gốc (~11,1%)
+        frac_seg2 = float(np.mean(reps == 999.0))
+        self.assertGreater(frac_seg2, 0.05, f"Tỷ lệ phân đoạn 5 ngày quá thấp: {frac_seg2:.4f}")
+        self.assertLess(frac_seg2, 0.35, f"Tỷ lệ phân đoạn 5 ngày quá cao: {frac_seg2:.4f}")
+
+        # 4. Kiểm tra tính tất định: cùng seed sinh bản sao đồng nhất
+        reps_repeat = inf._group_calendar_block_replicates(
+            cal, mask, block_length_days=28, n_bootstrap=200, seed=42
+        )
+        np.testing.assert_array_equal(reps, reps_repeat)
+
+    def test_bootstrap_statistics_contrast_ci_median_and_mean(self):
+        """CI hiệu ứng tính đúng cho cả median và mean với thứ tự bound chuẩn xác."""
+        ci_med = inf.calendar_contrast_ci(
+            self.calendar, self.mask_a, self.mask_b, statistic="median", n_bootstrap=100, seed=42
+        )
+        ci_mean = inf.calendar_contrast_ci(
+            self.calendar, self.mask_a, self.mask_b, statistic="mean", n_bootstrap=100, seed=42
+        )
+        self.assertLessEqual(ci_med["ci_low"], ci_med["ci_high"])
+        self.assertLessEqual(ci_mean["ci_low"], ci_mean["ci_high"])
+        self.assertGreater(ci_med["point"], 0.0)
+        self.assertGreater(ci_mean["point"], 0.0)
+
+    def test_null_bootstrap_destination_labels_rule(self):
+        """
+        Quy tắc nhãn đích: trong `calendar_replicates()`, nhãn của bản sao cố định
+        tại ngày lịch đích (destination) để tách khỏi giá trị, mô phỏng đúng H₀.
+        """
+        idx = inf.calendar_block_indices(self.calendar.n_days, block_length_days=14, n_bootstrap=5, seed=42)
+        vals_2d, labels_2d = inf.calendar_replicates(self.calendar.values, self.calendar.labels, idx)
+        self.assertEqual(labels_2d.shape, (5, self.calendar.n_days))
+        for row in labels_2d:
+            np.testing.assert_array_equal(row, self.calendar.labels)
 
 
 class TestMonteCarloValidation(unittest.TestCase):
@@ -2167,6 +2411,16 @@ class TestMonteCarloValidation(unittest.TestCase):
         self.assertLessEqual(rate, 1.0)
         self.assertLessEqual(entry["ci_low_p_bootstrap"], rate + 1e-9)
         self.assertGreaterEqual(entry["ci_high_p_bootstrap"], rate - 1e-9)
+
+        # Hợp đồng số lần hợp lệ: có n_valid > 0 và n_valid_{method} riêng cho từng phương pháp:
+        self.assertIn("n_valid", entry)
+        self.assertGreater(entry["n_valid"], 0)
+        self.assertLessEqual(entry["n_valid"], result["n_sim"])
+        for suffix in ("p_bootstrap", "p_hac", "p_independence"):
+            col = f"n_valid_{suffix}"
+            self.assertIn(col, entry)
+            self.assertGreater(entry[col], 0)
+            self.assertLessEqual(entry[col], result["n_sim"])
 
     def test_is_reproducible_for_the_same_seed(self):
         kwargs = dict(
@@ -2199,10 +2453,24 @@ class TestMonteCarloValidation(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             path = inf.save_monte_carlo_csv(result, Path(folder) / "mc.csv")
             self.assertTrue(path.exists())
+            df = pd.read_csv(path)
+            self.assertIn("n_valid", df.columns)
+            mean_df = df[df["test"] == "mean"]
+            self.assertEqual(int(mean_df["n_valid"].iloc[0]), 4)
+            for suffix in ("p_bootstrap", "p_hac", "p_independence"):
+                self.assertIn(f"n_valid_{suffix}", df.columns)
+
             loaded = inf.load_monte_carlo_csv(path)
             self.assertIsNotNone(loaded)
             self.assertIn("independent", loaded["scenarios"])
             self.assertIn("mean", loaded["scenarios"]["independent"]["tests"])
+            loaded_entry = loaded["scenarios"]["independent"]["tests"]["mean"]
+            orig_entry = result["scenarios"]["independent"]["tests"]["mean"]
+            self.assertEqual(loaded_entry["n_valid"], orig_entry["n_valid"])
+            for suffix in ("p_bootstrap", "p_hac", "p_independence"):
+                col = f"n_valid_{suffix}"
+                self.assertEqual(loaded_entry[col], orig_entry[col])
+                self.assertAlmostEqual(loaded_entry[f"rate_{suffix}"], orig_entry[f"rate_{suffix}"])
 
     def test_load_returns_none_when_the_file_is_missing(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -2211,11 +2479,9 @@ class TestMonteCarloValidation(unittest.TestCase):
     def test_committed_monte_carlo_csv_respects_the_rate_contract(self):
         """
         CSV kiểm chứng đã commit phải giữ **hợp đồng**: đủ dòng, có cột bắt buộc,
-        mọi tỷ lệ **có mặt** nằm trong [0, 1], và mỗi kịch bản có **cùng** bộ phép
-        kiểm (không mất dòng khi thêm phép kiểm mới).
-
-        Ô trống là hợp lệ: một phép kiểm có thể **không áp dụng** cho kịch bản đó
-        (ví dụ cặp mùa hậu định không có đối chứng HAC).
+        cột `n_valid` > 0 trên mọi dòng (không bị lỗi n_valid = 0), bảo toàn số
+        phép thử hợp lệ riêng từng phương pháp, mọi tỷ lệ có mặt nằm trong [0, 1],
+        và đọc ngược qua load_monte_carlo_csv() thành công.
         """
         path = REPO_ROOT / "reports" / "inference_montecarlo.csv"
         if not path.exists():
@@ -2224,14 +2490,44 @@ class TestMonteCarloValidation(unittest.TestCase):
         self.assertGreaterEqual(len(frame), 30)
         self.assertIn("scenario", frame.columns)
         self.assertIn("test", frame.columns)
+        self.assertIn("n_valid", frame.columns)
+        self.assertTrue((frame["n_valid"] > 0).all(), "Cột n_valid không được bằng 0 trên bất kỳ dòng nào.")
+        self.assertTrue((frame["n_valid"] <= frame["n_sim"]).all())
+
+        # Kiểm tra cột n_valid riêng cho từng phương pháp:
+        for suffix in ("p_bootstrap", "p_hac", "p_independence"):
+            col = f"n_valid_{suffix}"
+            self.assertIn(col, frame.columns)
+            valid_vals = frame[col].dropna()
+            self.assertTrue((valid_vals > 0).all(), f"Giá trị hợp lệ của {col} phải > 0")
+            self.assertTrue((valid_vals <= frame.loc[valid_vals.index, "n_sim"]).all())
+
         for column in frame.columns:
             if column.startswith("rate_"):
                 present = frame[column].dropna()
                 self.assertTrue(present.between(0, 1).all(), column)
+                suffix = column[len("rate_"):]
+                lo_col = f"ci_low_{suffix}"
+                hi_col = f"ci_high_{suffix}"
+                if lo_col in frame.columns and hi_col in frame.columns:
+                    lo = frame[lo_col].dropna()
+                    hi = frame[hi_col].dropna()
+                    self.assertTrue((lo >= 0.0).all())
+                    self.assertTrue((hi <= 1.0).all())
+                    common_idx = present.index.intersection(lo.index).intersection(hi.index)
+                    self.assertTrue((lo.loc[common_idx] <= present.loc[common_idx] + 1e-9).all())
+                    self.assertTrue((hi.loc[common_idx] >= present.loc[common_idx] - 1e-9).all())
+
         per_scenario = frame.groupby("scenario")["test"].nunique()
         self.assertTrue((per_scenario == per_scenario.iloc[0]).all())
         # Bằng chứng cho p-value hậu định (thống kê chuẩn hoá r_rb) phải có mặt.
         self.assertIn("pair", set(frame["test"]))
+
+        # Kiểm tra khả năng đọc ngược thành công
+        loaded = inf.load_monte_carlo_csv(path)
+        self.assertIsNotNone(loaded)
+        self.assertEqual(loaded["n_sim"], int(frame["n_sim"].iloc[0]))
+        self.assertGreater(len(loaded["scenarios"]), 0)
 
 
 class TestCalendarAwarePipeline(unittest.TestCase):
@@ -2261,10 +2557,82 @@ class TestCalendarAwarePipeline(unittest.TestCase):
         frame = _synthetic_hourly(days=400)
         results = inf.run_inference(frame, n_bootstrap=40, seed=42, include_simulation=False)
         weekday = results["tests"]["weekday_effect"]
+        self.assertEqual(weekday["statistic_name"], "t (HAC)")
         self.assertAlmostEqual(
-            weekday["p_value"], weekday["supporting_result"]["p_value"], places=12
+            weekday["p_value"], weekday["hac_detail"]["p_value"], places=12
+        )
+        self.assertAlmostEqual(
+            weekday["statistic"], weekday["hac_detail"]["statistic"], places=12
+        )
+        self.assertEqual(weekday["supporting_result"]["name"], "U")
+        self.assertEqual(weekday["supporting_result"]["statistic_name"], "U")
+        self.assertAlmostEqual(
+            weekday["supporting_result"]["p_value"], weekday["p_value_bootstrap"], places=12
         )
         self.assertIn("p_value_bootstrap", weekday)
+        self.assertIn("OLS + HAC", weekday["method"]["primary"])
+        self.assertIn("Mann-Whitney U", weekday["method"]["supporting"])
+
+    def test_blocker3_weekday_and_holm_consistency(self):
+        """
+        Regression test cho Blocker #3 (PR #47 review):
+        Đảm bảo (method, statistic_name, statistic, p_value) nhất quán giữa
+        weekday_effect, bảng Holm, và supporting_result.
+        """
+        frame = _synthetic_hourly(days=400)
+        results = inf.run_inference(frame, n_bootstrap=40, seed=42, include_simulation=False)
+        weekday = results["tests"]["weekday_effect"]
+        holm_rows = {row["key"]: row for row in results["holm_confirmatory"]}
+        weekday_holm = holm_rows["weekday_effect"]
+
+        # 1. weekday test return dictionary
+        self.assertEqual(weekday["statistic_name"], "t (HAC)")
+        self.assertEqual(weekday["statistic"], weekday["hac_detail"]["statistic"])
+        self.assertEqual(weekday["p_value"], weekday["hac_detail"]["p_value"])
+        self.assertIn("OLS + HAC", weekday["method"]["primary"])
+        self.assertIn("Mann-Whitney U", weekday["method"]["supporting"])
+
+        # 2. Holm table row
+        self.assertEqual(weekday_holm["statistic_name"], "t (HAC)")
+        self.assertEqual(weekday_holm["statistic"], weekday["statistic"])
+        self.assertEqual(weekday_holm["p_raw"], weekday["p_value"])
+        self.assertEqual(weekday_holm["method"], weekday["method"]["primary"])
+
+    def test_blocker3_paired_weekly_signed_rank_consistency(self):
+        """
+        Regression test cho Blocker #3 (PR #47 review):
+        Phép thử chênh lệch tuần (paired_weeks) dùng Wilcoxon signed-rank (W⁺)
+        kèm calendar bootstrap p-value, không phải t-test có Newey-West HAC.
+        """
+        frame = _synthetic_hourly(days=400)
+        results = inf.run_inference(frame, n_bootstrap=40, seed=42, include_simulation=False)
+        paired = results["sensitivity"]["paired_weeks"]["test"]
+        self.assertEqual(paired["statistic_name"], "W⁺")
+        self.assertGreaterEqual(paired["statistic"], 0.0)
+
+        # Markdown report rendering
+        report = inf.render_inference_report(results)
+        self.assertNotIn("Signed-rank có HAC (Newey–West, lag 4 tuần)", report)
+        self.assertNotIn("t = 315", report)
+        self.assertIn("Wilcoxon signed-rank + null block bootstrap theo lịch", report)
+        self.assertIn(f"W⁺ = {inf.format_number_vi(paired['statistic'], 1)}", report)
+
+    def test_blocker3_fig10_labels_consistency(self):
+        """
+        Regression test cho Blocker #3:
+        FIG-10 text box không ghép U với p (HAC), mà tách rõ t (HAC) và Mann-Whitney U.
+        """
+        frame = _synthetic_hourly(days=400)
+        results = inf.run_inference(frame, n_bootstrap=40, seed=42, include_simulation=False)
+        fig = inf._figure_weekday(results)
+        self.assertIsNotNone(fig)
+        ax = fig.axes[0]
+        texts = [child.get_text() for child in ax.get_children() if hasattr(child, "get_text")]
+        combined_text = "\n".join(texts)
+        self.assertIn("t (HAC) =", combined_text)
+        self.assertIn("Mann-Whitney U =", combined_text)
+        import matplotlib.pyplot as plt
+        plt.close(fig)
 
     def test_location_tests_expose_the_bootstrap_alternative(self):
         frame = _synthetic_hourly(days=400)
