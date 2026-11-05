@@ -102,7 +102,7 @@ Bốn kiểm định xác nhận dùng **bốn cách dựng null khác nhau**, m
 | Kiểm định | H₀ | Phương pháp **chính** | Đối chứng | Tham số phụ thuộc |
 |---|---|---|---|---|
 | Mùa | 4 mùa cùng phân phối (quá trình ổn định) | Kruskal-Wallis + **null block bootstrap THEO LỊCH** trên chuỗi **gộp** | Hồi quy HAC có xu hướng (**không dùng để quyết định** — xem 4.3) | block 28 ngày lịch |
-| Weekday vs cuối tuần | Hai nhóm cùng phân phối | Hồi quy **HAC/Newey–West** `[1, xu hướng, dummy cuối tuần]` | Mann-Whitney + **null block bootstrap THEO LỊCH** | lag 28 ngày |
+| Weekday vs cuối tuần | β_weekend = 0 (OLS+HAC; đối chứng: hai phân phối đồng nhất) | Hồi quy **HAC/Newey–West** `[1, xu hướng, dummy cuối tuần]` | Mann-Whitney + **null block bootstrap THEO LỊCH** | lag 28 ngày |
 | QCVN 24h (trung vị = 50) | P(trung bình ngày > 50) = 0,5 | **HAC/Newey–West** cho tỷ lệ vượt ngưỡng | Null áp đặt H₀ **theo lịch** (signed-rank) + p đảo CI | lag 28 ngày |
 | QCVN năm (trung bình = 25) | E(trung bình ngày) = 25 | **HAC/Newey–West** (hệ số chặn) | Null áp đặt H₀ **theo lịch** (t) + p đảo CI | lag 28 ngày |
 
@@ -186,8 +186,8 @@ Sáu cặp này **không** thuộc family xác nhận: chúng được khảo s�
 
 ## 6. Kiểm định 2 — Ngày làm việc vs ngày cuối tuần
 
-- **H₀:** Phân phối PM2.5 trung bình ngày của ngày làm việc và cuối tuần giống nhau.
-- **H₁:** Hai phân phối khác nhau.
+- **H₀:** Hệ số dummy cuối tuần trong mô hình OLS bằng 0 sau khi kiểm soát xu hướng tuyến tính (không có chênh lệch kỳ vọng có điều kiện giữa ngày làm việc và cuối tuần; đối chứng phi tham số Mann-Whitney kiểm định H₀ hai phân phối đồng nhất).
+- **H₁:** Hệ số dummy cuối tuần khác 0 (có chênh lệch kỳ vọng có điều kiện giữa ngày làm việc và cuối tuần).
 - **α = 0,05, hai phía.**
 
 **Phương pháp chính:** OLS + HAC (Newey–West), hệ số dummy cuối tuần (lag 28 ngày).

@@ -2427,14 +2427,15 @@ def _weekday_effect_test(
     """
     Kiểm định 2 — ngày làm việc vs ngày cuối tuần, **có xét phụ thuộc thời gian**.
 
-    H₀: phân phối trung bình ngày của ngày làm việc và ngày cuối tuần giống
-    nhau. H₁: khác nhau.
-
     * **Phương pháp chính:** hồi quy **OLS + HAC (Newey–West)** `[1, xu hướng, dummy cuối tuần]`.
+      H₀: không có chênh lệch kỳ vọng có điều kiện giữa ngày làm việc và cuối tuần
+      sau khi kiểm soát xu hướng tuyến tính (β_weekend = 0).
+      H₁: có chênh lệch kỳ vọng có điều kiện (β_weekend ≠ 0).
     * **Đối chứng:** Mann-Whitney U với phân phối null dựng bằng
       **circular moving block bootstrap THEO LỊCH** trên chuỗi **gộp** (block 28 ngày lịch);
       nhãn weekday/weekend cố định tại **ngày lịch đích (destination)** của bản sao để cắt đứt
       liên kết nhóm theo H₀; mặt nạ ngày thiếu đi theo giá trị ngày nguồn.
+      (H₀ đối chứng: hai phân phối PM2.5 đồng nhất).
     """
     values = panel["pm25_mean"].to_numpy(dtype=float)
     is_weekend = panel["is_weekend"].to_numpy(dtype=int)
@@ -2513,8 +2514,14 @@ def _weekday_effect_test(
         "test": "weekday_effect",
         "key": "weekday_effect",
         "label": "Ngày làm việc vs cuối tuần (xét phụ thuộc thời gian)",
-        "h0": "Phân phối PM2.5 trung bình ngày của ngày làm việc và cuối tuần giống nhau.",
-        "h1": "Hai phân phối khác nhau.",
+        "h0": (
+            "Hệ số dummy cuối tuần trong mô hình OLS bằng 0 sau khi kiểm soát xu hướng tuyến tính "
+            "(không có chênh lệch kỳ vọng có điều kiện giữa ngày làm việc và cuối tuần; "
+            "đối chứng phi tham số Mann-Whitney kiểm định H₀ hai phân phối đồng nhất)."
+        ),
+        "h1": (
+            "Hệ số dummy cuối tuần khác 0 (có chênh lệch kỳ vọng có điều kiện giữa ngày làm việc và cuối tuần)."
+        ),
         "unit": "Trung bình ngày (≥ 18/24 giờ có `pm25`).",
         "alternative": "hai phía",
         "statistic_name": "t (HAC)",
@@ -4511,7 +4518,7 @@ def render_inference_report(results: Mapping[str, Any]) -> str:
         "| Kiểm định | H₀ | Phương pháp **chính** | Đối chứng | Tham số phụ thuộc |",
         "|---|---|---|---|---|",
         f"| Mùa | 4 mùa cùng phân phối (quá trình ổn định) | Kruskal-Wallis + **null block bootstrap THEO LỊCH** trên chuỗi **gộp** | Hồi quy HAC có xu hướng (**không dùng để quyết định** — xem 4.3) | block {meta['block_length_days']} ngày lịch |",
-        f"| Weekday vs cuối tuần | Hai nhóm cùng phân phối | Hồi quy **HAC/Newey–West** `[1, xu hướng, dummy cuối tuần]` | Mann-Whitney + **null block bootstrap THEO LỊCH** | lag {meta['hac_lag_days']} ngày |",
+        f"| Weekday vs cuối tuần | β_weekend = 0 (OLS+HAC; đối chứng: hai phân phối đồng nhất) | Hồi quy **HAC/Newey–West** `[1, xu hướng, dummy cuối tuần]` | Mann-Whitney + **null block bootstrap THEO LỊCH** | lag {meta['hac_lag_days']} ngày |",
         f"| QCVN 24h (trung vị = 50) | P(trung bình ngày > 50) = 0,5 | **HAC/Newey–West** cho tỷ lệ vượt ngưỡng | Null áp đặt H₀ **theo lịch** (signed-rank) + p đảo CI | lag {meta['hac_lag_days']} ngày |",
         f"| QCVN năm (trung bình = 25) | E(trung bình ngày) = 25 | **HAC/Newey–West** (hệ số chặn) | Null áp đặt H₀ **theo lịch** (t) + p đảo CI | lag {meta['hac_lag_days']} ngày |",
         "",

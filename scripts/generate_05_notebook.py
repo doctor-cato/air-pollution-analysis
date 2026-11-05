@@ -755,8 +755,8 @@ add_md(r"""---
 
 ## 7. Kiểm định 2 — Ngày làm việc vs ngày cuối tuần
 
-- **H₀:** phân phối PM₂.₅ trung bình ngày của ngày làm việc bằng của ngày cuối tuần.
-- **H₁:** hai phân phối khác nhau.
+- **H₀ (OLS + HAC, phương pháp chính):** Hệ số dummy cuối tuần $\beta_{\text{weekend}} = 0$ sau khi kiểm soát xu hướng tuyến tính (không có chênh lệch kỳ vọng có điều kiện giữa ngày làm việc và cuối tuần). Đối chứng phi tham số Mann-Whitney kiểm định $H_0$: hai phân phối đồng nhất ($P(X > Y) = 0,5$).
+- **H₁:** $\beta_{\text{weekend}} \neq 0$ (có chênh lệch kỳ vọng có điều kiện giữa hai nhóm).
 - **α = 0,05**, hai phía.
 
 ### 7.1. Phương pháp
