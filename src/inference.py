@@ -20,7 +20,7 @@ BA QUYẾT ĐỊNH PHƯƠNG PHÁP ĐÓNG BĂNG TẠI ĐÂY
    khoảng 30 lần và biến mọi p-value thành vô nghĩa. Một ngày chỉ được giữ khi
    có **≥ 18/24 giờ** đo được (tiêu chí độ phủ 75% — **lựa chọn phân tích của
    dự án**, không phải điều khoản của QCVN).
-2. **Khoảng tin cậy dùng circular moving block bootstrap**, block 7 ngày,
+2. **Khoảng tin cậy dùng moving block bootstrap theo lịch**, block 28 ngày lịch,
    1.000 lặp, seed 42, CI percentile. Không bootstrap từng hàng giờ, cũng không
    bootstrap độc lập từng ngày — cả hai đều phá cấu trúc tự tương quan.
    Với so sánh hai nhóm, mỗi nhóm được resample **theo block riêng** (stratified)
@@ -1214,10 +1214,12 @@ def t_statistic_rows(deviations_2d: np.ndarray) -> np.ndarray:
 # 1. **Block = ngày lịch liên tiếp.** `calendar_block_indices()` chọn các khối
 #    gồm `block_length_days` ngày LỊCH liên tiếp (vòng tròn). Chỉ số trả về
 #    là chỉ số trên trục lịch, nên "28" luôn có nghĩa "28 ngày".
-# 2. **Mặt nạ thiếu đi theo bản sao.** Ngày không tạo được trung bình ngày vẫn
-#    là `NaN` trong bản sao, và **nhãn nhóm đi theo ngày nguồn** của bản sao.
-#    Không nội suy, không tạo quan sát giả, không "nối" hai khoảng bị ngắt: một
-#    khối chứa 3 ngày thiếu thì bản sao cũng thiếu đúng 3 ngày đó.
+# 2. **Mặt nạ thiếu đi theo bản sao, nhãn nhóm ở ngày lịch đích.** Ngày không tạo
+#    được trung bình ngày vẫn là `NaN` trong bản sao (mặt nạ thiếu đi theo giá trị
+#    ngày nguồn), còn **nhãn nhóm cố định ở ngày lịch đích (destination)** của
+#    bản sao (xem `calendar_replicates()`). Không nội suy, không tạo quan sát giả,
+#    không "nối" hai khoảng bị ngắt: một khối chứa 3 ngày thiếu thì bản sao cũng
+#    thiếu đúng 3 ngày đó.
 # 3. **H₀ không đổi.** Với kiểm định theo nhóm, null là chuỗi **gộp** (H₀: các
 #    nhóm cùng phân phối); với kiểm định vị trí, H₀ được **áp đặt** bằng cách
 #    trừ mốc *trên lịch* rồi mới resample.
@@ -1581,6 +1583,20 @@ def _group_calendar_block_replicates(
     LỊCH liên tiếp** *trong footprint lịch của nhóm* (các ngày mang nhãn nhóm),
     rồi ghép lại cho tới khi đủ số ngày quan sát của nhóm.
 
+    Để bảo toàn cấu trúc khối và tránh thiên lệch mẫu tại ranh giới cuối mùa:
+    * **Chỉ chọn điểm bắt đầu có cửa sổ đủ độ dài (valid starts with full window):**
+      Thay vì cắt cụt block thành 1–3 ngày khi cửa sổ chạm cuối mùa rồi rút lặp lại,
+      thuật toán chỉ lấy các điểm bắt đầu có cửa sổ đạt độ dài tối đa (`lens == max_len`).
+      Mọi block được rút đều giữ trọn vẹn độ dài cửa sổ lịch ấn định.
+    * **Bảo tồn 100% không gian quan sát:** Các cửa sổ hợp lệ mở rộng tới tận ngày
+      cuối cùng của mùa, do đó 100% các ngày quan sát trong nhóm đều có xác suất
+      dương được đưa vào bản sao bootstrap.
+    * **Không tạo bước nhảy nhân tạo:** Khác với circular wrap (ghép ngày cuối mùa
+      với ngày đầu mùa, hoặc nối hai năm cách nhau 9 tháng ở mùa Hè), việc chỉ chọn
+      điểm bắt đầu đủ dài bảo toàn chuỗi thời gian tự nhiên của từng đoạn lịch.
+    * **Giới hạn:** Theo Moving Block Bootstrap chuẩn (Künsch 1989), các ngày sát
+      biên cuối có xác suất biên xuất hiện thấp hơn các ngày ở giữa.
+
     Ba tính chất bắt buộc:
 
     1. **Nhãn đi theo ngày nguồn.** Một ngày Đông được rút vẫn là ngày Đông →
@@ -1611,11 +1627,17 @@ def _group_calendar_block_replicates(
     # Block bắt đầu tại `days[i]` = các ngày **của nhóm** nằm trong cửa sổ lịch
     # [ngày_i, ngày_i + block_length_days). `searchsorted` trên *ngày lịch* nên độ
     # dài block luôn mang nghĩa ngày lịch, kể cả khi nhóm không chiếm mọi ngày.
+    eff_block = min(int(block_length_days), days.size)
     window_end = np.searchsorted(
         group_dates,
-        group_dates + np.timedelta64(int(block_length_days), "D"),
+        group_dates + np.timedelta64(eff_block, "D"),
         side="left",
     )
+    lens = window_end - np.arange(days.size)
+    max_len = int(lens.max())
+    valid_starts = np.flatnonzero(lens == max_len)
+    if valid_starts.size == 0:
+        valid_starts = np.arange(days.size)
 
     rng = np.random.default_rng(seed)
     replicates = np.empty((n_bootstrap, n_target), dtype=float)
@@ -1629,8 +1651,8 @@ def _group_calendar_block_replicates(
                 raise ValueError(
                     "Không đủ ngày quan sát sau 10.000 lần rút block — kiểm tra mặt nạ nhóm."
                 )
-            i = int(rng.integers(days.size))
-            block = values[days[i:window_end[i]]]
+            idx_start = int(valid_starts[rng.integers(valid_starts.size)])
+            block = values[days[idx_start:window_end[idx_start]]]
             block = block[np.isfinite(block)]
             if block.size == 0:
                 # Block rơi vào vùng không quan sát của nhóm (ví dụ cửa sổ Hè 2026
@@ -2225,8 +2247,9 @@ def _season_effect_test(
     * **Phương pháp chính:** Kruskal-Wallis với phân phối null dựng bằng
       **circular moving block bootstrap THEO LỊCH** — block gồm
       `block_length` **ngày lịch liên tiếp**, resample trên chuỗi **gộp** (mọi
-      mùa gộp chung) của **lịch ngày đầy đủ**; nhãn mùa đi theo **ngày nguồn**
-      của bản sao, mặt nạ ngày thiếu đi theo bản sao.
+      mùa gộp chung) của **lịch ngày đầy đủ**; nhãn mùa cố định tại **ngày lịch
+      đích (destination)** của bản sao để cắt đứt liên kết theo H₀, mặt nạ
+      ngày thiếu đi theo giá trị ngày nguồn.
     * **Đối chứng:** hồi quy **HAC/Newey–West** `[1, xu hướng, 3 dummy mùa]`,
       kiểm định Wald đồng thời — dùng để **tách mùa khỏi xu hướng thời gian**
       (bốn mùa là bốn đoạn thời gian liên tiếp).
@@ -2254,9 +2277,9 @@ def _season_effect_test(
         seed=seed,
         null_construction=(
             "Chuỗi GỘP trên lịch ngày đầy đủ (mọi mùa gộp chung), resample theo "
-            "block gồm NGÀY LỊCH liên tiếp; nhãn mùa đi theo ngày nguồn của bản "
-            "sao; mặt nạ ngày thiếu đi theo bản sao (không nội suy, không nối hai "
-            "khoảng thời gian bị ngắt)."
+            "block gồm NGÀY LỊCH liên tiếp; nhãn mùa cố định tại ngày lịch đích "
+            "(destination) của bản sao; mặt nạ ngày thiếu đi theo giá trị ngày nguồn "
+            "(không nội suy, không nối hai khoảng thời gian bị ngắt)."
         ),
         statistic_name="H",
     )
@@ -2353,9 +2376,9 @@ def _season_effect_test(
             "supporting_lag": int(hac_lag),
             "assumptions": (
                 "Chuỗi gộp ổn định trong giai đoạn quan sát; block ≥ 28 ngày LỊCH bao "
-                "trọn phụ thuộc còn lại; nhãn mùa gắn theo NGÀY NGUỒN của bản sao nên "
-                "cấu trúc mùa vụ không bị phá vỡ; mặt nạ ngày thiếu đi theo bản sao; "
-                "phương pháp đối chứng dùng HAC để tách mùa khỏi xu hướng."
+                "trọn phụ thuộc còn lại; nhãn mùa cố định tại ngày lịch đích (destination) "
+                "để cắt đứt liên kết mùa vụ theo H₀; mặt nạ ngày thiếu đi theo giá trị "
+                "ngày nguồn; phương pháp đối chứng dùng HAC để tách mùa khỏi xu hướng."
             ),
         },
         "supporting_result": {
@@ -2400,8 +2423,8 @@ def _weekday_effect_test(
     * **Phương pháp chính:** hồi quy **OLS + HAC (Newey–West)** `[1, xu hướng, dummy cuối tuần]`.
     * **Đối chứng:** Mann-Whitney U với phân phối null dựng bằng
       **circular moving block bootstrap THEO LỊCH** trên chuỗi **gộp** (block 28 ngày lịch);
-      nhãn weekday/weekend đi theo **ngày nguồn** của bản sao → cấu trúc tuần không
-      bị phá vỡ; mặt nạ ngày thiếu đi theo bản sao.
+      nhãn weekday/weekend cố định tại **ngày lịch đích (destination)** của bản sao để cắt đứt
+      liên kết nhóm theo H₀; mặt nạ ngày thiếu đi theo giá trị ngày nguồn.
     """
     values = panel["pm25_mean"].to_numpy(dtype=float)
     is_weekend = panel["is_weekend"].to_numpy(dtype=int)
@@ -2427,8 +2450,8 @@ def _weekday_effect_test(
         seed=seed,
         null_construction=(
             "Chuỗi GỘP trên lịch ngày đầy đủ, resample theo block gồm NGÀY LỊCH "
-            "liên tiếp; nhãn weekday/weekend đi theo ngày nguồn của bản sao; mặt nạ "
-            "ngày thiếu đi theo bản sao."
+            "liên tiếp; nhãn weekday/weekend cố định tại ngày lịch đích (destination) "
+            "của bản sao; mặt nạ ngày thiếu đi theo giá trị ngày nguồn."
         ),
         statistic_name="U",
     )
@@ -3587,8 +3610,8 @@ def season_weekly_sensitivity(
         n_bootstrap=n_bootstrap,
         seed=seed,
         null_construction=(
-            "Lịch tuần ISO, resample theo block 4 TUẦN = 28 ngày lịch; nhãn mùa đi "
-            "theo ngày nguồn của bản sao."
+            "Lịch tuần ISO, resample theo block 4 TUẦN = 28 ngày lịch; nhãn mùa cố "
+            "định tại tuần lịch đích (destination) của bản sao."
         ),
         statistic_name="H",
     )
@@ -3690,9 +3713,9 @@ def _posthoc_pairs(
 
     p-value của mỗi cặp cũng được dựng lại **dưới H₀ có xét phụ thuộc**: null
     block bootstrap **theo lịch** trên toàn bộ lịch ngày (H₀ của phép kiểm hậu
-    định là "các mùa không khác nhau"), với nhãn của **hai mùa được so sánh** đi
-    theo ngày nguồn. Hạng được tính **trong tập A ∪ B** để thống kê U của bản
-    sao null và bản sao quan sát cùng thang đo.
+    định là "các mùa không khác nhau"), với nhãn của **hai mùa được so sánh** cố
+    định tại **ngày lịch đích (destination)**. Hạng được tính **trong tập A ∪ B** để
+    thống kê U của bản sao null và bản sao quan sát cùng thang đo.
 
     **CI của mỗi cặp** do `calendar_contrast_ci()` dựng (CI **hiệu ứng**,
     calendar-aware, phân tầng theo nhóm) — cùng hàm và cùng payload mà phân tích
@@ -3750,9 +3773,9 @@ def _posthoc_pairs(
                 seed=seed,
                 null_construction=(
                     "Chuỗi GỘP trên lịch ngày đầy đủ, resample theo block gồm NGÀY "
-                    "LỊCH liên tiếp; nhãn của hai mùa so sánh đi theo ngày nguồn; "
-                    "hạng tính trong tập A ∪ B; thống kê so sánh là r_rb (chuẩn hoá "
-                    "theo cỡ mẫu) để thống kê quan sát và thống kê null cùng thang đo."
+                    "LỊCH liên tiếp; nhãn của hai mùa so sánh cố định tại ngày lịch đích "
+                    "(destination); hạng tính trong tập A ∪ B; thống kê so sánh là r_rb "
+                    "(chuẩn hoá theo cỡ mẫu) để thống kê quan sát và thống kê null cùng thang đo."
                 ),
                 statistic_name="r_rb",
             )
@@ -3825,7 +3848,8 @@ def _calendar_diagnostics(
         "note": (
             "Mọi resample chạy trên lịch này: block gồm ngày LỊCH liên tiếp; ngày "
             "thiếu vẫn là NaN trong bản sao (không nội suy, không nối khoảng thời "
-            "gian bị ngắt); nhãn nhóm đi theo ngày nguồn của bản sao."
+            "gian bị ngắt); ở kiểm định null nhãn nhóm cố định tại ngày lịch đích "
+            "(destination) để cắt đứt liên kết theo H₀."
         ),
     }
 

@@ -149,7 +149,7 @@ Bốn kiểm định xác nhận dùng **bốn cách dựng null khác nhau**, m
 - **p (hiệu chỉnh phụ thuộc thời gian) = 0,0280** → bác bỏ H₀; **p Holm = 0,0560** → không bác bỏ H₀.
 - p tham chiếu (giả định độc lập) = 2,76·10⁻¹³; hồi quy HAC (chẩn đoán, xem 4.3) p = 2,36·10⁻¹⁰.
 - Effect size **ε² = 0,2065** (tỷ lệ phương sai hạng giải thích bởi mùa).
-- CI 95% của **hiệu ứng** (bootstrap block theo lịch, phân tầng theo nhóm) cho chênh lệch trung vị **Đông − Hè**: 29,32 µg/m³, [7,58; 38,65] (n Đông = 79 ngày quan sát, n Hè = 53 ngày quan sát; cách dựng: percentile; CI chứa ước lượng điểm: có).
+- CI 95% của **hiệu ứng** (bootstrap block theo lịch, phân tầng theo nhóm) cho chênh lệch trung vị **Đông − Hè**: 29,32 µg/m³, [16,18; 38,93] (n Đông = 79 ngày quan sát, n Hè = 53 ngày quan sát; cách dựng: percentile; CI chứa ước lượng điểm: có).
 - **Đây là CI của hiệu ứng, KHÁC phân phối null dùng cho p-value.** CI trả lời *"chênh lệch trung vị giữa hai mùa là bao nhiêu, với độ không chắc chắn ra sao"*; p-value trả lời *"dữ liệu có tương phản với H₀: hai mùa cùng phân phối không"*. Vì vậy CI có thể **loại trừ 0** trong khi p-value của cùng một cặp **không** nhỏ hơn α (và ngược lại) — hai câu hỏi khác nhau, hai phương pháp khác nhau.
 
 **Độ nhạy theo độ dài block (ngày lịch).**
@@ -175,12 +175,12 @@ Sáu cặp này **không** thuộc family xác nhận: chúng được khảo s�
 
 | Cặp | Trung vị A | Trung vị B | U | p (hiệu chỉnh) | p Holm | p tham chiếu | r_rb | CI 95% (A−B) |
 |---|---|---|---|---|---|---|---|---|
-| Đông – Xuân | 60,46 | 32,81 | 5191 | 0,0224 | 0,1120 | 1,49·10⁻¹⁰ | 0,583 | [3,21; 36,75] |
-| Đông – Hè | 60,46 | 31,14 | 3519 | 0,0052 | 0,0312 | 3,72·10⁻¹¹ | 0,681 | [7,58; 38,65] |
-| Đông – Thu | 60,46 | 36,30 | 4951 | 0,0568 | 0,2272 | 5,93·10⁻⁸ | 0,492 | [−1,82; 32,08] |
-| Xuân – Hè | 32,81 | 31,14 | 2512 | 0,5835 | 1,0000 | 0,1639 | 0,142 | [−3,94; 9,77] |
-| Xuân – Thu | 32,81 | 36,30 | 3140 | 0,7163 | 1,0000 | 0,2688 | −0,099 | [−16,39; 3,85] |
-| Hè – Thu | 31,14 | 36,30 | 1731 | 0,3751 | 1,0000 | 0,0289 | −0,222 | [−18,82; 0,31] |
+| Đông – Xuân | 60,46 | 32,81 | 5191 | 0,0224 | 0,1120 | 1,49·10⁻¹⁰ | 0,583 | [13,69; 38,99] |
+| Đông – Hè | 60,46 | 31,14 | 3519 | 0,0052 | 0,0312 | 3,72·10⁻¹¹ | 0,681 | [16,18; 38,93] |
+| Đông – Thu | 60,46 | 36,30 | 4951 | 0,0568 | 0,2272 | 5,93·10⁻⁸ | 0,492 | [12,95; 35,94] |
+| Xuân – Hè | 32,81 | 31,14 | 2512 | 0,5835 | 1,0000 | 0,1639 | 0,142 | [−5,16; 9,05] |
+| Xuân – Thu | 32,81 | 36,30 | 3140 | 0,7163 | 1,0000 | 0,2688 | −0,099 | [−6,75; 5,85] |
+| Hè – Thu | 31,14 | 36,30 | 1731 | 0,3751 | 1,0000 | 0,0289 | −0,222 | [−7,47; 2,24] |
 
 ---
 
@@ -197,7 +197,7 @@ Sáu cặp này **không** thuộc family xác nhận: chúng được khảo s�
 - Ngày cuối tuần: n = 86, trung vị 39,45 µg/m³.
 - **t (HAC) = 1,611**, **p (hiệu chỉnh phụ thuộc) = 0,1082** → không bác bỏ H₀; **p Holm = 0,1082** → không bác bỏ H₀.
 - Đối chứng phi tham số: Mann-Whitney U = 8083,0, null block bootstrap theo lịch p = 0,5379 (tham chiếu giả định độc lập: p = 0,1120).
-- Chênh lệch trung vị: **−2,74 µg/m³**, CI 95% của **hiệu ứng** (bootstrap block theo lịch, phân tầng theo nhóm) [−16,25; 4,24].
+- Chênh lệch trung vị: **−2,74 µg/m³**, CI 95% của **hiệu ứng** (bootstrap block theo lịch, phân tầng theo nhóm) [−15,65; 5,14].
 - Effect size **r_rb = −0,1175** (dương = ngày làm việc cao hơn).
 
 **Độ nhạy theo lag HAC (phương pháp chính).**
@@ -214,7 +214,7 @@ Sáu cặp này **không** thuộc family xác nhận: chúng được khảo s�
 
 **Ý nghĩa thống kê ≠ ý nghĩa thực tiễn — và power có giới hạn.** Với SD gộp 21,65 µg/m³, n₁ = 213, n₂ = 86, chênh lệch nhỏ nhất phát hiện được ở power 80%, α = 0,05 là **MDE ≈ 7,75 µg/m³** (xấp xỉ chuẩn, tính hậu nghiệm từ SD quan sát — lưu ý: công thức này **giả định độc lập**, nên với chuỗi tự tương quan nó **đánh giá thấp** ngưỡng phân giải thực tế).
 
-- Chênh lệch quan sát được là −2,74 µg/m³, nhỏ hơn MDE, và CI 95% của hiệu ứng [−16,25; 4,24] chứa 0; |r_rb| = 0,117. Vì vậy dữ liệu **không đủ độ phân giải** để phân biệt 'không có khác biệt' với 'khác biệt nhỏ hơn MDE' — đây không phải bằng chứng khẳng định hai nhóm bằng nhau.
+- Chênh lệch quan sát được là −2,74 µg/m³, nhỏ hơn MDE, và CI 95% của hiệu ứng [−15,65; 5,14] chứa 0; |r_rb| = 0,117. Vì vậy dữ liệu **không đủ độ phân giải** để phân biệt 'không có khác biệt' với 'khác biệt nhỏ hơn MDE' — đây không phải bằng chứng khẳng định hai nhóm bằng nhau.
 - Ước lượng điểm nằm trong khoảng sai số thực hành của một trạm đo, nên không được dùng để quy kết nguồn phát thải hay hành vi giao thông.
 
 ---

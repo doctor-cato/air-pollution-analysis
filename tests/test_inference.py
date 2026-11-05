@@ -2173,6 +2173,155 @@ class TestSeasonalContrastCI(unittest.TestCase):
         self.assertTrue(hasattr(inf, "calendar_contrast_ci"))
 
 
+class TestGroupCalendarBlockReplicates(unittest.TestCase):
+    """
+    Unit tests cho `_group_calendar_block_replicates` giải quyết Blocker 4 và 5:
+    * Ranh giới mùa: khối không bị cắt ngắn (non-truncated full windows);
+    * Phân đoạn mùa và ngày thiếu: không nhảy qua khoảng cách, không nội suy;
+    * Độ dài khối: kích thước khối đồng nhất và fallback khi nhóm nhỏ;
+    * Tính tái lập: seed tất định;
+    * Thống kê bootstrap: CI trung vị và trung bình hợp lệ;
+    * Quy tắc nhãn nhóm: nhãn đích cho null bootstrap, nhãn nguồn cho effect CI.
+    """
+
+    def setUp(self):
+        rng = np.random.default_rng(42)
+        # 120 ngày liên tiếp, 2 nhóm mỗi nhóm 60 ngày
+        values_a = 40.0 + inf._ar1_daily(60, 0.6, 5.0, rng)
+        values_b = 20.0 + inf._ar1_daily(60, 0.6, 5.0, rng)
+        values = np.concatenate([values_a, values_b])
+        self.calendar = _two_group_calendar(values, split=60, missing_positions=[10, 11, 80])
+        self.mask_a = self.calendar.labels == 0
+        self.mask_b = self.calendar.labels == 1
+
+    def test_season_boundary_blocks_are_never_truncated(self):
+        """
+        Tại ranh giới cuối mùa, các khối được rút phải có độ dài đầy đủ (non-truncated),
+        không bị cắt cụt thành khối 1–3 ngày. Đồng thời, 100% các ngày của nhóm
+        (kể cả những ngày cuối) phải nằm trong không gian lấy mẫu.
+        """
+        days = np.flatnonzero(self.mask_a)
+        gdates = np.asarray(self.calendar.dates, dtype="datetime64[D]")[days]
+        block_len = 14
+        wend = np.searchsorted(gdates, gdates + np.timedelta64(block_len, "D"), side="left")
+        lens = wend - np.arange(days.size)
+        max_len = int(lens.max())
+        self.assertEqual(max_len, block_len)
+
+        # Start positions có lens < max_len (13 ngày cuối của 60 ngày) không được là điểm bắt đầu
+        invalid_starts = set(np.flatnonzero(lens < max_len).tolist())
+        self.assertEqual(len(invalid_starts), block_len - 1)
+
+        reps = inf._group_calendar_block_replicates(
+            self.calendar, self.mask_a, block_length_days=block_len, n_bootstrap=200, seed=42
+        )
+        self.assertEqual(reps.shape, (200, int(np.isfinite(self.calendar.values[days]).sum())))
+
+        # Mọi ngày quan sát đều được bao phủ (100% coverage)
+        all_sampled_values = set(reps.flatten().tolist())
+        observed_values = set(self.calendar.values[days][np.isfinite(self.calendar.values[days])].tolist())
+        self.assertEqual(all_sampled_values, observed_values)
+
+    def test_multi_segment_season_never_crosses_gap_or_truncates(self):
+        """
+        Với nhóm gồm hai phân đoạn rời nhau (như mùa Hè gồm 2 năm cách nhau 9 tháng),
+        các khối không bao giờ nhảy qua khoảng trống giữa 2 phân đoạn, và ranh giới
+        cuối của từng phân đoạn không tạo ra khối bị cắt ngắn.
+        """
+        # Tạo calendar có 2 phân đoạn cách nhau 100 ngày
+        dates_part1 = np.arange(np.datetime64("2025-06-01"), np.datetime64("2025-08-01"), dtype="datetime64[D]")
+        dates_part2 = np.arange(np.datetime64("2026-06-01"), np.datetime64("2026-07-15"), dtype="datetime64[D]")
+        all_dates = np.concatenate([dates_part1, dates_part2])
+        rng = np.random.default_rng(123)
+        vals = 30.0 + rng.normal(0, 3, size=all_dates.size)
+        group_mask = np.ones(all_dates.size, dtype=bool)
+
+        cal = inf.DailyCalendar(
+            dates=all_dates,
+            values=vals,
+            labels=np.zeros(all_dates.size, dtype=np.int64),
+            valid_hours=np.full(all_dates.size, 24, dtype=np.int64),
+            season=np.full(all_dates.size, "He", dtype=object),
+            is_weekend=np.zeros(all_dates.size, dtype=np.int64),
+            week_key=np.full(all_dates.size, "2025-W01", dtype=object),
+        )
+
+        reps = inf._group_calendar_block_replicates(
+            cal, group_mask, block_length_days=14, n_bootstrap=100, seed=42
+        )
+        self.assertEqual(reps.shape, (100, all_dates.size))
+        self.assertTrue(np.all(np.isin(reps, vals)))
+
+    def test_missing_days_are_preserved_without_imputation(self):
+        """
+        Ngày thiếu (NaN) trong nhóm không được nội suy; số phần tử hữu hạn của nhóm
+        được bảo toàn chính xác.
+        """
+        observed_before = int(np.isfinite(self.calendar.values[self.mask_a]).sum())
+        reps = inf._group_calendar_block_replicates(
+            self.calendar, self.mask_a, block_length_days=14, n_bootstrap=50, seed=42
+        )
+        self.assertEqual(reps.shape[1], observed_before)
+        self.assertTrue(np.isfinite(reps).all())
+        original_finite = set(self.calendar.values[self.mask_a & np.isfinite(self.calendar.values)].tolist())
+        for row in reps:
+            for v in row:
+                self.assertIn(v, original_finite)
+
+    def test_group_replicates_exact_block_length_and_small_group_fallback(self):
+        """
+        Khi nhóm có số ngày nhỏ hơn `block_length_days`, thuật toán tự co về
+        `min(block_length_days, days.size)` mà không báo lỗi hay lặp vô hạn.
+        """
+        days_small = np.flatnonzero(self.mask_a)[:5]
+        mask_small = np.zeros(self.calendar.n_days, dtype=bool)
+        mask_small[days_small] = True
+
+        reps = inf._group_calendar_block_replicates(
+            self.calendar, mask_small, block_length_days=14, n_bootstrap=20, seed=42
+        )
+        n_obs = int(np.isfinite(self.calendar.values[days_small]).sum())
+        self.assertEqual(reps.shape, (20, n_obs))
+
+    def test_reproducibility_with_seed(self):
+        """Cùng seed sinh ra replicates hoàn toàn trùng khớp; khác seed sinh ra replicates khác nhau."""
+        reps1 = inf._group_calendar_block_replicates(
+            self.calendar, self.mask_a, block_length_days=14, n_bootstrap=50, seed=99
+        )
+        reps2 = inf._group_calendar_block_replicates(
+            self.calendar, self.mask_a, block_length_days=14, n_bootstrap=50, seed=99
+        )
+        reps3 = inf._group_calendar_block_replicates(
+            self.calendar, self.mask_a, block_length_days=14, n_bootstrap=50, seed=100
+        )
+        np.testing.assert_array_equal(reps1, reps2)
+        self.assertFalse(np.array_equal(reps1, reps3))
+
+    def test_bootstrap_statistics_contrast_ci_median_and_mean(self):
+        """CI hiệu ứng tính đúng cho cả median và mean với thứ tự bound chuẩn xác."""
+        ci_med = inf.calendar_contrast_ci(
+            self.calendar, self.mask_a, self.mask_b, statistic="median", n_bootstrap=100, seed=42
+        )
+        ci_mean = inf.calendar_contrast_ci(
+            self.calendar, self.mask_a, self.mask_b, statistic="mean", n_bootstrap=100, seed=42
+        )
+        self.assertLessEqual(ci_med["ci_low"], ci_med["ci_high"])
+        self.assertLessEqual(ci_mean["ci_low"], ci_mean["ci_high"])
+        self.assertGreater(ci_med["point"], 0.0)
+        self.assertGreater(ci_mean["point"], 0.0)
+
+    def test_null_bootstrap_destination_labels_rule(self):
+        """
+        Quy tắc nhãn đích: trong `calendar_replicates()`, nhãn của bản sao cố định
+        tại ngày lịch đích (destination) để tách khỏi giá trị, mô phỏng đúng H₀.
+        """
+        idx = inf.calendar_block_indices(self.calendar.n_days, block_length_days=14, n_bootstrap=5, seed=42)
+        vals_2d, labels_2d = inf.calendar_replicates(self.calendar.values, self.calendar.labels, idx)
+        self.assertEqual(labels_2d.shape, (5, self.calendar.n_days))
+        for row in labels_2d:
+            np.testing.assert_array_equal(row, self.calendar.labels)
+
+
 class TestMonteCarloValidation(unittest.TestCase):
     """
     Kiểm chứng Monte Carlo là **kiểm chứng khoa học có chi phí**, không phải
