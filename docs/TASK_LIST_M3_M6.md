@@ -7,7 +7,7 @@
 > (đính chính trích dẫn roadmap, trạng thái M3–M6, định nghĩa nhãn cảnh báo, và bỏ các
 > khẳng định kết quả thực nghiệm chưa có bằng chứng thực thi).
 > **Trạng thái repo:** phản ánh `main` @ `6fe8eb6` (M1–M3 đã bàn giao). Đợt audit M3 chạy trên
-> nhánh `audit/m3-deliverables` (PR #42) — chỉ sửa tài liệu + CI, không đụng `src/`/`tests/`/`data/`.
+> nhánh `m3/supersedes-42` (PR #46, thay thế PR #42) — chỉ sửa tài liệu + CI, không đụng `src/`/`tests/`/`data/`.
 >
 > **Ký hiệu ưu tiên:** 🔴 bắt buộc (thay đổi kết luận khoa học hoặc là điểm chấm) ·
 > 🟡 nên có (điểm cộng ở viva) · ⚪ housekeeping.
