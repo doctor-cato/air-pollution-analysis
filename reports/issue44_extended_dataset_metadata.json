@@ -93,7 +93,30 @@
     {
       "station_id": "VN001_HANOI_556_NGUYEN_VAN_CU",
       "winter_year": 2026,
+      "is_complete_winter_window": true,
+      "expected_calendar_hours": 2160,
+      "station_grid_hours": 2160,
       "count": 1958,
+      "coverage_of_full_winter_pct": 90.65,
+      "coverage_of_station_grid_pct": 90.65,
+      "missing_months_in_window": [],
+      "monthly_completeness": {
+        "2025-12": {
+          "grid_hours": 744,
+          "valid_hours": 623,
+          "valid_pct": 83.74
+        },
+        "2026-01": {
+          "grid_hours": 744,
+          "valid_hours": 684,
+          "valid_pct": 91.94
+        },
+        "2026-02": {
+          "grid_hours": 672,
+          "valid_hours": 651,
+          "valid_pct": 96.88
+        }
+      },
       "mean": 63.15,
       "sd": 33.56,
       "median": 57.11,
@@ -108,7 +131,27 @@
     {
       "station_id": "VN003_HANOI_OPENAQ_7441",
       "winter_year": 2022,
+      "is_complete_winter_window": false,
+      "expected_calendar_hours": 2160,
+      "station_grid_hours": 1415,
       "count": 739,
+      "coverage_of_full_winter_pct": 34.21,
+      "coverage_of_station_grid_pct": 52.23,
+      "missing_months_in_window": [
+        "2021-12"
+      ],
+      "monthly_completeness": {
+        "2022-01": {
+          "grid_hours": 743,
+          "valid_hours": 642,
+          "valid_pct": 86.41
+        },
+        "2022-02": {
+          "grid_hours": 672,
+          "valid_hours": 97,
+          "valid_pct": 14.43
+        }
+      },
       "mean": 49.55,
       "sd": 36.93,
       "median": 39.0,
@@ -123,7 +166,30 @@
     {
       "station_id": "VN003_HANOI_OPENAQ_7441",
       "winter_year": 2023,
+      "is_complete_winter_window": true,
+      "expected_calendar_hours": 2160,
+      "station_grid_hours": 2160,
       "count": 1412,
+      "coverage_of_full_winter_pct": 65.37,
+      "coverage_of_station_grid_pct": 65.37,
+      "missing_months_in_window": [],
+      "monthly_completeness": {
+        "2022-12": {
+          "grid_hours": 744,
+          "valid_hours": 728,
+          "valid_pct": 97.85
+        },
+        "2023-01": {
+          "grid_hours": 744,
+          "valid_hours": 604,
+          "valid_pct": 81.18
+        },
+        "2023-02": {
+          "grid_hours": 672,
+          "valid_hours": 80,
+          "valid_pct": 11.9
+        }
+      },
       "mean": 72.64,
       "sd": 38.55,
       "median": 63.0,
@@ -138,7 +204,30 @@
     {
       "station_id": "VN003_HANOI_OPENAQ_7441",
       "winter_year": 2024,
+      "is_complete_winter_window": true,
+      "expected_calendar_hours": 2184,
+      "station_grid_hours": 2184,
       "count": 1828,
+      "coverage_of_full_winter_pct": 83.7,
+      "coverage_of_station_grid_pct": 83.7,
+      "missing_months_in_window": [],
+      "monthly_completeness": {
+        "2023-12": {
+          "grid_hours": 744,
+          "valid_hours": 456,
+          "valid_pct": 61.29
+        },
+        "2024-01": {
+          "grid_hours": 744,
+          "valid_hours": 700,
+          "valid_pct": 94.09
+        },
+        "2024-02": {
+          "grid_hours": 696,
+          "valid_hours": 672,
+          "valid_pct": 96.55
+        }
+      },
       "mean": 45.02,
       "sd": 26.98,
       "median": 39.0,
@@ -153,7 +242,30 @@
     {
       "station_id": "VN003_HANOI_OPENAQ_7441",
       "winter_year": 2025,
+      "is_complete_winter_window": true,
+      "expected_calendar_hours": 2160,
+      "station_grid_hours": 2160,
       "count": 1579,
+      "coverage_of_full_winter_pct": 73.1,
+      "coverage_of_station_grid_pct": 73.1,
+      "missing_months_in_window": [],
+      "monthly_completeness": {
+        "2024-12": {
+          "grid_hours": 744,
+          "valid_hours": 244,
+          "valid_pct": 32.8
+        },
+        "2025-01": {
+          "grid_hours": 744,
+          "valid_hours": 669,
+          "valid_pct": 89.92
+        },
+        "2025-02": {
+          "grid_hours": 672,
+          "valid_hours": 666,
+          "valid_pct": 99.11
+        }
+      },
       "mean": 63.67,
       "sd": 40.96,
       "median": 54.0,
@@ -168,40 +280,64 @@
   ],
   "inference_comparison": {
     "VN003_HANOI_OPENAQ_7441": {
+      "calendar_days": 1195,
       "valid_days_ge18h": 756,
       "winter_days": 230,
       "non_winter_days": 526,
+      "daily_median": 39.61,
+      "daily_median_ci95_calendar_bootstrap": [
+        35.0,
+        44.52
+      ],
       "winter_daily_median": 50.05,
       "non_winter_daily_median": 36.34,
       "winter_daily_mean": 57.7,
       "non_winter_daily_mean": 40.59,
       "kruskal_wallis_h": 164.1954,
+      "kruskal_wallis_epsilon2": 0.2175,
       "kruskal_wallis_naive_p": 2.2786024501735895e-35,
+      "kruskal_wallis_calendar_bootstrap_p": 0.0005,
+      "kruskal_wallis_hac_p": 9.437590061007805e-11,
       "winter_vs_nonwinter_u": 82195.0,
       "winter_vs_nonwinter_naive_p": 3.946102982155553e-15,
       "winter_vs_nonwinter_r_rb": 0.3588,
-      "daily_lag1_autocorr_rho1": 0.7219,
-      "effective_sample_size_n_eff": 122.1,
+      "daily_lag1_autocorr_rho1": 0.7487,
+      "effective_sample_size_n_eff": 108.66,
+      "variance_inflation_factor": 6.96,
       "qcvn_exceedance_days": 238,
-      "qcvn_exceedance_pct": 31.48
+      "qcvn_exceedance_pct": 31.48,
+      "inference_status": "exploratory",
+      "inference_status_reason": "Seasonal comparisons remain exploratory under temporal dependence (rho_1 = 0.73-0.75) and multi-month missingness; VN003 and VN001 are separate physical stations (7.324 km apart) and are never pooled as i.i.d. repetitions of a single monitor."
     },
     "VN001_HANOI_556_NGUYEN_VAN_CU": {
+      "calendar_days": 378,
       "valid_days_ge18h": 299,
       "winter_days": 79,
       "non_winter_days": 220,
+      "daily_median": 37.2,
+      "daily_median_ci95_calendar_bootstrap": [
+        32.81,
+        44.83
+      ],
       "winter_daily_median": 60.46,
       "non_winter_daily_median": 33.58,
       "winter_daily_mean": 61.72,
       "non_winter_daily_mean": 36.79,
       "kruskal_wallis_h": 61.5344,
+      "kruskal_wallis_epsilon2": 0.2065,
       "kruskal_wallis_naive_p": 2.7629736724292755e-13,
+      "kruskal_wallis_calendar_bootstrap_p": 0.029485,
+      "kruskal_wallis_hac_p": 2.364097557443323e-10,
       "winter_vs_nonwinter_u": 13661.0,
       "winter_vs_nonwinter_naive_p": 4.678586077584993e-14,
       "winter_vs_nonwinter_r_rb": 0.572,
-      "daily_lag1_autocorr_rho1": 0.717,
-      "effective_sample_size_n_eff": 49.28,
+      "daily_lag1_autocorr_rho1": 0.7276,
+      "effective_sample_size_n_eff": 47.14,
+      "variance_inflation_factor": 6.34,
       "qcvn_exceedance_days": 84,
-      "qcvn_exceedance_pct": 28.09
+      "qcvn_exceedance_pct": 28.09,
+      "inference_status": "exploratory",
+      "inference_status_reason": "Seasonal comparisons remain exploratory under temporal dependence (rho_1 = 0.73-0.75) and multi-month missingness; VN003 and VN001 are separate physical stations (7.324 km apart) and are never pooled as i.i.d. repetitions of a single monitor."
     }
   },
   "baseline_immutability_verified": true,

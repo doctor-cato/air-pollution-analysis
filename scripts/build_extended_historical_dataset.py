@@ -62,6 +62,13 @@ from src.data_collection import (
     compute_file_sha256,
     validate_weather_canonical,
 )
+from src.inference import (
+    _season_effect_test,
+    build_daily_calendar,
+    build_daily_panel,
+    calendar_bootstrap_ci,
+    effective_sample_size,
+)
 from src.issue44_preparation import (
     add_derived_short_gap_interpolation,
     assign_station_chronological_split,
@@ -71,6 +78,10 @@ from src.issue44_preparation import (
     winter_station_summary,
     winter_year,
 )
+
+EXPECTED_S3_7441_FILE_COUNT = 903
+EXPECTED_S3_7441_FILES_BY_YEAR = {2022: 190, 2023: 249, 2024: 365, 2025: 99}
+EXPECTED_RAW_7441_SHA256 = "57b6fbaa63089e57a6377fd85293355cb475f8d8bb62fb58b469ced27a4cdae8"
 
 
 def _compute_7441_coverage(df_raw: pd.DataFrame, s3_keys: list[str]) -> dict[str, Any]:
@@ -385,7 +396,27 @@ def main() -> None:
         raw_dir=raw_dir,
         interim_dir=interim_dir,
     )
-    s3_keys_7441 = adapter_7441._list_s3_keys(years=(2022, 2023, 2024, 2025))
+    s3_keys_7441 = sorted(adapter_7441._list_s3_keys(years=(2022, 2023, 2024, 2025)))
+    if len(s3_keys_7441) != EXPECTED_S3_7441_FILE_COUNT:
+        raise RuntimeError(
+            f"OpenAQ S3 Location 7441 file count changed: expected {EXPECTED_S3_7441_FILE_COUNT}, "
+            f"got {len(s3_keys_7441)}."
+        )
+    s3_inventory_sha256 = hashlib.sha256("\n".join(s3_keys_7441).encode("utf-8")).hexdigest()
+    s3_year_partitions: dict[str, dict[str, Any]] = {}
+    for yr in (2022, 2023, 2024, 2025):
+        yr_keys = [k for k in s3_keys_7441 if f"/year={yr}/" in k]
+        if len(yr_keys) != EXPECTED_S3_7441_FILES_BY_YEAR[yr]:
+            raise RuntimeError(
+                f"OpenAQ S3 Location 7441 year={yr} file count changed: "
+                f"expected {EXPECTED_S3_7441_FILES_BY_YEAR[yr]}, got {len(yr_keys)}."
+            )
+        s3_year_partitions[str(yr)] = {
+            "s3_daily_files": len(yr_keys),
+            "first_key": yr_keys[0] if yr_keys else None,
+            "last_key": yr_keys[-1] if yr_keys else None,
+        }
+
     df_raw_7441, raw_7441_path = adapter_7441.fetch_raw_data(
         raw_output_name="openaq_raw_7441_2022_2025.parquet",
         force_reload=args.force_reload,
@@ -412,13 +443,24 @@ def main() -> None:
             "modification_allowed": True,
             "redistribution_allowed": True,
         },
+        "qc_screening_policy": (
+            "OpenAQ S3 CSV archives do not carry a separate per-record 'QC Name' column. "
+            "In this manifest, 'qc_valid_hours' (18,208 hours) denotes numerically valid "
+            "observations (PM2.5 >= 0.0 ug/m3 within physical bounds [0, 1000] ug/m3 and "
+            "pm25_was_stuck == 0) after screening out 3,193 negative/sentinel records "
+            "(-999.0: 3,188; -1.0: 4; -6.0: 1) to NaN."
+        ),
         "s3_archive_prefix": "s3://openaq-data-archive/records/csv.gz/locationid=7441/",
         "years_queried": [2022, 2023, 2024, 2025],
         "s3_daily_file_count": len(s3_keys_7441),
+        "s3_inventory_sha256": s3_inventory_sha256,
         "s3_first_key": s3_keys_7441[0] if s3_keys_7441 else None,
         "s3_last_key": s3_keys_7441[-1] if s3_keys_7441 else None,
+        "s3_year_partitions": s3_year_partitions,
         "raw_parquet_path": "data/raw/openaq_raw_7441_2022_2025.parquet",
         "raw_parquet_sha256": raw_7441_sha256,
+        "expected_pinned_raw_parquet_sha256": EXPECTED_RAW_7441_SHA256,
+        "raw_parquet_matches_pinned_snapshot": bool(raw_7441_sha256 == EXPECTED_RAW_7441_SHA256),
         "raw_parquet_bytes": int(raw_7441_path.stat().st_size),
         "coverage": coverage_7441,
     }
@@ -526,18 +568,38 @@ def main() -> None:
     eda_csv_path = reports_dir / "issue44_multiyear_eda_summary.csv"
     eda_summary_df.to_csv(eda_csv_path, index=False)
 
-    # Winter-by-winter detailed summary
-    w_scoped = df_extended.dropna(subset=["winter_year", "pm25"]).copy()
-    w_scoped["winter_year"] = w_scoped["winter_year"].astype(int)
+    # Winter-by-winter detailed summary (preserving full grid hours per winter_year)
+    w_all = df_extended[df_extended["season"] == "Winter (Dec-Feb)"].dropna(subset=["winter_year"]).copy()
+    w_all["winter_year"] = w_all["winter_year"].astype(int)
+    w_all["year_month"] = w_all["timestamp"].dt.strftime("%Y-%m")
     winter_rows: list[dict[str, Any]] = []
-    for (sid, wy), grp in w_scoped.groupby(["station_id", "winter_year"], sort=True):
+    for (sid, wy), grp in w_all.groupby(["station_id", "winter_year"], sort=True):
+        expected_cal_h = 2184 if int(wy) == 2024 else 2160
+        grid_h = int(len(grp))
         vals = grp["pm25"].dropna()
+        valid_h = int(len(vals))
         daily = grp.set_index("timestamp")["pm25"].resample("D").agg(["count", "mean"])
         vdays = daily[daily["count"] >= 18]["mean"].dropna()
+        months_present = sorted(grp["year_month"].unique().tolist())
+        monthly_comp = {
+            ym: {
+                "grid_hours": int(len(m_grp)),
+                "valid_hours": int(m_grp["pm25"].notna().sum()),
+                "valid_pct": round(100.0 * float(m_grp["pm25"].notna().mean()), 2),
+            }
+            for ym, m_grp in grp.groupby("year_month", sort=True)
+        }
         winter_rows.append({
             "station_id": str(sid),
             "winter_year": int(wy),
-            "count": int(len(vals)),
+            "is_complete_winter_window": bool(len(months_present) == 3 and grid_h == expected_cal_h),
+            "expected_calendar_hours": expected_cal_h,
+            "station_grid_hours": grid_h,
+            "count": valid_h,
+            "coverage_of_full_winter_pct": round(100.0 * valid_h / expected_cal_h, 2),
+            "coverage_of_station_grid_pct": round(100.0 * valid_h / grid_h, 2) if grid_h > 0 else 0.0,
+            "missing_months_in_window": [f"{int(wy) - 1}-12"] if len(months_present) < 3 else [],
+            "monthly_completeness": monthly_comp,
             "mean": round(float(vals.mean()), 2),
             "sd": round(float(vals.std(ddof=1)), 2),
             "median": round(float(vals.median()), 2),
@@ -554,10 +616,20 @@ def main() -> None:
     fig01_ext_path = figures_dir / "FIG-01-extended-historical.png"
     _generate_fig01_extended(df_extended, winter_detail_df, fig01_ext_path)
 
-    # Station-separated seasonal Kruskal-Wallis & Winter vs Non-Winter Mann-Whitney on daily means
+    # Station-separated seasonal inference & calendar-preserving autocorrelation
     inference_comparison: dict[str, Any] = {}
     for sid in (STATION_OPENAQ_7441, STATION_OPENAQ_HANOI):
         sub = df_extended[df_extended["station_id"] == sid].copy()
+        panel, _ = build_daily_panel(sub, min_valid_hours=18)
+        cal = build_daily_calendar(sub, min_valid_hours=18, label="season")
+        ess = effective_sample_size(cal.values)
+        seas_test = _season_effect_test(
+            panel, cal, block_length=28, n_bootstrap=2000, seed=42, hac_lag=28
+        )
+        ci_med = calendar_bootstrap_ci(
+            cal, statistic="median", block_length_days=28, n_bootstrap=2000, seed=42
+        )
+
         daily = (
             sub.set_index("timestamp")["pm25"]
             .resample("D")
@@ -567,33 +639,46 @@ def main() -> None:
         daily = daily[daily["count"] >= 18].dropna(subset=["mean"]).copy()
         daily["season"] = vietnam_season(daily["timestamp"])
         daily["is_winter"] = daily["timestamp"].dt.month.isin([12, 1, 2])
-        groups = [g["mean"].to_numpy() for _, g in daily.groupby("season")]
-        kw_stat, kw_p = stats.kruskal(*groups)
         w_vals = daily.loc[daily["is_winter"], "mean"].to_numpy()
         nw_vals = daily.loc[~daily["is_winter"], "mean"].to_numpy()
         u_stat, mw_p = stats.mannwhitneyu(w_vals, nw_vals, alternative="two-sided")
-        # Rank-biserial correlation r_rb = 2 * U / (n1 * n2) - 1
         r_rb = float(2.0 * u_stat / (len(w_vals) * len(nw_vals)) - 1.0)
-        rho1 = float(pd.Series(daily["mean"]).autocorr(lag=1))
         n_days = int(len(daily))
-        n_eff = float(n_days * (1.0 - rho1) / (1.0 + rho1)) if abs(1.0 + rho1) > 1e-6 else float(n_days)
+
         inference_comparison[sid] = {
+            "calendar_days": int(len(cal.values)),
             "valid_days_ge18h": n_days,
             "winter_days": int(len(w_vals)),
             "non_winter_days": int(len(nw_vals)),
+            "daily_median": round(float(ci_med["point"]), 2),
+            "daily_median_ci95_calendar_bootstrap": [
+                round(float(ci_med["ci_low"]), 2),
+                round(float(ci_med["ci_high"]), 2),
+            ],
             "winter_daily_median": round(float(np.median(w_vals)), 2),
             "non_winter_daily_median": round(float(np.median(nw_vals)), 2),
             "winter_daily_mean": round(float(np.mean(w_vals)), 2),
             "non_winter_daily_mean": round(float(np.mean(nw_vals)), 2),
-            "kruskal_wallis_h": round(float(kw_stat), 4),
-            "kruskal_wallis_naive_p": float(kw_p),
+            "kruskal_wallis_h": round(float(seas_test["statistic"]), 4),
+            "kruskal_wallis_epsilon2": round(float(seas_test["effect_size"]), 4),
+            "kruskal_wallis_naive_p": float(seas_test["p_value_independence"]),
+            "kruskal_wallis_calendar_bootstrap_p": round(float(seas_test["p_value"]), 6),
+            "kruskal_wallis_hac_p": float(seas_test["p_value_hac"]),
             "winter_vs_nonwinter_u": round(float(u_stat), 2),
             "winter_vs_nonwinter_naive_p": float(mw_p),
             "winter_vs_nonwinter_r_rb": round(r_rb, 4),
-            "daily_lag1_autocorr_rho1": round(rho1, 4),
-            "effective_sample_size_n_eff": round(n_eff, 2),
+            "daily_lag1_autocorr_rho1": round(float(ess["rho_lag1"]), 4),
+            "effective_sample_size_n_eff": round(float(ess["n_effective"]), 2),
+            "variance_inflation_factor": round(float(ess["inflation_factor"]), 2),
             "qcvn_exceedance_days": int((daily["mean"] > 50.0).sum()),
             "qcvn_exceedance_pct": round(100.0 * float((daily["mean"] > 50.0).mean()), 2),
+            "inference_status": str(seas_test["status"]),
+            "inference_status_reason": (
+                "Seasonal comparisons remain exploratory under temporal dependence "
+                "(rho_1 = 0.73-0.75) and multi-month missingness; VN003 and VN001 are "
+                "separate physical stations (7.324 km apart) and are never pooled as "
+                "i.i.d. repetitions of a single monitor."
+            ),
         }
 
     # Spatial correspondence metadata

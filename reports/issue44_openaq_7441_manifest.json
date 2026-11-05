@@ -23,6 +23,7 @@
     "modification_allowed": true,
     "redistribution_allowed": true
   },
+  "qc_screening_policy": "OpenAQ S3 CSV archives do not carry a separate per-record 'QC Name' column. In this manifest, 'qc_valid_hours' (18,208 hours) denotes numerically valid observations (PM2.5 >= 0.0 ug/m3 within physical bounds [0, 1000] ug/m3 and pm25_was_stuck == 0) after screening out 3,193 negative/sentinel records (-999.0: 3,188; -1.0: 4; -6.0: 1) to NaN.",
   "s3_archive_prefix": "s3://openaq-data-archive/records/csv.gz/locationid=7441/",
   "years_queried": [
     2022,
@@ -31,10 +32,35 @@
     2025
   ],
   "s3_daily_file_count": 903,
+  "s3_inventory_sha256": "7a90e763809a1b3c1514c9eda340fceed3499e601398d3bd25b3b12d4ed9688c",
   "s3_first_key": "records/csv.gz/locationid=7441/year=2022/month=01/location-7441-20220101.csv.gz",
   "s3_last_key": "records/csv.gz/locationid=7441/year=2025/month=04/location-7441-20250409.csv.gz",
+  "s3_year_partitions": {
+    "2022": {
+      "s3_daily_files": 190,
+      "first_key": "records/csv.gz/locationid=7441/year=2022/month=01/location-7441-20220101.csv.gz",
+      "last_key": "records/csv.gz/locationid=7441/year=2022/month=12/location-7441-20221231.csv.gz"
+    },
+    "2023": {
+      "s3_daily_files": 249,
+      "first_key": "records/csv.gz/locationid=7441/year=2023/month=01/location-7441-20230101.csv.gz",
+      "last_key": "records/csv.gz/locationid=7441/year=2023/month=12/location-7441-20231227.csv.gz"
+    },
+    "2024": {
+      "s3_daily_files": 365,
+      "first_key": "records/csv.gz/locationid=7441/year=2024/month=01/location-7441-20240102.csv.gz",
+      "last_key": "records/csv.gz/locationid=7441/year=2024/month=12/location-7441-20241231.csv.gz"
+    },
+    "2025": {
+      "s3_daily_files": 99,
+      "first_key": "records/csv.gz/locationid=7441/year=2025/month=01/location-7441-20250101.csv.gz",
+      "last_key": "records/csv.gz/locationid=7441/year=2025/month=04/location-7441-20250409.csv.gz"
+    }
+  },
   "raw_parquet_path": "data/raw/openaq_raw_7441_2022_2025.parquet",
   "raw_parquet_sha256": "57b6fbaa63089e57a6377fd85293355cb475f8d8bb62fb58b469ced27a4cdae8",
+  "expected_pinned_raw_parquet_sha256": "57b6fbaa63089e57a6377fd85293355cb475f8d8bb62fb58b469ced27a4cdae8",
+  "raw_parquet_matches_pinned_snapshot": true,
   "raw_parquet_bytes": 158793,
   "coverage": {
     "source_observation_window": {

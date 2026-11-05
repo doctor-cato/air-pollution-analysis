@@ -11,8 +11,8 @@
 | Candidate Source | Station ID | Time Window | Provenance & License | Decision |
 |---|---|---|---|---|
 | **OpenAQ S3 Location `4946811`** (556 Nguyễn Văn Cừ, NCEM/VEA) | `VN001_HANOI_556_NGUYEN_VAN_CU` | `2025-07-03` → `2026-07-15` | Official OpenAQ S3 archive (`349,463` raw rows; `9,044` canonical grid hours; `7,495` valid $\text{PM}_{2.5}$ hours) | **APPROVED (Immutable Baseline)** |
-| **OpenAQ S3 Location `7441`** (Hanoi AirNow Gov Monitor, `sensors_id=21632`) | `VN003_HANOI_OPENAQ_7441` | `2022-01-01` → `2025-04-09` | First-party OpenAQ S3 archive (`903` `.csv.gz` files, `21,401` raw rows, `18,208` valid $\text{PM}_{2.5} \ge 0\ \mu\text{g/m}^3$ hours), `US Public Domain` (`id=33`, `http://www.usa.gov/publicdomain/label/1.0/`) | **APPROVED (Station-Specific Historical Expansion)** |
-| **Third-party GitHub Mirror** (`dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies`) | Prospective `VN002_HANOI_US_EMBASSY` | `2022-01-01` → `2025-04-09` | GitHub API `license: null`, unverified chain of custody, 3 misfiled MTD files (`794` cross-year rows), 1 conflicting duplicate (`2023-11-07T17:00`) | **NO-GO / Reference-Only** |
+| **OpenAQ S3 Location `7441`** (Hanoi AirNow Gov Monitor, `sensors_id=21632`) | `VN003_HANOI_OPENAQ_7441` | `2022-01-01` → `2025-04-09` | First-party OpenAQ S3 archive (`903` `.csv.gz` files, `21,401` raw rows, `18,208` numerically valid $\text{PM}_{2.5} \ge 0\ \mu\text{g/m}^3$ post-screening hours), `US Public Domain` (`id=33`, `http://www.usa.gov/publicdomain/label/1.0/`) | **APPROVED (Station-Specific Historical Expansion)** |
+| **Third-party GitHub Mirror** (`dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies`) | Prospective `VN002_HANOI_US_EMBASSY` | `2022-01-01` → `2025-04-09` | Pinned at commit `25d08e949c9d01ba57c4e74ff9b3b99328ecf141` (`46` CSV files). GitHub API `license: null`, unverified chain of custody, 3 misfiled December MTD files (`1,627` rows; 4 files with cross-year records), `25,955` duplicate rows, 1 conflicting duplicate (`2023-11-07T17:00:00`: `33.0` valid in YTD vs `-999.0` missing in MTD) | **NO-GO / Reference-Only** |
 | **OpenAQ Location `2539`** (`US Diplomatic Post: Hanoi`) | Unassigned | `2016` only | 0 S3 files in 2022–2025 | **NO-GO (No Coverage)** |
 
 ### Key Scientific Guardrails Enforced
@@ -26,7 +26,7 @@
 | Metric | Legacy Baseline (`VN001`) | Historical Expansion (`VN003` / OpenAQ `7441`) | Combined Extended Artifact (`2.0.0-issue44-extended`) |
 |---|---:|---:|---:|
 | **Artifact Path** | `data/processed/air_pollution_final.parquet` | `data/interim/air_quality_openaq_7441_canonical.parquet` | `data/processed/air_pollution_extended_2022_2026.parquet` |
-| **SHA-256** | `48bd5694...d80da1ef` | Reproducible via `build_extended_historical_dataset.py` | `6930557fbfc8e31dbcb062065b1903ccf27c433e9c0f062bd0dc382a9a1f9b02` |
+| **SHA-256** | `866f39de...586efd` | Reproducible via `build_extended_historical_dataset.py` | `6930557fbfc8e31dbcb062065b1903ccf27c433e9c0f062bd0dc382a9a1f9b02` |
 | **Start Timestamp (`Asia/Ho_Chi_Minh`)** | `2025-07-03 22:00:00+07:00` | `2022-01-01 01:00:00+07:00` | `2022-01-01 01:00:00+07:00` |
 | **End Timestamp (`Asia/Ho_Chi_Minh`)** | `2026-07-15 17:00:00+07:00` | `2025-04-09 22:00:00+07:00` | `2026-07-15 17:00:00+07:00` |
 | **Hourly Grid Rows** | `9,044` | `28,678` | `37,722` |
@@ -39,12 +39,14 @@
 
 ### Annual Coverage Breakdown of OpenAQ Location `7441` (`VN003_HANOI_OPENAQ_7441`)
 
-| Year | S3 Daily Files | Calendar Hours | Active Window Hours | S3 Reported Hours | QC-Valid Hours ($\ge 0\ \mu\text{g/m}^3$) | Sentinel / Negative Hours | Active Window Valid % | Longest Contiguous Gap (h) |
+> **QC Screening Disclosure:** OpenAQ S3 `.csv.gz` files do not carry a separate per-record `QC Name` column. In the table below and in `reports/issue44_openaq_7441_manifest.json`, **Numerically Valid / Post-Screening Hours** (`qc_valid_hours = 18,208`) denotes observations with $\text{PM}_{2.5} \ge 0.0\ \mu\text{g/m}^3$ inside physical bounds $[0, 1000]\ \mu\text{g/m}^3$ and `pm25_was_stuck == 0` after screening out `3,193` negative/sentinel records (`-999.0`: `3,188`; `-1.0`: `4`; `-6.0`: `1`) to `NaN`. Furthermore, S3 storage partitions (`year=2022/`, `year=2024/`) contain `4,560` and `8,703` raw rows because their `12-31` files include the next-year `00:00:00+07:00` midnight record; grouping by parsed `Asia/Ho_Chi_Minh` timestamp assigns those midnight rows to `2023` (`4,559` in 2022; `5,794` in 2023) and `2025` (`8,702` in 2024; `2,346` in 2025).
+
+| Year | S3 Daily Files | Calendar Hours | Active Window Hours | S3 Reported Hours (Parsed TZ) | Numerically Valid Hours ($\ge 0\ \mu\text{g/m}^3$) | Sentinel / Negative Hours | Active Window Valid % | Longest Contiguous Gap (h) |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| **2022** | 190 | 8,760 | 8,759 | 4,559 | 3,079 | 1,480 | 35.15% | 2,568 |
-| **2023** | 249 | 8,760 | 8,760 | 5,794 | 5,646 | 148 | 64.45% | 1,049 |
-| **2024** | 365 | 8,784 | 8,784 | 8,702 | 7,218 | 1,484 | 82.17% | 820 |
-| **2025** *(through Apr 9)* | 99 | 8,760 | 2,375 | 2,346 | 2,265 | 81 | 95.37% *(25.86% of full yr)* | 66 |
+| **2022** | 190 | 8,760 | 8,759 | 4,559 *(4,560 in S3 prefix)* | 3,079 | 1,480 | 35.15% | 2,568 |
+| **2023** | 249 | 8,760 | 8,760 | 5,794 *(5,793 in S3 prefix)* | 5,646 | 148 | 64.45% | 1,049 |
+| **2024** | 365 | 8,784 | 8,784 | 8,702 *(8,703 in S3 prefix)* | 7,218 | 1,484 | 82.17% | 820 |
+| **2025** *(through Apr 9)* | 99 | 8,760 | 2,375 | 2,346 *(2,345 in S3 prefix)* | 2,265 | 81 | 95.37% *(25.86% of full yr)* | 66 |
 | **Total (2022–2025)** | **903** | **35,064** | **28,678** | **21,401** | **18,208** | **3,193** | **63.49%** | **2,568** |
 
 ---
@@ -81,27 +83,30 @@ Instructor feedback on Milestone 3 noted that the baseline `VN001` dataset conta
 
 ### Station-Separated Winter Cohort Summary (`winter_year`, Dec–Feb)
 
-| Station ID | Winter Year (`Dec–Feb`) | Valid Hours ($n$) | Mean ($\mu\text{g/m}^3$) | SD ($\mu\text{g/m}^3$) | Median ($\mu\text{g/m}^3$) | IQR ($\text{Q25–Q75}$) | P90 ($\mu\text{g/m}^3$) | Valid Days ($\ge 18\text{h}$) | Daily QCVN Exceedance ($>50\ \mu\text{g/m}^3$) |
-|---|---:|---:|---:|---:|---:|---|---:|---:|---:|
-| `VN003_HANOI_OPENAQ_7441` | **W2022** *(Jan–Feb 2022)* | 739 | 49.55 | 36.93 | **39.00** | 40.00 (`24.0–64.0`) | 94.20 | 31 | 12 / 31 (**38.71%**) |
-| `VN003_HANOI_OPENAQ_7441` | **W2023** *(Dec 2022–Feb 2023)* | 1,412 | 72.64 | 38.55 | **63.00** | 44.00 (`46.0–90.0`) | 129.90 | 57 | 45 / 57 (**78.95%**) |
-| `VN003_HANOI_OPENAQ_7441` | **W2024** *(Dec 2023–Feb 2024)* | 1,828 | 45.02 | 26.98 | **39.00** | 24.00 (`29.0–53.0`) | 73.00 | 76 | 21 / 76 (**27.63%**) |
-| `VN003_HANOI_OPENAQ_7441` | **W2025** *(Dec 2024–Feb 2025)* | 1,579 | 63.67 | 40.96 | **54.00** | 56.00 (`32.0–88.0`) | 125.00 | 66 | 38 / 66 (**57.58%**) |
-| `VN001_HANOI_556_NGUYEN_VAN_CU` | **W2026** *(Dec 2025–Feb 2026)* | 1,958 | 63.15 | 33.56 | **57.11** | 48.61 (`37.1–85.8`) | 110.19 | 79 | 47 / 79 (**59.49%**) |
+> **Scope & Completeness Note:** `W2022`–`W2025` belong to `VN003_HANOI_OPENAQ_7441` and `W2026` belongs to `VN001_HANOI_556_NGUYEN_VAN_CU`; they are **not** 5 i.i.d. repetitions of the same physical sensor. In addition, `W2022` is a **partial winter window** (`2021-12` is outside the 2022–2025 S3 query scope, and `2022-02` has `14.43%` valid hours), `W2023` has reduced coverage in `2023-02` (`11.90%`), and `W2025` has reduced coverage in `2024-12` (`32.80%`).
+
+| Station ID | Winter Year (`Dec–Feb`) | Expected / Grid Hours | Valid Hours ($n$, % Full / % Grid) | Monthly Valid % (`Dec / Jan / Feb`) | Mean ± SD ($\mu\text{g/m}^3$) | Median ($\mu\text{g/m}^3$) | IQR ($\text{Q25–Q75}$) | P90 ($\mu\text{g/m}^3$) | Valid Days ($\ge 18\text{h}$) | Daily QCVN Exceedance ($>50\ \mu\text{g/m}^3$) |
+|---|---:|---:|---:|---|---:|---:|---|---:|---:|---:|
+| `VN003_HANOI_OPENAQ_7441` | **W2022** *(Partial: Jan–Feb 2022)* | 2,160 / 1,415 | 739 (`34.21%` / `52.23%`) | `— / 86.4% / 14.4%` | 49.55 ± 36.93 | **39.00** | 40.00 (`24.0–64.0`) | 94.20 | 31 | 12 / 31 (**38.71%**) |
+| `VN003_HANOI_OPENAQ_7441` | **W2023** *(Dec 2022–Feb 2023)* | 2,160 / 2,160 | 1,412 (`65.37%` / `65.37%`) | `97.8% / 81.2% / 11.9%` | 72.64 ± 38.55 | **63.00** | 44.00 (`46.0–90.0`) | 129.90 | 57 | 45 / 57 (**78.95%**) |
+| `VN003_HANOI_OPENAQ_7441` | **W2024** *(Dec 2023–Feb 2024)* | 2,184 / 2,184 | 1,828 (`83.70%` / `83.70%`) | `61.3% / 94.1% / 96.6%` | 45.02 ± 26.98 | **39.00** | 24.00 (`29.0–53.0`) | 73.00 | 76 | 21 / 76 (**27.63%**) |
+| `VN003_HANOI_OPENAQ_7441` | **W2025** *(Dec 2024–Feb 2025)* | 2,160 / 2,160 | 1,579 (`73.10%` / `73.10%`) | `32.8% / 89.9% / 99.1%` | 63.67 ± 40.96 | **54.00** | 56.00 (`32.0–88.0`) | 125.00 | 66 | 38 / 66 (**57.58%**) |
+| `VN001_HANOI_556_NGUYEN_VAN_CU` | **W2026** *(Dec 2025–Feb 2026)* | 2,160 / 2,160 | 1,958 (`90.65%` / `90.65%`) | `83.7% / 91.9% / 96.9%` | 63.15 ± 33.56 | **57.11** | 48.61 (`37.1–85.8`) | 110.19 | 79 | 47 / 79 (**59.49%**) |
 
 ---
 
 ## 5. Impact on Statistical Inference (Issue #11) & Regression Contract (Issue #12)
 
-### Station-Separated Daily Inference Comparison ($\ge 18\text{h/day}$ valid rule)
+### Station-Separated Daily Inference Comparison ($\ge 18\text{h/day}$ valid rule, Calendar-Preserving)
 
 | Metric | Legacy Baseline (`VN001`, 2025–2026) | Historical Station (`VN003` / OpenAQ `7441`, 2022–2025) | Consistency & Scientific Interpretation |
 |---|---:|---:|---|
-| **Valid Daily Observations ($n_{\text{days}}$)** | `299` | `756` | `VN003` provides $2.53\times$ more valid daily observations across 3.3 years. |
-| **Daily Lag-1 Autocorrelation ($\rho_1$)** | `0.7330` ($n_{\text{eff}} \approx 46.1$) | `0.7219` ($n_{\text{eff}} \approx 122.1$) | Strong positive persistence ($\rho_1 \approx 0.72\text{–}0.73$) is a structural property of Hanoi urban $\text{PM}_{2.5}$ across both stations and all years. |
-| **Winter vs. Non-Winter Daily Median ($\mu\text{g/m}^3$)** | `60.46` vs. `33.58` (`+26.88`) | `50.05` vs. `36.34` (`+13.71`) | Winter elevation is replicated across multi-year observations at `VN003` ($r_{rb} = +0.3588$) as well as `VN001` ($r_{rb} = +0.5720$). |
-| **Seasonal Kruskal–Wallis $H$** | `61.5344` | `164.1954` | Seasonal heterogeneity is confirmed across 4 winter cycles in `VN003`, upgrading the seasonality finding from single-cycle exploratory to multi-year station-verified. |
-| **Daily QCVN 05:2023 Exceedance ($>50\ \mu\text{g/m}^3$)** | `84 / 299` (**28.09%**) | `238 / 756` (**31.48%**) | Both stations show $\approx 28\%\text{–}31\%$ of valid days exceeding QCVN 05:2023 ($50\ \mu\text{g/m}^3$), with exceedances heavily concentrated in Winter/Autumn. |
+| **Calendar Days / Valid Daily Observations ($n_{\text{days}}$)** | `378` / `299` | `1,195` / `756` | `VN003` provides $2.53\times$ more valid daily observations across 3.3 years. |
+| **Calendar-Preserving Daily Lag-1 Autocorrelation ($\rho_1$)** | `0.7276` ($n_{\text{eff}} = 47.14$, VIF $= 6.34$) | `0.7487` ($n_{\text{eff}} = 108.66$, VIF $= 6.96$) | Computed via `src/inference.py::effective_sample_size()` keeping `NaN` on missing calendar days. Strong positive persistence ($\rho_1 \approx 0.73\text{–}0.75$) holds at both stations. |
+| **Overall Daily Median & 95% Calendar Block-Bootstrap CI ($L=28\text{d}, B=2000$)** | `37.20` (`[32.81, 44.83]`) $\mu\text{g/m}^3$ | `39.61` (`[35.00, 44.52]`) $\mu\text{g/m}^3$ | Daily central tendency and dependence-aware uncertainty intervals are closely aligned across stations. |
+| **Winter vs. Non-Winter Daily Median ($\mu\text{g/m}^3$)** | `60.46` vs. `33.58` (`+26.88`, $r_{rb} = +0.5720$) | `50.05` vs. `36.34` (`+13.71`, $r_{rb} = +0.3588$) | Winter elevation is replicated across multi-year observations at `VN003` as well as `VN001`. |
+| **Seasonal Kruskal–Wallis $H$ ($\varepsilon^2$) & Dependence-Aware $p_{\text{boot}}$ ($L=28\text{d}$)** | $H = 61.5344$ ($\varepsilon^2 = 0.2065$), $p_{\text{boot}} = 0.0295$ ($p_{\text{naive}} = 2.76 \times 10^{-13}$) | $H = 164.1954$ ($\varepsilon^2 = 0.2175$), $p_{\text{boot}} = 0.0005$ ($p_{\text{naive}} = 2.28 \times 10^{-35}$) | Calendar block-bootstrap null test ($B=2,000, L=28\text{d}$) confirms seasonal heterogeneity on `VN003`, while status remains `exploratory` under seasonal missingness and non-i.i.d. structure. |
+| **Daily QCVN 05:2023 Exceedance ($>50\ \mu\text{g/m}^3$)** | `84 / 299` (**28.09%**) | `238 / 756` (**31.48%**) | Both stations show $\approx 28\%\text{–}31\%$ of valid days exceeding QCVN 05:2023 ($50\ \mu\text{g/m}^3$), heavily concentrated in Winter/Autumn. |
 
 ### Handover Contract for Issue #12 (Regression) & Issue #13 (Classification)
 - **Primary Baseline Model Contract:** Issue #12 and Issue #13 retain `data/processed/air_pollution_final.parquet` (`VN001`) as the frozen baseline partition so all M2/M3/W9 benchmarks remain strictly comparable.
