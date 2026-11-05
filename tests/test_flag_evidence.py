@@ -431,6 +431,10 @@ class TestFormatting(unittest.TestCase):
         self.assertEqual(fe.format_signed_vi(2.7948), "+2,79")
         self.assertEqual(fe.format_signed_vi(-8.9095), "−8,91")
         self.assertEqual(fe.format_scientific_vi(7.38e-11), "7,4·10⁻¹¹")
+        # Chuẩn hoá exponent: bỏ zero thừa và dấu trừ unicode (10⁻⁰⁸ → 10⁻⁸).
+        self.assertEqual(fe.format_scientific_vi(1e-8), "1,0·10⁻⁸")
+        self.assertEqual(fe.format_scientific_vi(2.5e-100, 2), "2,50·10⁻¹⁰⁰")
+        self.assertEqual(fe.format_scientific_vi(1.5e8), "1,5·10⁸")
 
 
 class TestDocumentedReproduction(unittest.TestCase):

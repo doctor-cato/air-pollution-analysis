@@ -38,6 +38,35 @@ jobs:
           python -c "import src.data_quality"
           python -c "import src.cleaning"
           python -c "import src.cleaning_pipeline"
+          python -c "import src.inference"
+          python -c "import importlib.util, pathlib; spec = importlib.util.spec_from_file_location('mc', 'scripts/validate_inference_montecarlo.py'); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m); print('monte-carlo script OK')"
+
+      # Kiểm chứng Monte Carlo đầy đủ (1.000 lần × 9 kịch bản) là công việc
+      # KHOA HỌC có chi phí (~nửa giờ) nên CỐ TÌNH không chạy trong CI. CI chỉ
+      # kiểm hợp đồng của engine (TestMonteCarloValidation) với số lần rất nhỏ;
+      # kết quả thật được commit ở reports/inference_montecarlo.csv.
+      - name: Kiểm tra CSV kiểm chứng Monte Carlo đã commit
+        run: |
+          python - <<'PY'
+          import pathlib, sys
+          import pandas as pd
+
+          path = pathlib.Path("reports/inference_montecarlo.csv")
+          if not path.exists():
+              print("Thiếu reports/inference_montecarlo.csv", file=sys.stderr)
+              sys.exit(1)
+          frame = pd.read_csv(path)
+          assert len(frame) >= 30, f"CSV có {len(frame)} dòng — quá ít"
+          assert "scenario" in frame.columns and "test" in frame.columns
+          for column in frame.columns:
+              if column.startswith("rate_"):
+                  # Ô trống = phương pháp **không áp dụng** cho kịch bản đó
+                  # (ví dụ cặp mùa hậu định không có đối chứng HAC) → bỏ qua,
+                  # chỉ kiểm các tỷ lệ **có** mặt.
+                  present = frame[column].dropna()
+                  assert present.between(0, 1).all(), f"{column} ngoài [0, 1]"
+          print(f"OK  {path} ({len(frame)} dòng, {frame['scenario'].nunique()} kịch bản)")
+          PY
 
       # Chỉ chạy unit test. KHÔNG chạy run_collection_pipeline() vì cần
       # gọi OpenAQ S3 / Open-Meteo / AirNow qua mạng (không deterministic).
