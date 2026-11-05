@@ -2297,6 +2297,73 @@ class TestGroupCalendarBlockReplicates(unittest.TestCase):
         np.testing.assert_array_equal(reps1, reps2)
         self.assertFalse(np.array_equal(reps1, reps3))
 
+    def test_multi_segment_with_short_segment_positive_sampling_coverage_and_fallback(self):
+        """
+        Regression test cho trường hợp nhóm gồm 2 phân đoạn liên tục: 40 ngày và 5 ngày,
+        cách nhau 100 ngày (> 3 tháng), với block_length_days = 28.
+
+        Lỗi cũ: `valid_starts = np.flatnonzero(lens == max_len)` với `max_len = 28`
+        loại bỏ hoàn toàn phân đoạn 5 ngày (xác suất lấy mẫu bằng 0 tuyệt đối).
+
+        Thiết kế mới theo từng contiguous segment bảo đảm:
+        1. Phân đoạn 5 ngày có xác suất dương (> 0) được chọn;
+        2. Fallback khi segment ngắn hơn block length: block length co về đúng 5 ngày;
+        3. Không bao giờ nhảy qua khoảng cách 100 ngày;
+        4. Trọng số giữa các đoạn phản ánh đúng tỷ lệ quan sát thực tế;
+        5. Tính tái lập theo seed;
+        6. Không khẳng định 100% finite-sample coverage nếu không có bằng chứng.
+        """
+        dates1 = pd.date_range("2025-01-01", periods=40, freq="D")
+        dates2 = pd.date_range("2025-06-01", periods=5, freq="D")
+        all_dates = pd.date_range("2025-01-01", "2025-06-05", freq="D")
+        n = len(all_dates)
+
+        values = np.full(n, np.nan)
+        season = np.array(["Other"] * n, dtype=object)
+        idx1 = all_dates.get_indexer(dates1)
+        values[idx1] = 10.0
+        season[idx1] = "Target"
+        idx2 = all_dates.get_indexer(dates2)
+        values[idx2] = 999.0
+        season[idx2] = "Target"
+
+        cal = inf.DailyCalendar(
+            dates=all_dates.values.astype("datetime64[D]"),
+            values=values,
+            labels=np.zeros(n, dtype=int),
+            valid_hours=np.full(n, 24, dtype=int),
+            season=season,
+            is_weekend=np.zeros(n, dtype=int),
+            week_key=np.full(n, "2025-W01", dtype=object),
+        )
+        mask = season == "Target"
+        n_target = 45
+
+        reps = inf._group_calendar_block_replicates(
+            cal, mask, block_length_days=28, n_bootstrap=200, seed=42
+        )
+        self.assertEqual(reps.shape, (200, n_target))
+
+        # 1. Phân đoạn 5 ngày có quan sát hợp lệ trong các bản sao bootstrap (không bị loại 100%)
+        count_seg2 = int(np.sum(reps == 999.0))
+        self.assertGreater(count_seg2, 0, "Phân đoạn 5 ngày bị loại bỏ hoàn toàn (0 lần xuất hiện)!")
+
+        # 2. Mọi giá trị lấy mẫu đều thuộc 2 phân đoạn quan sát hợp lệ (không nội suy hay tạo giá trị giả)
+        valid_vals = {10.0, 999.0}
+        unique_sampled = set(np.unique(reps))
+        self.assertEqual(unique_sampled, valid_vals)
+
+        # 3. Phân đoạn 5 ngày nhận tỷ lệ lấy mẫu tương ứng với tỷ lệ mẫu gốc (~11,1%)
+        frac_seg2 = float(np.mean(reps == 999.0))
+        self.assertGreater(frac_seg2, 0.05, f"Tỷ lệ phân đoạn 5 ngày quá thấp: {frac_seg2:.4f}")
+        self.assertLess(frac_seg2, 0.35, f"Tỷ lệ phân đoạn 5 ngày quá cao: {frac_seg2:.4f}")
+
+        # 4. Kiểm tra tính tất định: cùng seed sinh bản sao đồng nhất
+        reps_repeat = inf._group_calendar_block_replicates(
+            cal, mask, block_length_days=28, n_bootstrap=200, seed=42
+        )
+        np.testing.assert_array_equal(reps, reps_repeat)
+
     def test_bootstrap_statistics_contrast_ci_median_and_mean(self):
         """CI hiệu ứng tính đúng cho cả median và mean với thứ tự bound chuẩn xác."""
         ci_med = inf.calendar_contrast_ci(

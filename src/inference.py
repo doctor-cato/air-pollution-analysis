@@ -1579,38 +1579,36 @@ def _group_calendar_block_replicates(
     """
     Bản sao bootstrap cho **một nhóm** trên lịch ngày — shape ``(B, n_observed)``.
 
-    Mỗi bản sao được dựng bằng cách rút các **block gồm `block_length_days` NGÀY
-    LỊCH liên tiếp** *trong footprint lịch của nhóm* (các ngày mang nhãn nhóm),
-    rồi ghép lại cho tới khi đủ số ngày quan sát của nhóm.
+    Mỗi bản sao được dựng bằng cách rút các block ngày lịch liên tiếp theo từng
+    **phân đoạn liên tục (contiguous segment)** trong footprint của nhóm, bảo đảm
+    không nối các đoạn qua khoảng cách thời gian bị ngắt và mọi phân đoạn có quan
+    sát đều có xác suất dương được lấy mẫu.
 
-    Để bảo toàn cấu trúc khối và tránh thiên lệch mẫu tại ranh giới cuối mùa:
-    * **Chỉ chọn điểm bắt đầu có cửa sổ đủ độ dài (valid starts with full window):**
-      Thay vì cắt cụt block thành 1–3 ngày khi cửa sổ chạm cuối mùa rồi rút lặp lại,
-      thuật toán chỉ lấy các điểm bắt đầu có cửa sổ đạt độ dài tối đa (`lens == max_len`).
-      Mọi block được rút đều giữ trọn vẹn độ dài cửa sổ lịch ấn định.
-    * **Bảo tồn 100% không gian quan sát:** Các cửa sổ hợp lệ mở rộng tới tận ngày
-      cuối cùng của mùa, do đó 100% các ngày quan sát trong nhóm đều có xác suất
-      dương được đưa vào bản sao bootstrap.
-    * **Không tạo bước nhảy nhân tạo:** Khác với circular wrap (ghép ngày cuối mùa
-      với ngày đầu mùa, hoặc nối hai năm cách nhau 9 tháng ở mùa Hè), việc chỉ chọn
-      điểm bắt đầu đủ dài bảo toàn chuỗi thời gian tự nhiên của từng đoạn lịch.
-    * **Giới hạn:** Theo Moving Block Bootstrap chuẩn (Künsch 1989), các ngày sát
-      biên cuối có xác suất biên xuất hiện thấp hơn các ngày ở giữa.
+    Cấu trúc thuật toán theo phân đoạn:
+    * **Phân đoạn liên tục:** Nhóm được tách thành các đoạn ngày lịch liên tiếp
+      (bước nhảy > 1 ngày lịch đánh dấu ranh giới phân đoạn). Các khối không bao giờ
+      vượt qua khoảng cách giữa các phân đoạn (không nối hai năm khác nhau, không nhảy
+      qua khoảng ngắt dữ liệu).
+    * **Độ dài khối và fallback:** Với phân đoạn $k$ có độ dài $L_k$:
+      - Nếu $L_k \\ge \\text{block\\_length\\_days}$: rút các khối có độ dài đầy đủ
+        $\\text{block\\_length\\_days}$ ($L_k - \\text{block\\_length\\_days} + 1$ điểm bắt đầu hợp lệ).
+      - Nếu $L_k < \\text{block\\_length\\_days}$: fallback co độ dài khối về đúng $L_k$
+        (toàn bộ phân đoạn là 1 khối duy nhất), tránh cắt ngắn hoặc loại bỏ phân đoạn.
+    * **Trọng số phân đoạn:** Phân đoạn được lấy mẫu với trọng số tỷ lệ với số quan sát
+      hợp lệ ($w_k = n_{\\text{obs}, k} / \\bar{b}_{\\text{obs}, k}$), bảo đảm tỷ lệ đóng góp
+      kỳ vọng của từng phân đoạn tương ứng với tỷ lệ mẫu thực tế. Phân đoạn không có
+      ngày quan sát nào (ví dụ cửa sổ chưa có dữ liệu) nhận trọng số 0.
+    * **Độ bao phủ và biên (edge bias):** Mọi ngày quan sát trong các phân đoạn hợp lệ
+      đều có xác suất được chọn dương ($P > 0$). Theo Moving Block Bootstrap chuẩn
+      (Künsch 1989), các ngày sát biên phân đoạn có xác suất biên xuất hiện thấp hơn
+      các ngày ở giữa; độ bao phủ thực nghiệm trong $B$ hữu hạn phụ thuộc vào $B$ và $L_k$.
 
     Ba tính chất bắt buộc:
-
-    1. **Nhãn đi theo ngày nguồn.** Một ngày Đông được rút vẫn là ngày Đông →
-       cấu trúc nhóm được giữ nguyên. Đây là CI **hiệu ứng** (sampling
-       distribution của chênh lệch), *không* phải phân phối null. Ngược lại —
-       nhãn ở vị trí **đích** như `calendar_replicates()` — bản sao sẽ mô phỏng
-       H₀ ("các nhóm không khác nhau") và CI sẽ căng quanh 0, không phải quanh
-       ước lượng điểm.
-    2. **Mặt nạ thiếu đi theo bản sao.** Ngày không tạo được trung bình ngày vẫn
-       không có trong bản sao → không nội suy, không tạo quan sát giả, không nối
-       hai khoảng lịch bị ngắt (block chỉ kéo theo ngày **của nhóm** nằm trong
-       cửa sổ lịch, nên không vượt qua khoảng trống dài hơn block).
-    3. **Cỡ mẫu quan sát của nhóm được giữ** bằng đúng số ngày quan sát gốc → CI
-       phản ánh biến động *vị trí* của thống kê, không phản ánh biến động cỡ mẫu.
+    1. **Nhãn đi theo ngày nguồn:** Một ngày Đông được rút vẫn là ngày Đông → giữ nguyên
+       phân phối hiệu ứng (effect CI), khác với phân phối null (nhãn đích).
+    2. **Mặt nạ thiếu đi theo bản sao:** Ngày không có trung bình ngày vẫn không có trong
+       bản sao → không nội suy, không tạo quan sát giả.
+    3. **Cỡ mẫu quan sát của nhóm được giữ:** Đúng số ngày quan sát gốc $n_{\\text{target}}$.
     """
     mask = np.asarray(group_mask, dtype=bool)
     if mask.size != calendar.n_days:
@@ -1624,20 +1622,32 @@ def _group_calendar_block_replicates(
         raise ValueError("Nhóm không có ngày quan sát nào — không dựng được CI.")
 
     group_dates = np.asarray(calendar.dates, dtype="datetime64[D]")[days]
-    # Block bắt đầu tại `days[i]` = các ngày **của nhóm** nằm trong cửa sổ lịch
-    # [ngày_i, ngày_i + block_length_days). `searchsorted` trên *ngày lịch* nên độ
-    # dài block luôn mang nghĩa ngày lịch, kể cả khi nhóm không chiếm mọi ngày.
-    eff_block = min(int(block_length_days), days.size)
-    window_end = np.searchsorted(
-        group_dates,
-        group_dates + np.timedelta64(eff_block, "D"),
-        side="left",
-    )
-    lens = window_end - np.arange(days.size)
-    max_len = int(lens.max())
-    valid_starts = np.flatnonzero(lens == max_len)
-    if valid_starts.size == 0:
-        valid_starts = np.arange(days.size)
+    jumps = np.flatnonzero(np.diff(group_dates) > np.timedelta64(1, "D"))
+    seg_starts = np.r_[0, jumps + 1]
+    seg_ends = np.r_[jumps + 1, days.size]
+
+    seg_windows: List[List[Tuple[int, int]]] = []
+    seg_weights: List[float] = []
+    for s, e in zip(seg_starts, seg_ends):
+        seg_len = int(e - s)
+        eff_b = min(int(block_length_days), seg_len)
+        n_starts = seg_len - eff_b + 1
+        windows = [(int(st), int(st + eff_b)) for st in range(s, s + n_starts)]
+        obs_counts = [int(np.isfinite(values[days[st:end]]).sum()) for st, end in windows]
+        n_obs_seg = int(np.isfinite(values[days[s:e]]).sum())
+        if n_obs_seg > 0:
+            mean_obs = float(np.mean([c for c in obs_counts if c > 0])) if any(c > 0 for c in obs_counts) else 1.0
+            seg_weights.append(n_obs_seg / mean_obs)
+            valid_w = [w for w, c in zip(windows, obs_counts) if c > 0]
+            seg_windows.append(valid_w if valid_w else windows)
+        else:
+            seg_weights.append(0.0)
+            seg_windows.append([])
+
+    tot_weight = sum(seg_weights)
+    if tot_weight <= 0:
+        raise ValueError("Không có phân đoạn nào có dữ liệu quan sát — không dựng được CI.")
+    probs = np.asarray(seg_weights, dtype=float) / tot_weight
 
     rng = np.random.default_rng(seed)
     replicates = np.empty((n_bootstrap, n_target), dtype=float)
@@ -1651,12 +1661,12 @@ def _group_calendar_block_replicates(
                 raise ValueError(
                     "Không đủ ngày quan sát sau 10.000 lần rút block — kiểm tra mặt nạ nhóm."
                 )
-            idx_start = int(valid_starts[rng.integers(valid_starts.size)])
-            block = values[days[idx_start:window_end[idx_start]]]
+            seg_idx = int(rng.choice(len(seg_windows), p=probs))
+            windows = seg_windows[seg_idx]
+            st, end = windows[int(rng.integers(len(windows)))]
+            block = values[days[st:end]]
             block = block[np.isfinite(block)]
             if block.size == 0:
-                # Block rơi vào vùng không quan sát của nhóm (ví dụ cửa sổ Hè 2026
-                # chưa có dữ liệu) → bỏ qua, không nội suy.
                 continue
             take = int(min(block.size, n_target - filled))
             collected.append(block[:take])

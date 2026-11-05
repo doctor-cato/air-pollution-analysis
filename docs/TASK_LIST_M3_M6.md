@@ -665,20 +665,15 @@ Input: `data/processed/air_pollution_final.parquet` (9.044 dòng × 18 cột, gi
 
 ## Phase 5 — Issue #11: Suy luận thống kê (~1–2 buổi)
 
-- [x] **5.1** Kiểm định 1 — `pm25` giữa 2 mùa: Shapiro-Wilk trước, Mann-Whitney U sau nếu vi phạm chuẩn.
-- [x] **5.2** Tính `$r_{rb} = 1 − 2U/(n_1n_2)` + Bootstrap CI 95% cho chênh lệch trung vị
-      (1.000 lặp, `np.random.seed(42)`).
-- [x] **5.3** 🔴 Hiệu chỉnh multiple testing cho **toàn bộ** các kiểm định trong notebook (task 1.1).
-- [x] **5.4** Kiểm định 2 — weekday vs weekend, Mann-Whitney U; biện luận khoảng cách giữa ý nghĩa thống kê
-      và ý nghĩa thực tiện.
-- [x] **5.5** Kiểm định 3 — đối chiếu `pm25` với QCVN 05:2023/BTNMT bằng phép phi tham số trên chuỗi
-      **tương thích toán học** về chu kỳ lấy mẫu; báo cáo 95% CI.
-- [x] **5.6** 🔴 Bảng kết quả: **100% kết luận** trình bày đủ bộ bốn — thống kê kiểm định, p-value (thô + đã
-      hiệu chỉnh), effect size `$r_{rb}$`, Bootstrap CI 95%. Tuyệt đối không báo cáo p-value đơn độc.
-- [x] **5.7** 🔴 Giải thích p-value theo đúng 4 sai lầm kinhiển (task 1.3); nêu Power = 1 − β trong ngữ cảnh
-      cảnh báo sớm.
-- [x] **5.8** ⚪ Base rate fallacy: diễn giải mọi tỷ lệ khớp quy chuẩn qua prior probability (task 1.2).
-- [x] **5.9** Tạo `notebooks/05_statistical_inference.ipynb` + bảng tổng hợp kết quả kiểm định.
+- [x] **5.1** Kiểm định 1 — biến thiên mùa của `pm25`: Shapiro-Wilk & D'Agostino chẩn đoán phân phối; omnibus 4 mùa bằng Kruskal–Wallis với null block bootstrap theo lịch (có đối chiếu HAC); kiểm định hậu định 6 cặp mùa bằng Mann–Whitney U.
+- [x] **5.2** Ước lượng độ lớn hiệu ứng ($r_{rb} = 1 − 2U/(n_1n_2)$ cho so sánh cặp, $\epsilon^2$ cho omnibus mùa) + Bootstrap CI 95% hiệu ứng cho estimand `trung vị(A) − trung vị(B)` theo quy ước dấu nhất quán (1.000 lặp, `seed=42`, block bootstrap phân tầng theo lịch).
+- [x] **5.3** 🔴 Hiệu chỉnh multiple testing bằng Holm–Bonferroni cho family 4 kiểm định xác nhận theo thiết kế thực tế (FWER ≤ 0,05) và hiệu chỉnh riêng cho 6 cặp hậu định mùa; không gộp các phân tích khám phá vào family xác nhận.
+- [x] **5.4** Kiểm định 2 — ngày làm việc vs cuối tuần: phương pháp chính bằng OLS + HAC (Newey–West) kiểm soát tự tương quan, Mann–Whitney U làm đối chứng phi tham số với null bootstrap theo lịch; phân tích power & MDE để biện luận khoảng cách giữa ý nghĩa thống kê và thực tiễn.
+- [x] **5.5** Kiểm định 3 & 4 — đối chiếu `pm25` với quy chuẩn QCVN 05:2023/BTNMT trên chuỗi trung bình ngày tương thích toán học: ngưỡng 24h (50 µg/m³) bằng HAC + Wilcoxon 1 mẫu; ngưỡng năm (25 µg/m³) bằng HAC + t-test 1 mẫu; cả hai đều có null bootstrap áp đặt $H_0$ theo lịch và CI 95%.
+- [x] **5.6** 🔴 Bảng kết quả: trình bày đầy đủ bộ bốn — thống kê kiểm định, p-value (tham chiếu độc lập + hiệu chỉnh phụ thuộc thời gian + p Holm), effect size ($r_{rb}$, $\epsilon^2$), Bootstrap CI 95% hiệu ứng cho đúng estimand và quy ước dấu; không báo cáo p-value đơn độc.
+- [x] **5.7** 🔴 Diễn giải p-value tránh 4 sai lầm kinh điển (không là P(H₀|D), không đo độ lớn hiệu ứng); phân tích Power = 1 − β và MDE trong bài toán cảnh báo sớm.
+- [x] **5.8** ⚪ Base rate fallacy: diễn giải tỷ lệ vượt ngưỡng quy chuẩn qua xác suất tiên nghiệm (prior probability) và phân bố nền mùa đông/hè.
+- [x] **5.9** Xây dựng `notebooks/05_statistical_inference.ipynb` (sinh từ `generate_05_notebook.py`), bảng kết quả `reports/inference_results.md`, kiểm chứng Type I error `reports/inference_montecarlo.csv`, và bộ 5 figure bổ sung `figures/FIG-08.png`–`FIG-12.png`.
 
 **Deliverable:** `notebooks/05_statistical_inference.ipynb`, bảng kết quả kiểm định (`reports/inference_results.md`), `reports/inference_montecarlo.csv`, 5 figure bổ sung (`figures/FIG-08.png`–`FIG-12.png`)
 
