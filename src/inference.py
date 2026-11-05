@@ -1678,7 +1678,7 @@ def calendar_contrast_ci(
     * nếu khoảng percentile chứa ước lượng điểm → `ci_method="percentile"`,
       `contains_point_estimate=True`;
     * nếu **không** chứa (phân phối bootstrap lệch/skew) → chuyển sang khoảng
-      **đối xứng theo độ lệch tuyệt đối** ``θ̂ ± Q_{1−α/2}(|θ* − θ̂|)``, vốn
+      **đối xứng theo độ lệch tuyệt đối** ``θ̂ ± Q_{1−α}(|θ* − θ̂|)``, vốn
       **chứa θ̂ theo cấu tạo** (bán kính ≥ 0) và là khoảng đối xứng chuẩn đi kèm
       khoảng percentile; `ci_method="symmetric_absolute_deviation"`.
 
@@ -1722,7 +1722,7 @@ def calendar_contrast_ci(
     ci_method = "percentile"
     if not contains_point:
         half_width = float(
-            np.quantile(np.abs(replicates - point), 1.0 - CONFIDENCE_LEVEL)
+            np.quantile(np.abs(replicates - point), CONFIDENCE_LEVEL)
         )
         lo, hi = point - half_width, point + half_width
         ci_method = "symmetric_absolute_deviation"
@@ -3297,15 +3297,19 @@ def monte_carlo_validation(
         scenario_rows: Dict[str, Any] = {}
         for name, counter in counters.items():
             row: Dict[str, Any] = {}
+            valid_counts: List[int] = []
             for key in sorted(k for k in counter if not k.startswith("valid_")):
-                valid = max(counter.get(f"valid_{key}", 0), 1)
+                n_v = int(counter.get(f"valid_{key}", 0))
+                valid = max(n_v, 1)
                 rate = counter[key] / valid
                 lo, hi = _wilson_interval(counter[key], valid)
                 row[f"rate_{key}"] = float(rate)
                 row[f"ci_low_{key}"] = float(lo)
                 row[f"ci_high_{key}"] = float(hi)
                 row[f"mc_se_{key}"] = float(math.sqrt(max(rate * (1 - rate), 0.0) / valid))
-                row[f"n_valid_{key}"] = int(counter.get(f"valid_{key}", 0))
+                row[f"n_valid_{key}"] = n_v
+                valid_counts.append(n_v)
+            row["n_valid"] = max(valid_counts) if valid_counts else 0
             scenario_rows[name] = row
         out["scenarios"][scenario_key] = {
             "label": spec["label"],
@@ -3824,6 +3828,16 @@ def monte_carlo_to_rows(result: Mapping[str, Any]) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     for scenario_key, scenario in result.get("scenarios", {}).items():
         for test_name, entry in scenario.get("tests", {}).items():
+            valid_counts = [
+                int(v)
+                for k, v in entry.items()
+                if k.startswith("n_valid_")
+                and v is not None
+                and not (isinstance(v, float) and math.isnan(v))
+            ]
+            row_n_valid = entry.get("n_valid")
+            if row_n_valid is None:
+                row_n_valid = max(valid_counts) if valid_counts else 0
             row: Dict[str, Any] = {
                 "scenario": scenario_key,
                 "scenario_label": scenario.get("label", scenario_key),
@@ -3832,7 +3846,7 @@ def monte_carlo_to_rows(result: Mapping[str, Any]) -> List[Dict[str, Any]]:
                 "missing": scenario.get("missing", "none"),
                 "test": test_name,
                 "n_sim": result.get("n_sim", 0),
-                "n_valid": entry.get("n_valid", 0),
+                "n_valid": int(row_n_valid),
                 "alpha": result.get("alpha", ALPHA),
                 "n_days": result.get("n_days", 0),
                 "block_length_days": result.get("block_length_days", BLOCK_LENGTH_DAYS),
@@ -3840,12 +3854,19 @@ def monte_carlo_to_rows(result: Mapping[str, Any]) -> List[Dict[str, Any]]:
                 "n_bootstrap": result.get("n_bootstrap", N_SIMULATION_BOOTSTRAP),
                 "seed": result.get("seed", BOOTSTRAP_SEED),
             }
-            for key in [k for k in entry if k.startswith("rate_")]:
+            for key in sorted(k for k in entry if k.startswith("rate_")):
                 suffix = key[len("rate_"):]
                 row[f"rate_{suffix}"] = entry.get(f"rate_{suffix}", float("nan"))
                 row[f"ci_low_{suffix}"] = entry.get(f"ci_low_{suffix}", float("nan"))
                 row[f"ci_high_{suffix}"] = entry.get(f"ci_high_{suffix}", float("nan"))
                 row[f"mc_se_{suffix}"] = entry.get(f"mc_se_{suffix}", float("nan"))
+                val_k = entry.get(f"n_valid_{suffix}")
+                row[f"n_valid_{suffix}"] = (
+                    int(val_k)
+                    if val_k is not None
+                    and not (isinstance(val_k, float) and math.isnan(val_k))
+                    else None
+                )
             rows.append(row)
     return rows
 
@@ -3875,7 +3896,12 @@ def load_monte_carlo_csv(path: Optional[Path] = None) -> Optional[Dict[str, Any]
         tests: Dict[str, Any] = {}
         for test_name, test_group in group.groupby("test", sort=False):
             first = test_group.iloc[0]
-            entry: Dict[str, Any] = {"n_valid": int(first["n_valid"])}
+            entry_n_valid = (
+                int(first["n_valid"])
+                if ("n_valid" in frame.columns and pd.notna(first["n_valid"]))
+                else 0
+            )
+            entry: Dict[str, Any] = {"n_valid": entry_n_valid}
             for column in frame.columns:
                 if column.startswith("rate_"):
                     suffix = column[len("rate_"):]
@@ -3883,6 +3909,19 @@ def load_monte_carlo_csv(path: Optional[Path] = None) -> Optional[Dict[str, Any]
                     entry[f"ci_low_{suffix}"] = float(first[f"ci_low_{suffix}"])
                     entry[f"ci_high_{suffix}"] = float(first[f"ci_high_{suffix}"])
                     entry[f"mc_se_{suffix}"] = float(first[f"mc_se_{suffix}"])
+                    n_valid_col = f"n_valid_{suffix}"
+                    if n_valid_col in frame.columns and pd.notna(first[n_valid_col]):
+                        entry[n_valid_col] = int(first[n_valid_col])
+            if entry["n_valid"] == 0:
+                method_counts = [
+                    int(v)
+                    for k, v in entry.items()
+                    if k.startswith("n_valid_")
+                    and v is not None
+                    and not (isinstance(v, float) and math.isnan(v))
+                ]
+                if method_counts:
+                    entry["n_valid"] = max(method_counts)
             tests[str(test_name)] = entry
         scenarios[str(scenario_key)] = {
             "label": str(first["scenario_label"]),

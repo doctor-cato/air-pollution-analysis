@@ -2115,6 +2115,9 @@ class TestSeasonalContrastCI(unittest.TestCase):
         Hàm phải **kiểm tra tường minh** và, khi khoảng percentile không chứa
         ước lượng điểm, chuyển sang khoảng **đối xứng theo độ lệch tuyệt đối**
         (chứa ước lượng điểm theo cấu tạo) và **ghi rõ** cách dựng đã dùng.
+
+        Regression review PR #47: phân vị độ lệch tuyệt đối phải dùng
+        `CONFIDENCE_LEVEL = 0.95`, không phải `1.0 - CONFIDENCE_LEVEL = 0.05`.
         """
         original = inf._percentile_ci
 
@@ -2134,6 +2137,28 @@ class TestSeasonalContrastCI(unittest.TestCase):
         self.assertEqual(ci["ci_method"], "symmetric_absolute_deviation")
         self.assertLessEqual(ci["ci_low"], ci["point"])
         self.assertGreaterEqual(ci["ci_high"], ci["point"])
+
+        # Xác minh CI bao phủ ước lượng điểm với bán kính đúng phân vị 95%:
+        half_width = ci["ci_high"] - ci["point"]
+        self.assertAlmostEqual(ci["point"] - ci["ci_low"], half_width, places=6)
+        self.assertGreater(half_width, 0.0)
+
+        # Tái hiện phân phối replicates dưới cùng seed để so sánh chính xác quantile:
+        reps_a = inf._group_calendar_block_replicates(
+            self.calendar, self.mask_a, block_length_days=inf.BLOCK_LENGTH_DAYS,
+            n_bootstrap=200, seed=42,
+        )
+        reps_b = inf._group_calendar_block_replicates(
+            self.calendar, self.mask_b, block_length_days=inf.BLOCK_LENGTH_DAYS,
+            n_bootstrap=200, seed=43,
+        )
+        diffs = inf._nan_reduce_rows(reps_a, "median") - inf._nan_reduce_rows(reps_b, "median")
+        abs_dev = np.abs(diffs[np.isfinite(diffs)] - ci["point"])
+        expected_q95 = float(np.quantile(abs_dev, inf.CONFIDENCE_LEVEL))
+        buggy_q05 = float(np.quantile(abs_dev, 1.0 - inf.CONFIDENCE_LEVEL))
+        self.assertAlmostEqual(half_width, expected_q95, places=6)
+        self.assertGreater(expected_q95, buggy_q05)
+        self.assertNotAlmostEqual(half_width, buggy_q05, places=3)
 
     def test_only_one_contrast_ci_implementation_exists(self):
         """
@@ -2168,6 +2193,16 @@ class TestMonteCarloValidation(unittest.TestCase):
         self.assertLessEqual(entry["ci_low_p_bootstrap"], rate + 1e-9)
         self.assertGreaterEqual(entry["ci_high_p_bootstrap"], rate - 1e-9)
 
+        # Hợp đồng số lần hợp lệ: có n_valid > 0 và n_valid_{method} riêng cho từng phương pháp:
+        self.assertIn("n_valid", entry)
+        self.assertGreater(entry["n_valid"], 0)
+        self.assertLessEqual(entry["n_valid"], result["n_sim"])
+        for suffix in ("p_bootstrap", "p_hac", "p_independence"):
+            col = f"n_valid_{suffix}"
+            self.assertIn(col, entry)
+            self.assertGreater(entry[col], 0)
+            self.assertLessEqual(entry[col], result["n_sim"])
+
     def test_is_reproducible_for_the_same_seed(self):
         kwargs = dict(
             n_days=60, n_sim=5, seed=7, n_bootstrap=40, scenarios=["ar1_medium"]
@@ -2199,10 +2234,24 @@ class TestMonteCarloValidation(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             path = inf.save_monte_carlo_csv(result, Path(folder) / "mc.csv")
             self.assertTrue(path.exists())
+            df = pd.read_csv(path)
+            self.assertIn("n_valid", df.columns)
+            mean_df = df[df["test"] == "mean"]
+            self.assertEqual(int(mean_df["n_valid"].iloc[0]), 4)
+            for suffix in ("p_bootstrap", "p_hac", "p_independence"):
+                self.assertIn(f"n_valid_{suffix}", df.columns)
+
             loaded = inf.load_monte_carlo_csv(path)
             self.assertIsNotNone(loaded)
             self.assertIn("independent", loaded["scenarios"])
             self.assertIn("mean", loaded["scenarios"]["independent"]["tests"])
+            loaded_entry = loaded["scenarios"]["independent"]["tests"]["mean"]
+            orig_entry = result["scenarios"]["independent"]["tests"]["mean"]
+            self.assertEqual(loaded_entry["n_valid"], orig_entry["n_valid"])
+            for suffix in ("p_bootstrap", "p_hac", "p_independence"):
+                col = f"n_valid_{suffix}"
+                self.assertEqual(loaded_entry[col], orig_entry[col])
+                self.assertAlmostEqual(loaded_entry[f"rate_{suffix}"], orig_entry[f"rate_{suffix}"])
 
     def test_load_returns_none_when_the_file_is_missing(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -2211,11 +2260,9 @@ class TestMonteCarloValidation(unittest.TestCase):
     def test_committed_monte_carlo_csv_respects_the_rate_contract(self):
         """
         CSV kiểm chứng đã commit phải giữ **hợp đồng**: đủ dòng, có cột bắt buộc,
-        mọi tỷ lệ **có mặt** nằm trong [0, 1], và mỗi kịch bản có **cùng** bộ phép
-        kiểm (không mất dòng khi thêm phép kiểm mới).
-
-        Ô trống là hợp lệ: một phép kiểm có thể **không áp dụng** cho kịch bản đó
-        (ví dụ cặp mùa hậu định không có đối chứng HAC).
+        cột `n_valid` > 0 trên mọi dòng (không bị lỗi n_valid = 0), bảo toàn số
+        phép thử hợp lệ riêng từng phương pháp, mọi tỷ lệ có mặt nằm trong [0, 1],
+        và đọc ngược qua load_monte_carlo_csv() thành công.
         """
         path = REPO_ROOT / "reports" / "inference_montecarlo.csv"
         if not path.exists():
@@ -2224,14 +2271,44 @@ class TestMonteCarloValidation(unittest.TestCase):
         self.assertGreaterEqual(len(frame), 30)
         self.assertIn("scenario", frame.columns)
         self.assertIn("test", frame.columns)
+        self.assertIn("n_valid", frame.columns)
+        self.assertTrue((frame["n_valid"] > 0).all(), "Cột n_valid không được bằng 0 trên bất kỳ dòng nào.")
+        self.assertTrue((frame["n_valid"] <= frame["n_sim"]).all())
+
+        # Kiểm tra cột n_valid riêng cho từng phương pháp:
+        for suffix in ("p_bootstrap", "p_hac", "p_independence"):
+            col = f"n_valid_{suffix}"
+            self.assertIn(col, frame.columns)
+            valid_vals = frame[col].dropna()
+            self.assertTrue((valid_vals > 0).all(), f"Giá trị hợp lệ của {col} phải > 0")
+            self.assertTrue((valid_vals <= frame.loc[valid_vals.index, "n_sim"]).all())
+
         for column in frame.columns:
             if column.startswith("rate_"):
                 present = frame[column].dropna()
                 self.assertTrue(present.between(0, 1).all(), column)
+                suffix = column[len("rate_"):]
+                lo_col = f"ci_low_{suffix}"
+                hi_col = f"ci_high_{suffix}"
+                if lo_col in frame.columns and hi_col in frame.columns:
+                    lo = frame[lo_col].dropna()
+                    hi = frame[hi_col].dropna()
+                    self.assertTrue((lo >= 0.0).all())
+                    self.assertTrue((hi <= 1.0).all())
+                    common_idx = present.index.intersection(lo.index).intersection(hi.index)
+                    self.assertTrue((lo.loc[common_idx] <= present.loc[common_idx] + 1e-9).all())
+                    self.assertTrue((hi.loc[common_idx] >= present.loc[common_idx] - 1e-9).all())
+
         per_scenario = frame.groupby("scenario")["test"].nunique()
         self.assertTrue((per_scenario == per_scenario.iloc[0]).all())
         # Bằng chứng cho p-value hậu định (thống kê chuẩn hoá r_rb) phải có mặt.
         self.assertIn("pair", set(frame["test"]))
+
+        # Kiểm tra khả năng đọc ngược thành công
+        loaded = inf.load_monte_carlo_csv(path)
+        self.assertIsNotNone(loaded)
+        self.assertEqual(loaded["n_sim"], int(frame["n_sim"].iloc[0]))
+        self.assertGreater(len(loaded["scenarios"]), 0)
 
 
 class TestCalendarAwarePipeline(unittest.TestCase):
