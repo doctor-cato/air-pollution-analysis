@@ -232,6 +232,49 @@ def _season_from_month(month: pd.Series) -> pd.Series:
     return season
 
 
+def _validate_station_column(
+    df: pd.DataFrame,
+    *,
+    allow_multiple: bool,
+    min_valid_hours: int = MIN_VALID_HOURS_PER_DAY,
+    context: str,
+) -> int:
+    """
+    Kiểm định nghiêm ngặt cột `station_id` (F-02 fail-closed):
+    - Nếu không có cột `station_id`: chỉ hợp lệ khi `allow_multiple=False` (tương thích ngược
+      cho input legacy đơn trạm); trả về `n_stations = 1`.
+    - Nếu có cột `station_id` và DataFrame không rỗng:
+      * Mọi dòng có `station_id` là NaN/None hoặc chuỗi rỗng đều bị từ chối ngay lập tức
+        (tránh âm thầm gộp quan trắc mất nhãn vào trạm đã định danh hoặc âm thầm làm rơi dòng).
+      * Khi `allow_multiple=False`, nếu có > 1 trạm khác nhau thì ném `ValueError`.
+    """
+    if STATION_COLUMN not in df.columns:
+        return 1
+    if df.empty:
+        return 0
+
+    col = df[STATION_COLUMN]
+    null_mask = col.isna()
+    blank_mask = ~null_mask & (col.astype(str).str.strip() == "")
+    invalid_count = int((null_mask | blank_mask).sum())
+    if invalid_count > 0:
+        raise ValueError(
+            f"`{context}()` phát hiện {invalid_count}/{len(df)} dòng có `{STATION_COLUMN}` bị thiếu "
+            "(NaN/None hoặc chuỗi rỗng). FAIL-CLOSED: Không được âm thầm gộp các quan trắc chưa xác định "
+            "trạm với trạm đã xác định hoặc âm thầm loại bỏ dòng."
+        )
+
+    stations = col.unique()
+    if not allow_multiple and len(stations) > 1:
+        raise ValueError(
+            f"`{context}()` được thiết kế cho chuỗi đơn trạm nhưng phát hiện {len(stations)} trạm "
+            f"khác nhau: {sorted(str(s) for s in stations)}. Không được gộp số giờ giữa các trạm vì sẽ làm sai lệch ngưỡng "
+            f"{min_valid_hours}h/ngày và tạo chuỗi trung bình giả. Vui lòng lọc dữ liệu theo từng trạm "
+            "hoặc sử dụng `build_multi_station_daily_panel()`."
+        )
+    return int(len(stations))
+
+
 def _daily_aggregates(
     df: pd.DataFrame,
 ) -> Tuple[pd.DataFrame, int, int, pd.DataFrame]:
@@ -244,12 +287,14 @@ def _daily_aggregates(
     **theo lịch** — nếu không, mọi resample sẽ "nối" hai khoảng thời gian bị
     ngắt và biến "block 28 ngày" thành "28 phần tử" một cách sai lệch.
     """
+    n_stations = _validate_station_column(
+        df, allow_multiple=False, context="_daily_aggregates"
+    )
     work = df.copy()
     work[TIMESTAMP_COLUMN] = _local_timestamps(work[TIMESTAMP_COLUMN])
     work[TARGET_COLUMN] = pd.to_numeric(work[TARGET_COLUMN], errors="coerce")
     work["_date"] = work[TIMESTAMP_COLUMN].dt.normalize()
 
-    n_stations = int(work[STATION_COLUMN].nunique()) if STATION_COLUMN in work else 1
     rows_total = len(work)
     observed = work.dropna(subset=[TARGET_COLUMN])
     if observed.empty:
@@ -290,16 +335,9 @@ def build_daily_panel(
             f"min_valid_hours phải trong [1, {HOURS_PER_DAY}], nhận {min_valid_hours}."
         )
     _require_columns(df, [TIMESTAMP_COLUMN, TARGET_COLUMN], context="build_daily_panel")
-
-    if STATION_COLUMN in df.columns:
-        stations = df[STATION_COLUMN].dropna().unique()
-        if len(stations) > 1:
-            raise ValueError(
-                f"`build_daily_panel()` được thiết kế cho chuỗi đơn trạm nhưng phát hiện {len(stations)} trạm "
-                f"khác nhau: {sorted(stations)}. Không được gộp số giờ giữa các trạm vì sẽ làm sai lệch ngưỡng "
-                f"{min_valid_hours}h/ngày và tạo chuỗi trung bình giả. Vui lòng lọc dữ liệu theo từng trạm "
-                "hoặc sử dụng `build_multi_station_daily_panel()`."
-            )
+    _validate_station_column(
+        df, allow_multiple=False, min_valid_hours=min_valid_hours, context="build_daily_panel"
+    )
 
     per_day, rows_total, n_stations, observed = _daily_aggregates(df)
 
@@ -379,6 +417,9 @@ def build_multi_station_daily_panel(
             f"min_valid_hours phải trong [1, {HOURS_PER_DAY}], nhận {min_valid_hours}."
         )
     _require_columns(df, [TIMESTAMP_COLUMN, TARGET_COLUMN, STATION_COLUMN], context="build_multi_station_daily_panel")
+    _validate_station_column(
+        df, allow_multiple=True, min_valid_hours=min_valid_hours, context="build_multi_station_daily_panel"
+    )
 
     work = df.copy()
     work[TIMESTAMP_COLUMN] = _local_timestamps(work[TIMESTAMP_COLUMN])

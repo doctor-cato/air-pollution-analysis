@@ -108,7 +108,7 @@ def _atomic_write_text(dest_path: Path, content: str, encoding: str = "utf-8") -
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = dest_path.with_name(f"{dest_path.stem}.tmp_{os.getpid()}_{int(time.time())}.tmp")
     try:
-        temp_path.write_text(content, encoding=encoding)
+        temp_path.write_text(content, encoding=encoding, newline="\n")
         temp_path.replace(dest_path)
     finally:
         if temp_path.exists():
@@ -589,7 +589,7 @@ def main() -> None:
         random_state=42,
     )
     interp_csv_path = reports_dir / "issue44_interpolation_evaluation.csv"
-    interp_eval_df.to_csv(interp_csv_path, index=False)
+    interp_eval_df.to_csv(interp_csv_path, index=False, lineterminator="\n")
 
     # ------------------------------------------------------------------
     # PHASE 6 & 7: Multi-Year / Multi-Winter EDA, Inference & Extended Figure
@@ -623,7 +623,7 @@ def main() -> None:
         })
     eda_summary_df = pd.DataFrame(eda_rows)
     eda_csv_path = reports_dir / "issue44_multiyear_eda_summary.csv"
-    eda_summary_df.to_csv(eda_csv_path, index=False)
+    eda_summary_df.to_csv(eda_csv_path, index=False, lineterminator="\n")
 
     # Winter-by-winter detailed summary (preserving full grid hours per winter_year)
     w_all = df_extended[df_extended["season"] == "Winter (Dec-Feb)"].dropna(subset=["winter_year"]).copy()

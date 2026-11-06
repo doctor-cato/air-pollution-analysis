@@ -1144,12 +1144,10 @@ class TestOpenAQS3AcquisitionFailClosed(unittest.TestCase):
             self.assertTrue(df.empty)
 
     def test_hash_mismatch_fails_closed(self):
-        """F-03: When cache exists but expected SHA-256 does not match, cache is rejected."""
-        cache_path = self.raw_dir / "test_raw.parquet"
+        """F-03: Download succeeds on fresh path, but snapshot hash mismatch fails closed without creating cache."""
+        cache_path = self.raw_dir / "test_raw_fresh.parquet"
         dummy_df = pd.DataFrame({"datetime": ["2024-01-01T00:00:00Z"], "value": [10.0]})
-        dummy_df.to_parquet(cache_path, index=False)
 
-        # Expected hash differs from dummy_df hash -> raises ValueError on cache load
         keys = ["file1.csv.gz"]
         with patch.object(self.adapter, "_list_s3_keys", return_value=keys):
             with patch.object(
@@ -1159,10 +1157,64 @@ class TestOpenAQS3AcquisitionFailClosed(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(RuntimeError, "FAIL-CLOSED: Mã băm"):
                     self.adapter.fetch_raw_data(
-                        raw_output_name="test_raw.parquet",
+                        raw_output_name="test_raw_fresh.parquet",
                         force_reload=True,
                         expected_sha256="expected_pinned_hash_that_never_matches",
                     )
+        self.assertFalse(cache_path.exists(), "Invalid snapshot must never be written to canonical cache path")
+        self.assertEqual(list(self.raw_dir.glob("*.tmp*")), [], "Temporary file must be cleaned up on error")
+
+    def test_existing_valid_cache_preserved_when_reload_fails_hash_check(self):
+        """F-03: Pre-existing valid cache content and SHA-256 remain untouched if reload fails hash verification."""
+        cache_path = self.raw_dir / "preserved_cache.parquet"
+        original_df = pd.DataFrame({"datetime": ["2024-01-01T00:00:00Z"], "value": [10.0]})
+        original_df.to_parquet(cache_path, index=False, engine="pyarrow", compression="snappy")
+        original_bytes = cache_path.read_bytes()
+        original_sha256 = hashlib.sha256(original_bytes).hexdigest()
+
+        tampered_download_df = pd.DataFrame({"datetime": ["2024-01-01T00:00:00Z"], "value": [999.0]})
+        keys = ["file1.csv.gz"]
+        with patch.object(self.adapter, "_list_s3_keys", return_value=keys):
+            with patch.object(
+                self.adapter,
+                "_fetch_single_s3_file",
+                return_value=("file1.csv.gz", tampered_download_df, None),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "FAIL-CLOSED: Mã băm"):
+                    self.adapter.fetch_raw_data(
+                        raw_output_name="preserved_cache.parquet",
+                        force_reload=True,
+                        expected_sha256=original_sha256,
+                    )
+
+        self.assertTrue(cache_path.exists())
+        after_bytes = cache_path.read_bytes()
+        self.assertEqual(hashlib.sha256(after_bytes).hexdigest(), original_sha256)
+        self.assertEqual(after_bytes, original_bytes)
+        df_after = pd.read_parquet(cache_path)
+        self.assertEqual(df_after["value"].tolist(), [10.0])
+        self.assertEqual(list(self.raw_dir.glob("*.tmp*")), [])
+
+    def test_expected_s3_key_count_mismatch_fails_closed(self):
+        """F-03: Mismatched S3 key count fails closed before downloading or overwriting existing cache."""
+        cache_path = self.raw_dir / "key_count_cache.parquet"
+        original_df = pd.DataFrame({"datetime": ["2024-01-01T00:00:00Z"], "value": [25.0]})
+        original_df.to_parquet(cache_path, index=False, engine="pyarrow", compression="snappy")
+        original_sha256 = hashlib.sha256(cache_path.read_bytes()).hexdigest()
+
+        keys = ["file1.csv.gz", "file2.csv.gz"]
+        with patch.object(self.adapter, "_list_s3_keys", return_value=keys):
+            with patch.object(self.adapter, "_fetch_single_s3_file") as mock_fetch:
+                with self.assertRaisesRegex(RuntimeError, "FAIL-CLOSED: Số lượng tệp S3"):
+                    self.adapter.fetch_raw_data(
+                        raw_output_name="key_count_cache.parquet",
+                        force_reload=True,
+                        expected_s3_key_count=3,
+                    )
+                mock_fetch.assert_not_called()
+
+        self.assertEqual(hashlib.sha256(cache_path.read_bytes()).hexdigest(), original_sha256)
+        self.assertEqual(list(self.raw_dir.glob("*.tmp*")), [])
 
     def test_valid_cache_reused_without_network(self):
         """F-03: Valid cache matching expected hash is reused without making any S3 calls."""

@@ -649,6 +649,51 @@ class TestBuildDailyPanel(unittest.TestCase):
         self.assertEqual(audit["station_breakdown"]["A"]["days_ge18h"], 1)
         self.assertEqual(audit["station_breakdown"]["B"]["days_ge18h"], 0)
 
+    def test_station_id_with_partial_nulls_rejected_fail_closed(self):
+        """F-02: Partial null station_id must not be silently pooled with labeled stations or dropped."""
+        ts = pd.date_range("2024-01-01", periods=24, freq="h")
+        # 12 hours of STATION_A + 12 hours of None (unlabeled).
+        # If .dropna() were used on station_id before aggregation, 12 + 12 = 24h would falsely pass 18h!
+        df_partial_null = pd.DataFrame({
+            "timestamp": ts,
+            "station_id": ["STATION_A"] * 12 + [None] * 12,
+            "pm25": [10.0] * 12 + [100.0] * 12,
+        })
+        with self.assertRaisesRegex(ValueError, "station_id.*bị thiếu.*FAIL-CLOSED"):
+            inf.build_daily_panel(df_partial_null, min_valid_hours=18)
+        with self.assertRaisesRegex(ValueError, "station_id.*bị thiếu.*FAIL-CLOSED"):
+            inf.build_daily_calendar(df_partial_null, min_valid_hours=18)
+        with self.assertRaisesRegex(ValueError, "station_id.*bị thiếu.*FAIL-CLOSED"):
+            inf.build_multi_station_daily_panel(df_partial_null, min_valid_hours=18)
+
+    def test_station_id_all_nulls_or_blank_rejected_fail_closed(self):
+        """F-02: Present station_id column with all nulls or whitespace strings fails closed."""
+        ts = pd.date_range("2024-01-01", periods=24, freq="h")
+        df_all_null = pd.DataFrame({
+            "timestamp": ts,
+            "station_id": [np.nan] * 24,
+            "pm25": [25.0] * 24,
+        })
+        with self.assertRaisesRegex(ValueError, "station_id.*bị thiếu.*FAIL-CLOSED"):
+            inf.build_daily_panel(df_all_null, min_valid_hours=18)
+        with self.assertRaisesRegex(ValueError, "station_id.*bị thiếu.*FAIL-CLOSED"):
+            inf.build_multi_station_daily_panel(df_all_null, min_valid_hours=18)
+
+        df_blank = pd.DataFrame({
+            "timestamp": ts,
+            "station_id": ["STATION_A"] * 20 + ["   "] * 4,
+            "pm25": [25.0] * 24,
+        })
+        with self.assertRaisesRegex(ValueError, "station_id.*bị thiếu.*FAIL-CLOSED"):
+            inf.build_daily_panel(df_blank, min_valid_hours=18)
+        with self.assertRaisesRegex(ValueError, "station_id.*bị thiếu.*FAIL-CLOSED"):
+            inf.build_multi_station_daily_panel(df_blank, min_valid_hours=18)
+
+        # Missing station_id column in build_multi_station_daily_panel raises KeyError
+        df_no_col = pd.DataFrame({"timestamp": ts, "pm25": [25.0] * 24})
+        with self.assertRaises(KeyError):
+            inf.build_multi_station_daily_panel(df_no_col, min_valid_hours=18)
+
 
 # ---------------------------------------------------------------------------
 # Bốn phép kiểm

@@ -551,6 +551,228 @@ def evaluate_interpolation_grid(
     return pd.DataFrame(rows)
 
 
+def _require_mapping_keys(
+    mapping: dict[str, Any],
+    required_keys: Iterable[str],
+    context: str,
+) -> None:
+    if not isinstance(mapping, dict):
+        raise ValueError(f"{context} must be a dict, got {type(mapping).__name__}.")
+    missing = [k for k in required_keys if k not in mapping or mapping[k] is None]
+    if missing:
+        raise KeyError(f"{context} missing required keys (no fallback allowed): {missing}")
+
+
+def _require_df_columns(
+    df: pd.DataFrame,
+    required_cols: Iterable[str],
+    context: str,
+) -> None:
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        raise ValueError(f"{context} must be a non-empty DataFrame.")
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        raise KeyError(f"{context} missing required columns: {missing}")
+
+
+def _format_monthly_winter_pct(
+    winter_year_val: int,
+    monthly_comp: Any,
+) -> str:
+    if not isinstance(monthly_comp, dict):
+        raise ValueError(f"monthly_completeness for W{winter_year_val} must be a dict, got {type(monthly_comp).__name__}.")
+    dec_key = f"{winter_year_val - 1}-12"
+    jan_key = f"{winter_year_val}-01"
+    feb_key = f"{winter_year_val}-02"
+    parts: list[str] = []
+    for k in (dec_key, jan_key, feb_key):
+        if k in monthly_comp and isinstance(monthly_comp[k], dict) and "valid_pct" in monthly_comp[k]:
+            parts.append(f"{float(monthly_comp[k]['valid_pct']):.1f}%")
+        else:
+            parts.append("—")
+    return " / ".join(parts)
+
+
+def _format_sci_p(p_val: float) -> str:
+    if p_val <= 0.0:
+        return "0.0"
+    exp = int(math.floor(math.log10(abs(p_val))))
+    mant = p_val / (10 ** exp)
+    return f"{mant:.2f} \\times 10^{{{exp}}}"
+
+
+def _validate_comparison_report_inputs(
+    manifest_7441: dict[str, Any],
+    extended_metadata: dict[str, Any],
+    interp_eval_df: pd.DataFrame,
+    winter_summary_df: pd.DataFrame,
+) -> None:
+    """Validate required schema keys and columns without using fallback defaults."""
+    _require_mapping_keys(
+        manifest_7441,
+        ("s3_daily_file_count", "coverage"),
+        "manifest_7441",
+    )
+    cov_7441 = manifest_7441["coverage"]
+    _require_mapping_keys(
+        cov_7441,
+        (
+            "raw_rows",
+            "qc_valid_hours",
+            "sentinel_or_negative_hours",
+            "longest_contiguous_gap_active_window_hours",
+            "source_observation_window",
+            "annual",
+        ),
+        "manifest_7441['coverage']",
+    )
+    _require_mapping_keys(
+        cov_7441["source_observation_window"],
+        ("start", "end", "active_window_hours"),
+        "manifest_7441['coverage']['source_observation_window']",
+    )
+    if not isinstance(cov_7441["annual"], list) or len(cov_7441["annual"]) == 0:
+        raise ValueError("manifest_7441['coverage']['annual'] must be a non-empty list.")
+    for idx, yr_entry in enumerate(cov_7441["annual"]):
+        _require_mapping_keys(
+            yr_entry,
+            (
+                "year",
+                "s3_daily_files",
+                "expected_hours",
+                "source_available_hours",
+                "s3_reported_hours",
+                "qc_valid_hours",
+                "qc_valid_pct_of_calendar_year",
+                "qc_valid_pct_of_active_window",
+                "sentinel_or_negative_hours",
+                "longest_gap_hours",
+            ),
+            f"manifest_7441['coverage']['annual'][{idx}]",
+        )
+
+    _require_mapping_keys(
+        extended_metadata,
+        (
+            "total_rows",
+            "sha256",
+            "stations",
+            "weather_backfill",
+            "inference_comparison",
+            "baseline_sha256",
+        ),
+        "extended_metadata",
+    )
+    stations = extended_metadata["stations"]
+    _require_mapping_keys(
+        stations,
+        ("VN001_HANOI_556_NGUYEN_VAN_CU", "VN003_HANOI_OPENAQ_7441"),
+        "extended_metadata['stations']",
+    )
+    for sid in ("VN001_HANOI_556_NGUYEN_VAN_CU", "VN003_HANOI_OPENAQ_7441"):
+        _require_mapping_keys(
+            stations[sid],
+            (
+                "grid_rows",
+                "observed_pm25_rows",
+                "missing_pm25_rows",
+                "missing_pm25_pct",
+                "min_timestamp",
+                "max_timestamp",
+                "train_rows",
+                "test_rows",
+                "distance_to_era5_grid_km",
+                "winter_years_covered",
+            ),
+            f"extended_metadata['stations']['{sid}']",
+        )
+
+    _require_mapping_keys(
+        extended_metadata["weather_backfill"],
+        ("rows", "max_missing_pct", "inter_station_distance_7441_to_vn001_km"),
+        "extended_metadata['weather_backfill']",
+    )
+    _require_mapping_keys(
+        extended_metadata["baseline_sha256"],
+        ("final_processed",),
+        "extended_metadata['baseline_sha256']",
+    )
+
+    inf_comp = extended_metadata["inference_comparison"]
+    _require_mapping_keys(
+        inf_comp,
+        ("VN001_HANOI_556_NGUYEN_VAN_CU", "VN003_HANOI_OPENAQ_7441"),
+        "extended_metadata['inference_comparison']",
+    )
+    for sid in ("VN001_HANOI_556_NGUYEN_VAN_CU", "VN003_HANOI_OPENAQ_7441"):
+        _require_mapping_keys(
+            inf_comp[sid],
+            (
+                "calendar_days",
+                "valid_days_ge18h",
+                "daily_median",
+                "daily_median_ci95_calendar_bootstrap",
+                "winter_daily_median",
+                "non_winter_daily_median",
+                "kruskal_wallis_h",
+                "kruskal_wallis_epsilon2",
+                "kruskal_wallis_naive_p",
+                "kruskal_wallis_calendar_bootstrap_p",
+                "winter_vs_nonwinter_r_rb",
+                "daily_lag1_autocorr_rho1",
+                "effective_sample_size_n_eff",
+                "variance_inflation_factor",
+                "qcvn_exceedance_days",
+                "qcvn_exceedance_pct",
+            ),
+            f"extended_metadata['inference_comparison']['{sid}']",
+        )
+
+    _require_df_columns(
+        interp_eval_df,
+        (
+            "station_id",
+            "season_scope",
+            "masked_gap_length_hours",
+            "max_gap_hours",
+            "n_masked_hours",
+            "mae",
+            "rmse",
+            "bias",
+            "real_interpolated_hours",
+            "station_missing_hours",
+            "real_interpolated_pct_of_missing",
+            "coverage_before_pct",
+            "coverage_after_pct",
+        ),
+        "interp_eval_df",
+    )
+    _require_df_columns(
+        winter_summary_df,
+        (
+            "station_id",
+            "winter_year",
+            "expected_calendar_hours",
+            "station_grid_hours",
+            "count",
+            "coverage_of_full_winter_pct",
+            "coverage_of_station_grid_pct",
+            "monthly_completeness",
+            "mean",
+            "sd",
+            "median",
+            "q25",
+            "q75",
+            "iqr",
+            "p90",
+            "valid_days",
+            "qcvn_exceed_days",
+            "qcvn_exceed_pct",
+        ),
+        "winter_summary_df",
+    )
+
+
 def generate_legacy_vs_extended_comparison_report(
     manifest_7441: dict[str, Any],
     extended_metadata: dict[str, Any],
@@ -560,96 +782,222 @@ def generate_legacy_vs_extended_comparison_report(
     output_path: Optional[Path | str] = None,
 ) -> str:
     """Generate the authoritative legacy vs extended comparison Markdown report deterministically."""
-    cov_7441 = manifest_7441.get("coverage", {})
-    cov_yr = cov_7441.get("annual_breakdown", {})
-    sec2_tot = extended_metadata.get("total_grid_rows", 37722)
-    sec2_sha = extended_metadata.get("sha256", "6930557fbfc8e31dbcb062065b1903ccf27c433e9c0f062bd0dc382a9a1f9b02")
+    _validate_comparison_report_inputs(
+        manifest_7441, extended_metadata, interp_eval_df, winter_summary_df
+    )
+
+    cov_7441 = manifest_7441["coverage"]
+    s3_files_7441 = int(manifest_7441["s3_daily_file_count"])
+    raw_rows_7441 = int(cov_7441["raw_rows"])
+    qc_valid_7441 = int(cov_7441["qc_valid_hours"])
+    sentinel_7441 = int(cov_7441["sentinel_or_negative_hours"])
+    longest_gap_7441 = int(cov_7441["longest_contiguous_gap_active_window_hours"])
+    active_win_7441 = int(cov_7441["source_observation_window"]["active_window_hours"])
+
+    sec2_tot = int(extended_metadata["total_rows"])
+    sec2_sha = str(extended_metadata["sha256"])
+    baseline_final_sha = str(extended_metadata["baseline_sha256"]["final_processed"])
+    baseline_sha_short = f"{baseline_final_sha[:8]}...{baseline_final_sha[-6:]}"
+
+    st_vn1 = extended_metadata["stations"]["VN001_HANOI_556_NGUYEN_VAN_CU"]
+    st_vn3 = extended_metadata["stations"]["VN003_HANOI_OPENAQ_7441"]
+    w_backfill = extended_metadata["weather_backfill"]
+
+    vn1_grid = int(st_vn1["grid_rows"])
+    vn1_obs = int(st_vn1["observed_pm25_rows"])
+    vn1_miss = int(st_vn1["missing_pm25_rows"])
+    vn1_miss_pct = float(st_vn1["missing_pm25_pct"])
+    vn1_obs_pct = round(100.0 - vn1_miss_pct, 2)
+    vn1_train = int(st_vn1["train_rows"])
+    vn1_test = int(st_vn1["test_rows"])
+    vn1_dist = float(st_vn1["distance_to_era5_grid_km"])
+
+    vn3_grid = int(st_vn3["grid_rows"])
+    vn3_obs = int(st_vn3["observed_pm25_rows"])
+    vn3_miss = int(st_vn3["missing_pm25_rows"])
+    vn3_miss_pct = float(st_vn3["missing_pm25_pct"])
+    vn3_obs_pct = round(100.0 - vn3_miss_pct, 2)
+    vn3_train = int(st_vn3["train_rows"])
+    vn3_test = int(st_vn3["test_rows"])
+    vn3_dist = float(st_vn3["distance_to_era5_grid_km"])
+
+    comb_obs = vn1_obs + vn3_obs
+    comb_miss = vn1_miss + vn3_miss
+    comb_obs_pct = round(100.0 * comb_obs / sec2_tot, 2)
+    comb_miss_pct = round(100.0 * comb_miss / sec2_tot, 2)
+    comb_train = vn1_train + vn3_train
+    comb_test = vn1_test + vn3_test
+
+    inter_station_km = float(w_backfill["inter_station_distance_7441_to_vn001_km"])
+    w_22_25_rows = int(w_backfill["rows"])
+    w_22_25_miss_pct = float(w_backfill["max_missing_pct"])
+    w_vn1_rows = 9072  # Frozen M2 weather_canonical.parquet row count (data/raw/metadata.json)
+    w_comb_rows = w_vn1_rows + w_22_25_rows
+
+    # Format annual coverage breakdown rows for OpenAQ 7441
+    annual_rows_md: list[str] = []
+    tot_cal_hours = 0
+    for yr_entry in cov_7441["annual"]:
+        yr = int(yr_entry["year"])
+        files_c = int(yr_entry["s3_daily_files"])
+        cal_h = int(yr_entry["expected_hours"])
+        tot_cal_hours += cal_h
+        act_h = int(yr_entry["source_available_hours"])
+        rep_h = int(yr_entry["s3_reported_hours"])
+        val_h = int(yr_entry["qc_valid_hours"])
+        sent_h = int(yr_entry["sentinel_or_negative_hours"])
+        act_pct = float(yr_entry["qc_valid_pct_of_active_window"])
+        cal_pct = float(yr_entry["qc_valid_pct_of_calendar_year"])
+        gap_h = int(yr_entry["longest_gap_hours"])
+        yr_label = f"**{yr}** *(through Apr 9)*" if yr == 2025 else f"**{yr}**"
+        pct_str = (
+            f"{act_pct:.2f}% *({cal_pct:.2f}% of full yr)*"
+            if abs(act_pct - cal_pct) > 1e-4
+            else f"{act_pct:.2f}%"
+        )
+        annual_rows_md.append(
+            f"| {yr_label} | {files_c:,} | {cal_h:,} | {act_h:,} | {rep_h:,} | "
+            f"{val_h:,} | {sent_h:,} | {pct_str} | {gap_h:,} |"
+        )
+    annual_rows_md.append(
+        f"| **Total (2022–2025)** | **{s3_files_7441:,}** | **{tot_cal_hours:,}** | "
+        f"**{active_win_7441:,}** | **{raw_rows_7441:,}** | **{qc_valid_7441:,}** | "
+        f"**{sentinel_7441:,}** | **{vn3_obs_pct:.2f}%** | **{longest_gap_7441:,}** |"
+    )
+    annual_table_str = "\n".join(annual_rows_md)
 
     # Format interpolation table rows for season_scope == ALL
     interp_all = interp_eval_df[interp_eval_df["season_scope"] == "ALL"].copy()
+    if interp_all.empty:
+        raise ValueError("interp_eval_df contains no rows with season_scope == 'ALL'.")
+
     interp_rows_md: list[str] = [
-        "| `VN001` | **0 (Baseline No-Interp)** | **0** | **0** | **0.0000** | **0.0000** | **0.0000** | **0 / 1,549** | **0.00%** | **82.87% → 82.87%** |"
+        f"| `VN001` | **0 (Baseline No-Interp)** | **0** | **0** | **0.0000** | **0.0000** | "
+        f"**0.0000** | **0 / {vn1_miss:,}** | **0.00%** | **{vn1_obs_pct:.2f}% → {vn1_obs_pct:.2f}%** |"
     ]
-    for sid in ("VN001_HANOI_556_NGUYEN_VAN_CU", "VN001"):
-        sub_vn1 = interp_all[interp_all["station_id"].isin([sid, "VN001"])]
-        if not sub_vn1.empty:
-            for _, r in sub_vn1.drop_duplicates(subset=["masked_gap_length_hours", "max_gap_hours"]).sort_values("max_gap_hours").iterrows():
-                bias_str = f"+{r['bias']:.4f}" if r["bias"] >= 0 else f"{r['bias']:.4f}".replace("-", "−")
-                interp_rows_md.append(
-                    f"| `VN001` | {int(r['masked_gap_length_hours'])}h | {int(r['max_gap_hours'])}h | "
-                    f"{int(r['n_masked_hours'])} | {r['mae']:.4f} | {r['rmse']:.4f} | {bias_str} | "
-                    f"{int(r['real_interpolated_hours'])} / {int(r['station_missing_hours'])} | "
-                    f"{r['real_interpolated_pct_of_missing']:.2f}% | "
-                    f"{r['coverage_before_pct']:.2f}% → {r['coverage_after_pct']:.2f}% |"
-                )
-            break
+    sub_vn1 = interp_all[interp_all["station_id"].isin(["VN001_HANOI_556_NGUYEN_VAN_CU", "VN001"])]
+    if sub_vn1.empty:
+        raise ValueError("interp_eval_df missing rows for VN001.")
+    for _, r in sub_vn1.sort_values(["masked_gap_length_hours", "max_gap_hours"]).iterrows():
+        bias_str = f"+{r['bias']:.4f}" if r["bias"] >= 0 else f"{r['bias']:.4f}".replace("-", "−")
+        interp_rows_md.append(
+            f"| `VN001` | {int(r['masked_gap_length_hours'])}h | {int(r['max_gap_hours'])}h | "
+            f"{int(r['n_masked_hours'])} | {r['mae']:.4f} | {r['rmse']:.4f} | {bias_str} | "
+            f"{int(r['real_interpolated_hours'])} / {int(r['station_missing_hours']):,} | "
+            f"{r['real_interpolated_pct_of_missing']:.2f}% | "
+            f"{r['coverage_before_pct']:.2f}% → {r['coverage_after_pct']:.2f}% |"
+        )
 
     interp_rows_md.append(
-        "| `VN003` (`7441`) | **0 (Baseline No-Interp)** | **0** | **0** | **0.0000** | **0.0000** | **0.0000** | **0 / 10,470** | **0.00%** | **63.49% → 63.49%** |"
+        f"| `VN003` (`7441`) | **0 (Baseline No-Interp)** | **0** | **0** | **0.0000** | **0.0000** | "
+        f"**0.0000** | **0 / {vn3_miss:,}** | **0.00%** | **{vn3_obs_pct:.2f}% → {vn3_obs_pct:.2f}%** |"
     )
-    for sid in ("VN003_HANOI_OPENAQ_7441", "VN003"):
-        sub_vn3 = interp_all[interp_all["station_id"].isin([sid, "VN003"])]
-        if not sub_vn3.empty:
-            for _, r in sub_vn3.drop_duplicates(subset=["masked_gap_length_hours", "max_gap_hours"]).sort_values("max_gap_hours").iterrows():
-                bias_str = f"+{r['bias']:.4f}" if r["bias"] >= 0 else f"{r['bias']:.4f}".replace("-", "−")
-                interp_rows_md.append(
-                    f"| `VN003` (`7441`) | {int(r['masked_gap_length_hours'])}h | {int(r['max_gap_hours'])}h | "
-                    f"{int(r['n_masked_hours'])} | {r['mae']:.4f} | {r['rmse']:.4f} | {bias_str} | "
-                    f"{int(r['real_interpolated_hours'])} / {int(r['station_missing_hours'])} | "
-                    f"{r['real_interpolated_pct_of_missing']:.2f}% | "
-                    f"{r['coverage_before_pct']:.2f}% → {r['coverage_after_pct']:.2f}% |"
-                )
-            break
-
+    sub_vn3 = interp_all[interp_all["station_id"].isin(["VN003_HANOI_OPENAQ_7441", "VN003"])]
+    if sub_vn3.empty:
+        raise ValueError("interp_eval_df missing rows for VN003.")
+    for _, r in sub_vn3.sort_values(["masked_gap_length_hours", "max_gap_hours"]).iterrows():
+        bias_str = f"+{r['bias']:.4f}" if r["bias"] >= 0 else f"{r['bias']:.4f}".replace("-", "−")
+        interp_rows_md.append(
+            f"| `VN003` (`7441`) | {int(r['masked_gap_length_hours'])}h | {int(r['max_gap_hours'])}h | "
+            f"{int(r['n_masked_hours'])} | {r['mae']:.4f} | {r['rmse']:.4f} | {bias_str} | "
+            f"{int(r['real_interpolated_hours'])} / {int(r['station_missing_hours']):,} | "
+            f"{r['real_interpolated_pct_of_missing']:.2f}% | "
+            f"{r['coverage_before_pct']:.2f}% → {r['coverage_after_pct']:.2f}% |"
+        )
     interp_table_str = "\n".join(interp_rows_md)
 
-    # Format winter summary rows
-    winter_rows_md: list[str] = []
-    w_expected = {"W2022": 2160, "W2023": 2160, "W2024": 2184, "W2025": 2160, "W2026": 2160}
-    w_grid = {"W2022": 1415, "W2023": 2160, "W2024": 2184, "W2025": 2160, "W2026": 2160}
-    w_months = {
-        "W2022": "— / 86.4% / 14.4%",
-        "W2023": "97.8% / 81.2% / 11.9%",
-        "W2024": "61.3% / 94.1% / 96.6%",
-        "W2025": "32.8% / 89.9% / 99.1%",
-        "W2026": "83.7% / 91.9% / 96.9%",
-    }
+    # Format winter summary rows directly from winter_summary_df
     w_labels = {
-        "W2022": "**W2022** *(Partial: Jan–Feb 2022)*",
-        "W2023": "**W2023** *(Dec 2022–Feb 2023)*",
-        "W2024": "**W2024** *(Dec 2023–Feb 2024)*",
-        "W2025": "**W2025** *(Dec 2024–Feb 2025)*",
-        "W2026": "**W2026** *(Dec 2025–Feb 2026)*",
+        2022: "**W2022** *(Partial: Jan–Feb 2022)*",
+        2023: "**W2023** *(Dec 2022–Feb 2023)*",
+        2024: "**W2024** *(Dec 2023–Feb 2024)*",
+        2025: "**W2025** *(Dec 2024–Feb 2025)*",
+        2026: "**W2026** *(Dec 2025–Feb 2026)*",
     }
+    winter_rows_md: list[str] = []
     for _, wr in winter_summary_df.iterrows():
-        wid = str(wr.get("winter_id") if "winter_id" in wr and pd.notna(wr["winter_id"]) else f"W{int(wr['winter_year'])}")
+        wy = int(wr["winter_year"])
+        wid = f"W{wy}"
         sid = str(wr["station_id"])
-        exp_h = int(wr.get("expected_calendar_hours") if "expected_calendar_hours" in wr else w_expected.get(wid, 2160))
-        grd_h = int(wr.get("station_grid_hours") if "station_grid_hours" in wr else w_grid.get(wid, exp_h))
-        n_obs = int(wr.get("n_valid_hours") if "n_valid_hours" in wr else wr["count"])
-        pct_full = float(wr.get("valid_pct_full_winter") if "valid_pct_full_winter" in wr else wr["coverage_of_full_winter_pct"])
-        pct_grid = float(wr.get("valid_pct_active_grid") if "valid_pct_active_grid" in wr else wr["coverage_of_station_grid_pct"])
-        m_pct = w_months.get(wid, "—")
-        w_lbl = w_labels.get(wid, wid)
-        mean_val = float(wr.get("mean_pm25") if "mean_pm25" in wr else wr["mean"])
-        std_val = float(wr.get("std_pm25") if "std_pm25" in wr else wr["sd"])
+        exp_h = int(wr["expected_calendar_hours"])
+        grd_h = int(wr["station_grid_hours"])
+        n_obs = int(wr["count"])
+        pct_full = float(wr["coverage_of_full_winter_pct"])
+        pct_grid = float(wr["coverage_of_station_grid_pct"])
+        m_pct = _format_monthly_winter_pct(wy, wr["monthly_completeness"])
+        w_lbl = w_labels.get(wy, f"**{wid}**")
+        mean_val = float(wr["mean"])
+        std_val = float(wr["sd"])
         mean_sd = f"{mean_val:.2f} ± {std_val:.2f}"
-        med_val = float(wr.get("median_pm25") if "median_pm25" in wr else wr["median"])
+        med_val = float(wr["median"])
         med_str = f"**{med_val:.2f}**"
-        iqr_val = float(wr.get("iqr_pm25") if "iqr_pm25" in wr else wr["iqr"])
-        q25_val = float(wr.get("q25_pm25") if "q25_pm25" in wr else wr["q25"])
-        q75_val = float(wr.get("q75_pm25") if "q75_pm25" in wr else wr["q75"])
+        iqr_val = float(wr["iqr"])
+        q25_val = float(wr["q25"])
+        q75_val = float(wr["q75"])
         iqr_str = f"{iqr_val:.2f} (`{q25_val:.1f}–{q75_val:.1f}`)"
-        p90_val = float(wr.get("p90_pm25") if "p90_pm25" in wr else wr["p90"])
+        p90_val = float(wr["p90"])
         p90_str = f"{p90_val:.2f}"
-        v_days = int(wr.get("valid_daily_count_ge18h") if "valid_daily_count_ge18h" in wr else wr["valid_days"])
-        exc_days = int(wr.get("qcvn_daily_exceedance_days") if "qcvn_daily_exceedance_days" in wr else wr["qcvn_exceed_days"])
-        exc_pct = float(wr.get("qcvn_daily_exceedance_pct") if "qcvn_daily_exceedance_pct" in wr else wr["qcvn_exceed_pct"])
+        v_days = int(wr["valid_days"])
+        exc_days = int(wr["qcvn_exceed_days"])
+        exc_pct = float(wr["qcvn_exceed_pct"])
         winter_rows_md.append(
             f"| `{sid}` | {w_lbl} | {exp_h:,} / {grd_h:,} | {n_obs:,} (`{pct_full:.2f}%` / `{pct_grid:.2f}%`) | "
             f"`{m_pct}` | {mean_sd} | {med_str} | {iqr_str} | {p90_str} | {v_days} | {exc_days} / {v_days} (**{exc_pct:.2f}%**) |"
         )
     winter_table_str = "\n".join(winter_rows_md)
+
+    # Extract inference comparison metrics
+    inf_vn1 = extended_metadata["inference_comparison"]["VN001_HANOI_556_NGUYEN_VAN_CU"]
+    inf_vn3 = extended_metadata["inference_comparison"]["VN003_HANOI_OPENAQ_7441"]
+
+    vn1_cal_d = int(inf_vn1["calendar_days"])
+    vn1_val_d = int(inf_vn1["valid_days_ge18h"])
+    vn3_cal_d = int(inf_vn3["calendar_days"])
+    vn3_val_d = int(inf_vn3["valid_days_ge18h"])
+    obs_ratio = vn3_val_d / vn1_val_d if vn1_val_d > 0 else 0.0
+
+    vn1_rho1 = float(inf_vn1["daily_lag1_autocorr_rho1"])
+    vn1_neff = float(inf_vn1["effective_sample_size_n_eff"])
+    vn1_vif = float(inf_vn1["variance_inflation_factor"])
+    vn3_rho1 = float(inf_vn3["daily_lag1_autocorr_rho1"])
+    vn3_neff = float(inf_vn3["effective_sample_size_n_eff"])
+    vn3_vif = float(inf_vn3["variance_inflation_factor"])
+
+    vn1_med = float(inf_vn1["daily_median"])
+    vn1_ci_lo, vn1_ci_hi = (
+        float(inf_vn1["daily_median_ci95_calendar_bootstrap"][0]),
+        float(inf_vn1["daily_median_ci95_calendar_bootstrap"][1]),
+    )
+    vn3_med = float(inf_vn3["daily_median"])
+    vn3_ci_lo, vn3_ci_hi = (
+        float(inf_vn3["daily_median_ci95_calendar_bootstrap"][0]),
+        float(inf_vn3["daily_median_ci95_calendar_bootstrap"][1]),
+    )
+
+    vn1_w_med = float(inf_vn1["winter_daily_median"])
+    vn1_nw_med = float(inf_vn1["non_winter_daily_median"])
+    vn1_w_diff = vn1_w_med - vn1_nw_med
+    vn1_rrb = float(inf_vn1["winter_vs_nonwinter_r_rb"])
+
+    vn3_w_med = float(inf_vn3["winter_daily_median"])
+    vn3_nw_med = float(inf_vn3["non_winter_daily_median"])
+    vn3_w_diff = vn3_w_med - vn3_nw_med
+    vn3_rrb = float(inf_vn3["winter_vs_nonwinter_r_rb"])
+
+    vn1_kw_h = float(inf_vn1["kruskal_wallis_h"])
+    vn1_kw_eps = float(inf_vn1["kruskal_wallis_epsilon2"])
+    vn1_kw_pboot = float(inf_vn1["kruskal_wallis_calendar_bootstrap_p"])
+    vn1_kw_pnaive = _format_sci_p(float(inf_vn1["kruskal_wallis_naive_p"]))
+
+    vn3_kw_h = float(inf_vn3["kruskal_wallis_h"])
+    vn3_kw_eps = float(inf_vn3["kruskal_wallis_epsilon2"])
+    vn3_kw_pboot = float(inf_vn3["kruskal_wallis_calendar_bootstrap_p"])
+    vn3_kw_pnaive = _format_sci_p(float(inf_vn3["kruskal_wallis_naive_p"]))
+
+    vn1_qcvn_d = int(inf_vn1["qcvn_exceedance_days"])
+    vn1_qcvn_pct = float(inf_vn1["qcvn_exceedance_pct"])
+    vn3_qcvn_d = int(inf_vn3["qcvn_exceedance_days"])
+    vn3_qcvn_pct = float(inf_vn3["qcvn_exceedance_pct"])
 
     content = f"""# Issue #44 — Legacy vs. Extended Historical Dataset Comparison Report (2022–2026)
 
@@ -663,13 +1011,13 @@ def generate_legacy_vs_extended_comparison_report(
 
 | Candidate Source | Station ID | Time Window | Provenance & License | Decision |
 |---|---|---|---|---|
-| **OpenAQ S3 Location `4946811`** (556 Nguyễn Văn Cừ, NCEM/VEA) | `VN001_HANOI_556_NGUYEN_VAN_CU` | `2025-07-03` → `2026-07-15` | Official OpenAQ S3 archive (`349,463` raw rows; `9,044` canonical grid hours; `7,495` valid $\\text{{PM}}_{{2.5}}$ hours) | **APPROVED (Immutable Baseline)** |
-| **OpenAQ S3 Location `7441`** (Hanoi AirNow Gov Monitor, `sensors_id=21632`) | `VN003_HANOI_OPENAQ_7441` | `2022-01-01` → `2025-04-09` | First-party OpenAQ S3 archive (`{manifest_7441.get('s3_daily_file_count', 903)}` `.csv.gz` files, `{manifest_7441.get('coverage', {}).get('total_reported_rows_s3_prefix', 21401):,}` raw rows, `{manifest_7441.get('coverage', {}).get('qc_valid_hours', 18208):,}` numerically valid $\\text{{PM}}_{{2.5}} \\ge 0\\ \\mu\\text{{g/m}}^3$ post-screening hours), `US Public Domain` (`id=33`, `http://www.usa.gov/publicdomain/label/1.0/`) | **APPROVED (Station-Specific Historical Expansion)** |
-| **Third-party GitHub Mirror** (`dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies`) | Prospective `VN002_HANOI_US_EMBASSY` | `2022-01-01` → `2025-04-09` | Pinned at commit `25d08e949c9d01ba57c4e74ff9b3b99328ecf141` (`46` CSV files). GitHub API `license: null`, unverified chain of custody, 3 misfiled December MTD files (`1,627` rows; 4 files with cross-year records), `25,955` duplicate rows, 1 conflicting duplicate (`2023-11-07T17:00:00`: `33.0` valid in YTD vs `-999.0` missing in MTD) | **NO-GO / Reference-Only** |
-| **OpenAQ Location `2539`** (`US Diplomatic Post: Hanoi`) | Unassigned | `2016` only | 0 S3 files in 2022–2025 | **NO-GO (No Coverage)** |
+| **OpenAQ S3 Location `4946811`** (556 Nguyễn Văn Cừ, NCEM/VEA) | `VN001_HANOI_556_NGUYEN_VAN_CU` | `2025-07-03` → `2026-07-15` | Official OpenAQ S3 archive (`349,463` raw rows in `data/raw/metadata.json`; `{vn1_grid:,}` canonical grid hours; `{vn1_obs:,}` valid $\\text{{PM}}_{{2.5}}$ hours) | **APPROVED (Immutable Baseline)** |
+| **OpenAQ S3 Location `7441`** (Hanoi AirNow Gov Monitor, `sensors_id=21632`) | `VN003_HANOI_OPENAQ_7441` | `2022-01-01` → `2025-04-09` | First-party OpenAQ S3 archive (`{s3_files_7441}` `.csv.gz` files, `{raw_rows_7441:,}` raw rows, `{qc_valid_7441:,}` numerically valid $\\text{{PM}}_{{2.5}} \\ge 0\\ \\mu\\text{{g/m}}^3$ post-screening hours), `US Public Domain` (`id=33`, `http://www.usa.gov/publicdomain/label/1.0/`) | **APPROVED (Station-Specific Historical Expansion)** |
+| **Third-party GitHub Mirror** (`dolekhanhdang/Air-Quality-Data-from-U.S.-Embassies`) | Prospective `VN002_HANOI_US_EMBASSY` | `2022-01-01` → `2025-04-09` | Frozen audit snapshot (`reports/issue44_source_verification.json` via `scripts/profile_airnow_mirror.py`) pinned at commit `25d08e949c9d01ba57c4e74ff9b3b99328ecf141` (`46` CSV files). GitHub API `license: null`, unverified chain of custody, 3 misfiled December MTD files (`1,627` rows; 4 files with cross-year records), `25,955` duplicate rows, 1 conflicting duplicate (`2023-11-07T17:00:00`: `33.0` valid in YTD vs `-999.0` missing in MTD) | **NO-GO / Reference-Only** |
+| **OpenAQ Location `2539`** (`US Diplomatic Post: Hanoi`) | Unassigned | `2016` only | 0 S3 files in 2022–2025 (verified in `reports/issue44_source_verification.json`) | **NO-GO (No Coverage)** |
 
 ### Key Scientific Guardrails Enforced
-1. **Station Separation (`(station_id, timestamp)`):** `VN003_HANOI_OPENAQ_7441` (`21.021939°N, 105.818806°E`) and `VN001_HANOI_556_NGUYEN_VAN_CU` (`21.0491°N, 105.8831°E`, inter-station distance **7.324 km**) are stored as separate station identities and are **never** concatenated into a single synthetic single-site time series.
+1. **Station Separation (`(station_id, timestamp)`):** `VN003_HANOI_OPENAQ_7441` (`21.021939°N, 105.818806°E`) and `VN001_HANOI_556_NGUYEN_VAN_CU` (`21.0491°N, 105.8831°E`, inter-station distance **{inter_station_km:.3f} km**) are stored as separate station identities and are **never** concatenated into a single synthetic single-site time series.
 2. **Baseline Immutability:** `data/interim/air_quality_canonical.parquet`, `data/interim/weather_canonical.parquet`, `data/processed/air_pollution_final.parquet`, `data/raw/metadata.json`, `figures/FIG-01.png`–`FIG-12.png`, `reports/statistical_profile.csv`, and `reports/inference_results.md` are verified byte-identical before and after running `scripts/build_extended_historical_dataset.py`.
 
 ---
@@ -679,34 +1027,30 @@ def generate_legacy_vs_extended_comparison_report(
 | Metric | Legacy Baseline (`VN001`) | Historical Expansion (`VN003` / OpenAQ `7441`) | Combined Extended Artifact (`2.0.0-issue44-extended`) |
 |---|---:|---:|---:|
 | **Artifact Path** | `data/processed/air_pollution_final.parquet` | `data/interim/air_quality_openaq_7441_canonical.parquet` | `data/processed/air_pollution_extended_2022_2026.parquet` |
-| **SHA-256** | `866f39de...586efd` | Reproducible via `build_extended_historical_dataset.py` | `{sec2_sha}` |
-| **Start Timestamp (`Asia/Ho_Chi_Minh`)** | `2025-07-03 22:00:00+07:00` | `2022-01-01 01:00:00+07:00` | `2022-01-01 01:00:00+07:00` |
-| **End Timestamp (`Asia/Ho_Chi_Minh`)** | `2026-07-15 17:00:00+07:00` | `2025-04-09 22:00:00+07:00` | `2026-07-15 17:00:00+07:00` |
-| **Hourly Grid Rows** | `9,044` | `28,678` | `{sec2_tot:,}` |
-| **Observed Valid $\\text{{PM}}_{{2.5}}$ Hours** | `7,495` (`82.87%`) | `18,208` (`63.49%`) | `25,703` (`68.14%`) |
-| **Missing $\\text{{PM}}_{{2.5}}$ Hours** | `1,549` (`17.13%`) | `10,470` (`36.51%`) | `12,019` (`31.86%`) |
-| **Chronological Train / Test Rows (80/20 per station)** | `7,235` / `1,809` | `22,942` / `5,736` | `30,177` / `7,545` |
-| **Distance to ERA5 Grid (`21.05448°N, 105.89848°E`)** | `1.704 km` | `9.026 km` | Station-specific mapping |
-| **ERA5 Weather Missingness (6 canonical variables)** | `0.0%` (`9,072` rows) | `0.0%` (`28,680` rows) | `0.0%` (`37,752` raw weather hours) |
-| **Independent Winter Seasons (`winter_year`)** | `1` (`W2026`) | `4` (`W2022`, `W2023`, `W2024`, `W2025`) | `5` station-winter cohorts |
+| **SHA-256** | `{baseline_sha_short}` | Reproducible via `build_extended_historical_dataset.py` | `{sec2_sha}` |
+| **Start Timestamp (`Asia/Ho_Chi_Minh`)** | `{st_vn1['min_timestamp']}` | `{st_vn3['min_timestamp']}` | `{st_vn3['min_timestamp']}` |
+| **End Timestamp (`Asia/Ho_Chi_Minh`)** | `{st_vn1['max_timestamp']}` | `{st_vn3['max_timestamp']}` | `{st_vn1['max_timestamp']}` |
+| **Hourly Grid Rows** | `{vn1_grid:,}` | `{vn3_grid:,}` | `{sec2_tot:,}` |
+| **Observed Valid $\\text{{PM}}_{{2.5}}$ Hours** | `{vn1_obs:,}` (`{vn1_obs_pct:.2f}%`) | `{vn3_obs:,}` (`{vn3_obs_pct:.2f}%`) | `{comb_obs:,}` (`{comb_obs_pct:.2f}%`) |
+| **Missing $\\text{{PM}}_{{2.5}}$ Hours** | `{vn1_miss:,}` (`{vn1_miss_pct:.2f}%`) | `{vn3_miss:,}` (`{vn3_miss_pct:.2f}%`) | `{comb_miss:,}` (`{comb_miss_pct:.2f}%`) |
+| **Chronological Train / Test Rows (80/20 per station)** | `{vn1_train:,}` / `{vn1_test:,}` | `{vn3_train:,}` / `{vn3_test:,}` | `{comb_train:,}` / `{comb_test:,}` |
+| **Distance to ERA5 Grid (`21.05448°N, 105.89848°E`)** | `{vn1_dist:.3f} km` | `{vn3_dist:.3f} km` | Station-specific mapping |
+| **ERA5 Weather Missingness (6 canonical variables)** | `0.0%` (`{w_vn1_rows:,}` rows) | `{w_22_25_miss_pct:.1f}%` (`{w_22_25_rows:,}` rows) | `{w_22_25_miss_pct:.1f}%` (`{w_comb_rows:,}` raw weather hours) |
+| **Independent Winter Seasons (`winter_year`)** | `{len(st_vn1['winter_years_covered'])}` (`W2026`) | `{len(st_vn3['winter_years_covered'])}` (`W2022`, `W2023`, `W2024`, `W2025`) | `{len(st_vn1['winter_years_covered']) + len(st_vn3['winter_years_covered'])}` station-winter cohorts |
 
 ### Annual Coverage Breakdown of OpenAQ Location `7441` (`VN003_HANOI_OPENAQ_7441`)
 
-> **QC Screening Disclosure:** OpenAQ S3 `.csv.gz` files do not carry a separate per-record `QC Name` column. In the table below and in `reports/issue44_openaq_7441_manifest.json`, **Numerically Valid / Post-Screening Hours** (`qc_valid_hours = 18,208`) denotes observations with $\\text{{PM}}_{{2.5}} \\ge 0.0\\ \\mu\\text{{g/m}}^3$ inside physical bounds $[0, 1000]\\ \\mu\\text{{g/m}}^3$ and `pm25_was_stuck == 0` after screening out `3,193` negative/sentinel records (`-999.0`: `3,188`; `-1.0`: `4`; `-6.0`: `1`) to `NaN`. Furthermore, S3 storage partitions (`year=2022/`, `year=2024/`) contain `4,560` and `8,703` raw rows because their `12-31` files include the next-year `00:00:00+07:00` midnight record; grouping by parsed `Asia/Ho_Chi_Minh` timestamp assigns those midnight rows to `2023` (`4,559` in 2022; `5,794` in 2023) and `2025` (`8,702` in 2024; `2,346` in 2025).
+> **QC Screening Disclosure:** OpenAQ S3 `.csv.gz` files do not carry a separate per-record `QC Name` column. In the table below and in `reports/issue44_openaq_7441_manifest.json`, **Numerically Valid / Post-Screening Hours** (`qc_valid_hours = {qc_valid_7441:,}`) denotes observations with $\\text{{PM}}_{{2.5}} \\ge 0.0\\ \\mu\\text{{g/m}}^3$ inside physical bounds $[0, 1000]\\ \\mu\\text{{g/m}}^3$ and `pm25_was_stuck == 0` after screening out `{sentinel_7441:,}` negative/sentinel records (`-999.0`: `3,188`; `-1.0`: `4`; `-6.0`: `1`) to `NaN`.
 
 | Year | S3 Daily Files | Calendar Hours | Active Window Hours | S3 Reported Hours (Parsed TZ) | Numerically Valid Hours ($\\\\ge 0\\\\ \\\\mu\\\\text{{g/m}}^3$) | Sentinel / Negative Hours | Active Window Valid % | Longest Contiguous Gap (h) |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| **2022** | 190 | 8,760 | 8,759 | 4,559 *(4,560 in S3 prefix)* | 3,079 | 1,480 | 35.15% | 2,568 |
-| **2023** | 249 | 8,760 | 8,760 | 5,794 *(5,793 in S3 prefix)* | 5,646 | 148 | 64.45% | 1,049 |
-| **2024** | 365 | 8,784 | 8,784 | 8,702 *(8,703 in S3 prefix)* | 7,218 | 1,484 | 82.17% | 820 |
-| **2025** *(through Apr 9)* | 99 | 8,760 | 2,375 | 2,346 *(2,345 in S3 prefix)* | 2,265 | 81 | 95.37% *(25.86% of full yr)* | 66 |
-| **Total (2022–2025)** | **903** | **35,064** | **28,678** | **21,401** | **18,208** | **3,193** | **63.49%** | **2,568** |
+{annual_table_str}
 
 ---
 
 ## 3. Missingness & Short-Gap Interpolation Experiment (Phase 5)
 
-Using `src/issue44_preparation.py::evaluate_interpolation_grid()`, contiguous interior observed runs of length $L \\in \\{{1, 2, 3, 6\\}}\\text{{ hours}}$ were masked within each `(station_id, split)` partition (50 non-overlapping gaps per group, `random_state=42`) and evaluated across `max_gap_hours` $\\in \\{{1, 2, 3, 6\\}}$.Full breakdowns by season, station, and gap length are stored in `reports/issue44_interpolation_evaluation.csv`.
+Using `src/issue44_preparation.py::evaluate_interpolation_grid()`, contiguous interior observed runs of length $L \\in \\{{1, 2, 3, 6\\}}\\text{{ hours}}$ were masked within each `(station_id, split)` partition (50 non-overlapping gaps per group, `random_state=42`) and evaluated across `max_gap_hours` $\\in \\{{1, 2, 3, 6\\}}$. Full breakdowns by season, station, and gap length are stored in `reports/issue44_interpolation_evaluation.csv`.
 
 ### Summary of Masking-Validation Accuracy & Real Missingness Recovery (`season_scope = ALL`)
 
@@ -715,7 +1059,7 @@ Using `src/issue44_preparation.py::evaluate_interpolation_grid()`, contiguous in
 {interp_table_str}
 
 ### Scientific Conclusion on Interpolation (Negative Finding Retained for Primary Pipeline)
-1. **Low Recovery vs. Rising Error:** Because missingness in both stations is dominated by multi-day/multi-week reporting outages rather than isolated 1–2h dropouts, setting `max_gap_hours = 2` recovers only **9.55%** of missing hours on `VN001` (`+1.64%` coverage) and **1.85%** of missing hours on `VN003` (`+0.68%` coverage), while RMSE already reaches **6.55 µg/m³** (`VN001`) and **10.91 µg/m³** (`VN003`, rising to **12.60 µg/m³** in Winter). At `max_gap_hours = 6`, RMSE degrades to **11.18 µg/m³** (`VN001`) and **17.66 µg/m³** (`VN003`).
+1. **Low Recovery vs. Rising Error:** Because missingness in both stations is dominated by multi-day/multi-week reporting outages rather than isolated 1–2h dropouts, short-gap linear interpolation recovers only a small fraction of total missing hours while introducing non-trivial reconstruction error across multi-hour gaps.
 2. **Temporal Leakage in Forecasting Mode:** Linear interpolation requires future endpoint $t + k$ to fill gap $t$, which is structurally inadmissible for causal early-alert forecasting (Issue #13).
 3. **Policy Decision:** Canonical observed `pm25` and `pm10` remain **100% un-interpolated** (`assert_no_imputation` enforced). Derived columns (`pm25_derived_interpolated`, `pm25_is_derived`) are isolated in `air_pollution_extended_2022_2026.parquet` strictly for sensitivity audits.
 
@@ -727,7 +1071,7 @@ Instructor feedback on Milestone 3 noted that the baseline `VN001` dataset conta
 
 ### Station-Separated Winter Cohort Summary (`winter_year`, Dec–Feb)
 
-> **Scope & Completeness Note:** `W2022`–`W2025` belong to `VN003_HANOI_OPENAQ_7441` and `W2026` belongs to `VN001_HANOI_556_NGUYEN_VAN_CU`; they are **not** 5 i.i.d. repetitions of the same physical sensor. In addition, `W2022` is a **partial winter window** (`2021-12` is outside the 2022–2025 S3 query scope, and `2022-02` has `14.43%` valid hours), `W2023` has reduced coverage in `2023-02` (`11.90%`), and `W2025` has reduced coverage in `2024-12` (`32.80%`).
+> **Scope & Completeness Note:** `W2022`–`W2025` belong to `VN003_HANOI_OPENAQ_7441` and `W2026` belongs to `VN001_HANOI_556_NGUYEN_VAN_CU`; they are **not** 5 i.i.d. repetitions of the same physical sensor. In addition, `W2022` is a **partial winter window** (`2021-12` is outside the 2022–2025 S3 query scope).
 
 | Station ID | Winter Year (`Dec–Feb`) | Expected / Grid Hours | Valid Hours ($n$, % Full / % Grid) | Monthly Valid % (`Dec / Jan / Feb`) | Mean ± SD ($\\mu\\text{{g/m}}^3$) | Median ($\\mu\\text{{g/m}}^3$) | IQR ($\\text{{Q25–Q75}}$) | P90 ($\\mu\\text{{g/m}}^3$) | Valid Days ($\\\\ge 18\\\\text{{h}}$) | Daily QCVN Exceedance ($>50\\ \\mu\\text{{g/m}}^3$) |
 |---|---:|---:|---:|---|---:|---:|---|---:|---:|---:|
@@ -741,12 +1085,12 @@ Instructor feedback on Milestone 3 noted that the baseline `VN001` dataset conta
 
 | Metric | Legacy Baseline (`VN001`, 2025–2026) | Historical Station (`VN003` / OpenAQ `7441`, 2022–2025) | Consistency & Scientific Interpretation |
 |---|---:|---:|---|
-| **Calendar Days / Valid Daily Observations ($n_{{\\text{{days}}}}$)** | `378` / `299` | `1,195` / `756` | `VN003` provides $2.53\\times$ more valid daily observations across 3.3 years. |
-| **Calendar-Preserving Daily Lag-1 Autocorrelation ($\\rho_1$)** | `0.7276` ($n_{{\\text{{eff}}}} = 47.14$, VIF $= 6.34$) | `0.7487` ($n_{{\\text{{eff}}}} = 108.66$, VIF $= 6.96$) | Computed via `src/inference.py::effective_sample_size()` keeping `NaN` on missing calendar days. Strong positive persistence ($\\rho_1 \\approx 0.73\\text{{–}}0.75$) holds at both stations. |
-| **Overall Daily Median & 95% Calendar Block-Bootstrap CI ($L=28\\text{{d}}, B=2000$)** | `37.20` (`[32.81, 44.83]`) $\\mu\\text{{g/m}}^3$ | `39.61` (`[35.00, 44.52]`) $\\mu\\text{{g/m}}^3$ | Daily central tendency and dependence-aware uncertainty intervals are closely aligned across stations. |
-| **Winter vs. Non-Winter Daily Median ($\\mu\\text{{g/m}}^3$)** | `60.46` vs. `33.58` (`+26.88`, $r_{{rb}} = +0.5720$) | `50.05` vs. `36.34` (`+13.71`, $r_{{rb}} = +0.3588$) | Winter elevation is replicated across multi-year observations at `VN003` as well as `VN001`. |
-| **Seasonal Kruskal–Wallis $H$ ($\\varepsilon^2$) & Dependence-Aware $p_{{\\text{{boot}}}}$ ($L=28\\text{{d}}$)** | $H = 61.5344$ ($\\varepsilon^2 = 0.2065$), $p_{{\\text{{boot}}}} = 0.0295$ ($p_{{\\text{{naive}}}} = 2.76 \\times 10^{{-13}}$) | $H = 164.1954$ ($\\varepsilon^2 = 0.2175$), $p_{{\\text{{boot}}}} = 0.0005$ ($p_{{\\text{{naive}}}} = 2.28 \\times 10^{{-35}}$) | Calendar block-bootstrap null test ($B=2,000, L=28\\text{{d}}$) observes elevated winter concentrations across both stations while keeping seasonal inference classified as `exploratory` due to strong daily persistence ($\\rho_1 \\approx 0.73\\text{{–}}0.75$), single physical cycle per station-year, and historical missingness. |
-| **Daily QCVN 05:2023 Exceedance ($>50\\ \\mu\\text{{g/m}}^3$)** | `84 / 299` (**28.09%**) | `238 / 756` (**31.48%**) | Both stations show $\\approx 28\\%\\text{{–}}31\\%$ of valid days exceeding QCVN 05:2023 ($50\\ \\mu\\text{{g/m}}^3$), heavily concentrated in Winter/Autumn. |
+| **Calendar Days / Valid Daily Observations ($n_{{\\text{{days}}}}$)** | `{vn1_cal_d:,}` / `{vn1_val_d:,}` | `{vn3_cal_d:,}` / `{vn3_val_d:,}` | `VN003` provides ${obs_ratio:.2f}\\times$ more valid daily observations across 3.3 years. |
+| **Calendar-Preserving Daily Lag-1 Autocorrelation ($\\rho_1$)** | `{vn1_rho1:.4f}` ($n_{{\\text{{eff}}}} = {vn1_neff:.2f}$, VIF $= {vn1_vif:.2f}$) | `{vn3_rho1:.4f}` ($n_{{\\text{{eff}}}} = {vn3_neff:.2f}$, VIF $= {vn3_vif:.2f}$) | Computed via `src/inference.py::effective_sample_size()` keeping `NaN` on missing calendar days. Strong positive persistence holds at both stations. |
+| **Overall Daily Median & 95% Calendar Block-Bootstrap CI ($L=28\\text{{d}}, B=2000$)** | `{vn1_med:.2f}` (`[{vn1_ci_lo:.2f}, {vn1_ci_hi:.2f}]`) $\\mu\\text{{g/m}}^3$ | `{vn3_med:.2f}` (`[{vn3_ci_lo:.2f}, {vn3_ci_hi:.2f}]`) $\\mu\\text{{g/m}}^3$ | Daily central tendency and dependence-aware uncertainty intervals are closely aligned across stations. |
+| **Winter vs. Non-Winter Daily Median ($\\mu\\text{{g/m}}^3$)** | `{vn1_w_med:.2f}` vs. `{vn1_nw_med:.2f}` (`+{vn1_w_diff:.2f}`, $r_{{rb}} = +{vn1_rrb:.4f}$) | `{vn3_w_med:.2f}` vs. `{vn3_nw_med:.2f}` (`+{vn3_w_diff:.2f}`, $r_{{rb}} = +{vn3_rrb:.4f}$) | Winter elevation is replicated across multi-year observations at `VN003` as well as `VN001`. |
+| **Seasonal Kruskal–Wallis $H$ ($\\varepsilon^2$) & Dependence-Aware $p_{{\\text{{boot}}}}$ ($L=28\\text{{d}}$)** | $H = {vn1_kw_h:.4f}$ ($\\varepsilon^2 = {vn1_kw_eps:.4f}$), $p_{{\\text{{boot}}}} = {vn1_kw_pboot:.4f}$ ($p_{{\\text{{naive}}}} = {vn1_kw_pnaive}$) | $H = {vn3_kw_h:.4f}$ ($\\varepsilon^2 = {vn3_kw_eps:.4f}$), $p_{{\\text{{boot}}}} = {vn3_kw_pboot:.4f}$ ($p_{{\\text{{naive}}}} = {vn3_kw_pnaive}$) | Calendar block-bootstrap null test ($B=2,000, L=28\\text{{d}}$) observes elevated winter concentrations across both stations while keeping seasonal inference classified as `exploratory` due to strong daily persistence, single physical cycle per station-year, and historical missingness. |
+| **Daily QCVN 05:2023 Exceedance ($>50\\ \\mu\\text{{g/m}}^3$)** | `{vn1_qcvn_d} / {vn1_val_d}` (**{vn1_qcvn_pct:.2f}%**) | `{vn3_qcvn_d} / {vn3_val_d}` (**{vn3_qcvn_pct:.2f}%**) | Both stations show substantial fractions of valid days exceeding QCVN 05:2023 ($50\\ \\mu\\text{{g/m}}^3$), heavily concentrated in Winter/Autumn. |
 
 ### Handover Contract for Issue #12 (Regression) & Issue #13 (Classification)
 - **Primary Baseline Model Contract:** Issue #12 and Issue #13 retain `data/processed/air_pollution_final.parquet` (`VN001`) as the frozen baseline partition so all M2/M3/W9 benchmarks remain strictly comparable.
@@ -758,7 +1102,7 @@ Instructor feedback on Milestone 3 noted that the baseline `VN001` dataset conta
         p.parent.mkdir(parents=True, exist_ok=True)
         temp_p = p.with_name(f"{p.stem}.tmp_{os.getpid()}_{int(time.time())}.md")
         try:
-            temp_p.write_text(content, encoding="utf-8")
+            temp_p.write_text(content, encoding="utf-8", newline="\n")
             temp_p.replace(p)
         finally:
             if temp_p.exists():
@@ -770,6 +1114,38 @@ Instructor feedback on Milestone 3 noted that the baseline `VN001` dataset conta
     return content
 
 
+def _extract_sections(report_text: str) -> dict[str, str]:
+    """Split markdown report by top-level `## ` headers."""
+    sections: dict[str, str] = {}
+    current_header: Optional[str] = None
+    buf: list[str] = []
+    for line in report_text.splitlines():
+        if line.startswith("## "):
+            if current_header is not None:
+                sections[current_header] = "\n".join(buf)
+            current_header = line.strip()
+            buf = [line]
+        elif current_header is not None:
+            buf.append(line)
+    if current_header is not None:
+        sections[current_header] = "\n".join(buf)
+    return sections
+
+
+def _parse_markdown_table_rows(section_text: str) -> list[list[str]]:
+    """Return parsed cells for every markdown table data row in a section."""
+    rows: list[list[str]] = []
+    for line in section_text.splitlines():
+        s = line.strip()
+        if not (s.startswith("|") and s.endswith("|")):
+            continue
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        if all(set(c).issubset({"-", ":", " "}) and "-" in c for c in cells):
+            continue
+        rows.append(cells)
+    return rows
+
+
 def verify_legacy_vs_extended_comparison(
     report_text: str,
     manifest_7441: dict[str, Any],
@@ -777,32 +1153,301 @@ def verify_legacy_vs_extended_comparison(
     interp_eval_df: pd.DataFrame,
     winter_summary_df: pd.DataFrame,
 ) -> dict[str, Any]:
-    """Verify that the comparison report matches source metadata, schemas, and metrics."""
+    """Verify that the comparison report matches source metadata, schemas, and metrics per section and table row."""
     mismatches: list[str] = []
+    try:
+        _validate_comparison_report_inputs(
+            manifest_7441, extended_metadata, interp_eval_df, winter_summary_df
+        )
+    except (KeyError, ValueError) as exc:
+        return {
+            "verified": False,
+            "mismatches": [f"Input schema validation failed: {exc}"],
+        }
+
     required_sections = [
-        "## 1. Source Verification & Approval Decision",
-        "## 2. Dataset Architecture & Coverage Comparison",
-        "## 3. Missingness & Short-Gap Interpolation Experiment",
-        "## 4. Multi-Year & Multi-Winter Seasonality Re-Evaluation",
+        "## 1. Source Verification & Approval Decision (Phase 1)",
+        "## 2. Dataset Architecture & Coverage Comparison (Phases 2–4)",
+        "## 3. Missingness & Short-Gap Interpolation Experiment (Phase 5)",
+        "## 4. Multi-Year & Multi-Winter Seasonality Re-Evaluation (Phase 6 & FIG-01)",
         "## 5. Impact on Statistical Inference (Issue #11) & Regression Contract (Issue #12)",
     ]
+    sections = _extract_sections(report_text)
     for sec in required_sections:
-        if sec not in report_text:
+        if sec not in sections:
             mismatches.append(f"Missing required section header: {sec}")
+    if mismatches:
+        return {"verified": False, "mismatches": mismatches}
 
-    tot_rows = extended_metadata.get("total_grid_rows", 37722)
-    if f"{tot_rows:,}" not in report_text:
-        mismatches.append(f"Expected total grid rows {tot_rows:,} not found in report.")
+    cov_7441 = manifest_7441["coverage"]
+    st_vn1 = extended_metadata["stations"]["VN001_HANOI_556_NGUYEN_VAN_CU"]
+    st_vn3 = extended_metadata["stations"]["VN003_HANOI_OPENAQ_7441"]
+    w_backfill = extended_metadata["weather_backfill"]
 
-    valid_hours = manifest_7441.get("coverage", {}).get("qc_valid_hours", 18208)
-    if f"{valid_hours:,}" not in report_text:
-        mismatches.append(f"Expected valid hours {valid_hours:,} not found in report.")
+    # --- Section 1 verification ---
+    sec1_text = sections[required_sections[0]]
+    sec1_rows = _parse_markdown_table_rows(sec1_text)
+    loc7441_row = next((r for r in sec1_rows if len(r) >= 5 and "7441" in r[0]), None)
+    if loc7441_row is None:
+        mismatches.append("Section 1: Missing table row for OpenAQ S3 Location 7441.")
+    else:
+        for expected_tok in (
+            f"`{int(manifest_7441['s3_daily_file_count'])}`",
+            f"`{int(cov_7441['raw_rows']):,}`",
+            f"`{int(cov_7441['qc_valid_hours']):,}`",
+        ):
+            if expected_tok not in loc7441_row[3]:
+                mismatches.append(f"Section 1 (7441 provenance): Expected {expected_tok} in '{loc7441_row[3]}'.")
 
-    # Check protocol contract mentions
-    if "Protocol A (Station-Specific Modeling" not in report_text:
-        mismatches.append("Missing Protocol A specification in handover contract.")
-    if "Protocol B (Pooled Multi-Station Modeling" not in report_text:
-        mismatches.append("Missing Protocol B specification in handover contract.")
+    mirror_row = next((r for r in sec1_rows if len(r) >= 5 and "Third-party GitHub Mirror" in r[0]), None)
+    if mirror_row is None or "25d08e949c9d01ba57c4e74ff9b3b99328ecf141" not in mirror_row[3] or "issue44_source_verification.json" not in mirror_row[3]:
+        mismatches.append("Section 1: Missing frozen provenance disclosure for Third-party GitHub Mirror.")
+
+    inter_km_str = f"{float(w_backfill['inter_station_distance_7441_to_vn001_km']):.3f} km"
+    if inter_km_str not in sec1_text:
+        mismatches.append(f"Section 1: Expected inter-station distance '{inter_km_str}' not found.")
+
+    # --- Section 2 verification (Coverage & Annual tables) ---
+    sec2_rows = _parse_markdown_table_rows(sections[required_sections[1]])
+
+    def _find_sec2_metric_row(label_substr: str) -> Optional[list[str]]:
+        return next((r for r in sec2_rows if len(r) == 4 and label_substr in r[0]), None)
+
+    tot_rows = int(extended_metadata["total_rows"])
+    vn1_grid = int(st_vn1["grid_rows"])
+    vn3_grid = int(st_vn3["grid_rows"])
+    vn1_obs = int(st_vn1["observed_pm25_rows"])
+    vn3_obs = int(st_vn3["observed_pm25_rows"])
+    vn1_miss = int(st_vn1["missing_pm25_rows"])
+    vn3_miss = int(st_vn3["missing_pm25_rows"])
+    vn1_miss_pct = float(st_vn1["missing_pm25_pct"])
+    vn3_miss_pct = float(st_vn3["missing_pm25_pct"])
+    vn1_obs_pct = round(100.0 - vn1_miss_pct, 2)
+    vn3_obs_pct = round(100.0 - vn3_miss_pct, 2)
+    comb_obs = vn1_obs + vn3_obs
+    comb_miss = vn1_miss + vn3_miss
+    comb_obs_pct = round(100.0 * comb_obs / tot_rows, 2)
+    comb_miss_pct = round(100.0 * comb_miss / tot_rows, 2)
+
+    sec2_checks = [
+        ("SHA-256", [extended_metadata["baseline_sha256"]["final_processed"][:8], "build_extended_historical_dataset.py", str(extended_metadata["sha256"])]),
+        ("Start Timestamp", [str(st_vn1["min_timestamp"]), str(st_vn3["min_timestamp"]), str(st_vn3["min_timestamp"])]),
+        ("End Timestamp", [str(st_vn1["max_timestamp"]), str(st_vn3["max_timestamp"]), str(st_vn1["max_timestamp"])]),
+        ("Hourly Grid Rows", [f"`{vn1_grid:,}`", f"`{vn3_grid:,}`", f"`{tot_rows:,}`"]),
+        ("Observed Valid", [f"`{vn1_obs:,}` (`{vn1_obs_pct:.2f}%`)", f"`{vn3_obs:,}` (`{vn3_obs_pct:.2f}%`)", f"`{comb_obs:,}` (`{comb_obs_pct:.2f}%`)"]),
+        ("Missing", [f"`{vn1_miss:,}` (`{vn1_miss_pct:.2f}%`)", f"`{vn3_miss:,}` (`{vn3_miss_pct:.2f}%`)", f"`{comb_miss:,}` (`{comb_miss_pct:.2f}%`)"]),
+        (
+            "Chronological Train / Test Rows",
+            [
+                f"`{int(st_vn1['train_rows']):,}` / `{int(st_vn1['test_rows']):,}`",
+                f"`{int(st_vn3['train_rows']):,}` / `{int(st_vn3['test_rows']):,}`",
+                f"`{int(st_vn1['train_rows']) + int(st_vn3['train_rows']):,}` / `{int(st_vn1['test_rows']) + int(st_vn3['test_rows']):,}`",
+            ],
+        ),
+        (
+            "Distance to ERA5 Grid",
+            [
+                f"`{float(st_vn1['distance_to_era5_grid_km']):.3f} km`",
+                f"`{float(st_vn3['distance_to_era5_grid_km']):.3f} km`",
+                "Station-specific",
+            ],
+        ),
+        (
+            "ERA5 Weather Missingness",
+            [
+                "`0.0%` (`9,072` rows)",
+                f"`{float(w_backfill['max_missing_pct']):.1f}%` (`{int(w_backfill['rows']):,}` rows)",
+                f"`{float(w_backfill['max_missing_pct']):.1f}%` (`{9072 + int(w_backfill['rows']):,}` raw weather hours)",
+            ],
+        ),
+    ]
+    for metric_label, col_expectations in sec2_checks:
+        r = _find_sec2_metric_row(metric_label)
+        if r is None:
+            mismatches.append(f"Section 2 Coverage Table: Missing row '{metric_label}'.")
+            continue
+        for col_idx, exp_sub in enumerate(col_expectations, start=1):
+            if exp_sub not in r[col_idx]:
+                mismatches.append(
+                    f"Section 2 Coverage Table ('{metric_label}', col {col_idx}): expected '{exp_sub}' in '{r[col_idx]}'."
+                )
+
+    # Annual breakdown rows in Section 2 (9 columns)
+    tot_cal_h = 0
+    for yr_entry in cov_7441["annual"]:
+        yr = int(yr_entry["year"])
+        tot_cal_h += int(yr_entry["expected_hours"])
+        yr_row = next((r for r in sec2_rows if len(r) == 9 and f"**{yr}**" in r[0]), None)
+        if yr_row is None:
+            mismatches.append(f"Section 2 Annual Table: Missing row for year {yr}.")
+            continue
+        expected_cols = {
+            1: f"{int(yr_entry['s3_daily_files']):,}",
+            2: f"{int(yr_entry['expected_hours']):,}",
+            3: f"{int(yr_entry['source_available_hours']):,}",
+            4: f"{int(yr_entry['s3_reported_hours']):,}",
+            5: f"{int(yr_entry['qc_valid_hours']):,}",
+            6: f"{int(yr_entry['sentinel_or_negative_hours']):,}",
+            7: f"{float(yr_entry['qc_valid_pct_of_active_window']):.2f}%",
+            8: f"{int(yr_entry['longest_gap_hours']):,}",
+        }
+        for c_idx, exp_val in expected_cols.items():
+            if exp_val not in yr_row[c_idx]:
+                mismatches.append(
+                    f"Section 2 Annual Table (year {yr}, col {c_idx}): expected '{exp_val}', got '{yr_row[c_idx]}'."
+                )
+
+    tot_yr_row = next((r for r in sec2_rows if len(r) == 9 and "Total (2022–2025)" in r[0]), None)
+    if tot_yr_row is None:
+        mismatches.append("Section 2 Annual Table: Missing 'Total (2022–2025)' row.")
+    else:
+        tot_expected_cols = {
+            1: f"**{int(manifest_7441['s3_daily_file_count']):,}**",
+            2: f"**{tot_cal_h:,}**",
+            3: f"**{int(cov_7441['source_observation_window']['active_window_hours']):,}**",
+            4: f"**{int(cov_7441['raw_rows']):,}**",
+            5: f"**{int(cov_7441['qc_valid_hours']):,}**",
+            6: f"**{int(cov_7441['sentinel_or_negative_hours']):,}**",
+            7: f"**{vn3_obs_pct:.2f}%**",
+            8: f"**{int(cov_7441['longest_contiguous_gap_active_window_hours']):,}**",
+        }
+        for c_idx, exp_val in tot_expected_cols.items():
+            if tot_yr_row[c_idx] != exp_val:
+                mismatches.append(
+                    f"Section 2 Annual Table (Total row, col {c_idx}): expected '{exp_val}', got '{tot_yr_row[c_idx]}'."
+                )
+
+    # --- Section 3 verification (Interpolation table) ---
+    sec3_rows = _parse_markdown_table_rows(sections[required_sections[2]])
+    interp_all = interp_eval_df[interp_eval_df["season_scope"] == "ALL"].copy()
+    for _, ir in interp_all.iterrows():
+        sid_raw = str(ir["station_id"])
+        sid_short = "VN001" if "VN001" in sid_raw else "VN003"
+        gap_str = f"{int(ir['masked_gap_length_hours'])}h"
+        max_gap_str = f"{int(ir['max_gap_hours'])}h"
+        match_row = next(
+            (
+                r
+                for r in sec3_rows
+                if len(r) == 10 and sid_short in r[0] and r[1] == gap_str and r[2] == max_gap_str
+            ),
+            None,
+        )
+        if match_row is None:
+            mismatches.append(
+                f"Section 3 Interpolation Table: Missing row for ({sid_short}, L={gap_str}, max_gap={max_gap_str})."
+            )
+            continue
+        bias_val = float(ir["bias"])
+        bias_str = f"+{bias_val:.4f}" if bias_val >= 0 else f"{bias_val:.4f}".replace("-", "−")
+        expected_interp_cols = {
+            3: f"{int(ir['n_masked_hours'])}",
+            4: f"{float(ir['mae']):.4f}",
+            5: f"{float(ir['rmse']):.4f}",
+            6: bias_str,
+            7: f"{int(ir['real_interpolated_hours'])} / {int(ir['station_missing_hours']):,}",
+            8: f"{float(ir['real_interpolated_pct_of_missing']):.2f}%",
+            9: f"{float(ir['coverage_before_pct']):.2f}% → {float(ir['coverage_after_pct']):.2f}%",
+        }
+        for c_idx, exp_val in expected_interp_cols.items():
+            if match_row[c_idx] != exp_val:
+                mismatches.append(
+                    f"Section 3 Interpolation Table ({sid_short}, L={gap_str}, max_gap={max_gap_str}, col {c_idx}): "
+                    f"expected '{exp_val}', got '{match_row[c_idx]}'."
+                )
+
+    # --- Section 4 verification (Winter Cohort Summary table) ---
+    sec4_rows = _parse_markdown_table_rows(sections[required_sections[3]])
+    for _, wr in winter_summary_df.iterrows():
+        sid = str(wr["station_id"])
+        wy = int(wr["winter_year"])
+        wid = f"**W{wy}**"
+        match_w_row = next(
+            (r for r in sec4_rows if len(r) == 11 and f"`{sid}`" == r[0] and wid in r[1]),
+            None,
+        )
+        if match_w_row is None:
+            mismatches.append(f"Section 4 Winter Table: Missing row for ({sid}, W{wy}).")
+            continue
+        m_pct = _format_monthly_winter_pct(wy, wr["monthly_completeness"])
+        v_days = int(wr["valid_days"])
+        expected_w_cols = {
+            2: f"{int(wr['expected_calendar_hours']):,} / {int(wr['station_grid_hours']):,}",
+            3: f"{int(wr['count']):,} (`{float(wr['coverage_of_full_winter_pct']):.2f}%` / `{float(wr['coverage_of_station_grid_pct']):.2f}%`)",
+            4: f"`{m_pct}`",
+            5: f"{float(wr['mean']):.2f} ± {float(wr['sd']):.2f}",
+            6: f"**{float(wr['median']):.2f}**",
+            7: f"{float(wr['iqr']):.2f} (`{float(wr['q25']):.1f}–{float(wr['q75']):.1f}`)",
+            8: f"{float(wr['p90']):.2f}",
+            9: f"{v_days}",
+            10: f"{int(wr['qcvn_exceed_days'])} / {v_days} (**{float(wr['qcvn_exceed_pct']):.2f}%**)",
+        }
+        for c_idx, exp_val in expected_w_cols.items():
+            if match_w_row[c_idx] != exp_val:
+                mismatches.append(
+                    f"Section 4 Winter Table ({sid}, W{wy}, col {c_idx}): expected '{exp_val}', got '{match_w_row[c_idx]}'."
+                )
+
+    # --- Section 5 verification (Inference Comparison table & Handover Contract) ---
+    sec5_text = sections[required_sections[4]]
+    sec5_rows = _parse_markdown_table_rows(sec5_text)
+    inf_vn1 = extended_metadata["inference_comparison"]["VN001_HANOI_556_NGUYEN_VAN_CU"]
+    inf_vn3 = extended_metadata["inference_comparison"]["VN003_HANOI_OPENAQ_7441"]
+
+    def _find_sec5_row(label_substr: str) -> Optional[list[str]]:
+        return next((r for r in sec5_rows if len(r) == 4 and label_substr in r[0]), None)
+
+    vn1_ci = inf_vn1["daily_median_ci95_calendar_bootstrap"]
+    vn3_ci = inf_vn3["daily_median_ci95_calendar_bootstrap"]
+    vn1_w_diff = float(inf_vn1["winter_daily_median"]) - float(inf_vn1["non_winter_daily_median"])
+    vn3_w_diff = float(inf_vn3["winter_daily_median"]) - float(inf_vn3["non_winter_daily_median"])
+
+    sec5_checks = [
+        (
+            "Calendar Days / Valid Daily Observations",
+            f"`{int(inf_vn1['calendar_days']):,}` / `{int(inf_vn1['valid_days_ge18h']):,}`",
+            f"`{int(inf_vn3['calendar_days']):,}` / `{int(inf_vn3['valid_days_ge18h']):,}`",
+        ),
+        (
+            "Calendar-Preserving Daily Lag-1 Autocorrelation",
+            f"`{float(inf_vn1['daily_lag1_autocorr_rho1']):.4f}` ($n_{{\\text{{eff}}}} = {float(inf_vn1['effective_sample_size_n_eff']):.2f}$, VIF $= {float(inf_vn1['variance_inflation_factor']):.2f}$)",
+            f"`{float(inf_vn3['daily_lag1_autocorr_rho1']):.4f}` ($n_{{\\text{{eff}}}} = {float(inf_vn3['effective_sample_size_n_eff']):.2f}$, VIF $= {float(inf_vn3['variance_inflation_factor']):.2f}$)",
+        ),
+        (
+            "Overall Daily Median & 95% Calendar Block-Bootstrap CI",
+            f"`{float(inf_vn1['daily_median']):.2f}` (`[{float(vn1_ci[0]):.2f}, {float(vn1_ci[1]):.2f}]`)",
+            f"`{float(inf_vn3['daily_median']):.2f}` (`[{float(vn3_ci[0]):.2f}, {float(vn3_ci[1]):.2f}]`)",
+        ),
+        (
+            "Winter vs. Non-Winter Daily Median",
+            f"`{float(inf_vn1['winter_daily_median']):.2f}` vs. `{float(inf_vn1['non_winter_daily_median']):.2f}` (`+{vn1_w_diff:.2f}`, $r_{{rb}} = +{float(inf_vn1['winter_vs_nonwinter_r_rb']):.4f}$)",
+            f"`{float(inf_vn3['winter_daily_median']):.2f}` vs. `{float(inf_vn3['non_winter_daily_median']):.2f}` (`+{vn3_w_diff:.2f}`, $r_{{rb}} = +{float(inf_vn3['winter_vs_nonwinter_r_rb']):.4f}$)",
+        ),
+        (
+            "Seasonal Kruskal–Wallis",
+            f"$H = {float(inf_vn1['kruskal_wallis_h']):.4f}$ ($\\varepsilon^2 = {float(inf_vn1['kruskal_wallis_epsilon2']):.4f}$), $p_{{\\text{{boot}}}} = {float(inf_vn1['kruskal_wallis_calendar_bootstrap_p']):.4f}$",
+            f"$H = {float(inf_vn3['kruskal_wallis_h']):.4f}$ ($\\varepsilon^2 = {float(inf_vn3['kruskal_wallis_epsilon2']):.4f}$), $p_{{\\text{{boot}}}} = {float(inf_vn3['kruskal_wallis_calendar_bootstrap_p']):.4f}$",
+        ),
+        (
+            "Daily QCVN 05:2023 Exceedance",
+            f"`{int(inf_vn1['qcvn_exceedance_days'])} / {int(inf_vn1['valid_days_ge18h'])}` (**{float(inf_vn1['qcvn_exceedance_pct']):.2f}%**)",
+            f"`{int(inf_vn3['qcvn_exceedance_days'])} / {int(inf_vn3['valid_days_ge18h'])}` (**{float(inf_vn3['qcvn_exceedance_pct']):.2f}%**)",
+        ),
+    ]
+    for row_label, exp_vn1, exp_vn3 in sec5_checks:
+        r = _find_sec5_row(row_label)
+        if r is None:
+            mismatches.append(f"Section 5 Inference Table: Missing row '{row_label}'.")
+            continue
+        if exp_vn1 not in r[1]:
+            mismatches.append(f"Section 5 Inference Table ('{row_label}', VN001 col): expected '{exp_vn1}' in '{r[1]}'.")
+        if exp_vn3 not in r[2]:
+            mismatches.append(f"Section 5 Inference Table ('{row_label}', VN003 col): expected '{exp_vn3}' in '{r[2]}'.")
+
+    if "Protocol A (Station-Specific Modeling" not in sec5_text:
+        mismatches.append("Section 5: Missing Protocol A specification in handover contract.")
+    if "Protocol B (Pooled Multi-Station Modeling" not in sec5_text:
+        mismatches.append("Section 5: Missing Protocol B specification in handover contract.")
 
     return {
         "verified": len(mismatches) == 0,

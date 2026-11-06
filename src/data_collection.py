@@ -916,8 +916,10 @@ class OpenAQAdapter:
             raise RuntimeError(f"Không tìm thấy tệp nào trên S3 cho location_id={self.location_id}!")
 
         if expected_s3_key_count is not None and len(keys) != expected_s3_key_count:
-            logger.warning(
-                f"Số lượng tệp S3 tìm thấy ({len(keys)}) khác kỳ vọng ({expected_s3_key_count})."
+            raise RuntimeError(
+                f"FAIL-CLOSED: Số lượng tệp S3 tìm thấy ({len(keys)}) khác kỳ vọng bắt buộc "
+                f"({expected_s3_key_count}) cho location_id={self.location_id}. "
+                "Không tải hoặc ghi đè cache từ snapshot S3 không khớp."
             )
 
         logger.info(
@@ -953,7 +955,18 @@ class OpenAQAdapter:
         temp_path = raw_path.with_name(f"{raw_path.stem}.tmp_{os.getpid()}_{int(time.time())}.parquet")
         try:
             df_raw.to_parquet(temp_path, index=False, engine="pyarrow", compression="snappy")
-            _ = pd.read_parquet(temp_path)
+            df_check = pd.read_parquet(temp_path)
+            if df_check.empty:
+                raise RuntimeError(
+                    f"FAIL-CLOSED: Tệp tạm {temp_path} rỗng sau khi ghi Parquet!"
+                )
+            if expected_sha256 is not None:
+                actual_hash = hashlib.sha256(temp_path.read_bytes()).hexdigest()
+                if actual_hash != expected_sha256:
+                    raise RuntimeError(
+                        f"FAIL-CLOSED: Mã băm của tệp tạm sau khi tải ({actual_hash}) không khớp "
+                        f"mã băm kỳ vọng ({expected_sha256})! Đã hủy tệp tạm và bảo toàn cache cũ (nếu có)."
+                    )
             temp_path.replace(raw_path)
         finally:
             if temp_path.exists():
@@ -961,13 +974,6 @@ class OpenAQAdapter:
                     temp_path.unlink()
                 except OSError:
                     pass
-
-        if expected_sha256 is not None:
-            actual_hash = hashlib.sha256(raw_path.read_bytes()).hexdigest()
-            if actual_hash != expected_sha256:
-                raise RuntimeError(
-                    f"FAIL-CLOSED: Mã băm sau khi tải ({actual_hash}) không khớp mã băm kỳ vọng ({expected_sha256})!"
-                )
 
         logger.info(
             f"Đã lưu dữ liệu thô OpenAQ {self.location_id} vào {raw_path} ({len(df_raw)} dòng thô, {len(df_raw.columns)} cột)."
