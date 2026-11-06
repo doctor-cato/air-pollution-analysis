@@ -57,19 +57,18 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-# Cấu hình stdout/stderr UTF-8 trên Windows để chống UnicodeEncodeError khi
-# console code page không phải UTF-8 (ví dụ: cp1252/cp437) hoặc khi redirect pipe.
-if sys.platform == "win32":
-    if hasattr(sys.stdout, "reconfigure"):
-        try:
-            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        except Exception:
-            pass
-    if hasattr(sys.stderr, "reconfigure"):
-        try:
-            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-        except Exception:
-            pass
+# Cấu hình stdout/stderr UTF-8 để chống UnicodeEncodeError khi
+# console code page không phải UTF-8 (ví dụ: cp1252/cp437 trên Windows) hoặc khi redirect pipe.
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 import pandas as pd
 

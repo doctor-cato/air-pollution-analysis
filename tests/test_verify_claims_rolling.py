@@ -320,6 +320,8 @@ class TestVerifyClaimsEncoding(unittest.TestCase):
             [sys.executable, str(script_path), "--help"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             env=env,
         )
         self.assertEqual(proc.returncode, 0, f"Script failed with stderr:\n{proc.stderr}")
@@ -336,6 +338,8 @@ class TestVerifyClaimsEncoding(unittest.TestCase):
                 [sys.executable, str(script_path)],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 env=env,
             )
             self.assertEqual(proc.returncode, 0, f"Script failed with stderr:\n{proc.stderr}")
@@ -346,6 +350,8 @@ class TestVerifyClaimsEncoding(unittest.TestCase):
                 [sys.executable, str(script_path), "--dataset", "nonexistent.parquet"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 env=env,
             )
             self.assertEqual(proc.returncode, 2)
