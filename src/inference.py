@@ -274,8 +274,10 @@ def build_daily_panel(
     Tổng hợp chuỗi giờ thành panel **một dòng một ngày** và trả kèm nhật ký lọc.
 
     Quy tắc: một ngày được giữ khi có `min_valid_hours` giờ (mặc định 18) có
-    `pm25` khác NaN. Nếu dữ liệu có nhiều trạm, mỗi ngày là **trung bình các trạm**
-    (ghi lại `n_stations`) — hiện tại dữ liệu chỉ có một trạm.
+    `pm25` khác NaN. Hàm được thiết kế nghiêm ngặt cho chuỗi đơn trạm; nếu dữ liệu
+    chứa nhiều `station_id`, hàm từ chối ngay lập tức để ngăn ngừa lỗi gộp giờ
+    xuyên trạm sai lệch ngưỡng. Với dữ liệu nhiều trạm, sử dụng
+    `build_multi_station_daily_panel()`.
 
     Returns
     -------
@@ -288,6 +290,16 @@ def build_daily_panel(
             f"min_valid_hours phải trong [1, {HOURS_PER_DAY}], nhận {min_valid_hours}."
         )
     _require_columns(df, [TIMESTAMP_COLUMN, TARGET_COLUMN], context="build_daily_panel")
+
+    if STATION_COLUMN in df.columns:
+        stations = df[STATION_COLUMN].dropna().unique()
+        if len(stations) > 1:
+            raise ValueError(
+                f"`build_daily_panel()` được thiết kế cho chuỗi đơn trạm nhưng phát hiện {len(stations)} trạm "
+                f"khác nhau: {sorted(stations)}. Không được gộp số giờ giữa các trạm vì sẽ làm sai lệch ngưỡng "
+                f"{min_valid_hours}h/ngày và tạo chuỗi trung bình giả. Vui lòng lọc dữ liệu theo từng trạm "
+                "hoặc sử dụng `build_multi_station_daily_panel()`."
+            )
 
     per_day, rows_total, n_stations, observed = _daily_aggregates(df)
 
@@ -340,6 +352,86 @@ def build_daily_panel(
         },
         "weekday_days": int((panel["is_weekend"] == 0).sum()),
         "weekend_days": int((panel["is_weekend"] == 1).sum()),
+    }
+    return panel, audit
+
+
+def build_multi_station_daily_panel(
+    df: pd.DataFrame,
+    *,
+    min_valid_hours: int = MIN_VALID_HOURS_PER_DAY,
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    """
+    Tổng hợp chuỗi giờ của nhiều trạm thành panel ngày phân tách rõ theo `station_id`.
+
+    Quy tắc an toàn: Mỗi trạm được kiểm tra ngưỡng `min_valid_hours` (mặc định 18)
+    hoàn toàn độc lập theo từng `(station_id, date)`. Tuyệt đối không cộng dồn giờ
+    của các trạm khác nhau vào cùng một ngày hay tạo chuỗi trung bình đơn trạm giả.
+
+    Returns
+    -------
+    (panel, audit)
+        `panel` sắp theo (station_id, date), có cột: `station_id`, `date`, `pm25_mean`,
+        `pm25_median`, `valid_hours`, `season`, `is_weekend`, `day_of_week`, `iso_year`, `iso_week`.
+    """
+    if not 1 <= min_valid_hours <= HOURS_PER_DAY:
+        raise ValueError(
+            f"min_valid_hours phải trong [1, {HOURS_PER_DAY}], nhận {min_valid_hours}."
+        )
+    _require_columns(df, [TIMESTAMP_COLUMN, TARGET_COLUMN, STATION_COLUMN], context="build_multi_station_daily_panel")
+
+    work = df.copy()
+    work[TIMESTAMP_COLUMN] = _local_timestamps(work[TIMESTAMP_COLUMN])
+    work[TARGET_COLUMN] = pd.to_numeric(work[TARGET_COLUMN], errors="coerce")
+    work["_date"] = work[TIMESTAMP_COLUMN].dt.normalize()
+
+    observed = work.dropna(subset=[TARGET_COLUMN])
+    if observed.empty:
+        raise ValueError("Không có giờ nào có `pm25` — không dựng được panel ngày.")
+
+    per_station_day = (
+        observed.groupby([STATION_COLUMN, "_date"], observed=True)[TARGET_COLUMN]
+        .agg(valid_hours="size", pm25_mean="mean", pm25_median="median")
+        .reset_index()
+    )
+
+    keep = per_station_day["valid_hours"] >= min_valid_hours
+    panel = per_station_day.loc[keep].copy()
+    if panel.empty:
+        raise ValueError(
+            f"Không trạm/ngày nào đạt ≥ {min_valid_hours} giờ có `pm25`. Panel rỗng — không kiểm định được."
+        )
+
+    panel = panel.rename(columns={"_date": "date"})
+    panel["season"] = _season_from_month(panel["date"].dt.month)
+    panel["day_of_week"] = panel["date"].dt.dayofweek
+    panel["is_weekend"] = (panel["day_of_week"] >= 5).astype(int)
+    iso = panel["date"].dt.isocalendar()
+    panel["iso_year"] = iso["year"].astype(int)
+    panel["iso_week"] = iso["week"].astype(int)
+    panel["week_key"] = (
+        panel["iso_year"].astype(str) + "-W" + panel["iso_week"].astype(str).str.zfill(2)
+    )
+    panel = panel.sort_values([STATION_COLUMN, "date"]).reset_index(drop=True)
+
+    stations = sorted(work[STATION_COLUMN].dropna().unique())
+    station_audits: Dict[str, Any] = {}
+    for sid in stations:
+        sub = per_station_day[per_station_day[STATION_COLUMN] == sid]
+        station_audits[str(sid)] = {
+            "days_total_observed": int(len(sub)),
+            "days_ge18h": int((sub["valid_hours"] >= min_valid_hours).sum()),
+            "days_lt18h": int((sub["valid_hours"] < min_valid_hours).sum()),
+        }
+
+    audit: Dict[str, Any] = {
+        "rows_hourly": len(work),
+        "hours_with_pm25": len(observed),
+        "n_stations": len(stations),
+        "stations": stations,
+        "min_valid_hours": min_valid_hours,
+        "total_station_days_kept": len(panel),
+        "station_breakdown": station_audits,
     }
     return panel, audit
 

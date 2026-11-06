@@ -14,8 +14,17 @@ Kiểm thử (Sử dụng unittest chuẩn thư viện Python):
 """
 
 import datetime
+import gzip
+import hashlib
+import io
 import json
+import tempfile
 import unittest
+import urllib.error
+import urllib.request
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 import pandas as pd
 
@@ -43,6 +52,7 @@ from src.data_collection import (
     validate_open_meteo_hourly_units,
     validate_weather_canonical,
     resolve_station_metadata,
+    OpenAQAdapter,
     OpenMeteoAdapter,
 )
 
@@ -1007,6 +1017,204 @@ def _mock_weather_payload(n_hours: int = 3, hourly_units=None, **overrides) -> d
         }[canonical_col]
         payload["hourly"][provider_field] = values
     return payload
+
+
+def _make_gzip_csv(content_str: str) -> bytes:
+    buf = io.BytesIO()
+    with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
+        gz.write(content_str.encode("utf-8"))
+    return buf.getvalue()
+
+
+class TestOpenAQS3AcquisitionFailClosed(unittest.TestCase):
+    """Regression tests for F-03: S3 acquisition fail-closed and cache integrity."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.raw_dir = Path(self.temp_dir.name) / "raw"
+        self.interim_dir = Path(self.temp_dir.name) / "interim"
+        self.raw_dir.mkdir(parents=True)
+        self.interim_dir.mkdir(parents=True)
+        self.adapter = OpenAQAdapter(
+            location_id=HANOI_OPENAQ_HISTORICAL_LOCATION_ID,
+            raw_dir=self.raw_dir,
+            interim_dir=self.interim_dir,
+        )
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_one_s3_key_fails_triggers_fail_closed(self):
+        """F-03: When 1 out of multiple S3 keys fails, acquisition fails-closed without saving cache."""
+        keys = ["file1.csv.gz", "file2.csv.gz"]
+        df1 = pd.DataFrame({"datetime": ["2024-01-01T00:00:00Z"], "value": [25.0], "parameter": ["pm25"]})
+
+        with patch.object(self.adapter, "_list_s3_keys", return_value=keys):
+            with patch.object(
+                self.adapter,
+                "_fetch_single_s3_file",
+                side_effect=[
+                    ("file1.csv.gz", df1, None),
+                    ("file2.csv.gz", None, "HTTP status 503"),
+                ],
+            ):
+                with self.assertRaisesRegex(RuntimeError, "FAIL-CLOSED"):
+                    self.adapter.fetch_raw_data(raw_output_name="test_raw.parquet", max_workers=1)
+
+        # Crucial check: No partial cache file was written
+        out_file = self.raw_dir / "test_raw.parquet"
+        self.assertFalse(out_file.exists())
+
+    def test_all_s3_keys_fail_raises_runtime_error(self):
+        """F-03: When all S3 keys fail, RuntimeError is raised and no file is created."""
+        keys = ["file1.csv.gz"]
+        with patch.object(self.adapter, "_list_s3_keys", return_value=keys):
+            with patch.object(
+                self.adapter,
+                "_fetch_single_s3_file",
+                return_value=("file1.csv.gz", None, "ConnectionRefusedError"),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "FAIL-CLOSED"):
+                    self.adapter.fetch_raw_data(raw_output_name="test_raw.parquet", max_workers=1)
+        self.assertFalse((self.raw_dir / "test_raw.parquet").exists())
+
+    def test_retry_succeeds_after_transient_failure(self):
+        """F-03: Bounded retry recovers from transient error on first attempt."""
+        csv_bytes = _make_gzip_csv("datetime,value,parameter\n2024-01-01T00:00:00Z,30.0,pm25\n")
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = csv_bytes
+        mock_resp.__enter__.return_value = mock_resp
+
+        call_count = 0
+        def fake_urlopen(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise urllib.error.URLError("Transient network glitch")
+            return mock_resp
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            key, df, err = self.adapter._fetch_single_s3_file(
+                "test.csv.gz", max_retries=3, backoff_seconds=0.01
+            )
+            self.assertIsNone(err)
+            self.assertIsNotNone(df)
+            self.assertEqual(len(df), 1)
+            self.assertEqual(call_count, 2)
+
+    def test_retry_exhausted_returns_error_tuple(self):
+        """F-03: When all retries are exhausted, error tuple is returned with details."""
+        def fake_urlopen(*args, **kwargs):
+            raise urllib.error.URLError("Persistent timeout")
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            key, df, err = self.adapter._fetch_single_s3_file(
+                "timeout.csv.gz", max_retries=3, backoff_seconds=0.01
+            )
+            self.assertIsNone(df)
+            self.assertIn("Persistent timeout", str(err))
+
+    def test_corrupt_payload_handled(self):
+        """F-03: Corrupt (non-gzip) bytes are caught and handled safely."""
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = b"NOT_A_GZIP_FILE_JUNK"
+        mock_resp.__enter__.return_value = mock_resp
+
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            key, df, err = self.adapter._fetch_single_s3_file(
+                "corrupt.csv.gz", max_retries=2, backoff_seconds=0.01
+            )
+            self.assertIsNone(df)
+            self.assertIn("BadGzipFile", str(err))
+
+    def test_valid_empty_payload_handled(self):
+        """F-03: Empty valid CSV gzip payload returns empty dataframe without crashing."""
+        csv_bytes = _make_gzip_csv("")
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = csv_bytes
+        mock_resp.__enter__.return_value = mock_resp
+
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            key, df, err = self.adapter._fetch_single_s3_file("empty.csv.gz", max_retries=1)
+            self.assertIsNone(err)
+            self.assertIsNotNone(df)
+            self.assertTrue(df.empty)
+
+    def test_hash_mismatch_fails_closed(self):
+        """F-03: When cache exists but expected SHA-256 does not match, cache is rejected."""
+        cache_path = self.raw_dir / "test_raw.parquet"
+        dummy_df = pd.DataFrame({"datetime": ["2024-01-01T00:00:00Z"], "value": [10.0]})
+        dummy_df.to_parquet(cache_path, index=False)
+
+        # Expected hash differs from dummy_df hash -> raises ValueError on cache load
+        keys = ["file1.csv.gz"]
+        with patch.object(self.adapter, "_list_s3_keys", return_value=keys):
+            with patch.object(
+                self.adapter,
+                "_fetch_single_s3_file",
+                return_value=("file1.csv.gz", dummy_df, None),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "FAIL-CLOSED: Mã băm"):
+                    self.adapter.fetch_raw_data(
+                        raw_output_name="test_raw.parquet",
+                        force_reload=True,
+                        expected_sha256="expected_pinned_hash_that_never_matches",
+                    )
+
+    def test_valid_cache_reused_without_network(self):
+        """F-03: Valid cache matching expected hash is reused without making any S3 calls."""
+        cache_path = self.raw_dir / "valid_cache.parquet"
+        dummy_df = pd.DataFrame({"datetime": ["2024-01-01T00:00:00Z"], "value": [10.0]})
+        dummy_df.to_parquet(cache_path, index=False)
+        actual_hash = hashlib.sha256(cache_path.read_bytes()).hexdigest()
+
+        with patch.object(self.adapter, "_list_s3_keys") as mock_list:
+            df_out, path_out = self.adapter.fetch_raw_data(
+                raw_output_name="valid_cache.parquet",
+                force_reload=False,
+                expected_sha256=actual_hash,
+            )
+            self.assertEqual(len(df_out), 1)
+            self.assertEqual(path_out, cache_path)
+            # S3 list was never called
+            mock_list.assert_not_called()
+
+    def test_atomic_write_leaves_no_temp_file(self):
+        """F-03: Fetch raw data leaves no leftover temporary files in raw directory."""
+        keys = ["f1.csv.gz"]
+        df_valid = pd.DataFrame({"datetime": ["2024-01-01T00:00:00Z"], "value": [15.0], "latitude": [21.0], "longitude": [105.8]})
+        with patch.object(self.adapter, "_list_s3_keys", return_value=keys):
+            with patch.object(
+                self.adapter,
+                "_fetch_single_s3_file",
+                return_value=("f1.csv.gz", df_valid, None),
+            ):
+                df_res, p_res = self.adapter.fetch_raw_data(
+                    raw_output_name="atomic_test.parquet", force_reload=True
+                )
+                self.assertTrue(p_res.exists())
+                # Check that zero .tmp files exist
+                tmp_files = list(self.raw_dir.glob("*.tmp*"))
+                self.assertEqual(len(tmp_files), 0)
+
+    def test_baseline_location_fetch_unaffected(self):
+        """F-03: Baseline OpenAQ location 4946811 default path is preserved."""
+        baseline_adapter = OpenAQAdapter(
+            location_id=4946811, raw_dir=self.raw_dir, interim_dir=self.interim_dir
+        )
+        keys = ["b1.csv.gz"]
+        df_valid = pd.DataFrame({"datetime": ["2025-07-04T00:00:00Z"], "value": [20.0]})
+        with patch.object(baseline_adapter, "_list_s3_keys", return_value=keys):
+            with patch.object(
+                baseline_adapter,
+                "_fetch_single_s3_file",
+                return_value=("b1.csv.gz", df_valid, None),
+            ):
+                _, p = baseline_adapter.fetch_raw_data(force_reload=True)
+                self.assertEqual(p.name, "openaq_raw_4946811.parquet")
 
 
 if __name__ == "__main__":

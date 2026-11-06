@@ -42,3 +42,51 @@ The extended dataset retains all **18 columns** of the baseline `air_pollution_f
    - When `resolve_duplicates=True` (or when loading multiple YTD/MTD files):
      - Identical valid duplicates collapse to a single valid hourly observation (`identical_duplicate_hours`).
      - Any timestamp with disagreeing numeric values or disagreeing QC statuses across files is **never resolved by arbitrary row selection**; instead, `pm25` is set to `NaN`, `qc_name='Conflict'`, `qc_reason='conflicting_duplicate'`, and the full conflicting record set is appended to `df.attrs['qc_summary']['conflict_ledger']`.
+
+---
+
+## 4. Evaluation Protocols & Temporal Leakage Prevention (F-01 Remediation)
+
+Downstream modeling tasks (Issue #12 Regression, Issue #13 Classification) that consume multi-station data must strictly adhere to verified temporal validation protocols via `src/issue44_preparation.py::validate_modeling_split()`:
+
+### Protocol A: Station-Specific Modeling (`protocol="station_specific"` — APPROVED)
+- **Definition:** Each station is trained and evaluated independently. Model parameters for station $S_i$ are learned strictly on the chronological Train partition of $S_i$ and evaluated on the Test partition of $S_i$.
+- **Validation Invariants:** For each station $s \in \text{station\_ids}$:
+  $$\max(T_{\text{train}, s}) < \min(T_{\text{test}, s})$$
+- **Cross-Station Ordering:** Protocol A does **not** require that Train records of station A precede Test records of station B, because no model is trained across multiple stations.
+- **Implemented Verification:** `validate_modeling_split(df, protocol="station_specific")` verifies chronological monotonic ordering, split set validity `{"train", "test"}`, and strict partition separation within each station.
+
+### Protocol B: Pooled Multi-Station Modeling (`protocol="pooled"` — REJECTED FOR DISJOINT SPANS)
+- **Definition:** A single model trained on observations from multiple stations simultaneously (e.g., using `station_id` indicator features or station fixed effects).
+- **Temporal Leakage Risk:** A pooled model **cannot** safely use station-stratified splits. Because `VN001` Train records span `2025-07-03` to `2026-05-01`, and `VN003` Test records span `2024-08-13` to `2025-04-09`, training a single model on the pooled Train partition leaks future observations (`VN001` in 2025–2026) into predictions for past Test observations (`VN003` in 2024–2025).
+- **Global Chronological Split Infeasibility:**
+  - `check_station_temporal_overlap(df)` confirms that `VN003` (ends `2025-04-09 22:00+07:00`) and `VN001` (starts `2025-07-03 22:00+07:00`) have **zero temporal overlap** and a non-reporting gap of `2,040` hours.
+  - Applying a global chronological cutoff (via `assign_pooled_chronological_split()`) places `VN003` exclusively in Train and `VN001` exclusively in Test. Consequently, neither station is observed in both partitions: `VN001` fixed effects cannot be estimated during training, and `VN003` out-of-sample performance cannot be evaluated.
+- **Contract Decision:** Protocol B is **formally rejected** for this disjoint multi-station dataset. Calling `validate_modeling_split(df, protocol="pooled")` raises a descriptive `ValueError` explaining the disjoint temporal coverage and cross-station leakage risk.
+
+---
+
+## 5. Multi-Station Daily Panel Rules & Aggregation Guards (F-02 Remediation)
+
+1. **Single-Station Daily Panel Guard (`src/inference.py::build_daily_panel`):**
+   - Designed exclusively for a single monitoring station series.
+   - Enforces a fail-closed check: if the input dataframe contains more than one unique `station_id`, it immediately raises `ValueError` preventing accidental cross-station observation pooling.
+   - Preserves exact baseline W9 statistical inference on `VN001`.
+2. **Multi-Station Daily Panel Aggregation (`src/inference.py::build_multi_station_daily_panel`):**
+   - When multi-station daily panels are required, aggregation groups strictly by `(station_id, date)`.
+   - The 18-hour completeness threshold ($\ge 18\text{h/day}$ valid $\text{PM}_{2.5}$) is evaluated **independently per station-day**, preventing two partial stations (e.g., 12h + 12h) from masquerading as a single 24-hour day.
+   - Returns a panel indexed or grouped by `(station_id, date)` with station-level validity flags.
+
+---
+
+## 6. Fail-Closed S3 Acquisition & Cache Integrity (F-03 Remediation)
+
+1. **Fail-Closed Acquisition (`src/data_collection.py::OpenAQAdapter`):**
+   - Bounded retries (`max_retries=3`) with exponential backoff on network failures.
+   - Distinguishes transient network errors from non-gzip corrupt payloads and valid empty observations (`EmptyDataError`).
+   - If any requested key fails across retries, acquisition fails closed with `RuntimeError` rather than writing an incomplete cache.
+2. **Pinned Snapshot & Cache Checksum Verification (`scripts/build_extended_historical_dataset.py`):**
+   - Verified raw snapshot SHA-256: `EXPECTED_RAW_7441_SHA256 = 57b6fbaa63089e57a6377fd85293355cb475f8d8bb62fb58b469ced27a4cdae8`.
+   - Cache files are verified against the expected checksum before reuse. Checksum mismatches trigger cache invalidation and re-acquisition.
+   - Downstream execution requires the pinned snapshot. Processing unpinned snapshots requires explicit `--allow-unpinned-snapshot` flag with logged provenance.
+   - Critical artifacts (`.parquet`, `.json`, `.md`) are written atomically via temporary files and `os.replace` to prevent corrupted partial writes.

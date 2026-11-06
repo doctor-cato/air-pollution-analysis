@@ -41,7 +41,7 @@
 
 > **QC Screening Disclosure:** OpenAQ S3 `.csv.gz` files do not carry a separate per-record `QC Name` column. In the table below and in `reports/issue44_openaq_7441_manifest.json`, **Numerically Valid / Post-Screening Hours** (`qc_valid_hours = 18,208`) denotes observations with $\text{PM}_{2.5} \ge 0.0\ \mu\text{g/m}^3$ inside physical bounds $[0, 1000]\ \mu\text{g/m}^3$ and `pm25_was_stuck == 0` after screening out `3,193` negative/sentinel records (`-999.0`: `3,188`; `-1.0`: `4`; `-6.0`: `1`) to `NaN`. Furthermore, S3 storage partitions (`year=2022/`, `year=2024/`) contain `4,560` and `8,703` raw rows because their `12-31` files include the next-year `00:00:00+07:00` midnight record; grouping by parsed `Asia/Ho_Chi_Minh` timestamp assigns those midnight rows to `2023` (`4,559` in 2022; `5,794` in 2023) and `2025` (`8,702` in 2024; `2,346` in 2025).
 
-| Year | S3 Daily Files | Calendar Hours | Active Window Hours | S3 Reported Hours (Parsed TZ) | Numerically Valid Hours ($\ge 0\ \mu\text{g/m}^3$) | Sentinel / Negative Hours | Active Window Valid % | Longest Contiguous Gap (h) |
+| Year | S3 Daily Files | Calendar Hours | Active Window Hours | S3 Reported Hours (Parsed TZ) | Numerically Valid Hours ($\\ge 0\\ \\mu\\text{g/m}^3$) | Sentinel / Negative Hours | Active Window Valid % | Longest Contiguous Gap (h) |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | **2022** | 190 | 8,760 | 8,759 | 4,559 *(4,560 in S3 prefix)* | 3,079 | 1,480 | 35.15% | 2,568 |
 | **2023** | 249 | 8,760 | 8,760 | 5,794 *(5,793 in S3 prefix)* | 5,646 | 148 | 64.45% | 1,049 |
@@ -60,15 +60,39 @@ Using `src/issue44_preparation.py::evaluate_interpolation_grid()`, contiguous in
 | Station ID | Masked Gap Length ($L$) | `max_gap_hours` | Masked Hours Evaluated | MAE ($\mu\text{g/m}^3$) | RMSE ($\mu\text{g/m}^3$) | Bias ($\mu\text{g/m}^3$) | Real Missing Hours Recovered | % of Total Station Missingness Recovered | Coverage Before → After |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | `VN001` | **0 (Baseline No-Interp)** | **0** | **0** | **0.0000** | **0.0000** | **0.0000** | **0 / 1,549** | **0.00%** | **82.87% → 82.87%** |
-| `VN001` | 1h | 1h | 100 | 2.7757 | 3.7745 | +0.1080 | 80 / 1,549 | 5.16% | 82.87% → 83.76% |
-| `VN001` | 2h | 2h | 200 | 4.7400 | 6.5461 | −0.5458 | 148 / 1,549 | 9.55% | 82.87% → 84.51% |
-| `VN001` | 3h | 3h | 300 | 5.1078 | 7.6746 | +0.1601 | 181 / 1,549 | 11.68% | 82.87% → 84.87% |
-| `VN001` | 6h | 6h | 600 | 7.6242 | 11.1795 | −0.2546 | 260 / 1,549 | 16.79% | 82.87% → 85.75% |
+| `VN001` | 1h | 1h | 100 | 2.7757 | 3.7745 | +0.1080 | 80 / 1549 | 5.16% | 82.87% → 83.76% |
+| `VN001` | 2h | 1h | 200 | nan | nan | nan | 80 / 1549 | 5.16% | 82.87% → 83.76% |
+| `VN001` | 6h | 1h | 600 | nan | nan | nan | 80 / 1549 | 5.16% | 82.87% → 83.76% |
+| `VN001` | 3h | 1h | 300 | nan | nan | nan | 80 / 1549 | 5.16% | 82.87% → 83.76% |
+| `VN001` | 3h | 2h | 300 | nan | nan | nan | 148 / 1549 | 9.55% | 82.87% → 84.51% |
+| `VN001` | 6h | 2h | 600 | nan | nan | nan | 148 / 1549 | 9.55% | 82.87% → 84.51% |
+| `VN001` | 2h | 2h | 200 | 4.7400 | 6.5461 | −0.5458 | 148 / 1549 | 9.55% | 82.87% → 84.51% |
+| `VN001` | 1h | 2h | 100 | 2.7757 | 3.7745 | +0.1080 | 148 / 1549 | 9.55% | 82.87% → 84.51% |
+| `VN001` | 6h | 3h | 600 | nan | nan | nan | 181 / 1549 | 11.68% | 82.87% → 84.87% |
+| `VN001` | 3h | 3h | 300 | 6.5135 | 8.5409 | −0.3331 | 181 / 1549 | 11.68% | 82.87% → 84.87% |
+| `VN001` | 1h | 3h | 100 | 2.7757 | 3.7745 | +0.1080 | 181 / 1549 | 11.68% | 82.87% → 84.87% |
+| `VN001` | 2h | 3h | 200 | 4.7400 | 6.5461 | −0.5458 | 181 / 1549 | 11.68% | 82.87% → 84.87% |
+| `VN001` | 2h | 6h | 200 | 4.7400 | 6.5461 | −0.5458 | 260 / 1549 | 16.79% | 82.87% → 85.75% |
+| `VN001` | 1h | 6h | 100 | 2.7757 | 3.7745 | +0.1080 | 260 / 1549 | 16.79% | 82.87% → 85.75% |
+| `VN001` | 3h | 6h | 300 | 6.5135 | 8.5409 | −0.3331 | 260 / 1549 | 16.79% | 82.87% → 85.75% |
+| `VN001` | 6h | 6h | 600 | 9.9676 | 14.9227 | −0.8056 | 260 / 1549 | 16.79% | 82.87% → 85.75% |
 | `VN003` (`7441`) | **0 (Baseline No-Interp)** | **0** | **0** | **0.0000** | **0.0000** | **0.0000** | **0 / 10,470** | **0.00%** | **63.49% → 63.49%** |
-| `VN003` (`7441`) | 1h | 1h | 100 | 6.0550 | 10.2376 | −0.6550 | 116 / 10,470 | 1.11% | 63.49% → 63.90% |
-| `VN003` (`7441`) | 2h | 2h | 200 | 7.7033 | 10.9119 | +0.3400 | 194 / 10,470 | 1.85% | 63.49% → 64.17% |
-| `VN003` (`7441`) | 3h | 3h | 300 | 8.2106 | 11.4998 | +0.3025 | 236 / 10,470 | 2.25% | 63.49% → 64.31% |
-| `VN003` (`7441`) | 6h | 6h | 600 | 12.1558 | 17.6598 | +0.3005 | 281 / 10,470 | 2.68% | 63.49% → 64.47% |
+| `VN003` (`7441`) | 1h | 1h | 100 | 6.0550 | 10.2376 | −0.6550 | 116 / 10470 | 1.11% | 63.49% → 63.90% |
+| `VN003` (`7441`) | 2h | 1h | 200 | nan | nan | nan | 116 / 10470 | 1.11% | 63.49% → 63.90% |
+| `VN003` (`7441`) | 6h | 1h | 600 | nan | nan | nan | 116 / 10470 | 1.11% | 63.49% → 63.90% |
+| `VN003` (`7441`) | 3h | 1h | 300 | nan | nan | nan | 116 / 10470 | 1.11% | 63.49% → 63.90% |
+| `VN003` (`7441`) | 3h | 2h | 300 | nan | nan | nan | 194 / 10470 | 1.85% | 63.49% → 64.17% |
+| `VN003` (`7441`) | 6h | 2h | 600 | nan | nan | nan | 194 / 10470 | 1.85% | 63.49% → 64.17% |
+| `VN003` (`7441`) | 2h | 2h | 200 | 7.7033 | 10.9119 | +0.3400 | 194 / 10470 | 1.85% | 63.49% → 64.17% |
+| `VN003` (`7441`) | 1h | 2h | 100 | 6.0550 | 10.2376 | −0.6550 | 194 / 10470 | 1.85% | 63.49% → 64.17% |
+| `VN003` (`7441`) | 6h | 3h | 600 | nan | nan | nan | 236 / 10470 | 2.25% | 63.49% → 64.31% |
+| `VN003` (`7441`) | 3h | 3h | 300 | 8.5900 | 14.2409 | +0.7117 | 236 / 10470 | 2.25% | 63.49% → 64.31% |
+| `VN003` (`7441`) | 1h | 3h | 100 | 6.0550 | 10.2376 | −0.6550 | 236 / 10470 | 2.25% | 63.49% → 64.31% |
+| `VN003` (`7441`) | 2h | 3h | 200 | 7.7033 | 10.9119 | +0.3400 | 236 / 10470 | 2.25% | 63.49% → 64.31% |
+| `VN003` (`7441`) | 2h | 6h | 200 | 7.7033 | 10.9119 | +0.3400 | 281 / 10470 | 2.68% | 63.49% → 64.47% |
+| `VN003` (`7441`) | 1h | 6h | 100 | 6.0550 | 10.2376 | −0.6550 | 281 / 10470 | 2.68% | 63.49% → 64.47% |
+| `VN003` (`7441`) | 3h | 6h | 300 | 8.5900 | 14.2409 | +0.7117 | 281 / 10470 | 2.68% | 63.49% → 64.47% |
+| `VN003` (`7441`) | 6h | 6h | 600 | 9.8310 | 14.3388 | −0.6933 | 281 / 10470 | 2.68% | 63.49% → 64.47% |
 
 ### Scientific Conclusion on Interpolation (Negative Finding Retained for Primary Pipeline)
 1. **Low Recovery vs. Rising Error:** Because missingness in both stations is dominated by multi-day/multi-week reporting outages rather than isolated 1–2h dropouts, setting `max_gap_hours = 2` recovers only **9.55%** of missing hours on `VN001` (`+1.64%` coverage) and **1.85%** of missing hours on `VN003` (`+0.68%` coverage), while RMSE already reaches **6.55 µg/m³** (`VN001`) and **10.91 µg/m³** (`VN003`, rising to **12.60 µg/m³** in Winter). At `max_gap_hours = 6`, RMSE degrades to **11.18 µg/m³** (`VN001`) and **17.66 µg/m³** (`VN003`).
@@ -85,19 +109,19 @@ Instructor feedback on Milestone 3 noted that the baseline `VN001` dataset conta
 
 > **Scope & Completeness Note:** `W2022`–`W2025` belong to `VN003_HANOI_OPENAQ_7441` and `W2026` belongs to `VN001_HANOI_556_NGUYEN_VAN_CU`; they are **not** 5 i.i.d. repetitions of the same physical sensor. In addition, `W2022` is a **partial winter window** (`2021-12` is outside the 2022–2025 S3 query scope, and `2022-02` has `14.43%` valid hours), `W2023` has reduced coverage in `2023-02` (`11.90%`), and `W2025` has reduced coverage in `2024-12` (`32.80%`).
 
-| Station ID | Winter Year (`Dec–Feb`) | Expected / Grid Hours | Valid Hours ($n$, % Full / % Grid) | Monthly Valid % (`Dec / Jan / Feb`) | Mean ± SD ($\mu\text{g/m}^3$) | Median ($\mu\text{g/m}^3$) | IQR ($\text{Q25–Q75}$) | P90 ($\mu\text{g/m}^3$) | Valid Days ($\ge 18\text{h}$) | Daily QCVN Exceedance ($>50\ \mu\text{g/m}^3$) |
+| Station ID | Winter Year (`Dec–Feb`) | Expected / Grid Hours | Valid Hours ($n$, % Full / % Grid) | Monthly Valid % (`Dec / Jan / Feb`) | Mean ± SD ($\mu\text{g/m}^3$) | Median ($\mu\text{g/m}^3$) | IQR ($\text{Q25–Q75}$) | P90 ($\mu\text{g/m}^3$) | Valid Days ($\\ge 18\\text{h}$) | Daily QCVN Exceedance ($>50\ \mu\text{g/m}^3$) |
 |---|---:|---:|---:|---|---:|---:|---|---:|---:|---:|
+| `VN001_HANOI_556_NGUYEN_VAN_CU` | **W2026** *(Dec 2025–Feb 2026)* | 2,160 / 2,160 | 1,958 (`90.65%` / `90.65%`) | `83.7% / 91.9% / 96.9%` | 63.15 ± 33.56 | **57.11** | 48.61 (`37.1–85.8`) | 110.19 | 79 | 47 / 79 (**59.49%**) |
 | `VN003_HANOI_OPENAQ_7441` | **W2022** *(Partial: Jan–Feb 2022)* | 2,160 / 1,415 | 739 (`34.21%` / `52.23%`) | `— / 86.4% / 14.4%` | 49.55 ± 36.93 | **39.00** | 40.00 (`24.0–64.0`) | 94.20 | 31 | 12 / 31 (**38.71%**) |
 | `VN003_HANOI_OPENAQ_7441` | **W2023** *(Dec 2022–Feb 2023)* | 2,160 / 2,160 | 1,412 (`65.37%` / `65.37%`) | `97.8% / 81.2% / 11.9%` | 72.64 ± 38.55 | **63.00** | 44.00 (`46.0–90.0`) | 129.90 | 57 | 45 / 57 (**78.95%**) |
 | `VN003_HANOI_OPENAQ_7441` | **W2024** *(Dec 2023–Feb 2024)* | 2,184 / 2,184 | 1,828 (`83.70%` / `83.70%`) | `61.3% / 94.1% / 96.6%` | 45.02 ± 26.98 | **39.00** | 24.00 (`29.0–53.0`) | 73.00 | 76 | 21 / 76 (**27.63%**) |
 | `VN003_HANOI_OPENAQ_7441` | **W2025** *(Dec 2024–Feb 2025)* | 2,160 / 2,160 | 1,579 (`73.10%` / `73.10%`) | `32.8% / 89.9% / 99.1%` | 63.67 ± 40.96 | **54.00** | 56.00 (`32.0–88.0`) | 125.00 | 66 | 38 / 66 (**57.58%**) |
-| `VN001_HANOI_556_NGUYEN_VAN_CU` | **W2026** *(Dec 2025–Feb 2026)* | 2,160 / 2,160 | 1,958 (`90.65%` / `90.65%`) | `83.7% / 91.9% / 96.9%` | 63.15 ± 33.56 | **57.11** | 48.61 (`37.1–85.8`) | 110.19 | 79 | 47 / 79 (**59.49%**) |
 
 ---
 
 ## 5. Impact on Statistical Inference (Issue #11) & Regression Contract (Issue #12)
 
-### Station-Separated Daily Inference Comparison ($\ge 18\text{h/day}$ valid rule, Calendar-Preserving)
+### Station-Separated Daily Inference Comparison ($\\ge 18\\text{h/day}$ valid rule, Calendar-Preserving)
 
 | Metric | Legacy Baseline (`VN001`, 2025–2026) | Historical Station (`VN003` / OpenAQ `7441`, 2022–2025) | Consistency & Scientific Interpretation |
 |---|---:|---:|---|
@@ -105,9 +129,10 @@ Instructor feedback on Milestone 3 noted that the baseline `VN001` dataset conta
 | **Calendar-Preserving Daily Lag-1 Autocorrelation ($\rho_1$)** | `0.7276` ($n_{\text{eff}} = 47.14$, VIF $= 6.34$) | `0.7487` ($n_{\text{eff}} = 108.66$, VIF $= 6.96$) | Computed via `src/inference.py::effective_sample_size()` keeping `NaN` on missing calendar days. Strong positive persistence ($\rho_1 \approx 0.73\text{–}0.75$) holds at both stations. |
 | **Overall Daily Median & 95% Calendar Block-Bootstrap CI ($L=28\text{d}, B=2000$)** | `37.20` (`[32.81, 44.83]`) $\mu\text{g/m}^3$ | `39.61` (`[35.00, 44.52]`) $\mu\text{g/m}^3$ | Daily central tendency and dependence-aware uncertainty intervals are closely aligned across stations. |
 | **Winter vs. Non-Winter Daily Median ($\mu\text{g/m}^3$)** | `60.46` vs. `33.58` (`+26.88`, $r_{rb} = +0.5720$) | `50.05` vs. `36.34` (`+13.71`, $r_{rb} = +0.3588$) | Winter elevation is replicated across multi-year observations at `VN003` as well as `VN001`. |
-| **Seasonal Kruskal–Wallis $H$ ($\varepsilon^2$) & Dependence-Aware $p_{\text{boot}}$ ($L=28\text{d}$)** | $H = 61.5344$ ($\varepsilon^2 = 0.2065$), $p_{\text{boot}} = 0.0295$ ($p_{\text{naive}} = 2.76 \times 10^{-13}$) | $H = 164.1954$ ($\varepsilon^2 = 0.2175$), $p_{\text{boot}} = 0.0005$ ($p_{\text{naive}} = 2.28 \times 10^{-35}$) | Calendar block-bootstrap null test ($B=2,000, L=28\text{d}$) confirms seasonal heterogeneity on `VN003`, while status remains `exploratory` under seasonal missingness and non-i.i.d. structure. |
+| **Seasonal Kruskal–Wallis $H$ ($\varepsilon^2$) & Dependence-Aware $p_{\text{boot}}$ ($L=28\text{d}$)** | $H = 61.5344$ ($\varepsilon^2 = 0.2065$), $p_{\text{boot}} = 0.0295$ ($p_{\text{naive}} = 2.76 \times 10^{-13}$) | $H = 164.1954$ ($\varepsilon^2 = 0.2175$), $p_{\text{boot}} = 0.0005$ ($p_{\text{naive}} = 2.28 \times 10^{-35}$) | Calendar block-bootstrap null test ($B=2,000, L=28\text{d}$) observes elevated winter concentrations across both stations while keeping seasonal inference classified as `exploratory` due to strong daily persistence ($\rho_1 \approx 0.73\text{–}0.75$), single physical cycle per station-year, and historical missingness. |
 | **Daily QCVN 05:2023 Exceedance ($>50\ \mu\text{g/m}^3$)** | `84 / 299` (**28.09%**) | `238 / 756` (**31.48%**) | Both stations show $\approx 28\%\text{–}31\%$ of valid days exceeding QCVN 05:2023 ($50\ \mu\text{g/m}^3$), heavily concentrated in Winter/Autumn. |
 
 ### Handover Contract for Issue #12 (Regression) & Issue #13 (Classification)
 - **Primary Baseline Model Contract:** Issue #12 and Issue #13 retain `data/processed/air_pollution_final.parquet` (`VN001`) as the frozen baseline partition so all M2/M3/W9 benchmarks remain strictly comparable.
-- **Extended Multi-Station Contract:** `data/processed/air_pollution_extended_2022_2026.parquet` provides station-stratified `split` (`train`/`test` chronologically partitioned within each `station_id`), allowing Issue #12/#13 to fit station-specific models or include `station_id` fixed effects without cross-station or cross-split leakage.
+- **Protocol A (Station-Specific Modeling — APPROVED):** `data/processed/air_pollution_extended_2022_2026.parquet` provides station-stratified `split` (`train`/`test` chronologically partitioned within each `station_id`), allowing Issue #12/#13 to train and evaluate station-specific models independently without temporal leakage within each station series (`src/issue44_preparation.py::validate_modeling_split(df, protocol='station_specific')`).
+- **Protocol B (Pooled Multi-Station Modeling — REJECTED FOR DISJOINT SPANS):** A pooled model (such as one with `station_id` fixed effects) cannot safely use the station-stratified split because `VN001` training records (2025–2026) occur chronologically *after* `VN003` test records (2024–2025), creating cross-station temporal leakage. Furthermore, because `VN003` (ending 2025-04-09) and `VN001` (starting 2025-07-03) have disjoint temporal operational windows with zero temporal overlap (gap of 2,040 hours), a global chronological cutoff places `VN003` exclusively in Train and `VN001` exclusively in Test. Consequently, station-level parameters cannot be trained and evaluated out-of-sample across both partitions. Protocol B is therefore formally rejected for this disjoint multi-station dataset (`src/issue44_preparation.py::validate_modeling_split(df, protocol='pooled')` enforces fail-closed rejection).

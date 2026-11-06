@@ -22,7 +22,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -73,7 +75,10 @@ from src.issue44_preparation import (
     add_derived_short_gap_interpolation,
     assign_station_chronological_split,
     evaluate_interpolation_grid,
+    generate_legacy_vs_extended_comparison_report,
     haversine_distance_km,
+    validate_modeling_split,
+    verify_legacy_vs_extended_comparison,
     vietnam_season,
     winter_station_summary,
     winter_year,
@@ -82,6 +87,35 @@ from src.issue44_preparation import (
 EXPECTED_S3_7441_FILE_COUNT = 903
 EXPECTED_S3_7441_FILES_BY_YEAR = {2022: 190, 2023: 249, 2024: 365, 2025: 99}
 EXPECTED_RAW_7441_SHA256 = "57b6fbaa63089e57a6377fd85293355cb475f8d8bb62fb58b469ced27a4cdae8"
+
+
+def _atomic_save_parquet(df: pd.DataFrame, dest_path: Path, **kwargs) -> None:
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = dest_path.with_name(f"{dest_path.stem}.tmp_{os.getpid()}_{int(time.time())}.parquet")
+    try:
+        df.to_parquet(temp_path, **kwargs)
+        _ = pd.read_parquet(temp_path)
+        temp_path.replace(dest_path)
+    finally:
+        if temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
+
+
+def _atomic_write_text(dest_path: Path, content: str, encoding: str = "utf-8") -> None:
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = dest_path.with_name(f"{dest_path.stem}.tmp_{os.getpid()}_{int(time.time())}.tmp")
+    try:
+        temp_path.write_text(content, encoding=encoding)
+        temp_path.replace(dest_path)
+    finally:
+        if temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
 
 
 def _compute_7441_coverage(df_raw: pd.DataFrame, s3_keys: list[str]) -> dict[str, Any]:
@@ -363,6 +397,12 @@ def _generate_fig01_extended(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build Issue #44 extended historical dataset and evaluations.")
     parser.add_argument("--force-reload", action="store_true", help="Force re-download from OpenAQ S3 and Open-Meteo.")
+    parser.add_argument(
+        "--allow-unpinned-snapshot",
+        action="store_true",
+        default=False,
+        help="Explicitly allow building with a new/unpinned raw snapshot hash (fail-closed by default).",
+    )
     args = parser.parse_args()
 
     raw_dir = PROJECT_ROOT / "data" / "raw"
@@ -421,8 +461,22 @@ def main() -> None:
         raw_output_name="openaq_raw_7441_2022_2025.parquet",
         force_reload=args.force_reload,
         years=(2022, 2023, 2024, 2025),
+        expected_s3_key_count=EXPECTED_S3_7441_FILE_COUNT,
+        expected_sha256=EXPECTED_RAW_7441_SHA256 if not args.allow_unpinned_snapshot else None,
     )
     raw_7441_sha256 = compute_file_sha256(raw_7441_path)
+    if raw_7441_sha256 != EXPECTED_RAW_7441_SHA256:
+        if not args.allow_unpinned_snapshot:
+            raise RuntimeError(
+                f"FAIL-CLOSED: Raw Parquet SHA-256 mismatch for OpenAQ 7441!\n"
+                f"  Expected pinned hash : {EXPECTED_RAW_7441_SHA256}\n"
+                f"  Observed hash        : {raw_7441_sha256}\n"
+                "Refusing to run downstream steps with unverified snapshot. "
+                "Use --allow-unpinned-snapshot if this is a deliberate snapshot upgrade."
+            )
+        logger.warning(
+            f"CẢNH BÁO: Chấp nhận snapshot raw mới theo cờ --allow-unpinned-snapshot: {raw_7441_sha256}"
+        )
     coverage_7441 = _compute_7441_coverage(df_raw_7441, s3_keys_7441)
 
     manifest_7441 = {
@@ -465,7 +519,7 @@ def main() -> None:
         "coverage": coverage_7441,
     }
     manifest_7441_path = reports_dir / "issue44_openaq_7441_manifest.json"
-    manifest_7441_path.write_text(json.dumps(manifest_7441, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    _atomic_write_text(manifest_7441_path, json.dumps(manifest_7441, indent=2, ensure_ascii=False) + "\n")
 
     # ------------------------------------------------------------------
     # PHASE 3 & 4: Canonicalization, Weather Backfill & Deterministic Cleaning
@@ -492,8 +546,8 @@ def main() -> None:
 
     air_7441_interim_path = interim_dir / "air_quality_openaq_7441_canonical.parquet"
     weather_22_25_interim_path = interim_dir / "weather_2022_2025_canonical.parquet"
-    df_7441_clean.to_parquet(air_7441_interim_path, index=False, compression="snappy")
-    df_weather_22_25_clean.to_parquet(weather_22_25_interim_path, index=False, compression="snappy")
+    _atomic_save_parquet(df_7441_clean, air_7441_interim_path, index=False, compression="snappy")
+    _atomic_save_parquet(df_weather_22_25_clean, weather_22_25_interim_path, index=False, compression="snappy")
 
     # Merge VN003_HANOI_OPENAQ_7441 with its ERA5 weather and add cyclical features
     df_7441_merged = merge_air_weather(df_7441_clean, df_weather_22_25_clean)
@@ -511,13 +565,16 @@ def main() -> None:
         ignore_index=True,
     ).sort_values(["station_id", "timestamp"], kind="mergesort").reset_index(drop=True)
 
+    # Verify protocol-specific invariants (Protocol A: station-specific)
+    validate_modeling_split(df_extended, protocol="station_specific")
+
     # Add derived short-gap interpolation columns (max_gap_hours=2) strictly within (station_id, split)
     df_extended = add_derived_short_gap_interpolation(df_extended, "pm25", max_gap_hours=2)
     df_extended["winter_year"] = winter_year(df_extended["timestamp"])
     df_extended["season"] = vietnam_season(df_extended["timestamp"])
 
     extended_parquet_path = processed_dir / "air_pollution_extended_2022_2026.parquet"
-    df_extended.to_parquet(extended_parquet_path, index=False, compression="snappy")
+    _atomic_save_parquet(df_extended, extended_parquet_path, index=False, compression="snappy")
     extended_parquet_sha256 = compute_file_sha256(extended_parquet_path)
 
     # ------------------------------------------------------------------
@@ -751,13 +808,29 @@ def main() -> None:
     ext_meta["baseline_sha256"] = baseline_sha_after
 
     meta_out_path = reports_dir / "issue44_extended_dataset_metadata.json"
-    meta_out_path.write_text(json.dumps(ext_meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    _atomic_write_text(meta_out_path, json.dumps(ext_meta, indent=2, ensure_ascii=False) + "\n")
+
+    comparison_report_path = reports_dir / "issue44_legacy_vs_extended_comparison.md"
+    report_text = generate_legacy_vs_extended_comparison_report(
+        manifest_7441=manifest_7441,
+        extended_metadata=ext_meta,
+        interp_eval_df=interp_eval_df,
+        winter_summary_df=winter_detail_df,
+        output_path=comparison_report_path,
+    )
+    audit_res = verify_legacy_vs_extended_comparison(
+        report_text, manifest_7441, ext_meta, interp_eval_df, winter_detail_df
+    )
+    if not audit_res["verified"]:
+        raise AssertionError(f"Comparison report verification failed: {audit_res['mismatches']}")
+
     print(f"[OK] Saved {manifest_7441_path.relative_to(PROJECT_ROOT)}")
     print(f"[OK] Saved {extended_parquet_path.relative_to(PROJECT_ROOT)} ({len(df_extended)} rows)")
     print(f"[OK] Saved {interp_csv_path.relative_to(PROJECT_ROOT)} ({len(interp_eval_df)} rows)")
     print(f"[OK] Saved {eda_csv_path.relative_to(PROJECT_ROOT)} ({len(eda_summary_df)} rows)")
     print(f"[OK] Saved {fig01_ext_path.relative_to(PROJECT_ROOT)}")
     print(f"[OK] Saved {meta_out_path.relative_to(PROJECT_ROOT)}")
+    print(f"[OK] Saved and verified {comparison_report_path.relative_to(PROJECT_ROOT)}")
 
 
 if __name__ == "__main__":

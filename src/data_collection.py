@@ -832,19 +832,45 @@ class OpenAQAdapter:
                     break
         return sorted(set(keys))
 
-    def _fetch_single_s3_file(self, key: str) -> Optional[pd.DataFrame]:
-        """Tải và giải nén một tệp CSV.gz từ OpenAQ S3 public archive."""
+    def _fetch_single_s3_file(
+        self,
+        key: str,
+        *,
+        max_retries: int = 3,
+        backoff_seconds: float = 0.5,
+    ) -> Tuple[str, Optional[pd.DataFrame], Optional[str]]:
+        """Tải và giải nén một tệp CSV.gz từ OpenAQ S3 public archive có retry có giới hạn và backoff.
+
+        Trả về (key, df, error_msg).
+        - Thành công: df là DataFrame (có thể rỗng nếu payload không có observation), error_msg là None.
+        - Thất bại: df là None, error_msg là thông điệp lỗi cụ thể sau max_retries lần thử.
+        """
         url = f"https://openaq-data-archive.s3.amazonaws.com/{key}"
-        req = urllib.request.Request(url, headers={"User-Agent": "HanoiAirPollutionResearch/1.0"})
-        try:
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                if resp.status == 200:
-                    with gzip.GzipFile(fileobj=io.BytesIO(resp.read())) as gz:
-                        return pd.read_csv(gz)
-        except Exception as e:
-            logger.warning(f"Không thể tải tệp S3 {key}: {e}")
-            return None
-        return None
+        last_error: Optional[str] = None
+        for attempt in range(max_retries):
+            try:
+                req = urllib.request.Request(
+                    url, headers={"User-Agent": "HanoiAirPollutionResearch/1.0"}
+                )
+                with urllib.request.urlopen(req, timeout=20) as resp:
+                    if resp.status == 200:
+                        content = resp.read()
+                        with gzip.GzipFile(fileobj=io.BytesIO(content)) as gz:
+                            try:
+                                df = pd.read_csv(gz)
+                                return key, df, None
+                            except pd.errors.EmptyDataError:
+                                return key, pd.DataFrame(), None
+                    else:
+                        last_error = f"HTTP status {resp.status}"
+            except Exception as e:
+                last_error = f"{type(e).__name__}: {e}"
+
+            if attempt < max_retries - 1:
+                time.sleep(backoff_seconds * (2 ** attempt))
+
+        logger.warning(f"Không thể tải tệp S3 {key} sau {max_retries} lần thử: {last_error}")
+        return key, None, last_error
 
     def fetch_raw_data(
         self,
@@ -852,12 +878,15 @@ class OpenAQAdapter:
         max_workers: int = 25,
         force_reload: bool = False,
         years: Optional[Iterable[int]] = None,
+        expected_s3_key_count: Optional[int] = None,
+        expected_sha256: Optional[str] = None,
     ) -> Tuple[pd.DataFrame, Path]:
         """
         Thu thập toàn bộ dữ liệu thô từ OpenAQ S3 public archive cho location_id.
-        Payload nguồn được lưu nguyên trạng vào data/raw/ (không chỉnh sửa thủ công);
-        mọi biến đổi diễn ra ở lớp chuẩn hóa. Tệp đã có sẽ được nạp lại thay vì
-        tải lại từ API, trừ khi `force_reload=True`.
+        Áp dụng nguyên tắc FAIL-CLOSED:
+        - Bất kỳ tệp nào tải thất bại sau retry, toàn bộ tiến trình ném lỗi và KHÔNG ghi cache.
+        - Tệp cache đã có được kiểm tra tính toàn vẹn (đọc được, không rỗng, khớp hash nếu có).
+        - Ghi tệp bằng temporary file và atomic replace.
         """
         if raw_output_name is None or (
             raw_output_name == "openaq_raw_4946811.parquet"
@@ -865,14 +894,31 @@ class OpenAQAdapter:
         ):
             raw_output_name = f"openaq_raw_{self.location_id}.parquet"
         raw_path = self.raw_dir / raw_output_name
+
         if not force_reload and raw_path.exists() and raw_path.stat().st_size > 0:
-            logger.info(f"Tệp thô OpenAQ đã tồn tại tại {raw_path}. Đang nạp lại nguyên trạng (không tải lại)...")
-            df_raw = pd.read_parquet(raw_path)
-            return df_raw, raw_path
+            logger.info(f"Tệp thô OpenAQ đã tồn tại tại {raw_path}. Đang kiểm tra tính toàn vẹn cache...")
+            try:
+                df_raw = pd.read_parquet(raw_path)
+                if not df_raw.empty:
+                    if expected_sha256 is not None:
+                        actual_hash = hashlib.sha256(raw_path.read_bytes()).hexdigest()
+                        if actual_hash != expected_sha256:
+                            raise ValueError(
+                                f"Cache checksum mismatch: kỳ vọng {expected_sha256}, thực tế {actual_hash}"
+                            )
+                    return df_raw, raw_path
+                logger.warning(f"Cache {raw_path} tồn tại nhưng rỗng. Sẽ tiến hành tải lại...")
+            except Exception as e:
+                logger.warning(f"Cache {raw_path} không hợp lệ hoặc sai checksum ({e}). Sẽ tiến hành tải lại...")
 
         keys = self._list_s3_keys(years=years)
         if not keys:
             raise RuntimeError(f"Không tìm thấy tệp nào trên S3 cho location_id={self.location_id}!")
+
+        if expected_s3_key_count is not None and len(keys) != expected_s3_key_count:
+            logger.warning(
+                f"Số lượng tệp S3 tìm thấy ({len(keys)}) khác kỳ vọng ({expected_s3_key_count})."
+            )
 
         logger.info(
             f"Bắt đầu tải {len(keys)} tệp dữ liệu thô OpenAQ S3 cho location_id={self.location_id}..."
@@ -881,12 +927,48 @@ class OpenAQAdapter:
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             results = list(executor.map(self._fetch_single_s3_file, keys))
 
-        daily_dfs = [d for d in results if d is not None and not d.empty]
-        if not daily_dfs:
+        successful_dfs: List[pd.DataFrame] = []
+        failed_keys: List[Tuple[str, str]] = []
+        for key, df_file, err in results:
+            if df_file is not None:
+                if not df_file.empty:
+                    successful_dfs.append(df_file)
+            else:
+                failed_keys.append((key, str(err)))
+
+        if failed_keys:
+            err_sample = "; ".join([f"{k}: {e}" for k, e in failed_keys[:5]])
+            raise RuntimeError(
+                f"S3 acquisition thất bại (FAIL-CLOSED) cho location_id={self.location_id}: "
+                f"{len(failed_keys)}/{len(keys)} tệp tải lỗi sau retry. Mẫu: [{err_sample}]. "
+                "Không ghi cache một snapshot không đầy đủ."
+            )
+
+        if not successful_dfs:
             raise RuntimeError(f"Không tải được bản ghi nào cho location_id={self.location_id}!")
 
-        df_raw = pd.concat(daily_dfs, ignore_index=True)
-        df_raw.to_parquet(raw_path, index=False, engine="pyarrow", compression="snappy")
+        df_raw = pd.concat(successful_dfs, ignore_index=True)
+
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = raw_path.with_name(f"{raw_path.stem}.tmp_{os.getpid()}_{int(time.time())}.parquet")
+        try:
+            df_raw.to_parquet(temp_path, index=False, engine="pyarrow", compression="snappy")
+            _ = pd.read_parquet(temp_path)
+            temp_path.replace(raw_path)
+        finally:
+            if temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass
+
+        if expected_sha256 is not None:
+            actual_hash = hashlib.sha256(raw_path.read_bytes()).hexdigest()
+            if actual_hash != expected_sha256:
+                raise RuntimeError(
+                    f"FAIL-CLOSED: Mã băm sau khi tải ({actual_hash}) không khớp mã băm kỳ vọng ({expected_sha256})!"
+                )
+
         logger.info(
             f"Đã lưu dữ liệu thô OpenAQ {self.location_id} vào {raw_path} ({len(df_raw)} dòng thô, {len(df_raw.columns)} cột)."
         )
