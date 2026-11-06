@@ -4,7 +4,7 @@
 > `AGENTS.md` chỉ trỏ tới đây; con số kiểm thử thay đổi theo từng Issue nên
 > không nhân bản vào file hướng dẫn agent.
 >
-> **Cập nhật lần cuối:** 2026-10-20, sau Issue #11 (W9 — suy luận thống kê).
+> **Cập nhật lần cuối:** 2026-11-05, sau Issue #11 (W9 — suy luận thống kê) và Issue #44 (mở rộng dữ liệu lịch sử 2022–2025).
 
 ---
 

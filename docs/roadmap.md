@@ -659,7 +659,7 @@ Chi tiết luồng thực hiện:
 
 ### E. Final Deliverables (Danh mục Sản phẩm Bàn giao Cuối cùng)
 1. **Repository GitHub chuẩn mực [Issue #1, #15, #17]:**
-   - Hoàn chỉnh cấu trúc thư mục CRISP-DM, mã nguồn module hóa trong `src/` (hiện có `data_collection.py`, `data_quality.py`, `cleaning.py`, `cleaning_pipeline.py`; `visualizer.py` thuộc Issue #9).
+   - Hoàn chỉnh cấu trúc thư mục CRISP-DM, mã nguồn module hóa trong `src/` (hiện có `data_collection.py`, `data_quality.py`, `cleaning.py`, `cleaning_pipeline.py`, `flag_evidence.py`; `visualizer.py` thuộc Issue #9; `inference.py` thuộc Issue #11; `issue44_preparation.py` thuộc Issue #44).
    - Chuỗi notebooks đánh số thứ tự từ `00_` đến `07_`, bảo đảm chạy thông suốt từ đầu đến cuối không lỗi unhandled exception trong môi trường sạch.
    - File `requirements.txt` cố định phiên bản các thư viện tương thích Python 3.10+.
    - Git tag chính thức `midterm-submission` [Issue #10] và `final-defense-submission` [Issue #17].
@@ -768,7 +768,7 @@ W01–W15.
 | #1 | Khởi tạo repo, môi trường, `.gitignore` | Cấu trúc CRISP-DM, `requirements.txt`, notebook `00_environment_test.ipynb` | Repo khởi tạo, CI cài đặt thành công | **DONE** | — |
 | #2 | Câu hỏi nghiên cứu + Canonical Schema | `docs/research_questions.md`, `docs/data_dictionary.md` | Từ điển định nghĩa 6 trường khí tượng + ranh giới vật lý tại §4.3 | **DONE** | — |
 | #19 | Cổng quyết định nguồn | `docs/source_profiling_decision.md`, `data/raw/metadata.json` | Ma trận đa tiêu chí §12.2; vai trò nguồn ghi trong metadata | **DONE** | Không có. Quyết định nguồn giữ nguyên, không bị đảo ngược |
-| #3 | Pipeline chất lượng không khí | `OpenAQAdapter` trong `src/data_collection.py` | 8.022 bản ghi canonical, tz `Asia/Ho_Chi_Minh`, mã băm SHA-256 trong metadata | **DONE** | Adapter AirNow DOS chưa thực thi (cần thông tin xác thực AirNow-Tech) |
+| #3 | Pipeline chất lượng không khí | `OpenAQAdapter` trong `src/data_collection.py` | 8.022 bản ghi canonical, tz `Asia/Ho_Chi_Minh`, mã băm SHA-256 trong metadata | **DONE** | *(Tại M1)* Adapter AirNow DOS chưa thực thi do thiếu thông tin xác thực AirNow-Tech; *(Cập nhật Issue #44)* đã nâng cấp `AirNowDOSAdapter` (kiểm định QC/conflict) và mở rộng chuỗi lịch sử 2022–2025 qua trạm độc lập `VN003_HANOI_OPENAQ_7441` |
 | #4 | Pipeline khí tượng + đồng bộ thời gian | `OpenMeteoAdapter`, `validate_weather_canonical` | 9.072 bản ghi/giờ, 0 trùng lặp, 0 khoảng trống, 0 khuyết thiếu; PR #26 đã merge | **DONE** | — |
 | #5 | Kiểm toán chất lượng 6 chiều | `src/data_quality.py`, `docs/data_quality_audit.md`, `notebooks/02_quality_audit.ipynb` | PR #27 đã merge; `docs/data_quality_audit.md` đã hiệu chỉnh theo dữ liệu thực tế trên đĩa | **DONE** | — |
 | #6 | Làm sạch tất định, cleaning log | `src/cleaning.py`, `docs/cleaning_log.md`, `notebooks/03_data_cleaning.ipynb` | 9.044 dòng ô nhiễm + 9.072 dòng khí tượng canonical; `assert_no_imputation()` PASS; 114 unit test | **DONE** | Việc chạy lại `03_data_cleaning.ipynb` cần khôi phục `data/interim/` từ `data/raw/` trước |
@@ -789,19 +789,19 @@ W01–W15.
 >   `#12`, `#13`) **đã được mở lại** và không còn bị chặn.
 > - Các số liệu thực nghiệm nêu trong các báo cáo (#4, #5) là **kết quả của một lần thực thi cụ thể**
 >   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
-> - Bộ kiểm thử hiện gồm **687 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
+> - Bộ kiểm thử hiện gồm **690 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
 >   [`docs/TEST_SUITE.md`](TEST_SUITE.md) — nguồn chuẩn duy nhất cho số liệu kiểm thử).
 >   Số mà unittest **thực sự chạy và báo cáo** phụ thuộc cả nền tảng lẫn việc có
->   `data/` hay không — **không phải con số 687 trên mọi nền tảng**:
->   - **Windows local (có `data/interim/*.parquet`)**: `Ran 687 tests` + `OK` → **687 pass, 0 skip**.
->   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`)**: `Ran 671 tests` + `OK (skipped=6)`
->     → **667 pass, 6 skip**.
+>   `data/` hay không — **không phải con số 690 trên mọi nền tảng**:
+>   - **Windows local (có `data/interim/*.parquet`)**: `Ran 690 tests` + `OK` → **690 pass, 0 skip**.
+>   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`)**: `Ran 674 tests` + `OK (skipped=6)`
+>     → **670 pass, 6 skip**.
 >
->   CI báo **671 chứ không phải 687** vì **16** phương thức nằm trong **2** lớp mà
+>   CI báo **674 chứ không phải 690** vì **16** phương thức nằm trong **2** lớp mà
 >   `setUpClass` ném `unittest.SkipTest` khi thiếu `data/` — `TestDocumentedReproduction`
 >   (4) và `TestRealDataset` của `tests/test_inference.py` (12); cả hai lớp bị bỏ qua nên
 >   các phương thức **không chạy, không được tính vào "Ran"**, nhưng mỗi lớp vẫn đóng góp
->   **1 dòng** vào `skipped=`. Vì vậy `pass = Ran − (skipped − holder) = 671 − (6 − 2) = 667`.
+>   **1 dòng** vào `skipped=`. Vì vậy `pass = Ran − (skipped − holder) = 674 − (6 − 2) = 670`.
 >   Danh sách skip còn lại: `TestScriptsUseTheComputation.test_progress_report_bullet_carries_the_computed_f_statistic`
 >   (cùng lý do thiếu dữ liệu); hai test `@unittest.skipUnless(os.name == "nt")` trong
 >   `tests/test_pipeline_runtime_log.py`; và `test_live_restart_kernel_and_run_all` trong
@@ -834,13 +834,13 @@ W01–W15.
 > > quy: chạy `python -m unittest tests.test_cleaning_pipeline_guards -v` là thấy ngay.
 
 > [!WARNING]
-> **Khoảng trống độ phủ thời gian (DATA COVERAGE GAP) — chưa được giải quyết, cần theo dõi ở M2:**
-> Khung thời gian mục tiêu của dự án là **2023-01-01 → 2024-12-31** (`temporal_coverage` trong
-> `data/raw/metadata.json`), nhưng tập dữ liệu vận hành thực tế chỉ phủ **2025-07-03 → 2026-07-15**,
-> vì trạm OpenAQ `4946811` chỉ được tích hợp lưu trữ từ 07/2025. Việc mở rộng phủ về 2023–2024
-> phụ thuộc nguồn dữ liệu lịch sử (AirNow DOS cần thông tin xác thực của tổ chức/State Dept) và
-> **không được giải quyết bằng cách tự tạo hoặc nội suy dữ liệu**. Khung nghiên cứu **không** bị
-> thay đổi để làm pipeline chạy; khoảng trống này được ghi nhận minh bạch và chuyển giao cho M2.
+> **Khoảng trống độ phủ thời gian (DATA COVERAGE GAP) — ghi nhận tại M1, đã bổ sung nhánh mở rộng độc lập ở Issue #44:**
+> Khung thời gian mục tiêu ban đầu của dự án là **2023-01-01 → 2024-12-31** (`temporal_coverage` trong
+> `data/raw/metadata.json`), nhưng tập dữ liệu vận hành baseline (`VN001_HANOI_556_NGUYEN_VAN_CU`) chỉ phủ **2025-07-03 → 2026-07-15**,
+> vì trạm OpenAQ `4946811` chỉ được tích hợp lưu trữ từ 07/2025. Việc mở rộng phủ về 2023–2024 trên trạm `VN002`
+> phụ thuộc nguồn dữ liệu lịch sử (AirNow DOS cần thông tin xác thực của tổ chức/State Dept; bản mirror GitHub bên thứ ba bị từ chối `NO-GO` do thiếu giấy phép và lỗi xếp nhầm năm) và
+> **không được giải quyết bằng cách tự tạo hoặc nội suy dữ liệu**.
+> Trong **Issue #44**, dự án đã mở rộng chuỗi lịch sử **2022-01-01 → 2025-04-09** thông qua trạm độc lập **`VN003_HANOI_OPENAQ_7441`** (OpenAQ S3 Location `7441`, US Public Domain) kết hợp backfill khí tượng ERA5 vào bộ dữ liệu phân tách theo trạm `data/processed/air_pollution_extended_2022_2026.parquet` (`37.722` hàng × `23` cột), trong khi vẫn giữ nguyên bất biến baseline `VN001` (`data/processed/air_pollution_final.parquet`, `9.044` hàng × `18` cột). Xem chi tiết tại [Phụ lục Issue #44](#phụ-lục-cập-nhật-issue-44-mở-rộng-dữ-liệu-lịch-sử-20222026-phân-tách-theo-trạm) và [`docs/issue44_checkpoint_status.md`](issue44_checkpoint_status.md).
 
 ### G.4. Kết quả kiểm toán Milestone 2 (PR #34)
 
