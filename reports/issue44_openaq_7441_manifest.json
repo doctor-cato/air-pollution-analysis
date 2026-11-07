@@ -1,0 +1,671 @@
+{
+  "issue": "#44",
+  "phase": "Phase 1-2 Historical Source Verification & Acquisition",
+  "decision": "APPROVED_FOR_STATION_SPECIFIC_HISTORICAL_EXPANSION",
+  "station_id": "VN003_HANOI_OPENAQ_7441",
+  "location_id": 7441,
+  "sensors_id": 21632,
+  "location_name": "Hanoi (OpenAQ 7441 / AirNow Gov Monitor)",
+  "provider": {
+    "id": 119,
+    "name": "AirNow",
+    "instrument": "Government Monitor"
+  },
+  "coordinates": {
+    "latitude": 21.021939,
+    "longitude": 105.818806
+  },
+  "license": {
+    "id": 33,
+    "name": "US Public Domain",
+    "source_url": "http://www.usa.gov/publicdomain/label/1.0/",
+    "commercial_use_allowed": true,
+    "modification_allowed": true,
+    "redistribution_allowed": true
+  },
+  "qc_screening_policy": "OpenAQ S3 CSV archives do not carry a separate per-record 'QC Name' column. In this manifest, 'qc_valid_hours' (18,208 hours) denotes numerically valid observations (PM2.5 >= 0.0 ug/m3 within physical bounds [0, 1000] ug/m3 and pm25_was_stuck == 0) after screening out 3,193 negative/sentinel records (-999.0: 3,188; -1.0: 4; -6.0: 1) to NaN.",
+  "s3_archive_prefix": "s3://openaq-data-archive/records/csv.gz/locationid=7441/",
+  "years_queried": [
+    2022,
+    2023,
+    2024,
+    2025
+  ],
+  "s3_daily_file_count": 903,
+  "s3_inventory_sha256": "7a90e763809a1b3c1514c9eda340fceed3499e601398d3bd25b3b12d4ed9688c",
+  "s3_first_key": "records/csv.gz/locationid=7441/year=2022/month=01/location-7441-20220101.csv.gz",
+  "s3_last_key": "records/csv.gz/locationid=7441/year=2025/month=04/location-7441-20250409.csv.gz",
+  "s3_year_partitions": {
+    "2022": {
+      "s3_daily_files": 190,
+      "first_key": "records/csv.gz/locationid=7441/year=2022/month=01/location-7441-20220101.csv.gz",
+      "last_key": "records/csv.gz/locationid=7441/year=2022/month=12/location-7441-20221231.csv.gz"
+    },
+    "2023": {
+      "s3_daily_files": 249,
+      "first_key": "records/csv.gz/locationid=7441/year=2023/month=01/location-7441-20230101.csv.gz",
+      "last_key": "records/csv.gz/locationid=7441/year=2023/month=12/location-7441-20231227.csv.gz"
+    },
+    "2024": {
+      "s3_daily_files": 365,
+      "first_key": "records/csv.gz/locationid=7441/year=2024/month=01/location-7441-20240102.csv.gz",
+      "last_key": "records/csv.gz/locationid=7441/year=2024/month=12/location-7441-20241231.csv.gz"
+    },
+    "2025": {
+      "s3_daily_files": 99,
+      "first_key": "records/csv.gz/locationid=7441/year=2025/month=01/location-7441-20250101.csv.gz",
+      "last_key": "records/csv.gz/locationid=7441/year=2025/month=04/location-7441-20250409.csv.gz"
+    }
+  },
+  "raw_parquet_path": "data/raw/openaq_raw_7441_2022_2025.parquet",
+  "raw_parquet_sha256": "57b6fbaa63089e57a6377fd85293355cb475f8d8bb62fb58b469ced27a4cdae8",
+  "expected_pinned_raw_parquet_sha256": "57b6fbaa63089e57a6377fd85293355cb475f8d8bb62fb58b469ced27a4cdae8",
+  "raw_parquet_matches_pinned_snapshot": true,
+  "raw_parquet_bytes": 158793,
+  "coverage": {
+    "source_observation_window": {
+      "start": "2022-01-01T01:00:00+07:00",
+      "end": "2025-04-09T22:00:00+07:00",
+      "active_window_hours": 28678
+    },
+    "raw_rows": 21401,
+    "unique_timestamps": 21401,
+    "duplicate_timestamps": 0,
+    "qc_valid_hours": 18208,
+    "sentinel_or_negative_hours": 3193,
+    "negative_value_breakdown": {
+      "-999.0": 3188,
+      "-6.0": 1,
+      "-1.0": 4
+    },
+    "longest_contiguous_gap_active_window_hours": 2568,
+    "annual": [
+      {
+        "year": 2022,
+        "s3_daily_files": 190,
+        "expected_hours": 8760,
+        "source_available_hours": 8759,
+        "s3_reported_hours": 4559,
+        "qc_valid_hours": 3079,
+        "qc_valid_pct_of_calendar_year": 35.15,
+        "qc_valid_pct_of_active_window": 35.15,
+        "sentinel_or_negative_hours": 1480,
+        "missing_while_source_available_hours": 4200,
+        "source_unavailable_hours": 1,
+        "longest_gap_hours": 2568
+      },
+      {
+        "year": 2023,
+        "s3_daily_files": 249,
+        "expected_hours": 8760,
+        "source_available_hours": 8760,
+        "s3_reported_hours": 5794,
+        "qc_valid_hours": 5646,
+        "qc_valid_pct_of_calendar_year": 64.45,
+        "qc_valid_pct_of_active_window": 64.45,
+        "sentinel_or_negative_hours": 148,
+        "missing_while_source_available_hours": 2966,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 1049
+      },
+      {
+        "year": 2024,
+        "s3_daily_files": 365,
+        "expected_hours": 8784,
+        "source_available_hours": 8784,
+        "s3_reported_hours": 8702,
+        "qc_valid_hours": 7218,
+        "qc_valid_pct_of_calendar_year": 82.17,
+        "qc_valid_pct_of_active_window": 82.17,
+        "sentinel_or_negative_hours": 1484,
+        "missing_while_source_available_hours": 82,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 820
+      },
+      {
+        "year": 2025,
+        "s3_daily_files": 99,
+        "expected_hours": 8760,
+        "source_available_hours": 2375,
+        "s3_reported_hours": 2346,
+        "qc_valid_hours": 2265,
+        "qc_valid_pct_of_calendar_year": 25.86,
+        "qc_valid_pct_of_active_window": 95.37,
+        "sentinel_or_negative_hours": 81,
+        "missing_while_source_available_hours": 29,
+        "source_unavailable_hours": 6385,
+        "longest_gap_hours": 66
+      }
+    ],
+    "monthly": [
+      {
+        "month": "2022-01",
+        "expected_hours": 744,
+        "s3_reported_hours": 647,
+        "qc_valid_hours": 642,
+        "qc_valid_pct": 86.29,
+        "sentinel_or_negative_hours": 5,
+        "missing_while_source_available_hours": 96,
+        "source_unavailable_hours": 1,
+        "longest_gap_hours": 48
+      },
+      {
+        "month": "2022-02",
+        "expected_hours": 672,
+        "s3_reported_hours": 97,
+        "qc_valid_hours": 97,
+        "qc_valid_pct": 14.43,
+        "sentinel_or_negative_hours": 0,
+        "missing_while_source_available_hours": 575,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 504
+      },
+      {
+        "month": "2022-03",
+        "expected_hours": 744,
+        "s3_reported_hours": 359,
+        "qc_valid_hours": 189,
+        "qc_valid_pct": 25.4,
+        "sentinel_or_negative_hours": 170,
+        "missing_while_source_available_hours": 385,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 120
+      },
+      {
+        "month": "2022-04",
+        "expected_hours": 720,
+        "s3_reported_hours": 480,
+        "qc_valid_hours": 0,
+        "qc_valid_pct": 0.0,
+        "sentinel_or_negative_hours": 480,
+        "missing_while_source_available_hours": 240,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 720
+      },
+      {
+        "month": "2022-05",
+        "expected_hours": 744,
+        "s3_reported_hours": 480,
+        "qc_valid_hours": 338,
+        "qc_valid_pct": 45.43,
+        "sentinel_or_negative_hours": 142,
+        "missing_while_source_available_hours": 264,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 214
+      },
+      {
+        "month": "2022-06",
+        "expected_hours": 720,
+        "s3_reported_hours": 97,
+        "qc_valid_hours": 97,
+        "qc_valid_pct": 13.47,
+        "sentinel_or_negative_hours": 0,
+        "missing_while_source_available_hours": 623,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 575
+      },
+      {
+        "month": "2022-07",
+        "expected_hours": 744,
+        "s3_reported_hours": 0,
+        "qc_valid_hours": 0,
+        "qc_valid_pct": 0.0,
+        "sentinel_or_negative_hours": 0,
+        "missing_while_source_available_hours": 744,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 744
+      },
+      {
+        "month": "2022-08",
+        "expected_hours": 744,
+        "s3_reported_hours": 0,
+        "qc_valid_hours": 0,
+        "qc_valid_pct": 0.0,
+        "sentinel_or_negative_hours": 0,
+        "missing_while_source_available_hours": 744,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 744
+      },
+      {
+        "month": "2022-09",
+        "expected_hours": 720,
+        "s3_reported_hours": 215,
+        "qc_valid_hours": 197,
+        "qc_valid_pct": 27.36,
+        "sentinel_or_negative_hours": 18,
+        "missing_while_source_available_hours": 505,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 505
+      },
+      {
+        "month": "2022-10",
+        "expected_hours": 744,
+        "s3_reported_hours": 720,
+        "qc_valid_hours": 79,
+        "qc_valid_pct": 10.62,
+        "sentinel_or_negative_hours": 641,
+        "missing_while_source_available_hours": 24,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 665
+      },
+      {
+        "month": "2022-11",
+        "expected_hours": 720,
+        "s3_reported_hours": 720,
+        "qc_valid_hours": 712,
+        "qc_valid_pct": 98.89,
+        "sentinel_or_negative_hours": 8,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 2
+      },
+      {
+        "month": "2022-12",
+        "expected_hours": 744,
+        "s3_reported_hours": 744,
+        "qc_valid_hours": 728,
+        "qc_valid_pct": 97.85,
+        "sentinel_or_negative_hours": 16,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 4
+      },
+      {
+        "month": "2023-01",
+        "expected_hours": 744,
+        "s3_reported_hours": 618,
+        "qc_valid_hours": 604,
+        "qc_valid_pct": 81.18,
+        "sentinel_or_negative_hours": 14,
+        "missing_while_source_available_hours": 126,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 102
+      },
+      {
+        "month": "2023-02",
+        "expected_hours": 672,
+        "s3_reported_hours": 80,
+        "qc_valid_hours": 80,
+        "qc_valid_pct": 11.9,
+        "sentinel_or_negative_hours": 0,
+        "missing_while_source_available_hours": 592,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 304
+      },
+      {
+        "month": "2023-03",
+        "expected_hours": 744,
+        "s3_reported_hours": 0,
+        "qc_valid_hours": 0,
+        "qc_valid_pct": 0.0,
+        "sentinel_or_negative_hours": 0,
+        "missing_while_source_available_hours": 744,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 744
+      },
+      {
+        "month": "2023-04",
+        "expected_hours": 720,
+        "s3_reported_hours": 264,
+        "qc_valid_hours": 262,
+        "qc_valid_pct": 36.39,
+        "sentinel_or_negative_hours": 2,
+        "missing_while_source_available_hours": 456,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 168
+      },
+      {
+        "month": "2023-05",
+        "expected_hours": 744,
+        "s3_reported_hours": 572,
+        "qc_valid_hours": 521,
+        "qc_valid_pct": 70.03,
+        "sentinel_or_negative_hours": 51,
+        "missing_while_source_available_hours": 172,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 169
+      },
+      {
+        "month": "2023-06",
+        "expected_hours": 720,
+        "s3_reported_hours": 720,
+        "qc_valid_hours": 670,
+        "qc_valid_pct": 93.06,
+        "sentinel_or_negative_hours": 50,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 44
+      },
+      {
+        "month": "2023-07",
+        "expected_hours": 744,
+        "s3_reported_hours": 723,
+        "qc_valid_hours": 708,
+        "qc_valid_pct": 95.16,
+        "sentinel_or_negative_hours": 15,
+        "missing_while_source_available_hours": 21,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 7
+      },
+      {
+        "month": "2023-08",
+        "expected_hours": 744,
+        "s3_reported_hours": 743,
+        "qc_valid_hours": 738,
+        "qc_valid_pct": 99.19,
+        "sentinel_or_negative_hours": 5,
+        "missing_while_source_available_hours": 1,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 2
+      },
+      {
+        "month": "2023-09",
+        "expected_hours": 720,
+        "s3_reported_hours": 720,
+        "qc_valid_hours": 715,
+        "qc_valid_pct": 99.31,
+        "sentinel_or_negative_hours": 5,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 2
+      },
+      {
+        "month": "2023-10",
+        "expected_hours": 744,
+        "s3_reported_hours": 740,
+        "qc_valid_hours": 736,
+        "qc_valid_pct": 98.92,
+        "sentinel_or_negative_hours": 4,
+        "missing_while_source_available_hours": 4,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 1
+      },
+      {
+        "month": "2023-11",
+        "expected_hours": 720,
+        "s3_reported_hours": 158,
+        "qc_valid_hours": 156,
+        "qc_valid_pct": 21.67,
+        "sentinel_or_negative_hours": 2,
+        "missing_while_source_available_hours": 562,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 560
+      },
+      {
+        "month": "2023-12",
+        "expected_hours": 744,
+        "s3_reported_hours": 456,
+        "qc_valid_hours": 456,
+        "qc_valid_pct": 61.29,
+        "sentinel_or_negative_hours": 0,
+        "missing_while_source_available_hours": 288,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 170
+      },
+      {
+        "month": "2024-01",
+        "expected_hours": 744,
+        "s3_reported_hours": 700,
+        "qc_valid_hours": 700,
+        "qc_valid_pct": 94.09,
+        "sentinel_or_negative_hours": 0,
+        "missing_while_source_available_hours": 44,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 38
+      },
+      {
+        "month": "2024-02",
+        "expected_hours": 696,
+        "s3_reported_hours": 672,
+        "qc_valid_hours": 672,
+        "qc_valid_pct": 96.55,
+        "sentinel_or_negative_hours": 0,
+        "missing_while_source_available_hours": 24,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 18
+      },
+      {
+        "month": "2024-03",
+        "expected_hours": 744,
+        "s3_reported_hours": 730,
+        "qc_valid_hours": 721,
+        "qc_valid_pct": 96.91,
+        "sentinel_or_negative_hours": 9,
+        "missing_while_source_available_hours": 14,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 5
+      },
+      {
+        "month": "2024-04",
+        "expected_hours": 720,
+        "s3_reported_hours": 720,
+        "qc_valid_hours": 703,
+        "qc_valid_pct": 97.64,
+        "sentinel_or_negative_hours": 17,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 3
+      },
+      {
+        "month": "2024-05",
+        "expected_hours": 744,
+        "s3_reported_hours": 744,
+        "qc_valid_hours": 728,
+        "qc_valid_pct": 97.85,
+        "sentinel_or_negative_hours": 16,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 3
+      },
+      {
+        "month": "2024-06",
+        "expected_hours": 720,
+        "s3_reported_hours": 720,
+        "qc_valid_hours": 710,
+        "qc_valid_pct": 98.61,
+        "sentinel_or_negative_hours": 10,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 8
+      },
+      {
+        "month": "2024-07",
+        "expected_hours": 744,
+        "s3_reported_hours": 744,
+        "qc_valid_hours": 721,
+        "qc_valid_pct": 96.91,
+        "sentinel_or_negative_hours": 23,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 10
+      },
+      {
+        "month": "2024-08",
+        "expected_hours": 744,
+        "s3_reported_hours": 744,
+        "qc_valid_hours": 155,
+        "qc_valid_pct": 20.83,
+        "sentinel_or_negative_hours": 589,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 589
+      },
+      {
+        "month": "2024-09",
+        "expected_hours": 720,
+        "s3_reported_hours": 720,
+        "qc_valid_hours": 476,
+        "qc_valid_pct": 66.11,
+        "sentinel_or_negative_hours": 244,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 231
+      },
+      {
+        "month": "2024-10",
+        "expected_hours": 744,
+        "s3_reported_hours": 744,
+        "qc_valid_hours": 678,
+        "qc_valid_pct": 91.13,
+        "sentinel_or_negative_hours": 66,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 45
+      },
+      {
+        "month": "2024-11",
+        "expected_hours": 720,
+        "s3_reported_hours": 720,
+        "qc_valid_hours": 710,
+        "qc_valid_pct": 98.61,
+        "sentinel_or_negative_hours": 10,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 3
+      },
+      {
+        "month": "2024-12",
+        "expected_hours": 744,
+        "s3_reported_hours": 744,
+        "qc_valid_hours": 244,
+        "qc_valid_pct": 32.8,
+        "sentinel_or_negative_hours": 500,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 490
+      },
+      {
+        "month": "2025-01",
+        "expected_hours": 744,
+        "s3_reported_hours": 744,
+        "qc_valid_hours": 669,
+        "qc_valid_pct": 89.92,
+        "sentinel_or_negative_hours": 75,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 66
+      },
+      {
+        "month": "2025-02",
+        "expected_hours": 672,
+        "s3_reported_hours": 672,
+        "qc_valid_hours": 666,
+        "qc_valid_pct": 99.11,
+        "sentinel_or_negative_hours": 6,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 2
+      },
+      {
+        "month": "2025-03",
+        "expected_hours": 744,
+        "s3_reported_hours": 716,
+        "qc_valid_hours": 716,
+        "qc_valid_pct": 96.24,
+        "sentinel_or_negative_hours": 0,
+        "missing_while_source_available_hours": 28,
+        "source_unavailable_hours": 0,
+        "longest_gap_hours": 19
+      },
+      {
+        "month": "2025-04",
+        "expected_hours": 720,
+        "s3_reported_hours": 214,
+        "qc_valid_hours": 214,
+        "qc_valid_pct": 29.72,
+        "sentinel_or_negative_hours": 0,
+        "missing_while_source_available_hours": 1,
+        "source_unavailable_hours": 505,
+        "longest_gap_hours": 1
+      },
+      {
+        "month": "2025-05",
+        "expected_hours": 744,
+        "s3_reported_hours": 0,
+        "qc_valid_hours": 0,
+        "qc_valid_pct": 0.0,
+        "sentinel_or_negative_hours": 0,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 744,
+        "longest_gap_hours": 0
+      },
+      {
+        "month": "2025-06",
+        "expected_hours": 720,
+        "s3_reported_hours": 0,
+        "qc_valid_hours": 0,
+        "qc_valid_pct": 0.0,
+        "sentinel_or_negative_hours": 0,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 720,
+        "longest_gap_hours": 0
+      },
+      {
+        "month": "2025-07",
+        "expected_hours": 744,
+        "s3_reported_hours": 0,
+        "qc_valid_hours": 0,
+        "qc_valid_pct": 0.0,
+        "sentinel_or_negative_hours": 0,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 744,
+        "longest_gap_hours": 0
+      },
+      {
+        "month": "2025-08",
+        "expected_hours": 744,
+        "s3_reported_hours": 0,
+        "qc_valid_hours": 0,
+        "qc_valid_pct": 0.0,
+        "sentinel_or_negative_hours": 0,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 744,
+        "longest_gap_hours": 0
+      },
+      {
+        "month": "2025-09",
+        "expected_hours": 720,
+        "s3_reported_hours": 0,
+        "qc_valid_hours": 0,
+        "qc_valid_pct": 0.0,
+        "sentinel_or_negative_hours": 0,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 720,
+        "longest_gap_hours": 0
+      },
+      {
+        "month": "2025-10",
+        "expected_hours": 744,
+        "s3_reported_hours": 0,
+        "qc_valid_hours": 0,
+        "qc_valid_pct": 0.0,
+        "sentinel_or_negative_hours": 0,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 744,
+        "longest_gap_hours": 0
+      },
+      {
+        "month": "2025-11",
+        "expected_hours": 720,
+        "s3_reported_hours": 0,
+        "qc_valid_hours": 0,
+        "qc_valid_pct": 0.0,
+        "sentinel_or_negative_hours": 0,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 720,
+        "longest_gap_hours": 0
+      },
+      {
+        "month": "2025-12",
+        "expected_hours": 744,
+        "s3_reported_hours": 0,
+        "qc_valid_hours": 0,
+        "qc_valid_pct": 0.0,
+        "sentinel_or_negative_hours": 0,
+        "missing_while_source_available_hours": 0,
+        "source_unavailable_hours": 744,
+        "longest_gap_hours": 0
+      }
+    ]
+  }
+}

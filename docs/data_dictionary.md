@@ -413,3 +413,30 @@ python scripts/validate_issue8.py    # §3 kiểm cấu trúc, §4 đối chiế
 
 Nếu số trong bảng lệch khỏi dữ liệu thật, script **fail** — nó không kiểm tra chiều ngược lại
 (một con số sai trong tài liệu sẽ không bị bắt). Vì vậy `notes` phải đọc kèm §4 của script.
+
+---
+
+## 9. Phụ Lục Mở Rộng Dữ Liệu Lịch Sử 2022–2026 Phân Tách Theo Trạm (Issue #44)
+
+> **Hợp đồng chi tiết:** [`docs/issue44_dataset_contract.md`](issue44_dataset_contract.md) · **Báo cáo đối chiếu:** [`reports/issue44_legacy_vs_extended_comparison.md`](../reports/issue44_legacy_vs_extended_comparison.md)
+> **Tính bất biến của Baseline:** Tập dữ liệu đóng băng của Issue #7 (`data/processed/air_pollution_final.parquet`, `9.044` dòng × `18` cột, trạm `VN001_HANOI_556_NGUYEN_VAN_CU`) được giữ **nguyên trạng 100% theo mã băm SHA-256**. Toàn bộ dữ liệu mở rộng 2022–2025 được lưu tách biệt tại `data/processed/air_pollution_extended_2022_2026.parquet` (`37.722` dòng × `23` cột, phiên bản `2.0.0-issue44-extended`).
+
+### 9.1. Danh mục trạm quan trắc trong tập dữ liệu mở rộng
+
+| Mã trạm chuẩn (`station_id`) | Nguồn & Location ID | Tọa độ (`lat, lon`) | Khoảng cách tới lưới ERA5 | Dải thời gian lưới giờ (`Asia/Ho_Chi_Minh`) | Số dòng lưới | Quan sát `pm25` hợp lệ (`n` / khuyết) | Trạng thái |
+|---|---|---|:---:|---|---:|---|---|
+| `VN001_HANOI_556_NGUYEN_VAN_CU` | OpenAQ S3 `4946811` (NCEM/VEA, 556 Nguyễn Văn Cừ) | `21.0491°N, 105.8831°E` | `1,704 km` | `2025-07-03 22:00` → `2026-07-15 17:00` | `9.044` | `7.495` (`1.549` khuyết, `17,13%`) | **Baseline chính** (Issues #3–#11) |
+| `VN003_HANOI_OPENAQ_7441` | OpenAQ S3 `7441` (`sensors_id=21632`, AirNow Gov Monitor, US Public Domain) | `21.021939°N, 105.818806°E` | `9,026 km` | `2022-01-01 01:00` → `2025-04-09 22:00` | `28.678` | `18.208` (`10.470` khuyết, `36,51%`) | **Mở rộng lịch sử độc lập** (Issue #44) |
+| `VN002_HANOI_US_EMBASSY` | AirNow DOS Historical CSV | `21.0215°N, 105.8184°E` | `9,081 km` | Chờ tệp xuất chính thức từ AirNow-Tech | — | — | Adapter đã nâng cấp QC/conflict; mirror bên thứ ba bị từ chối (`NO-GO`) |
+
+*(Khoảng cách đại cung giữa `VN003` và `VN001` là `7,324 km`; hai trạm tuyệt đối không bao giờ được gộp/coalesce thành một chuỗi đơn trạm.)*
+
+### 9.2. 5 trường bổ sung trong `air_pollution_extended_2022_2026.parquet` (ngoài 18 trường của `air_pollution_final.parquet`)
+
+| STT | Tên trường | Kiểu dữ liệu | Đơn vị | Ràng buộc / Miền giá trị | Ý nghĩa & Quy tắc chống rò rỉ |
+|:---:|---|---|---|---|---|
+| 19 | `split` | `string` | Phân vùng | `{"train", "test"}` | Phân chia theo thứ tự thời gian 80%/20% **độc lập trong từng `station_id`** (`VN003`: cắt tại `2024-08-13 23:00+07:00`; `VN001`: cắt tại `2026-05-01 09:00+07:00`). |
+| 20 | `pm25_derived_interpolated` | `float64` | $\mu\text{g/m}^3$ | $[0.0, 1000.0]$ hoặc `NaN` | Cột thực nghiệm nội suy tuyến tính khoảng trống ngắn ($\le 2$ giờ) **nội bộ trong từng `(station_id, split)`**. Không bao giờ ghi đè cột gốc `pm25`. |
+| 21 | `pm25_is_derived` | `bool` | Cờ logic | `{True, False}` | `True` khi và chỉ khi `pm25` gốc là `NaN` và `pm25_derived_interpolated` được điền (`194` giờ ở `VN003`, `148` giờ ở `VN001`). |
+| 22 | `winter_year` | `Int64` | Năm mùa đông | `{2022, 2023, 2024, 2025, 2026}` hoặc `<NA>` | Gán tháng 12 của năm $Y-1$ và tháng 1–2 của năm $Y$ về năm kết thúc mùa đông $Y$ (`W2022` thiếu tháng 12/2021; `W2023`–`W2025` trên `VN003` và `W2026` trên `VN001` đủ 3 tháng). |
+| 23 | `season` | `string` | Danh mục mùa | `{"Winter (Dec-Feb)", "Spring (Mar-May)", "Summer (Jun-Aug)", "Autumn (Sep-Nov)"}` | Phân mùa khí tượng miền Bắc Việt Nam phục vụ phân tích EDA đa năm và kiểm định mùa vụ phân tách theo trạm. |
