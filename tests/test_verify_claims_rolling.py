@@ -24,6 +24,9 @@ Không test nào chạm vào `data/` — tất cả dữ liệu sinh trong bộ 
 """
 
 import importlib.util
+import os
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -303,6 +306,57 @@ class RollingBoundaryTests(unittest.TestCase):
             self.assertGreaterEqual(res["numerator"], 0)
             self.assertGreaterEqual(res["denominator_rolling_valid"], 0)
             self.assertLessEqual(res["denominator_rolling_valid"], res["denominator_all"])
+
+
+class TestVerifyClaimsEncoding(unittest.TestCase):
+    """F-05 regression: scripts/verify_claims.py must run safely under non-UTF8 stdout encoding."""
+
+    def test_verify_claims_help_runs_with_cp1252_encoding(self):
+        """F-05: scripts/verify_claims.py --help succeeds under cp1252 stdout encoding without UnicodeEncodeError."""
+        script_path = REPO_ROOT / "scripts" / "verify_claims.py"
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "cp1252"
+        proc = subprocess.run(
+            [sys.executable, str(script_path), "--help"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+        )
+        self.assertEqual(proc.returncode, 0, f"Script failed with stderr:\n{proc.stderr}")
+        self.assertNotIn("UnicodeEncodeError", proc.stderr)
+
+    def test_verify_claims_execution_runs_with_cp1252_encoding(self):
+        """F-05: verify_claims.py execution completes cleanly under cp1252 without UnicodeEncodeError."""
+        script_path = REPO_ROOT / "scripts" / "verify_claims.py"
+        dataset_path = REPO_ROOT / "data" / "processed" / "air_pollution_final.parquet"
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "cp1252"
+        if dataset_path.exists():
+            proc = subprocess.run(
+                [sys.executable, str(script_path)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=env,
+            )
+            self.assertEqual(proc.returncode, 0, f"Script failed with stderr:\n{proc.stderr}")
+            self.assertNotIn("UnicodeEncodeError", proc.stderr)
+            self.assertIn("CLAIM", proc.stdout)
+        else:
+            proc = subprocess.run(
+                [sys.executable, str(script_path), "--dataset", "nonexistent.parquet"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=env,
+            )
+            self.assertEqual(proc.returncode, 2)
+            self.assertNotIn("UnicodeEncodeError", proc.stderr)
+            self.assertIn("LỖI ĐẦU VÀO", proc.stderr)
 
 
 if __name__ == "__main__":

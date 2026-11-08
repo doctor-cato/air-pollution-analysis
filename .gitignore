@@ -85,3 +85,10 @@ desktop.ini
 *.egg-info/
 dist/
 build/
+!reports/issue44_mirror_manifest.json
+!reports/issue44_openaq_poc.json
+!reports/issue44_openaq_7441_manifest.json
+!reports/issue44_extended_dataset_metadata.json
+!reports/issue44_interpolation_evaluation.csv
+!reports/issue44_multiyear_eda_summary.csv
+!reports/issue44_legacy_vs_extended_comparison.md

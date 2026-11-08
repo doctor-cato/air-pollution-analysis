@@ -698,7 +698,7 @@ def build_fixture_frame() -> pd.DataFrame:
     for start, level in FIXTURE_WINDOWS:
         ts = pd.date_range(
             start=start, periods=FIXTURE_HOURS_PER_WINDOW, freq="h", tz=FIXTURE_TZ
-        )
+        ).astype(f"datetime64[ns, {FIXTURE_TZ}]")
         hour = ts.hour.to_numpy()
         month = ts.month.to_numpy()
         n = len(ts)

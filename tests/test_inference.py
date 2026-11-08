@@ -558,6 +558,142 @@ class TestBuildDailyPanel(unittest.TestCase):
         with self.assertRaises(KeyError):
             inf.build_daily_panel(pd.DataFrame({"timestamp": pd.date_range("2024-01-01", periods=5)}))
 
+    def test_build_daily_panel_rejects_multi_station_input(self):
+        """F-02: build_daily_panel fails-closed when multiple stations are detected."""
+        ts = pd.date_range("2024-01-01", periods=24, freq="h")
+        df = pd.DataFrame({
+            "timestamp": list(ts[:12]) + list(ts[:12]),
+            "station_id": ["STATION_A"] * 12 + ["STATION_B"] * 12,
+            "pm25": [10.0] * 12 + [100.0] * 12,
+        })
+        with self.assertRaisesRegex(ValueError, "chuỗi đơn trạm nhưng phát hiện 2 trạm"):
+            inf.build_daily_panel(df)
+
+    def test_build_daily_panel_disjoint_multi_station_rejected(self):
+        """F-02: Multiple stations even on completely disjoint dates are rejected."""
+        ts_a = pd.date_range("2024-01-01", periods=20, freq="h")
+        ts_b = pd.date_range("2025-01-01", periods=20, freq="h")
+        df = pd.DataFrame({
+            "timestamp": list(ts_a) + list(ts_b),
+            "station_id": ["STATION_A"] * 20 + ["STATION_B"] * 20,
+            "pm25": [25.0] * 40,
+        })
+        with self.assertRaisesRegex(ValueError, "chuỗi đơn trạm nhưng phát hiện 2 trạm"):
+            inf.build_daily_panel(df)
+
+    def test_build_daily_panel_single_station_18h_success(self):
+        """Single station with exactly 18 valid hours produces 1 kept day."""
+        ts = pd.date_range("2024-01-01", periods=24, freq="h")
+        pm25 = [25.0] * 18 + [np.nan] * 6
+        df = pd.DataFrame({
+            "timestamp": ts,
+            "station_id": ["STATION_A"] * 24,
+            "pm25": pm25,
+        })
+        panel, audit = inf.build_daily_panel(df, min_valid_hours=18)
+        self.assertEqual(len(panel), 1)
+        self.assertEqual(panel["valid_hours"].iloc[0], 18)
+
+    def test_build_daily_panel_single_station_17h_raises(self):
+        """Single station with 17 valid hours (<18) raises ValueError (empty panel)."""
+        ts = pd.date_range("2024-01-01", periods=24, freq="h")
+        pm25 = [25.0] * 17 + [np.nan] * 7
+        df = pd.DataFrame({
+            "timestamp": ts,
+            "station_id": ["STATION_A"] * 24,
+            "pm25": pm25,
+        })
+        with self.assertRaisesRegex(ValueError, "Không ngày nào đạt ≥ 18 giờ"):
+            inf.build_daily_panel(df, min_valid_hours=18)
+
+    def test_build_daily_panel_compatible_without_station_id(self):
+        """DataFrame without station_id column is treated as single station for backward compatibility."""
+        ts = pd.date_range("2024-01-01", periods=24, freq="h")
+        df = pd.DataFrame({
+            "timestamp": ts,
+            "pm25": [30.0] * 24,
+        })
+        panel, audit = inf.build_daily_panel(df, min_valid_hours=18)
+        self.assertEqual(len(panel), 1)
+        self.assertEqual(audit["n_stations"], 1)
+
+    def test_build_daily_panel_empty_dataframe_raises(self):
+        """Empty dataframe raises ValueError."""
+        df = pd.DataFrame({"timestamp": [], "pm25": []})
+        with self.assertRaises(ValueError):
+            inf.build_daily_panel(df)
+
+    def test_build_multi_station_daily_panel_independent_thresholds(self):
+        """build_multi_station_daily_panel enforces 18h threshold per station independently."""
+        # On 2024-01-01: Station A has 12h, Station B has 12h. Total = 24h, but each has <18h -> 0 kept
+        ts = pd.date_range("2024-01-01", periods=12, freq="h")
+        df_under = pd.DataFrame({
+            "timestamp": list(ts) + list(ts),
+            "station_id": ["A"] * 12 + ["B"] * 12,
+            "pm25": [10.0] * 12 + [100.0] * 12,
+        })
+        with self.assertRaisesRegex(ValueError, "Không trạm/ngày nào đạt ≥ 18 giờ"):
+            inf.build_multi_station_daily_panel(df_under, min_valid_hours=18)
+
+        # On 2024-01-01: Station A has 18h, Station B has 12h -> only Station A is kept
+        ts24 = pd.date_range("2024-01-01", periods=24, freq="h")
+        df_one_kept = pd.DataFrame({
+            "timestamp": list(ts24) + list(ts24[:12]),
+            "station_id": ["A"] * 24 + ["B"] * 12,
+            "pm25": [20.0] * 18 + [np.nan] * 6 + [50.0] * 12,
+        })
+        panel, audit = inf.build_multi_station_daily_panel(df_one_kept, min_valid_hours=18)
+        self.assertEqual(len(panel), 1)
+        self.assertEqual(panel["station_id"].iloc[0], "A")
+        self.assertEqual(panel["valid_hours"].iloc[0], 18)
+        self.assertEqual(audit["station_breakdown"]["A"]["days_ge18h"], 1)
+        self.assertEqual(audit["station_breakdown"]["B"]["days_ge18h"], 0)
+
+    def test_station_id_with_partial_nulls_rejected_fail_closed(self):
+        """F-02: Partial null station_id must not be silently pooled with labeled stations or dropped."""
+        ts = pd.date_range("2024-01-01", periods=24, freq="h")
+        # 12 hours of STATION_A + 12 hours of None (unlabeled).
+        # If .dropna() were used on station_id before aggregation, 12 + 12 = 24h would falsely pass 18h!
+        df_partial_null = pd.DataFrame({
+            "timestamp": ts,
+            "station_id": ["STATION_A"] * 12 + [None] * 12,
+            "pm25": [10.0] * 12 + [100.0] * 12,
+        })
+        with self.assertRaisesRegex(ValueError, "station_id.*bị thiếu.*FAIL-CLOSED"):
+            inf.build_daily_panel(df_partial_null, min_valid_hours=18)
+        with self.assertRaisesRegex(ValueError, "station_id.*bị thiếu.*FAIL-CLOSED"):
+            inf.build_daily_calendar(df_partial_null, min_valid_hours=18)
+        with self.assertRaisesRegex(ValueError, "station_id.*bị thiếu.*FAIL-CLOSED"):
+            inf.build_multi_station_daily_panel(df_partial_null, min_valid_hours=18)
+
+    def test_station_id_all_nulls_or_blank_rejected_fail_closed(self):
+        """F-02: Present station_id column with all nulls or whitespace strings fails closed."""
+        ts = pd.date_range("2024-01-01", periods=24, freq="h")
+        df_all_null = pd.DataFrame({
+            "timestamp": ts,
+            "station_id": [np.nan] * 24,
+            "pm25": [25.0] * 24,
+        })
+        with self.assertRaisesRegex(ValueError, "station_id.*bị thiếu.*FAIL-CLOSED"):
+            inf.build_daily_panel(df_all_null, min_valid_hours=18)
+        with self.assertRaisesRegex(ValueError, "station_id.*bị thiếu.*FAIL-CLOSED"):
+            inf.build_multi_station_daily_panel(df_all_null, min_valid_hours=18)
+
+        df_blank = pd.DataFrame({
+            "timestamp": ts,
+            "station_id": ["STATION_A"] * 20 + ["   "] * 4,
+            "pm25": [25.0] * 24,
+        })
+        with self.assertRaisesRegex(ValueError, "station_id.*bị thiếu.*FAIL-CLOSED"):
+            inf.build_daily_panel(df_blank, min_valid_hours=18)
+        with self.assertRaisesRegex(ValueError, "station_id.*bị thiếu.*FAIL-CLOSED"):
+            inf.build_multi_station_daily_panel(df_blank, min_valid_hours=18)
+
+        # Missing station_id column in build_multi_station_daily_panel raises KeyError
+        df_no_col = pd.DataFrame({"timestamp": ts, "pm25": [25.0] * 24})
+        with self.assertRaises(KeyError):
+            inf.build_multi_station_daily_panel(df_no_col, min_valid_hours=18)
+
 
 # ---------------------------------------------------------------------------
 # Bốn phép kiểm
