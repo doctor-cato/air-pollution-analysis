@@ -4,7 +4,7 @@
 > `AGENTS.md` chỉ trỏ tới đây; con số kiểm thử thay đổi theo từng Issue nên
 > không nhân bản vào file hướng dẫn agent.
 >
-> **Cập nhật lần cuối:** 2026-11-05, sau Issue #11 (W9 — suy luận thống kê) và Issue #44 (mở rộng dữ liệu lịch sử 2022–2025).
+> **Cập nhật lần cuối:** Issue #50, sau khi bổ sung kiểm toán và tái phân tích trên dữ liệu mở rộng.
 
 ---
 
@@ -32,6 +32,7 @@ Không test nào gọi mạng. Không test nào phụ thuộc thứ tự chạy.
 | `tests/test_data_collection.py` | 72 | Ingest OpenAQ / Open-Meteo / AirNow, provenance, SHA-256, fail-closed S3 cache preservation |
 | `tests/test_cleaning.py` | 114 | Làm sạch tất định, `assert_no_imputation()`, cờ chẩn đoán |
 | `tests/test_data_quality.py` | 44 | Kiểm toán chất lượng 6 chiều |
+| `tests/test_extended_reanalysis.py` | 15 | Hợp đồng Issue #50: tách trạm, rolling theo trạm, mùa đông, mẫu số lịch, bootstrap, hình 300 DPI, đối chiếu artifact đã commit |
 | `tests/test_cleaning_pipeline.py` | 44 | Merge, freeze, split tuần tự, chống rò rỉ |
 | `tests/test_cleaning_pipeline_guards.py` | 43 | Guard chống rò rỉ (`validate_no_leakage`) |
 | `tests/test_fetch_dataset.py` | 9 | `scripts/fetch_dataset.py` |
@@ -43,7 +44,7 @@ Không test nào gọi mạng. Không test nào phụ thuộc thứ tự chạy.
 | `tests/test_validate_issue8.py` | 29 | Checksum, đồng bộ generator, circular stats, smoke fixture, canh số liệu tài liệu |
 | `tests/test_verify_claims_rolling.py` | 9 | Biên rolling 24h — dữ liệu đồng nhất che lỗi |
 | `tests/test_visualizer.py` | 35 | Bộ 7 biểu đồ ấn phẩm FIG-01..FIG-07 (300 DPI, Tufte, zero-baseline, chuỳ 24h, font tiếng Việt) |
-| **Tổng** | **725** | |
+| **Tổng** | **740** | |
 
 Đếm lại sau mỗi thay đổi:
 
@@ -59,14 +60,14 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 | Con số | Ý nghĩa |
 |---|---|
-| **725** | Số **test method được định nghĩa** trong mã nguồn |
-| **709** | Số unittest **thực sự chạy và báo cáo** trên CI (thiếu `data/`) |
-| **705** | Số test **chạy và pass** trên CI (709 − 4 skip nằm trong `Ran`) |
+| **740** | Số **test method được định nghĩa** trong mã nguồn |
+| **724** | Số unittest **dự kiến chạy và báo cáo** trên CI (thiếu `data/`; xác minh trên Actions sau push) |
+| **720** | Số test **dự kiến chạy và pass** trên CI (724 − 4 skip nằm trong `Ran`; xác minh trên Actions) |
 
 > ⚠ **`skipped=6` không trừ thẳng vào `Ran`.** Hai trong sáu dòng skip là *class holder*
 > (`setUpClass` raise `SkipTest`): unittest bỏ qua cả class nên các method của nó **không
 > bao giờ vào `Ran`**, nhưng vẫn hiện một dòng trong `skipped=`. Vì vậy
-> `pass = Ran − (skipped − holders) = 709 − (6 − 2) = 705`, **không phải** `709 − 6`.
+> `pass = Ran − (skipped − holders) = 724 − (6 − 2) = 720`, **không phải** `724 − 6`.
 >
 > Đính chính: bản trước của tài liệu này ghi `462 − 5 = 457`, tức đã trừ cả holder và
 > **đếm thiếu 1** so với số test thật sự chạy-pass (đúng phải là `462 − 4 = 458`).
@@ -76,12 +77,12 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 | Môi trường | Lệnh | Kết quả |
 |---|---|---|
-| Windows local, **có `data/`** | `python -m unittest discover tests` | `Ran 725 tests` + `OK` → **725 pass, 0 skip** |
-| Ubuntu CI `ubuntu-latest`, **không `data/`** | `python -m unittest discover tests -v` | `Ran 709 tests` + `OK (skipped=6)` → **705 pass, 6 skip (2 holder)** |
+| Windows local, **có `data/`** | `python -m unittest discover tests` | **Chạy lại sau Issue #50; kỳ vọng** `Ran 740 tests` + `OK` → **740 pass, 0 skip** |
+| Ubuntu CI `ubuntu-latest`, **không `data/`** | `python -m unittest discover tests -v` | **Kỳ vọng** `Ran 724 tests` + `OK (skipped=6)` → **720 pass, 6 skip (2 holder)**; đối chiếu Actions sau push |
 
 > `data/` bị `.gitignore` loại khỏi repository, nên **CI không bao giờ có dataset**.
 
-### Vì sao 725 − 709 = 16
+### Vì sao 740 − 724 = 16
 
 Hai lớp có `setUpClass` raise `unittest.SkipTest` khi thiếu dữ liệu, và unittest bỏ qua
 **cả class** — mọi method của chúng không bao giờ được tính vào bộ đếm `Ran`:

@@ -92,3 +92,7 @@ build/
 !reports/issue44_interpolation_evaluation.csv
 !reports/issue44_multiyear_eda_summary.csv
 !reports/issue44_legacy_vs_extended_comparison.md
+!reports/issue50_baseline_hashes.json
+!reports/extended_*.md
+!reports/extended_*.csv
+!reports/extended_*.json
