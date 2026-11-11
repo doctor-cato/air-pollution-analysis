@@ -142,8 +142,10 @@ ols_log = sm.OLS(log_y_train, X_train_const).fit()
 
 print(f"Mô hình Gốc   (PM2.5):     R² Train = {ols_orig.rsquared:.4f} | Resid Skewness = {ols_orig.resid.skew():.3f}")
 print(f"Mô hình Log1p (log(1+PM)): R² Train = {ols_log.rsquared:.4f} | Resid Skewness = {ols_log.resid.skew():.3f}")
-print("\nNhận xét: Biến đổi log1p giúp giảm độ lệch của phần dư từ dương sang gần đối xứng hơn,")
-print("tuy nhiên để giữ tính giải thích trực tiếp theo đơn vị chuẩn µg/m³, mô hình chính giữ nguyên đơn vị gốc.")
+print("\nNhận xét: Phần dư mô hình gốc có độ lệch phải nhẹ (skew = +0.554). Biến đổi log1p làm đảo chiều")
+print("và tăng độ lệch tuyệt đối (|skew| = 0.959, lệch trái với đuôi dài ở giá trị thấp).")
+print("Do đó, log1p không cải thiện tính đối xứng của phần dư, đồng thời làm phức tạp hóa việc diễn giải")
+print("trực tiếp hệ số theo đơn vị chuẩn µg/m³. Vì vậy, mô hình chính thức giữ nguyên đơn vị gốc.")
 """)
 
 # ---------------------------------------------------------------------------
@@ -215,13 +217,13 @@ print(f"Số điểm vượt ngưỡng đòn bẩy: {n_inf:,} / {len(y_train):,}
 # ---------------------------------------------------------------------------
 # CELL 9: Regularization (Ridge & Lasso)
 # ---------------------------------------------------------------------------
-add_md(r"""## 7. Điều hòa Ridge ($L_2$) & Lasso ($L_1$) với TimeSeriesSplit
+add_md(r"""## 7. Điều hòa Ridge ($L_2$) & Lasso ($L_1$) với TimeSeriesSplit (Leak-Free CV)
 
-Dò tìm siêu tham số $\alpha$ hoàn toàn trên tập Train thông qua 5-fold `TimeSeriesSplit` cross-validation (tuyệt đối không dùng tập Test để tune).
+Dò tìm siêu tham số $\alpha$ hoàn toàn trên tập Train thông qua 5-fold `TimeSeriesSplit` cross-validation (tuyệt đối không dùng tập Test để tune). Để đảm bảo không rò rỉ dữ liệu, bộ chuẩn hóa `RobustScaler` được fit độc lập trên phần huấn luyện của từng fold.
 """)
 
 add_code(r"""alphas = np.logspace(-3, 3, 50)
-best_ridge_alpha, best_lasso_alpha, ridge_mod, lasso_mod = tune_regularization(
+best_ridge_alpha, best_lasso_alpha, ridge_mod, lasso_mod, scaler_mod = tune_regularization(
     X_train, y_train, n_splits=5, alphas=alphas
 )
 
@@ -232,35 +234,65 @@ print(f"Siêu tham số tối ưu Lasso: alpha = {best_lasso_alpha:.4f}")
 # ---------------------------------------------------------------------------
 # CELL 10: Independent Test Evaluation
 # ---------------------------------------------------------------------------
-add_md(r"""## 8. Đánh giá Độc lập trên Tập TEST
+add_md(r"""## 8. Đánh giá Độc lập trên Tập TEST & Luận giải Khoa học $R^2 < 0$
 
 So sánh hiệu năng dự báo giữa Baseline (Dummy Mean), OLS, Ridge và Lasso trên tập Test độc lập.
 """)
 
-add_code(r"""metrics_df, ols_sk = evaluate_models(X_train, y_train, X_test, y_test, ridge_mod, lasso_mod)
+add_code(r"""metrics_df, ols_sk = evaluate_models(X_train, y_train, X_test, y_test, ridge_mod, lasso_mod, scaler=scaler_mod)
 print("BẢNG SO SÁNH HIỆU NĂNG MÔ HÌNH TRÊN TẬP TEST:")
 display(metrics_df)
+
+print("\n--- LUẬN GIẢI KHOA HỌC VỀ KẾT QUẢ R² ÂM TRÊN TẬP TEST ---")
+print("1. Hiện tượng: Các mô hình OLS/Ridge/Lasso tĩnh có R² âm trên tập Test (-1.75 đến -2.02),")
+print("   dự báo kém hơn Baseline hằng số trung bình (Dummy R² = -0.0280).")
+print("2. Bản chất: Chuỗi thời gian PM2.5 có tính tự tương quan cực mạnh (DW = 0.243, rho1 ≈ 0.76).")
+print("   Mô hình tĩnh chỉ sử dụng các yếu tố khí tượng tức thời mà không có các biến trễ tự hồi quy (lag PM2.5)")
+print("   nên không thể nắm bắt được quán tính tích tụ ô nhiễm khi dịch chuyển mùa từ Train sang Test.")
+print("3. Ý nghĩa: Đây là phát hiện thực nghiệm hợp lệ chứng minh giới hạn của hồi quy tĩnh trên chuỗi thời gian,")
+print("   tạo cơ sở tất yếu cho mô hình chuỗi thời gian có đặc trưng trễ (Issue #13).")
 """)
 
 # ---------------------------------------------------------------------------
 # CELL 11: Non-causal Beta Interpretation
 # ---------------------------------------------------------------------------
-add_md(r"""## 9. Diễn giải Hệ số $\beta$ theo Chuẩn 3 Nghĩa vụ
+add_md(r"""## 9. Diễn giải Hệ số $\beta$ theo Chuẩn 3 Nghĩa vụ (HAC Newey-West)
 
 Theo nguyên tắc liêm chính học thuật INFO3020, việc diễn giải hệ số hồi quy phải tuân thủ nghiêm ngặt 3 nghĩa vụ:
 1. **Liên hệ quan sát (*Associated with*):** Tuyệt đối không dùng từ ngữ mang tính nhân quả như "gây ra", "dẫn đến", "làm tăng".
 2. **Điều kiện giữ nguyên (*Ceteris paribus*):** Trong điều kiện kiểm soát tất cả các biến số khác trong mô hình không đổi.
 3. **Giới hạn trong miền giá trị quan sát:** Không ngoại suy ra ngoài dải thời tiết thực nghiệm của Hà Nội.
+
+Do giả định Độc lập và Phương sai đồng nhất bị vi phạm, bảng dưới đây đối chứng sai số chuẩn kinh điển và **sai số chuẩn HAC (Newey-West với 24 lags)**.
 """)
 
-add_code(r"""coef_table = pd.DataFrame({
+add_code(r"""ols_hac = sm.OLS(y_train, X_train_const).fit(cov_type="HAC", cov_kwds={"maxlags": 24})
+
+coef_table = pd.DataFrame({
     "Biến giải thích": ols_orig.params.index,
     "Hệ số Beta": ols_orig.params.values.round(4),
-    "Sai số chuẩn": ols_orig.bse.values.round(4),
-    "p-value": ols_orig.pvalues.apply(lambda p: f"{p:.4e}" if p < 0.0001 else f"{p:.4f}"),
-    "95% CI": [f"[{l:.2f}, {u:.2f}]" for l, u in zip(ols_orig.conf_int()[0], ols_orig.conf_int()[1])]
+    "SE (Kinh điển)": ols_orig.bse.values.round(4),
+    "p-value (Kinh điển)": ols_orig.pvalues.apply(lambda p: f"{p:.4e}" if p < 0.0001 else f"{p:.4f}"),
+    "SE (HAC-24)": ols_hac.bse.values.round(4),
+    "p-value (HAC-24)": ols_hac.pvalues.apply(lambda p: f"{p:.4e}" if p < 0.0001 else f"{p:.4f}"),
+    "95% CI (HAC)": [f"[{l:.2f}, {u:.2f}]" for l, u in zip(ols_hac.conf_int()[0], ols_hac.conf_int()[1])]
 })
+print("BẢNG HỆ SỐ HỒI QUY ĐỐI CHỨNG (CLASSICAL vs. HAC NEWEY-WEST 24 LAGS):")
 display(coef_table)
+""")
+
+add_md(r"""### Diễn giải Định tính Hệ số $\beta$ trong Miền Giá trị Quan sát Thực nghiệm
+
+1. **Tốc độ gió (`wind_speed`, dải quan sát [0,00; 9,55] m/s):**
+   - $\beta = -6,0673$ ($p_{\text{HAC}} = 5,63 \times 10^{-8} < 0,001$).
+   - *Diễn giải:* Trong dải tốc độ gió từ 0,00 đến 9,55 m/s, mỗi khi tốc độ gió tăng thêm 1 m/s, nồng độ PM₂.₅ trung bình giờ **liên hệ với mức giảm 6,07 µg/m³** trong điều kiện các yếu tố khí tượng và chu kỳ thời gian khác được giữ không đổi (*ceteris paribus*). Kết quả này phản ánh cơ chế vật lý về sự phát tán và thông gió khí quyển.
+2. **Lượng mưa (`precipitation`, dải quan sát [0,00; 20,50] mm):**
+   - $\beta = -0,9471$ ($p_{\text{Kinh điển}} = 0,0060$, nhưng $p_{\text{HAC}} = 0,0808 > 0,05$).
+   - *Diễn giải:* Trong dải lượng mưa từ 0,00 đến 20,50 mm, mỗi 1 mm mưa liên hệ với mức giảm 0,95 µg/m³ PM₂.₅ (*ceteris paribus*). Tuy nhiên, dưới sai số chuẩn HAC Newey-West kiểm soát tự tương quan 24 giờ, mối liên hệ này có $p > 0,05$, cho thấy không đủ bằng chứng thống kê vững chắc để khẳng định hiệu ứng độc lập.
+3. **Nhiệt độ, Độ ẩm & Áp suất bề mặt:**
+   - Cả 3 biến khí tượng đều có $p_{\text{HAC}} > 0,05$, không có bằng chứng thống kê về mối liên hệ tuyến tính độc lập trong điều kiện *ceteris paribus*.
+4. **Chu kỳ thời gian ngày đêm & mùa vụ:**
+   - Giữ ý nghĩa thống kê rất mạnh ($p < 0,01$), phản ánh nhịp sinh học giao thông đô thị và hiện tượng nghịch nhiệt mùa đông tại Hà Nội.
 """)
 
 # ---------------------------------------------------------------------------
@@ -274,6 +306,39 @@ print(f"Đã lưu biểu đồ ấn phẩm: {FIG_PATH.resolve()}")
 
 from IPython.display import Image
 Image(filename=str(FIG_PATH))
+""")
+
+# ---------------------------------------------------------------------------
+# CELL 13: Generate Deliverable Report
+# ---------------------------------------------------------------------------
+add_md(r"""## 11. Xuất Bản Báo Cáo Nghiệm Thu `reports/regression_results.md`
+""")
+
+add_code(r"""from src.regression import write_regression_report, RegressionResults
+
+results = RegressionResults(
+    split_timestamp=DEFAULT_SPLIT_TIMESTAMP,
+    n_train=len(y_train),
+    n_test=len(y_test),
+    predictors=list(X_train.columns),
+    vif_table=df_vif,
+    ols_summary_str=str(ols_orig.summary()),
+    hac_summary_str=str(ols_hac.summary()),
+    coefficients=coef_table,
+    line_diagnostics=line_diag,
+    cooks_distance_max=float(np.max(cooks_d)),
+    cooks_distance_threshold=thresh,
+    n_influential_points=n_inf,
+    ridge_best_alpha=best_ridge_alpha,
+    lasso_best_alpha=best_lasso_alpha,
+    metrics_table=metrics_df,
+    log1p_target_evaluated=True,
+    log1p_metrics={"original_resid_skew": float(ols_orig.resid.skew()), "log1p_resid_skew": float(ols_log.resid.skew())},
+)
+
+report_path = REPO_ROOT / "reports" / "regression_results.md"
+write_regression_report(results, report_path)
+print(f"Đã xuất báo cáo nghiệm thu: {report_path.resolve()}")
 """)
 
 
