@@ -440,3 +440,26 @@ Nếu số trong bảng lệch khỏi dữ liệu thật, script **fail** — n�
 | 21 | `pm25_is_derived` | `bool` | Cờ logic | `{True, False}` | `True` khi và chỉ khi `pm25` gốc là `NaN` và `pm25_derived_interpolated` được điền (`194` giờ ở `VN003`, `148` giờ ở `VN001`). |
 | 22 | `winter_year` | `Int64` | Năm mùa đông | `{2022, 2023, 2024, 2025, 2026}` hoặc `<NA>` | Gán tháng 12 của năm $Y-1$ và tháng 1–2 của năm $Y$ về năm kết thúc mùa đông $Y$ (`W2022` thiếu tháng 12/2021; `W2023`–`W2025` trên `VN003` và `W2026` trên `VN001` đủ 3 tháng). |
 | 23 | `season` | `string` | Danh mục mùa | `{"Winter (Dec-Feb)", "Spring (Mar-May)", "Summer (Jun-Aug)", "Autumn (Sep-Nov)"}` | Phân mùa khí tượng miền Bắc Việt Nam phục vụ phân tích EDA đa năm và kiểm định mùa vụ phân tách theo trạm. |
+
+---
+
+## 10. Đặc Tả Nhãn Cảnh Báo Ô Nhiễm Nhị Phân (Issue #13, Task 0.7b)
+
+> **Mã nguồn hiện thực hóa:** `src/cleaning_pipeline.py::build_alert_label()`
+> **Căn cứ quy chuẩn kỹ thuật:** QCVN 05:2023/BTNMT (Quy chuẩn kỹ thuật quốc gia về chất lượng không khí), bảng 1 quy định giá trị giới hạn nồng độ trung bình 24 giờ của $\text{PM}_{2.5}$ là $50\,\mu\text{g/m}^3$.
+
+### 10.1. Bảng đặc tả trường nhãn mục tiêu
+
+| Tên trường | Kiểu dữ liệu | Đơn vị | Ràng buộc / Miền giá trị | Định nghĩa toán học | Ý nghĩa & Quy tắc chống rò rỉ |
+|---|---|:---:|---|---|---|
+| `pm25_alert_24h` | `float64` | Nhị phân / Không thứ nguyên | `{0.0, 1.0}` hoặc `NaN` | $y_t = \mathbb{I}\left(\frac{1}{24}\sum_{i=0}^{23} \text{PM}_{2.5, t-i} \ge 50.0\right)$ | Nhãn cảnh báo sớm ô nhiễm vượt ngưỡng an toàn. Cửa sổ trượt `window=24`, đòi hỏi `min_periods=24` giờ hợp lệ liên tiếp trong quá khứ $[t-23, t]$. Nếu có bất kỳ giờ nào bị khuyết ($<24$ giờ đo), nhãn được gán là `NaN` (không tự ý suy diễn nhãn). |
+
+### 10.2. Thống nhất về Mẫu số và Tỷ lệ mất cân bằng lớp
+
+Khi đánh giá bài toán phân loại nhị phân cảnh báo sớm, dự án xác lập minh bạch hai mẫu số:
+- **Mẫu số chuẩn vận hành (Dòng có trung bình trượt hợp lệ - Denominator 1):** $N_{\text{valid}} = 5.317$ giờ (Train: $2.994$, Test: $2.323$). Tỷ lệ dương thực tế:
+  $$\text{Prevalence}_{\text{valid}} = \frac{1.655}{5.317} = 31,13\% \quad (\text{Train: } 32,93\%, \text{ Test: } 28,80\%)$$
+  *Ý nghĩa:* Trong số các thời điểm cảm biến có đủ lịch sử quan trắc hợp lệ để tính toán mức phơi nhiễm 24h, có $31,13\%$ thời điểm vượt ngưỡng quy chuẩn an toàn. Đây là mẫu số chính thức được dùng làm baseline prevalence cho đường cong Precision-Recall (PR Curve).
+- **Mẫu số toàn bộ thời gian (Denominator 2):** $N_{\text{all}} = 9.044$ giờ (Train: $4.682$, Test: $4.362$). Tỷ lệ dương:
+  $$\text{Prevalence}_{\text{all}} = \frac{1.655}{9.044} = 18,30\% \quad (\text{Train: } 21,06\%, \text{ Test: } 15,34\%)$$
+  *Ý nghĩa:* Đo lường tần suất xảy ra đợt cảnh báo trên toàn bộ trục thời gian nghiên cứu (bao gồm cả các giai đoạn trạm dừng hoạt động).

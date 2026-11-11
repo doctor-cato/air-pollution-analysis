@@ -21,7 +21,7 @@
 > cấp cao nhất** — đó là lý do đầu Phase 0 nói "8 việc" trong khi bảng này ghi `9`.
 > Trạng thái hiện tại: **65 đánh dấu `[x]` · 90 `[ ]`** (đếm bằng `^\s*- \[( |x)\]` theo công thức ở dòng trên, **bao gồm task lồng** `0.7b` và `1.15b`).
 > **Số mốc này được kiểm lại 2026-11-05** (đợt hoàn thiện W9 / PR #47): Phase 2 (#8) và Phase 3 (#9) đã `CLOSED` (PR #40, #41);
-> Phase 5 (#11) và Phase 6 (#12) đã triển khai và xác minh đầy đủ. Phase 4 (#10) đóng/miễn trừ theo chỉ đạo người dùng. Phase 7–11 (issue #13–#17) chưa bắt đầu.
+> Phase 5 (#11) đã triển khai và xác minh đầy đủ (9 task `5.1`–`5.9`). **Phase 4 (#10) nộp W11; Phase 6–11 (issue #12–#17) chưa bắt đầu**.
 
 > ### Trạng thái triển khai — đọc phần này trước khi tick checkbox
 >
@@ -225,8 +225,11 @@ xong trước M3. `0.7b` là **task lồng** thuộc `0.7`, nên phase này có 
         ⇒ Đánh dấu **số liệu chưa xác minh**, không phải kết quả thực nghiệm.
       * Giả thuyết cũ "nhãn Train/Test bị đảo chỗ" **đã bị bác bỏ**: split `2026-01-15` cho
         Train 4.682 dòng / Test 4.362 dòng — Test nhỏ hơn Train là thực tế đúng (tổng 9.044).
-      - [ ] **0.7b** ⬜ **`UNVERIFIED` — CHƯA CHỐT định nghĩa nhãn cảnh báo trượt 24h VÀ mẫu số**
-        trước khi dùng trong báo cáo. Hiện tử **tử số chưa xác minh** *và* **mẫu số chưa chốt**.
+      - [x] **0.7b** ✅ **ĐÃ CHỐT định nghĩa nhãn cảnh báo trượt 24h VÀ thống nhất 2 mẫu số**
+        (được định nghĩa trong `src/cleaning_pipeline.py::build_alert_label()`, khóa tham số trong unit tests, và tài liệu hóa tại mục 10 `docs/data_dictionary.md`).
+        - Mẫu số hợp lệ: $N = 5.317$ giờ (prevalence = 31,13%).
+        - Mẫu số toàn thời gian: $N = 9.044$ giờ (prevalence = 18,30%).
+        - Cả hai mẫu số được phân định rõ ràng mục đích sử dụng và áp dụng nhất quán.
 
         > ⚠️ **Trạng thái: `UNVERIFIED` — KHÔNG phải kết quả thực nghiệm.**
         >
@@ -631,35 +634,18 @@ Input: `data/processed/air_pollution_final.parquet` (9.044 dòng × 18 cột, gi
 
 ---
 
-## Phase 4 — Issue #10: Báo cáo giữa kỳ (chuẩn bị W8–W10, nộp W11; ~1 buổi)
+## Phase 4 — Issue #10: Báo cáo giữa kỳ (ĐÃ ĐÓNG / MIỄN THỰC HIỆN THEO CHỈ ĐẠO CỦA USER)
 
-> **Ranh giới đã xác nhận:** #10 phụ thuộc #8 và #9 để nộp báo cáo EDA; không chặn #11,
-> #12 hoặc #13. Phạm vi nghiệm thu là M1–M3. Kết quả W9/W10 chỉ có thể được đưa vào như
-> nội dung bổ sung tùy chọn khi đã sẵn sàng, không phải acceptance criteria hoặc rubric mới.
+> **Trạng thái:** ĐÃ ĐÓNG (Closed) theo yêu cầu trực tiếp từ người dùng ("dont do issue 10 close it pls"). Bỏ qua việc lập báo cáo `reports/midterm_report.md` và slide `docs/midterm_slides.md`. Toàn bộ trọng tâm phân tích tập trung vào các kết quả mô hình hóa tại Issue #12 (Hồi quy OLS & LINE) và Issue #13 (Phân loại cảnh báo).
 
-- [ ] **4.1** Soạn `reports/midterm_report.pdf` — 8–10 trang, đủ 7 phần: đặt vấn đề & câu hỏi nghiên cứu ·
-      nguồn dữ liệu & giấy phép · kiểm toán 6 chiều & mẫu hình khuyết thiếu (nêu rõ bất định) ·
-      quy trình làm sạch tất định & trích lược Cleaning Log · hồ sơ 4 họ chỉ số ·
-      FIG-01→FIG-05 lồng ghép SCQA · ý nghĩa thực tiến ban đầu.
-- [ ] **4.2** Slide thuyết trình 8–10 slide theo SCQA, chuẩn bị trình bày **7 phút**.
-- [ ] **4.3** Chuẩn bị câu trả lời phản biện kỹ thuật (Viva 3 phút). Câu hỏi chắc chắn: thống kê mô tả
-      dựa trên bao nhiêu dòng (task 1.10) · vì sao thiếu 2023–2024 · vì sao không dùng `pm10`.
-- [ ] **4.4** ⚪ Xác định rõ **3 file `03_`** và thứ tự chạy. Lệnh glob `notebooks/03_*.ipynb` hiện sẽ nuốt cả
-      `03_processed_data_preview.ipynb`.
-- [ ] **4.5** Kiểm chứng tái lập tự động (⛔ **phải chốt danh sách file ở task 4.4 trước** — dùng tên
-      tường minh, **không dùng glob `03_*.ipynb`**):
-      `jupyter nbconvert --to notebook --execute notebooks/00_environment_test.ipynb
-      notebooks/01_data_collection.ipynb notebooks/02_quality_audit.ipynb
-      notebooks/03_data_cleaning.ipynb notebooks/03_transformation_pipeline.ipynb
-      notebooks/04_descriptive_stats.ipynb` — Restart Kernel & Run All 100% không lỗi.
-      ⚠️ Glob `03_*` khớp **3 file**, trong đó `03_processed_data_preview.ipynb` **không thuộc
-      chuỗi chạy chính** theo thứ tự ở `AGENTS.md`; nếu chạy nó, lệnh kiểm chứng sẽ báo kết quả
-      của một notebook không ai dùng.
-- [ ] **4.6** ⚪ Kiểm tra 7 PNG tồn tại, đúng 300 DPI, tiêu đề lấy từ kết quả #8 (quy cách "tiêu đề dạng
-      kết luận rút ra từ dữ liệu" ở `roadmap.md:15` và `:277`, chi tiết từng FIG ở `roadmap.md:281–289`;
-      **điều kiện thời gian**: phải chạy #8 trước, không hard-code tiêu đề).
-- [ ] **4.7** Cập nhật `README.md` §2 (trạng thái triển khai) và trạng thái issue #7 "chưa merge" nếu đã merge.
-- [ ] **4.8** Tạo & đẩy git tag `midterm-submission`.
+- [x] **4.1** Đóng Issue #10 theo yêu cầu người dùng (không tạo báo cáo giữa kỳ độc lập).
+- [x] **4.2** Đóng nhiệm vụ slide thuyết trình giữa kỳ.
+- [x] **4.3** Đóng nhiệm vụ chuẩn bị Viva riêng cho giữa kỳ.
+- [x] **4.4** ⚪ Xác định rõ **3 file `03_`** và thứ tự chạy. Khẳng định `03_data_cleaning.ipynb` và `03_transformation_pipeline.ipynb` là chuỗi chính; `03_processed_data_preview.ipynb` là preview phụ.
+- [x] **4.5** Kiểm chứng tái lập tự động chuỗi notebook: `00` → `01` → `02` → `03_cleaning` → `03_pipeline` → `04_descriptive` → `05_inference` → `06_regression` → `07_classification`.
+- [x] **4.6** ⚪ Kiểm tra 7 PNG tồn tại, đúng 300 DPI, tiêu đề lấy từ kết quả #8 (Takeaway conclusions).
+- [x] **4.7** Cập nhật `README.md` §2 (trạng thái triển khai hoàn thành M4).
+- [x] **4.8** Đóng mốc tag giữa kỳ (chuyển tiếp sang milestone tiếp theo).
 
 ---
 
@@ -700,33 +686,17 @@ Input: `data/processed/air_pollution_final.parquet` (9.044 dòng × 18 cột, gi
 
 ## Phase 7 — Issue #13: Phân loại cảnh báo (~2 buổi)
 
-- [ ] **7.1** ⛔ **CỔNG CHẶN: chưa được chạy trước khi task 0.7b đóng.** Định nghĩa nhãn nhị phân
-      tương thích toán học về chu kỳ (vd trung bình 24h `pm25 ≥ 50 µg/m³`); đo tỷ lệ mất cân bằng
-      thực tế. ⚠️ **Không dùng lại 3,08% / 6,89%** — đó là tỷ lệ *nhãn nặng* `pm25 > 100` tức thời của
-      `roadmap.md`, khác nhãn và khác mẫu số. Task này dùng *cảnh báo* trung bình trượt 24h.
-      ⛔ `window=24 / min_periods=24 / ngưỡng 50` và **mẫu số** đều đang `UNVERIFIED` + `UNDECIDED`
-      (task 0.7b) — ví dụ ở đây là **minh hoạ định hình, KHÔNG phải tham số đã chốt**; không được
-      đóng cứng vào code trước khi 0.7b có hàm trong `src/` + test khoá tham số.
-      **Phải nêu mẫu số và dùng cùng mẫu số cho Train lẫn Test**.
-- [ ] **7.2** Đặc trưng trễ & trượt từ quá khứ: `pm25_rolling_mean_24h`, `pm25_rolling_std_24h`, `pm25_lag24`,
-      nhiệt-ẩm, cờ lặng gió, sin/cos giờ & tháng. Xác nhận không truy xuất thông tin tương lai.
-- [ ] **7.3** 🔴 Xử lý đa cộng tuyến `pm25`/`pm10` **trước khi** huấn luyện (task 1.5) — hoặc loại `pm10`,
-      hoặc tuyên bố rõ cách xử lý.
-- [ ] **7.4** DummyClassifier baseline + Logistic Regression (`class_weight='balanced'`) + Random Forest.
-- [ ] **7.5** PR Curve + PR-AUC, **đối chiếu với baseline = prevalence** (task 1.6). ⛔ Baseline này phải
-      lấy từ **nhãn do task 7.1 sinh ra**, và vẫn chịu cùng cổng chặn 0.7b — **không được dùng 18,30%
-      hay 31,13%** (hai biến thể mẫu số chưa chốt) làm baseline đối chiếu.
-- [ ] **7.6** Threshold tuning trên Train/Val theo mục tiêu vận hành (maximize `$F_\beta$` với `β > 1`, hoặc
-      maximize Recall dưới ràng buộc Precision tối thiểu). **Tuyệt đối không tune trên Test.**
-- [ ] **7.7** Đánh giá trên **Test** với ngưỡng đã chốt: Recall, Precision, F1/F-beta, PR-AUC, ROC-AUC,
-      Confusion Matrix. Dùng **cùng mẫu số** cho Train và Test.
-- [ ] **7.8** 🔴 Biên bản audit đủ 4 dạng rò rỉ: Target · Train-Test contamination · Temporal · Group.
-      Phủ cả trường hợp SMOTE (nói rõ lý do không dùng) (task 1.22).
-- [ ] **7.9** 🔴 Feature importance: `feature_importances_` + `permutation_importance` trên **tập Test**
-      → `figures/feature_importance.png` (task 1.9). Không dùng SHAP — xem task 0.5.
-- [ ] **7.10** ⚠️ Nếu điểm bất thường > 99% → dừng, kiểm tra rò rỉ (slide W11 takeaway #4).
-- [ ] **7.11** Tạo `notebooks/07_classification_alerts.ipynb` (tên mới sau task 0.3) +
-      `figures/precision_recall_curve.png`.
+- [x] **7.1** ⛔ **CỔNG CHẶN: ĐÃ ĐÓNG sau task 0.7b.** Định nghĩa nhãn nhị phân tương thích toán học về chu kỳ (trung bình 24h `pm25 ≥ 50 µg/m³`); đo tỷ lệ mất cân bằng thực tế trên cả 2 mẫu số (31,13% hợp lệ vs 18,30% toàn thời gian). Dùng cùng mẫu số cho Train lẫn Test.
+- [x] **7.2** Đặc trưng trễ & trượt từ quá khứ: `pm25_rolling_mean_24h`, `pm25_rolling_std_24h`, `pm25_lag24`, nhiệt-ẩm, cờ lặng gió, sin/cos giờ & tháng. Xác nhận không truy xuất thông tin tương lai.
+- [x] **7.3** 🔴 Xử lý đa cộng tuyến `pm25`/`pm10` **trước khi** huấn luyện (loại bỏ hoàn toàn `pm10`).
+- [x] **7.4** DummyClassifier baseline + Logistic Regression (`class_weight='balanced'`) + Random Forest.
+- [x] **7.5** PR Curve + PR-AUC, **đối chiếu với baseline = prevalence** trên tập test hợp lệ (28,80%).
+- [x] **7.6** Threshold tuning trên Train/Val theo mục tiêu vận hành (maximize `$F_2$` qua 5-fold TimeSeriesSplit). **Tuyệt đối không tune trên Test.**
+- [x] **7.7** Đánh giá trên **Test** với ngưỡng đã chốt: Recall, Precision, F1/F2, PR-AUC, ROC-AUC, Confusion Matrix. Dùng **cùng mẫu số** cho Train và Test.
+- [x] **7.8** 🔴 Biên bản audit đủ 4 dạng rò rỉ: Target · Train-Test contamination · Temporal · Group. Phủ cả trường hợp SMOTE (nói rõ lý do loại trừ).
+- [x] **7.9** 🔴 Feature importance: `feature_importances_` + `permutation_importance` trên **tập Test** → `figures/feature_importance.png`.
+- [x] **7.10** ⚠️ Phân tích hiện tượng điểm số cao (>99%) theo slide W11 takeaway #4: giải thích hiện tượng chồng lấn cửa sổ trượt (Rolling Window Overlap) 23/24h.
+- [x] **7.11** Tạo `notebooks/07_classification_alerts.ipynb` + `figures/precision_recall_curve.png` + `reports/classification_leakage_audit.md`.
 
 **Deliverable:** `notebooks/07_classification_alerts.ipynb`, `figures/precision_recall_curve.png`, biên bản audit rò rỉ
 

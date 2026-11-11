@@ -52,6 +52,8 @@ reports/*
 # chạy lại mô phỏng (vài chục phút). Sinh lại bằng
 # `python scripts/validate_inference_montecarlo.py --n-sim 1000`.
 !reports/inference_montecarlo.csv
+# Biên bản kiểm toán rò rỉ dữ liệu Issue #13:
+!reports/classification_leakage_audit.md
 
 # ⚠️ figures/ CỐ Ý KHÔNG bị ignore: FIG-01…FIG-07 là bằng chứng chấm điểm
 # (mục "biểu đồ ấn phẩm" 20% rubric) và hội đồng cần mở repo xem được.

@@ -3,7 +3,7 @@
 > **Đề tài:** Phân tích mức độ ô nhiễm không khí theo thời gian (*Time-Series Air Pollution Analysis*)  
 > **Căn cứ tài liệu:** Đề cương môn học INFO3020, Bài giảng ThS. Phạm Ngọc Đông – Khoa CNTT & Truyền thông, Trường Đại học CMC, và hệ thống 17 GitHub Issues (#1–#17, #19) làm đặc tả kỹ thuật có thẩm quyền.  
 > **Nơi lưu trữ:** `docs/roadmap.md`
-> **Kiểm thử hiện tại (Issue #12):** suite định nghĩa **739** test methods;
+> **Kiểm thử hiện tại (Issue #13):** suite định nghĩa **754** test methods;
 > [`docs/TEST_SUITE.md`](TEST_SUITE.md) là nguồn chuẩn cho breakdown và kết quả theo môi trường.
 
 ---
@@ -504,9 +504,9 @@ air-pollution-analysis/
 │   ├── 03_transformation_pipeline.ipynb# Tích hợp, đóng băng, split và đóng gói Pipeline [Issue #7]
 │   ├── 03_processed_data_preview.ipynb # Kiểm tra artifact đã đóng băng trước khi M3 đọc [Issue #7]
 │   ├── 04_descriptive_stats.ipynb      # Thống kê mô tả 4 họ chỉ số & phân tích chu kỳ [Issue #8]
-│   ├── 05_statistical_inference.ipynb  # Kế hoạch — Kiểm định phi tham số, Effect Size, Bootstrap CI [Issue #11]
-│   ├── 06_regression_modeling.ipynb    # Hồi quy OLS, chẩn đoán LINE, Ridge/Lasso TimeSeriesSplit [Issue #12]
-│   └── 07_classification_alerts.ipynb  # Kế hoạch — Phân loại cảnh báo sớm, PR-AUC, Threshold tuning [Issue #13]
+│   ├── 05_statistical_inference.ipynb  # Suy luận thống kê — Kiểm định phi tham số, Effect Size, Bootstrap CI [Issue #11]
+│   ├── 06_regression_modeling.ipynb    # Hồi quy OLS, chẩn đoán LINE, Ridge/Lasso [Issue #12]
+│   └── 07_classification_alerts.ipynb  # Phân loại cảnh báo sớm, PR-AUC, Threshold tuning [Issue #13]
 ├── src/
 │   ├── __init__.py
 │   ├── data_collection.py              # Adapter OpenAQ / Open-Meteo / AirNow + validation [Issue #3, #4]
@@ -514,9 +514,12 @@ air-pollution-analysis/
 │   ├── cleaning.py                     # Làm sạch tất định, kẹt cảm biến, reindex, sinh Cleaning Log [Issue #6]
 │   ├── cleaning_pipeline.py            # Merge, freeze, split tuần tự, sklearn Pipeline chống rò rỉ [Issue #7]
 │   ├── flag_evidence.py                 # Tái lập số cho cờ is_high_humidity_fog từ dữ liệu thật [Issue #38]
-│   ├── regression.py                   # Mô hình hồi quy OLS, kiểm định 4 giả định LINE, Ridge/Lasso [Issue #12]
-│   └── visualizer.py                   # Kế hoạch — Hàm vẽ biểu đồ chuẩn Tufte/Cleveland [Issue #9, #15]
-├── figures/                            # Kế hoạch — 7 biểu đồ ấn phẩm giải thích FIG-01→FIG-07, PNG 300 DPI [Issue #9]
+│   ├── visualizer.py                   # Hàm vẽ biểu đồ chuẩn Tufte/Cleveland FIG-01..FIG-07 [Issue #9, #15]
+│   ├── inference.py                    # W9 Suy luận thống kê phụ thuộc thời gian [Issue #11]
+│   ├── regression.py                   # W10 Hồi quy OLS, LINE diagnostics, Ridge/Lasso [Issue #12]
+│   ├── classification.py               # W11 Phân loại cảnh báo ô nhiễm & kiểm toán rò rỉ [Issue #13]
+│   └── issue44_preparation.py          # Chuẩn bị dữ liệu lịch sử mở rộng 2022-2025 [Issue #44]
+├── figures/                            # 7 biểu đồ ấn phẩm giải thích FIG-01→FIG-07, FIG-08..FIG-12, chẩn đoán LINE & PR curve [Issue #9, #11, #12, #13]
 │   └── .gitkeep
 └── reports/
     ├── statistical_profile.csv         # Bảng hồ sơ thống kê mô tả 4 họ chỉ số [Issue #8]
@@ -790,20 +793,20 @@ W01–W15.
 >   `#12`, `#13`) **đã được mở lại** và không còn bị chặn.
 > - Các số liệu thực nghiệm nêu trong các báo cáo (#4, #5) là **kết quả của một lần thực thi cụ thể**
 >   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
-> - Bộ kiểm thử hiện gồm **739 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
+> - Bộ kiểm thử hiện gồm **754 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
 >   [`docs/TEST_SUITE.md`](TEST_SUITE.md) — nguồn chuẩn duy nhất cho số liệu kiểm thử).
 >   Số mà unittest **thực sự chạy và báo cáo** phụ thuộc cả nền tảng lẫn việc có
->   `data/` hay không — **không phải con số 739 trên mọi nền tảng**:
->   - **Windows local (có `data/interim/*.parquet`)**: `Ran 739 tests` + `OK` → **739 pass, 0 skip**.
->   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`)**: `Ran 722 tests` + `OK (skipped=7)`
->     → **718 pass, 7 skip**.
+>   `data/` hay không — **không phải con số 754 trên mọi nền tảng**:
+>   - **Windows local (có `data/interim/*.parquet`)**: `Ran 754 tests` + `OK` → **754 pass, 0 skip**.
+>   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`)**: `Ran 736 tests` + `OK (skipped=8)`
+>     → **732 pass, 8 skip**.
 >
->   CI báo **722 chứ không phải 739** vì **17** phương thức nằm trong **3** lớp mà
+>   CI báo **736 chứ không phải 754** vì **18** phương thức nằm trong **4** lớp mà
 >   `setUpClass` ném `unittest.SkipTest` khi thiếu `data/` — `TestDocumentedReproduction`
->   (4), `TestRealDataset` của `tests/test_inference.py` (12), và `TestRegressionRealData` của
->   `tests/test_regression.py` (1); cả 3 lớp bị bỏ qua nên các phương thức
->   **không chạy, không được tính vào "Ran"**, nhưng mỗi lớp vẫn đóng góp
->   **1 dòng** vào `skipped=`. Vì vậy `pass = Ran − (skipped − holder) = 722 − (7 − 3) = 718`.
+>   (4), `TestRealDataset` của `tests/test_inference.py` (12), `TestRegressionRealDataset` (1),
+>   và `TestClassificationRealDataset` (1); các lớp này bị bỏ qua nên các phương thức
+>   **không chạy, không được tính vào "Ran"**, nhưng mỗi lớp vẫn đóng góp **1 dòng** vào `skipped=`.
+>   Vì vậy `pass = Ran − (skipped − holder) = 736 − (8 − 4) = 732`.
 >   Danh sách skip còn lại: `TestScriptsUseTheComputation.test_progress_report_bullet_carries_the_computed_f_statistic`
 >   (cùng lý do thiếu dữ liệu); hai test `@unittest.skipUnless(os.name == "nt")` trong
 >   `tests/test_pipeline_runtime_log.py`; và `test_live_restart_kernel_and_run_all` trong
