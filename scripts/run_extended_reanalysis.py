@@ -24,6 +24,7 @@ if str(ROOT) not in sys.path:
 
 from src.cleaning import validate_cleaned_dataset
 from src.data_quality import ATMOSPHERIC_BOUNDS, audit_six_dimensions
+from src.extended_audit import compare_station_evidence, group_quality_dimensions
 from src.inference import (
     BLOCK_LENGTH_DAYS, HAC_LAG_DAILY, N_NULL_BOOTSTRAP,
     build_daily_calendar, build_daily_panel, calendar_bootstrap_ci, run_inference,
@@ -230,6 +231,7 @@ def quality_and_profile(df: pd.DataFrame, raw_vn003: pd.DataFrame) -> tuple[pd.D
             n_valid = int(group.pm25.notna().sum())
             raw = raw_vn003.loc[(raw_vn003.timestamp >= start) & (raw_vn003.timestamp < end)] if station.endswith("7441") else None
             raw_n = len(raw) if raw is not None else None
+            raw_source_hours = int(raw.timestamp.drop_duplicates().isin(group.timestamp).sum()) if raw is not None else None
             invalid_n = int((raw.value.lt(0) | raw.value.gt(1000) | raw.value.isna()).sum()) if raw is not None else None
             local_gaps = missing_runs(group)
             sizes = local_gaps.gap_hours if not local_gaps.empty else pd.Series(dtype=int)
@@ -245,6 +247,13 @@ def quality_and_profile(df: pd.DataFrame, raw_vn003: pd.DataFrame) -> tuple[pd.D
                             "gap_count": len(sizes), "longest_missing_gap_hours": int(sizes.max()) if len(sizes) else 0,
                             "median_gap_hours": float(sizes.median()) if len(sizes) else 0,
                             "sample_size_denominator": expected})
+            quality[-1].update(group_quality_dimensions(
+                group, expected_calendar_hours=expected,
+                outside_active_window_hours=max(0, expected - n_grid),
+                raw_observations=raw_n, raw_source_hours=raw_source_hours,
+                raw_invalid_observations=invalid_n,
+                physical_bounds=ATMOSPHERIC_BOUNDS,
+            ))
             for variable in numeric:
                 vals = group[variable].dropna().astype(float)
                 row = {"station_id": station, "period_type": kind, "period": key,
@@ -280,40 +289,125 @@ def quality_and_profile(df: pd.DataFrame, raw_vn003: pd.DataFrame) -> tuple[pd.D
     return pd.DataFrame(quality), pd.DataFrame(profile), gaps, audits
 
 
+def monthly_figure_groups(part: pd.DataFrame, quality: pd.DataFrame) -> list[dict]:
+    """Monthly box inputs with observed n and full-calendar coverage from the QC table."""
+    station = part.station_id.iloc[0]
+    scoped_quality = quality.loc[
+        (quality.station_id == station) & (quality.period_type == "month")
+    ].set_index("period")
+    rows = []
+    for period, group in part.groupby(part.timestamp.dt.strftime("%Y-%m"), sort=False):
+        start = pd.Timestamp(f"{period}-01", tz=part.timestamp.dt.tz)
+        end = start + pd.DateOffset(months=1)
+        n = int(group.pm25.notna().sum())
+        expected = int((end - start) / pd.Timedelta(hours=1))
+        coverage = 100 * n / expected
+        if period in scoped_quality.index:
+            qc = scoped_quality.loc[period]
+            if int(qc.valid_pm25_observations) != n or not np.isclose(qc.coverage_pct_calendar, coverage):
+                raise ValueError(f"FIG-03 monthly QC mismatch: {station}, {period}")
+        rows.append({"period": period, "year": int(period[:4]), "month": int(period[5:]),
+                     "values": group.pm25.dropna().to_numpy(), "n": n,
+                     "coverage_pct_calendar": coverage})
+    return rows
+
+
 def save_figures(df: pd.DataFrame, quality: pd.DataFrame) -> None:
     FIGURES.mkdir(parents=True, exist_ok=True)
     configure_vietnamese_fonts()
     plt.rcParams.update({"font.size": 10, "axes.spines.top": False,
                          "axes.spines.right": False, "savefig.dpi": 300})
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4.8), layout="constrained")
+    # FIG-02: observed PM2.5 distribution by station and calendar year. Partial
+    # years keep full-calendar coverage on the tick label so they are not read
+    # as equivalent cohorts.
+    fig, axes = plt.subplots(1, 2, figsize=(12.5, 5.0), layout="constrained")
     for ax, (station, part) in zip(axes, df.groupby("station_id")):
         by_year = [v.pm25.dropna().to_numpy() for _, v in part.groupby(part.timestamp.dt.year)]
         labels = [str(y) for y in sorted(part.timestamp.dt.year.unique())]
         q = quality.loc[(quality.station_id == station) & (quality.period_type == "year")].set_index("period")
-        ticks = [f"{y}\nn={len(x):,}\n{q.loc[y,'coverage_pct_calendar']:.0f}% calendar" for y,x in zip(labels,by_year)]
-        ax.boxplot(by_year, tick_labels=ticks, showfliers=False)
-        ax.set_title(f"{station.split('_')[0]}: PM2.5 observed by year")
-        ax.set_xlabel("Calendar year (partial years retained)")
+        ticks = []
+        for y, x in zip(labels, by_year):
+            row = q.loc[y]
+            partial = bool(row.active_grid_hours < row.expected_calendar_hours)
+            ticks.append(
+                f"{y}{'*' if partial else ''}\nn={len(x):,}\n"
+                f"{row.coverage_pct_calendar:.0f}% calendar"
+            )
+        ax.boxplot(by_year, tick_labels=ticks, showfliers=False, widths=.55)
+        ax.set_title(f"{station.split('_')[0]}: observed PM2.5 by calendar year")
+        ax.set_xlabel("Calendar year (* partial year: active window < full year)")
         ax.set_ylabel("PM2.5 (µg/m³)")
     fig.savefig(FIGURES/"FIG-02-extended.png", dpi=300)
     plt.close(fig)
+
+    # FIG-03: monthly PM2.5 distribution per station, with year-specific boxes
+    # and a coverage panel. This answers the documented question (seasonal and
+    # monthly distribution); winter coverage is a separate QC figure below.
+    months = list(range(1, 13))
+    years = sorted(df.timestamp.dt.year.unique())
+    cmap = plt.get_cmap("viridis")
+    colors = {year: cmap(i / max(1, len(years) - 1)) for i, year in enumerate(years)}
+    fig = plt.figure(figsize=(13, 8.2), layout="constrained")
+    grid = fig.add_gridspec(2, 2, height_ratios=[3.0, 1.05], hspace=.08)
+    for column, (station, part) in enumerate(df.groupby("station_id")):
+        ax = fig.add_subplot(grid[0, column])
+        cover_ax = fig.add_subplot(grid[1, column], sharex=ax)
+        monthly = monthly_figure_groups(part, quality)
+        month_width = 0.8 / max(1, len([y for y in years if (part.timestamp.dt.year == y).any()]))
+        present_years = [y for y in years if (part.timestamp.dt.year == y).any()]
+        for index, year in enumerate(present_years):
+            annual = part.loc[part.timestamp.dt.year == year]
+            offset = -0.4 + month_width * (index + .5)
+            selected = [row for row in monthly if row["year"] == year and row["n"]]
+            data = [row["values"] for row in selected]
+            positions = [row["month"] + offset for row in selected]
+            if not data:
+                continue
+            ax.boxplot(data, positions=positions, widths=month_width * .85,
+                       showfliers=False, patch_artist=True,
+                       boxprops={"facecolor": colors[year], "alpha": .75,
+                                 "edgecolor": "#333333", "linewidth": .6},
+                       medianprops={"color": "#111111", "linewidth": 1.0})
+            observed = int(annual.pm25.notna().sum())
+            cover_ax.bar(positions, [row["coverage_pct_calendar"] for row in selected],
+                          width=month_width * .85,
+                          color=colors[year], alpha=.85, linewidth=0,
+                          label=f"{year}: n={observed:,}")
+        for winter_month in (12, 1, 2):
+            ax.axvspan(winter_month - .5, winter_month + .5, color="#d9d9d9", alpha=.18, zorder=0)
+            cover_ax.axvspan(winter_month - .5, winter_month + .5, color="#d9d9d9", alpha=.18, zorder=0)
+        ax.set_xticks(months)
+        ax.set_xticklabels(["Dec" if m == 12 else str(m) for m in months])
+        ax.set_xlim(.5, 12.5)
+        ax.set_ylabel("PM2.5 (µg/m³)")
+        ax.set_title(f"{station.split('_')[0]}: monthly observed PM2.5 by year")
+        cover_ax.set_ylim(0, 100)
+        cover_ax.set_ylabel("Full-month\ncoverage (%)", fontsize=8)
+        cover_ax.set_xlabel("Calendar month (grey = Dec–Feb; winter cohort coverage in FIG-03b)")
+        cover_ax.legend(fontsize=7, ncol=2, frameon=False, loc="upper right")
+    fig.savefig(FIGURES/"FIG-03-extended.png", dpi=300)
+    plt.close(fig)
+
+    # Supplementary QC figure: full-calendar winter coverage. Kept because it
+    # is the evidence that partial winters must not be ranked as full cohorts.
     winter = quality.loc[quality.period_type == "winter_year"]
     fig, axes = plt.subplots(1, 2, figsize=(12, 4), layout="constrained")
     for ax, (station, part) in zip(axes, winter.groupby("station_id")):
-        labels = [x.rsplit(":",1)[-1] + ("*" if active < expected else "")
+        labels = [x.rsplit(":", 1)[-1] + ("*" if active < expected else "")
                   for x, active, expected in zip(part.period, part.active_grid_hours, part.expected_calendar_hours)]
         ax.bar(labels, part.coverage_pct_calendar, color="#287c8e", width=.55)
         if len(labels) == 1:
-            ax.set_xlim(-.8,.8)
-        ax.set_ylim(0,100)
+            ax.set_xlim(-.8, .8)
+        ax.set_ylim(0, 100)
         ax.set_ylabel("Observed PM2.5 / full winter calendar (%)")
         ax.set_xlabel("Winter ending year")
-        ax.set_title(f"{station.split('_')[0]}: winter coverage")
+        ax.set_title(f"{station.split('_')[0]}: full-calendar winter coverage")
         if any(x.endswith("*") for x in labels):
             ax.text(.02, .02, "* partial active window", transform=ax.transAxes, fontsize=8)
         for i, row in enumerate(part.itertuples()):
-            ax.text(i, row.coverage_pct_calendar+2, f"n={row.valid_pm25_observations:,}", ha="center", fontsize=8)
-    fig.savefig(FIGURES/"FIG-03-extended.png", dpi=300)
+            ax.text(i, row.coverage_pct_calendar + 2,
+                    f"n={row.valid_pm25_observations:,}", ha="center", fontsize=8)
+    fig.savefig(FIGURES/"FIG-03b-winter-coverage.png", dpi=300)
     plt.close(fig)
 
 
@@ -327,23 +421,38 @@ def write_outputs(df: pd.DataFrame, meta: dict, quality: pd.DataFrame, profile: 
     figure_rows = []
     decisions = [
         ("FIG-01", "Multiscale history", "REUSE", "Issue #44 historical figure already answers the time-series question"),
-        ("FIG-02", "PM2.5 distribution by station/year", "EXTEND", "Year-specific distributions expose uneven coverage"),
-        ("FIG-03", "Seasonal and monthly distribution", "EXTEND", "Full-calendar winter coverage prevents ranking partial winters"),
-        ("FIG-04", "Hour × weekday pattern", "NOT NEEDED", "Station-specific profile table answers descriptive question; traffic source remains NO-GO"),
-        ("FIG-05", "Meteorology LOWESS", "NOT NEEDED", "Station/year correlations and quintile medians inspect nonlinearity with n; no causal claim"),
-        ("FIG-06", "Pearson/Spearman matrix", "NOT NEEDED", "Station-specific correlation table avoids misleading pooled matrix"),
-        ("FIG-07", "Rolling-24h and eligible daily categories", "NOT NEEDED", "Extended daily exceedance is in inference report; no unverified rolling-window categories"),
+        ("FIG-02", "PM2.5 distribution by station/year", "EXTEND", "Year-specific distributions expose uneven coverage; tick labels carry n and full-calendar coverage and mark partial years"),
+        ("FIG-03", "Seasonal and monthly PM2.5 distribution by station and year", "EXTEND", "Monthly observed-PM2.5 distributions split by station and year; legend gives annual observed n and lower panel gives full-month calendar coverage; partial winter coverage is separate supplementary QC figure"),
+        ("FIG-04", "Hour × weekday pattern", "NOT NEEDED", "Station-specific hourly/weekday profile table answers the descriptive question; traffic source remains NO-GO, so no traffic claim is made"),
+        ("FIG-05", "Meteorology LOWESS", "NOT NEEDED", "Station/year correlations and quintile medians inspect nonlinearity with n and coverage; ERA5 is a grid product and no causal claim is made"),
+        ("FIG-06", "Pearson/Spearman matrix", "NOT NEEDED", "Station-specific correlation table avoids a misleading pooled matrix across disjoint stations"),
+        ("FIG-07", "Rolling-24h and eligible daily categories", "NOT NEEDED", "Extended daily exceedance counts are in the inference artifacts; no unverified rolling-window category is created"),
     ]
     for fig, question, decision, reason in decisions:
         for station, part in df.groupby("station_id"):
+            years = quality.loc[(quality.station_id == station) & (quality.period_type == "year")]
+            winters = quality.loc[(quality.station_id == station) & (quality.period_type == "winter_year")]
+            partial_years = [row.period for row in years.itertuples()
+                             if row.active_grid_hours < row.expected_calendar_hours]
+            partial_winters = [row.period for row in winters.itertuples()
+                               if row.active_grid_hours < row.expected_calendar_hours]
             figure_rows.append({"figure": fig, "research_question": question, "decision": decision,
                                 "reason": reason, "dataset_version": VERSION, "station_id": station,
                                 "start": str(part.timestamp.min()), "end": str(part.timestamp.max()),
                                 "n_observed_pm25": int(part.pm25.notna().sum()),
                                 "coverage_pct_active": 100*part.pm25.notna().mean(),
-                                "limitation": "Station spans do not overlap; missingness and partial periods vary",
+                                "partial_periods": (
+                                    f"partial years: {', '.join(partial_years) or 'none'}; "
+                                    f"partial winters: {', '.join(partial_winters) or 'none'}"
+                                ),
+                                "limitation": (
+                                    "Station spans do not overlap; missingness and partial periods "
+                                    "vary by year/winter, so cross-station and cross-year comparisons "
+                                    "are descriptive and not a single-site trend"
+                                ),
                                 "existing_figure": "figures/FIG-01-extended-historical.png" if fig == "FIG-01" else "",
-                                "extended_figure": f"figures/extended/{fig}-extended.png" if decision == "EXTEND" else ""})
+                                "extended_figure": f"figures/extended/{fig}-extended.png" if decision == "EXTEND" else "",
+                                "supplementary_figure": "figures/extended/FIG-03b-winter-coverage.png" if fig == "FIG-03" else ""})
     pd.DataFrame(figure_rows).to_csv(REPORTS/"extended_figure_audit.csv", index=False)
     inference_rows, sensitivity_rows, narratives, comparisons = [], [], [], []
     for station, part in df.groupby("station_id"):
@@ -351,19 +460,48 @@ def write_outputs(df: pd.DataFrame, meta: dict, quality: pd.DataFrame, profile: 
                                seed=seed, include_simulation=False)
         panel = result["panel"]["frame"]
         for key, test in result["tests"].items():
-            ci = test.get("ci") or test.get("ci_bootstrap") or test.get("ci_dong_vs_he") or {}
             row = {"station_id": station, "test": key, "hypothesis_h0": test["h0"],
-                   "estimand": test["label"], "analysis_start": str(part.timestamp.min()),
+                   "test_design": test["test_design"],
+                   "statistical_decision": test["statistical_decision"],
+                   "evidence_level": test["evidence_level"],
+                   "analysis_start": str(part.timestamp.min()),
                    "analysis_end": str(part.timestamp.max()), "n_valid_days": int(test["n"]),
                    "statistic_name": test["statistic_name"], "statistic": test["statistic"],
                    "raw_iid_p_value": test["p_value_independence"],
                    "dependence_aware_p_value": test["p_value"], "holm_p_value": test["p_holm"],
-                   "effect_size_name": test["effect_size_name"], "effect_size": test["effect_size"],
-                   "ci_low": ci.get("ci_low"), "ci_high": ci.get("ci_high"),
-                   "ci_estimand": "winter-summer median contrast" if key == "season_effect" else "weekday-weekend median contrast" if key == "weekday_effect" else "daily mean location",
+                   "primary_estimand": test["primary_estimand"],
+                   "primary_unit": test["primary_unit"],
+                   "primary_estimate": test["primary_estimate"],
+                   "primary_ci_low": test["primary_ci_low"],
+                   "primary_ci_high": test["primary_ci_high"],
+                   "primary_ci_method": test["primary_ci_method"],
+                   "effect_size_name": test.get("primary_effect_size_name", test["effect_size_name"]),
+                   "effect_size": test.get("primary_effect_size", test["effect_size"]),
+                   "effect_size_ci_low": test.get("primary_effect_size_ci_low"),
+                   "effect_size_ci_high": test.get("primary_effect_size_ci_high"),
+                   "effect_size_ci_status": test.get(
+                       "primary_effect_size_ci_status", test.get("effect_size_ci_status")),
+                   "secondary_estimand": test["secondary_estimand"],
+                   "secondary_estimate": test["secondary_estimate"],
+                   "secondary_ci_low": test["secondary_ci_low"],
+                   "secondary_ci_high": test["secondary_ci_high"],
+                   "secondary_ci_method": test["secondary_ci_method"],
+                   "secondary_effect_size_name": test.get("secondary_effect_size_name"),
+                   "secondary_effect_size": test.get("secondary_effect_size"),
+                   "secondary_effect_size_ci_status": test.get(
+                       "secondary_effect_size_ci_status"),
+                   "ci_status": test["ci_status"],
+                   "interpretation_scope": test["interpretation_scope"],
                    "method": test["method"]["primary"], "assumptions": test["method"]["assumptions"],
                    "status": test["status"], "status_reason": test["status_reason"],
-                   "interpretation": "Reject H0 after Holm" if test["p_holm"] < .05 else "Do not reject H0 after Holm"}
+                   "conclusion": (
+                       f"{test['statistical_decision']} | design={test['test_design']} | "
+                       f"evidence={test['evidence_level']}"
+                   ),
+                   "interpretation": (
+                       f"{test['statistical_decision'].replace('_', ' ')} at Holm alpha=0.05; "
+                       f"design={test['test_design']}, evidence={test['evidence_level']}"
+                   )}
             inference_rows.append(row)
             for axis, entries in test.get("sensitivity", {}).items():
                 for setting, detail in entries.items():
@@ -454,20 +592,63 @@ def write_outputs(df: pd.DataFrame, meta: dict, quality: pd.DataFrame, profile: 
              "The 18/24 rule is a study completeness rule, not a legal QCVN definition. Seasonal tests remain exploratory (R5). The QCVN 50 µg/m³ daily comparator follows the existing W9 contract; no legal compliance determination is made.",
              "", "| Station | Grid hours | Observed hours | Eligible days | Daily median (µg/m³) | Days >50 / eligible | Daily rho1 | n_eff (AR1 approximation) |",
              "|---|---:|---:|---:|---:|---:|---:|---:|", *narratives, "",
-             "Full statistics, effect sizes, dependence-aware p, Holm p, assumptions, and CIs: `reports/extended_inference_results.csv`. Sensitivity: `reports/extended_inference_sensitivity.csv`.",
-             "A seasonal omnibus epsilon-squared has no single contrast CI; the reported CI belongs to the winter–summer median contrast. For weekday, the primary HAC test estimates a trend-adjusted mean contrast, while r_rb and the median-contrast CI describe the nonparametric reference and have different estimands. Associations are observational, not causal. The calendar mask is retained in src/inference.py's bootstrap.",
+             "Full statistics, primary/secondary estimands, effects, dependence-aware p, Holm p and assumptions: `reports/extended_inference_results.csv`. Sensitivity: `reports/extended_inference_sensitivity.csv`.",
+             "Primary CI and secondary CI are separate columns. For the seasonal omnibus H, no single-contrast primary CI exists; `secondary_ci_*` is the winter–summer median contrast and is described as such. For weekday, `primary_ci_*` is the HAC interval for the trend-adjusted weekend coefficient while `secondary_ci_*` is the median contrast. For QCVN 24h, `primary_ci_*` is the HAC interval for the exceedance share, not the daily-mean location. For QCVN annual, `primary_ci_*` is the HAC interval for the mean of eligible daily means. `ci_status`/`effect_size_ci_status` state which intervals are estimable.",
+             "The 18/24 rule is a study completeness rule, not the legal QCVN sampling definition; no legal compliance determination is made. Associations are observational, not causal. The calendar mask is retained in src/inference.py's bootstrap.",
              "Open-Meteo raw snapshot byte match: " + str(meta["weather_raw_snapshot_match"]) + ". Daily PM2.5 inference uses observed OpenAQ readings, not ERA5 weather."]
     (REPORTS/"extended_inference_results.md").write_text("\n".join(lines)+"\n", encoding="utf-8")
     qc_summary = quality.loc[quality.period_type == "station"]
+    dimension_rows = []
+    for period_type, frame in quality.groupby("period_type", sort=False):
+        dimension_rows.append(
+            f"| {period_type} | {len(frame)} | "
+            f"{(frame.dim_completeness_status == 'PASS').sum()}/{len(frame)} | "
+            f"{(frame.dim_consistency_status == 'PASS').sum()}/{len(frame)} | "
+            f"{(frame.dim_validity_status == 'PASS').sum()}/{len(frame)} | "
+            f"{(frame.dim_uniqueness_status == 'PASS').sum()}/{len(frame)} | "
+            f"{(frame.dim_timeliness_status == 'PASS').sum()}/{len(frame)} | "
+            f"{int(frame.duplicate_keys.sum())} | {int(frame.out_of_bounds_pm25_values.sum())} | "
+            f"{int(frame.nonfinite_pm25_values.sum())} | {int(frame.irregular_sampling_intervals.sum())} |"
+        )
+    failing = quality.loc[
+        (quality.dim_completeness_status != "PASS")
+        | (quality.dim_consistency_status != "PASS")
+        | (quality.dim_validity_status != "PASS")
+        | (quality.dim_uniqueness_status != "PASS")
+        | (quality.dim_timeliness_status != "PASS")
+    ]
+    failing_rows = [
+        f"| {row.station_id} | {row.period_type} | {row.period} | {row.dim_completeness_status} | "
+        f"{row.dim_consistency_status} | {row.dim_validity_status} | "
+        f"{row.dim_uniqueness_status} | {row.dim_timeliness_status} |"
+        for row in failing.itertuples()
+    ] or ["| none | - | - | PASS | PASS | PASS | PASS | PASS |"]
     lines = ["# Extended six-dimension quality audit", "", f"Dataset `{VERSION}`, SHA-256 `{meta['actual_sha256']}`; generated by `python scripts/run_extended_reanalysis.py`.",
-             "Accuracy of instrument readings: **UNVERIFIABLE** without independent QC flags or reference instrument. Numerical validity is not device accuracy.",
-             "Completeness and timeliness use explicit full-calendar and active-window denominators in `extended_data_quality_by_station_year_season.csv`. The Issue #5 six-dimension auditor runs on its 18-column baseline schema per station; the five Issue #44 fields are validated by the extended contract gate.",
-             "", "| Station | Active hours | Valid observed | Coverage active | Longest gap (h) |",
+             "Accuracy of instrument readings: **UNVERIFIABLE** without independent QC flags or reference instrument. Physical-bound screening is reported separately and is not device accuracy.",
+             "Every station × year/month/season/winter cohort carries explicit completeness, accuracy, consistency, validity, uniqueness and timeliness fields in `extended_data_quality_by_station_year_season.csv`; the Issue #5 six-dimension auditor still runs on its 18-column baseline schema per station, and the five Issue #44 fields are checked by the extended contract gate.",
+             "", "## Denominator and missingness definitions", "",
+             "- `expected_calendar_hours` — full calendar hours in the period (month/year/season).",
+             "- `active_grid_hours` — hourly grid rows inside the station's own active window.",
+             "- `valid_pm25_hours` — finite observed PM2.5 inside `[0, 1000]` µg/m³.",
+             "- `missing_observed_hours` — active hours without a valid observation.",
+             "- `missing_source_rows` — active hours with no raw source row (VN003 only).",
+             "- `invalid_source_rows` — raw rows that are NaN/out of numerical bounds (VN003 only).",
+             "- `outside_active_window_hours` — calendar hours outside the station's active window (partial periods).",
+             "- Missing, invalid and outside-window hours are never merged into one count; ratios always name their denominator.",
+             "", "## Station-level summary", "",
+             "| Station | Active hours | Valid observed | Coverage active | Longest gap (h) |",
              "|---|---:|---:|---:|---:|", *[f"| {r.station_id} | {r.active_grid_hours:,} | {r.valid_pm25_observations:,} | {r.coverage_pct_active:.2f}% | {r.longest_missing_gap_hours:,} |" for r in qc_summary.itertuples()],
              "", "| Station | Completeness (observed/grid) | Accuracy | Consistency | Validity | Uniqueness | Timeliness |",
              "|---|---|---|---|---|---|---|",
              *[f"| {station} | {100*df.loc[df.station_id==station,'pm25'].notna().mean():.2f}% | UNVERIFIABLE device accuracy; numerical screen only | {'PASS' if audit['dimensions']['consistency']['is_timezone_consistent'] and audit['dimensions']['consistency']['is_chronologically_monotonic'] else 'FAIL'} | {'PASS' if audit['dimensions']['validity']['all_columns_conformant'] else 'FAIL'} | {audit['dimensions']['uniqueness']['duplicate_rows']} duplicate keys | {audit['dimensions']['timeliness']['sampling_interval_profile']['irregular_intervals_count']} irregular grid intervals |" for station, audit in audits.items()],
-             "", "Raw VN003 availability and invalid/sentinel counts are computed from the pinned raw Parquet. VN001 raw row count is unavailable at the same hourly PM2.5 unit in this runner; it is left blank. `extended_missingness_gaps.csv` records every observed missing run. Weather/season association with missingness can suggest selective outages but does not identify MCAR, MAR or MNAR from observed values alone."]
+             "", "## Dimension coverage by cohort type", "",
+             "| Cohort type | Cohorts | Completeness PASS | Consistency PASS | Validity PASS | Uniqueness PASS | Timeliness PASS | Duplicate keys | Out-of-bounds PM2.5 | Non-finite PM2.5 | Irregular intervals |",
+             "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|", *dimension_rows,
+             "", "## Groups failing a structural dimension", "",
+             "Completeness is expected to fail in partial cohorts (it is a coverage measure); the other dimensions must remain PASS. Device accuracy is UNVERIFIABLE in every group.",
+             "", "| Station | Period type | Period | Completeness | Consistency | Validity | Uniqueness | Timeliness |",
+             "|---|---|---|---|---|---|---|---|", *failing_rows,
+             "", "Raw VN003 availability and invalid/sentinel counts are computed from the pinned raw Parquet. VN001 raw availability at the same hourly unit is unavailable in this runner and is left blank. `extended_missingness_gaps.csv` records every observed missing run. Weather/season association with missingness can suggest selective outages but does not identify MCAR, MAR or MNAR from observed values alone."]
     (REPORTS/"extended_data_quality_audit.md").write_text("\n".join(lines)+"\n", encoding="utf-8")
     (REPORTS/"extended_preprocessing_validation.md").write_text(
         "# Extended cleaning and preprocessing validation\n\n"
@@ -492,17 +673,14 @@ def write_outputs(df: pd.DataFrame, meta: dict, quality: pd.DataFrame, profile: 
     stability_rows = []
     for key in ("season_effect", "weekday_effect", "qcvn_24h", "qcvn_annual"):
         b, h = baseline_tests.loc[key], historical_tests.loc[key]
-        if np.sign(b.effect_size) != np.sign(h.effect_size):
-            status = "INCOMPARABLE (effect direction differs across physical stations)"
-        elif b.holm_p_value < .05 and h.holm_p_value >= .05:
-            status = "WEAKENED for cross-station generalization"
-        elif (b.holm_p_value < .05) == (h.holm_p_value < .05):
-            status = "CONSISTENT WITH HISTORICAL EVIDENCE"
-        else:
-            status = "INCOMPARABLE (different station-specific decisions)"
-        if key == "season_effect":
-            status += "; exploratory in both cohorts"
-        stability_rows.append(f"| {key} | VN001 pHolm={b.holm_p_value:.4g}, effect={b.effect_size:.3f} | VN003 pHolm={h.holm_p_value:.4g}, effect={h.effect_size:.3f} | {status} |")
+        verdict = compare_station_evidence(key, b.to_dict(), h.to_dict())
+        b_ci = f"[{b.primary_ci_low:.3g}, {b.primary_ci_high:.3g}]" if pd.notna(b.primary_ci_low) else "n/a"
+        h_ci = f"[{h.primary_ci_low:.3g}, {h.primary_ci_high:.3g}]" if pd.notna(h.primary_ci_low) else "n/a"
+        stability_rows.append(
+            f"| {key} | {b.primary_estimate:.4g} {b_ci} | {h.primary_estimate:.4g} {h_ci} | "
+            f"{b.holm_p_value:.4g} / {h.holm_p_value:.4g} | {b.evidence_level} / {h.evidence_level} | "
+            f"{verdict['classification']} |"
+        )
     dataset_rows, statistical_rows = [], []
     for station, result in comparisons:
         q = quality.loc[(quality.station_id == station) & (quality.period_type == "station")].iloc[0]
@@ -522,12 +700,17 @@ def write_outputs(df: pd.DataFrame, meta: dict, quality: pd.DataFrame, profile: 
                   "", "## Descriptive comparison", "", "| Station | PM2.5 median / mean (µg/m³) | SD / IQR (µg/m³) | Daily rho1 / n_eff | Strongest linear weather association | Yearly observed medians (µg/m³; full-calendar coverage) |",
                   "|---|---|---|---|---|---|", *statistical_rows,
                   "", "Winter coverage and seasonal cohorts: `extended_data_quality_by_station_year_season.csv` (period_type=winter_year); year-specific median CI and partial-winter exclusion: `extended_inference_sensitivity.csv`. All station/year PM2.5 distributions: `extended_statistical_profile.csv`.",
-                  "", "| Conclusion | Baseline | Extended evidence | Stability |", "|---|---|---|---|",
+                  "", "## Test-by-test concordance (direction, magnitude and uncertainty)", "",
+                  "`CONCORDANT DIRECTION` only means both stations reject after Holm with the same sign; it does **not** mean the two stations share one effect. Overlapping CIs are not proof of equality, and non-overlapping CIs indicate a magnitude difference.",
+                  "", "| Test | VN001 primary estimate [95% CI] | VN003 primary estimate [95% CI] | Holm p (VN001 / VN003) | Evidence level (VN001 / VN003) | Classification |",
+                  "|---|---|---|---|---|---|", *stability_rows,
+                  "", "## Supported, weakened or unsupported baseline conclusions", "",
+                  "| Conclusion | Baseline | Extended evidence | Stability |", "|---|---|---|---|",
                   f"| VN001 daily median | {baseline_median:.2f} µg/m³ | {comparisons[0][1]['panel']['frame'].pm25_mean.median():.2f} µg/m³ at VN001 | SUPPORTED (identical observations) |",
-                  "| 2022–2026 single-site trend | Not estimated | Stations have disjoint spans | INCOMPARABLE |",
+                  "| 2022–2026 single-site trend | Not estimated | Stations have disjoint spans | INCOMPARABLE (two physical stations, not one site over time) |",
                   "| Device accuracy | No independent calibration | OpenAQ VN003 lacks independent row QC | UNVERIFIED |",
-                  *stability_rows,
-                  "", "`reports/extended_inference_results.csv` contains test statistics, effects, CI and adjusted p for each station. `reports/extended_inference_sensitivity.csv` contains block/HAC, daily threshold, derived-value and winter-coverage sensitivity. Negative or unstable tests remain visible; no confirmatory upgrade is inferred from a small p-value alone."]
+                  "| Seasonal effect | Exploratory (single/multi-year but confounded) | Exploratory at both stations | EXPLORATORY / INCOMPARABLE (R5) |",
+                  "", "`reports/extended_inference_results.csv` contains test statistics, primary/secondary estimands, effects, CI and adjusted p for each station. `reports/extended_inference_sensitivity.csv` contains block/HAC, daily threshold, derived-value and winter-coverage sensitivity. Negative or unstable tests remain visible; no confirmatory upgrade is inferred from a small p-value alone."]
     (REPORTS/"extended_reanalysis_comparison.md").write_text("\n".join(comparison)+"\n", encoding="utf-8")
     config = {"issue": 50, "dataset_version": VERSION, "dataset_sha256_actual": meta["actual_sha256"],
               "dataset_sha256_snapshot": meta["sha256"], "snapshot_byte_match": meta["snapshot_sha256_match"],

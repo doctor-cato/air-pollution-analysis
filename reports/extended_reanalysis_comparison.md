@@ -20,14 +20,24 @@ Open-Meteo raw snapshot SHA-256 `303aacb68798667e2c838be09ad0047a6cedf292282e9ab
 
 Winter coverage and seasonal cohorts: `extended_data_quality_by_station_year_season.csv` (period_type=winter_year); year-specific median CI and partial-winter exclusion: `extended_inference_sensitivity.csv`. All station/year PM2.5 distributions: `extended_statistical_profile.csv`.
 
+## Test-by-test concordance (direction, magnitude and uncertainty)
+
+`CONCORDANT DIRECTION` only means both stations reject after Holm with the same sign; it does **not** mean the two stations share one effect. Overlapping CIs are not proof of equality, and non-overlapping CIs indicate a magnitude difference.
+
+| Test | VN001 primary estimate [95% CI] | VN003 primary estimate [95% CI] | Holm p (VN001 / VN003) | Evidence level (VN001 / VN003) | Classification |
+|---|---|---|---|---|---|
+| season_effect | 61.53 n/a | 164.2 n/a | 0.05599 / 0.0003999 | no_exploratory_signal / exploratory_signal | EXPLORATORY / INCOMPARABLE |
+| weekday_effect | 3.709 [-0.822, 8.24] | -0.256 [-3.86, 3.34] | 0.1082 / 0.889 | no_confirmatory_evidence / no_confirmatory_evidence | INCOMPARABLE (effect direction differs across physical stations) |
+| qcvn_24h | 0.2809 [0.119, 0.443] | 0.3148 [0.222, 0.408] | 0.02501 / 0.0003162 | confirmatory_evidence / confirmatory_evidence | CONCORDANT DIRECTION; OVERLAPPING CI |
+| qcvn_annual | 43.38 [35.1, 51.7] | 45.8 [40.2, 51.4] | 7.375e-05 / 2.171e-12 | confirmatory_evidence / confirmatory_evidence | CONCORDANT DIRECTION; OVERLAPPING CI |
+
+## Supported, weakened or unsupported baseline conclusions
+
 | Conclusion | Baseline | Extended evidence | Stability |
 |---|---|---|---|
 | VN001 daily median | 37.20 µg/m³ | 37.20 µg/m³ at VN001 | SUPPORTED (identical observations) |
-| 2022–2026 single-site trend | Not estimated | Stations have disjoint spans | INCOMPARABLE |
+| 2022–2026 single-site trend | Not estimated | Stations have disjoint spans | INCOMPARABLE (two physical stations, not one site over time) |
 | Device accuracy | No independent calibration | OpenAQ VN003 lacks independent row QC | UNVERIFIED |
-| season_effect | VN001 pHolm=0.05599, effect=0.206 | VN003 pHolm=0.0003999, effect=0.217 | INCOMPARABLE (different station-specific decisions); exploratory in both cohorts |
-| weekday_effect | VN001 pHolm=0.1082, effect=-0.117 | VN003 pHolm=0.889, effect=-0.012 | CONSISTENT WITH HISTORICAL EVIDENCE |
-| qcvn_24h | VN001 pHolm=0.02501, effect=-0.410 | VN003 pHolm=0.0003162, effect=-0.314 | CONSISTENT WITH HISTORICAL EVIDENCE |
-| qcvn_annual | VN001 pHolm=7.375e-05, effect=0.848 | VN003 pHolm=2.171e-12, effect=0.858 | CONSISTENT WITH HISTORICAL EVIDENCE |
+| Seasonal effect | Exploratory (single/multi-year but confounded) | Exploratory at both stations | EXPLORATORY / INCOMPARABLE (R5) |
 
-`reports/extended_inference_results.csv` contains test statistics, effects, CI and adjusted p for each station. `reports/extended_inference_sensitivity.csv` contains block/HAC, daily threshold, derived-value and winter-coverage sensitivity. Negative or unstable tests remain visible; no confirmatory upgrade is inferred from a small p-value alone.
+`reports/extended_inference_results.csv` contains test statistics, primary/secondary estimands, effects, CI and adjusted p for each station. `reports/extended_inference_sensitivity.csv` contains block/HAC, daily threshold, derived-value and winter-coverage sensitivity. Negative or unstable tests remain visible; no confirmatory upgrade is inferred from a small p-value alone.

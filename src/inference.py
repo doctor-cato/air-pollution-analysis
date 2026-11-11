@@ -2471,16 +2471,30 @@ def _season_effect_test(
         bool(entry["p_value"] < ALPHA) == primary_reject
         for entry in block_sensitivity.values()
     )
-    # Quy tắc R5 (chốt trước khi xem kết quả): **một chu kỳ mùa duy nhất** và mùa
-    # là các đoạn thời gian liên tiếp ⇒ "mùa" không tách được khỏi "xu hướng" ⇒
-    # kiểm định mùa **luôn** ở trạng thái thăm dò, bất kể p-value.
+    # Quy tắc R5 (chốt trước khi xem kết quả): mùa là các đoạn thời gian liên tiếp
+    # nên "mùa" không tách được khỏi "xu hướng"; kiểm định mùa **luôn** ở trạng
+    # thái thăm dò, bất kể p-value. Lý do cụ thể phải phản ánh số cohort thực tế:
+    # VN001 phủ ~1 năm còn VN003 phủ nhiều năm với độ phủ không đều.
+    cohorts = season_cohort_summary(panel)
     status = "exploratory"
-    reason = (
-        "Một chu kỳ mùa duy nhất và mùa là các đoạn thời gian liên tiếp → không tách "
-        "được 'mùa' khỏi 'xu hướng'; hồi quy HAC dùng làm đối chứng **không** kiểm "
-        "soát được sai lầm loại I trong cấu trúc này (Monte Carlo: size 30–55% vì dummy "
-        "mùa gần cộng tuyến với xu hướng) nên không dùng để quyết định trạng thái."
-    )
+    if cohorts["n_seasonal_cycles"] <= 1:
+        reason = (
+            "Một chu kỳ mùa duy nhất và mùa là các đoạn thời gian liên tiếp → không tách "
+            "được 'mùa' khỏi 'xu hướng'; hồi quy HAC dùng làm đối chứng **không** kiểm "
+            "soát được sai lầm loại I trong cấu trúc này (Monte Carlo: size 30–55% vì dummy "
+            "mùa gần cộng tuyến với xu hướng) nên không dùng để quyết định trạng thái."
+        )
+    else:
+        reason = (
+            f"{cohorts['n_seasonal_cycles']} chu kỳ 12 tháng và {len(cohorts['winter_cohorts'])} "
+            f"cohort mùa Đông (đầy đủ: {cohorts['full_winter_cohorts']}; một phần: "
+            f"{cohorts['partial_winter_cohorts']}) nhưng mùa vẫn là các đoạn thời gian liên "
+            "tiếp → không tách được 'mùa' khỏi xu hướng, biến động giữa các năm và "
+            "missingness không đều giữa các cohort; hồi quy HAC dùng làm đối chứng "
+            "**không** kiểm soát được sai lầm loại I trong cấu trúc này (Monte Carlo: "
+            "size 30–55% vì dummy mùa gần cộng tuyến với xu hướng) nên R5 giữ trạng thái "
+            "thăm dò. p-value nhỏ không nâng cấp kết luận."
+        )
 
     return {
         "test": "season_effect",
@@ -2543,6 +2557,39 @@ def _season_effect_test(
         },
         "null_bootstrap": null_boot,
         "sensitivity": {"block_length_days": block_sensitivity, "hac_lag": lag_sensitivity},
+        "primary_estimand": (
+            "Omnibus difference in daily-mean distributions across the four seasons "
+            "(Kruskal–Wallis H)"
+        ),
+        "primary_estimate": float(kw.statistic),
+        "primary_unit": "H statistic (unitless)",
+        "primary_ci_low": None,
+        "primary_ci_high": None,
+        "primary_ci_method": (
+            "NOT_ESTIMABLE: an omnibus H has no single-contrast confidence interval; "
+            "no validated omnibus CI is claimed"
+        ),
+        "effect_size_name": "epsilon_squared",
+        "effect_size": float(min(max(kw.statistic / (values.size - 1), 0.0), 1.0)),
+        "effect_size_ci_low": None,
+        "effect_size_ci_high": None,
+        "effect_size_ci_status": (
+            "NOT_ESTIMABLE: no validated dependence-aware CI for epsilon-squared"
+        ),
+        "secondary_estimand": "Winter − summer difference in median daily mean (µg/m³)",
+        "secondary_estimate": float(
+            np.median(groups[SEASON_DISPLAY_ORDER.index("Dong")])
+            - np.median(groups[SEASON_DISPLAY_ORDER.index("He")])
+        ),
+        "secondary_ci_low": None,
+        "secondary_ci_high": None,
+        "secondary_ci_method": "calendar block-bootstrap contrast CI (assigned in run_inference)",
+        "ci_status": "PRIMARY_NOT_ESTIMABLE; SECONDARY_BOOTSTRAP",
+        "interpretation_scope": (
+            "Exploratory only (R5): seasons are consecutive time blocks and are confounded "
+            "with trend, interannual variation and uneven cohort coverage. The contrast is "
+            "descriptive and is not the omnibus effect size."
+        ),
         "status": status,
         "status_reason": reason,
     }
@@ -2605,6 +2652,15 @@ def _weekday_effect_test(
     weekend_index = names.index("weekend")
     hac_t = float(model["t"][weekend_index])
     hac_p = float(model["p"][weekend_index])
+    weekend_coef = float(model["coef"][weekend_index])
+    weekend_se = float(model["se"][weekend_index])
+    weekend_crit = float(stats.t.ppf(0.975, model["df_resid"]))
+    hac_ci = {
+        "ci_low": weekend_coef - weekend_crit * weekend_se,
+        "ci_high": weekend_coef + weekend_crit * weekend_se,
+        "ci_method": "HAC (Newey–West) t interval for the weekend dummy coefficient",
+        "df": int(model["df_resid"]),
+    }
 
     lag_sensitivity = {}
     for lag_value in HAC_LAG_SENSITIVITY:
@@ -2700,8 +2756,43 @@ def _weekday_effect_test(
             "p_value": float(hac_p),
             "lag": int(hac_lag),
         },
+        "hac_ci": hac_ci,
         "null_bootstrap": null_boot,
         "sensitivity": {"block_length_days": block_sensitivity, "hac_lag": lag_sensitivity},
+        "primary_estimand": (
+            "Trend-adjusted conditional mean difference (weekend − weekday) in daily mean "
+            "(OLS + HAC weekend dummy coefficient, µg/m³)"
+        ),
+        "primary_estimate": weekend_coef,
+        "primary_unit": "µg/m³",
+        "primary_ci_low": float(hac_ci["ci_low"]),
+        "primary_ci_high": float(hac_ci["ci_high"]),
+        "primary_ci_method": hac_ci["ci_method"],
+        "primary_effect_size_name": "conditional_mean_difference_ug_m3",
+        "primary_effect_size": weekend_coef,
+        "primary_effect_size_ci_low": float(hac_ci["ci_low"]),
+        "primary_effect_size_ci_high": float(hac_ci["ci_high"]),
+        "primary_effect_size_ci_status": "ESTIMABLE (same HAC interval as the primary estimand)",
+        "secondary_estimand": "Weekday − weekend difference in median daily mean (µg/m³)",
+        "secondary_estimate": float(
+            np.median(values[mask_a]) - np.median(values[mask_b])
+        ),
+        "secondary_ci_low": None,
+        "secondary_ci_high": None,
+        "secondary_ci_method": "calendar block-bootstrap contrast CI (assigned in run_inference)",
+        "secondary_effect_size_name": "r_rb",
+        "secondary_effect_size": float(
+            2.0 * mw.statistic / (mask_a.sum() * mask_b.sum()) - 1.0
+        ),
+        "secondary_effect_size_ci_status": (
+            "NOT_ESTIMABLE: rank-biserial has no validated dependence-aware CI here"
+        ),
+        "ci_status": "PRIMARY_HAC; SECONDARY_BOOTSTRAP",
+        "interpretation_scope": (
+            "Confirmatory design tests the trend-adjusted HAC coefficient. The rank-biserial "
+            "statistic and median contrast are descriptive secondary metrics with different "
+            "estimands; they are not the coefficient CI."
+        ),
         "status": status,
         "status_reason": reason,
     }
@@ -2897,6 +2988,72 @@ def _location_effect_test(
         "percentile": percentile,
         "signed_rank_hac": signed_rank,
         "sensitivity": {"hac_lag": lag_sensitivity, "block_length_days": block_sensitivity},
+        **(
+            {
+                "primary_estimand": (
+                    f"Exceedance share P(daily mean > {format_number_vi(mu, 0)} µg/m³) "
+                    "(H₀: share = 0.5 ⇔ median daily mean = threshold)"
+                ),
+                "primary_estimate": float(hac["share"]),
+                "primary_unit": "proportion of eligible days",
+                "primary_ci_low": float(hac["ci"]["ci_low"]),
+                "primary_ci_high": float(hac["ci"]["ci_high"]),
+                "primary_ci_method": "HAC (Newey–West) interval for a proportion",
+                "primary_effect_size_name": "exceedance_share_minus_half",
+                "primary_effect_size": float(hac["share"] - 0.5),
+                "primary_effect_size_ci_low": float(hac["ci"]["ci_low"] - 0.5),
+                "primary_effect_size_ci_high": float(hac["ci"]["ci_high"] - 0.5),
+                "primary_effect_size_ci_status": "ESTIMABLE (HAC interval shifted by −0.5)",
+                "secondary_estimand": "Median of eligible daily means (µg/m³)",
+                "secondary_estimate": float(np.median(values)),
+                "secondary_ci_low": None,
+                "secondary_ci_high": None,
+                "secondary_ci_method": (
+                    "calendar block-bootstrap median CI (assigned in run_inference)"
+                ),
+                "secondary_effect_size_name": effect_name,
+                "secondary_effect_size": float(effect),
+                "secondary_effect_size_ci_status": (
+                    "NOT_ESTIMABLE: signed-rank effect has no validated dependence-aware CI"
+                ),
+                "ci_status": "PRIMARY_HAC_SHARE; SECONDARY_BOOTSTRAP_MEDIAN",
+                "interpretation_scope": (
+                    "Study comparator only. The 18/24 observed-hour rule is not the QCVN "
+                    "sampling/definition rule; a share above/below 0.5 is not a legal "
+                    "compliance or violation determination. The median location is a "
+                    "separate descriptive estimand, not the tested share."
+                ),
+            }
+            if kind == "median"
+            else {
+                "primary_estimand": "Mean of eligible daily means (µg/m³)",
+                "primary_estimate": float(values.mean()),
+                "primary_unit": "µg/m³",
+                "primary_ci_low": float(hac["ci"]["ci_low"]),
+                "primary_ci_high": float(hac["ci"]["ci_high"]),
+                "primary_ci_method": "HAC (Newey–West) t interval",
+                "primary_effect_size_name": effect_name,
+                "primary_effect_size": float(effect),
+                "primary_effect_size_ci_low": None,
+                "primary_effect_size_ci_high": None,
+                "primary_effect_size_ci_status": (
+                    "NOT_ESTIMABLE: no validated dependence-aware CI for Cohen's d is claimed"
+                ),
+                "secondary_estimand": "Median of eligible daily means (µg/m³)",
+                "secondary_estimate": float(np.median(values)),
+                "secondary_ci_low": None,
+                "secondary_ci_high": None,
+                "secondary_ci_method": (
+                    "calendar block-bootstrap median CI (assigned in run_inference)"
+                ),
+                "ci_status": "PRIMARY_HAC_MEAN; SECONDARY_BOOTSTRAP_MEDIAN",
+                "interpretation_scope": (
+                    "Mean of eligible days in the observed window. When coverage is "
+                    "incomplete or the window is not a full calendar year, this is not a "
+                    "full annual-average compliance determination."
+                ),
+            }
+        ),
         "status": status,
         "status_reason": reason,
     }
@@ -2919,6 +3076,68 @@ def _season_year(dates: pd.Series, seasons: pd.Series) -> pd.Series:
     month = pd.Series(pd.to_datetime(dates)).dt.month.to_numpy(dtype=int)
     is_december_winter = (seasons.to_numpy() == "Dong") & (month == 12)
     return pd.Series(year + is_december_winter.astype(int), index=seasons.index)
+
+
+def season_cohort_summary(panel: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Tóm tắt **cohort mùa thực tế** của một chuỗi trạm.
+
+    Trả về số chu kỳ 12 tháng quan sát được, số cohort mùa Đông, độ phủ lịch
+    của từng cohort và các mùa lặp lại ở ≥ 2 năm. Không giả định mọi trạm chỉ
+    có một chu kỳ mùa: VN001 phủ ~1 năm còn VN003 phủ nhiều năm với độ phủ
+    không đều. Hai trường hợp phải có lý do exploratory khác nhau.
+    """
+    dates = pd.to_datetime(panel["date"])
+    seasons = panel["season"]
+    cycle_years = _season_year(dates, seasons)
+    span_days = int((dates.max() - dates.min()).days) + 1
+    n_cycles = max(1, int(span_days // 365)) if span_days > 0 else 1
+
+    calendar = pd.date_range(dates.min(), dates.max(), freq="D")
+    calendar_season = pd.Series(calendar.month.map(SEASON_MONTHS), index=calendar)
+    calendar_cycle = _season_year(pd.Series(calendar), calendar_season)
+    calendar_counts = (
+        pd.DataFrame({"season": calendar_season, "season_year": calendar_cycle})
+        .value_counts()
+        .rename("calendar_days")
+    )
+    observed = (
+        pd.DataFrame({"season": seasons.to_numpy(), "season_year": cycle_years.to_numpy()})
+        .value_counts()
+        .rename("observed_days")
+    )
+    cohorts = (
+        pd.concat([calendar_counts, observed], axis=1)
+        .fillna(0)
+        .reset_index()
+        .rename(columns={"level_0": "season", "level_1": "season_year"})
+    )
+    cohorts["observed_days"] = cohorts["observed_days"].astype(int)
+    cohorts["calendar_days"] = cohorts["calendar_days"].astype(int)
+    cohorts["coverage"] = cohorts["observed_days"] / cohorts["calendar_days"].replace(0, np.nan)
+    winter = cohorts.loc[cohorts["season"] == "Dong"]
+    repeated = {
+        season: sorted(int(y) for y in group["season_year"])
+        for season, group in cohorts.groupby("season", observed=True)
+        if group.loc[group["observed_days"] > 0, "season_year"].nunique() >= 2
+    }
+    return {
+        "n_seasonal_cycles": int(n_cycles),
+        "span_days": span_days,
+        "winter_cohorts": [int(y) for y in winter.loc[winter["observed_days"] > 0, "season_year"]],
+        "full_winter_cohorts": [
+            int(row.season_year)
+            for row in winter.itertuples()
+            if row.observed_days > 0 and row.calendar_days > 0 and row.observed_days >= 0.9 * row.calendar_days
+        ],
+        "partial_winter_cohorts": [
+            int(row.season_year)
+            for row in winter.itertuples()
+            if row.observed_days > 0 and (row.calendar_days == 0 or row.observed_days < 0.9 * row.calendar_days)
+        ],
+        "season_cohorts": cohorts.to_dict(orient="records"),
+        "seasons_with_multiple_years": repeated,
+    }
 
 
 def season_generalization_diagnostics(panel: pd.DataFrame) -> Dict[str, Any]:
@@ -2977,11 +3196,28 @@ def season_generalization_diagnostics(panel: pd.DataFrame) -> Dict[str, Any]:
     }
     contrast = max(season_medians.values()) - min(season_medians.values())
 
+    cohorts = season_cohort_summary(panel)
     repeated = {
         season: years for season, years in seasons_with_years.items() if len(years) >= 2
     }
+    if cohorts["n_seasonal_cycles"] <= 1:
+        note = (
+            "Một chu kỳ mùa duy nhất: mọi khác biệt mùa quan sát được đều trộn với "
+            "xu hướng thời gian và với điều kiện khí tượng của chính năm đó."
+        )
+    else:
+        note = (
+            f"{cohorts['n_seasonal_cycles']} chu kỳ 12 tháng được quan sát, nhưng mùa vẫn "
+            "là các đoạn thời gian liên tiếp nên không tách được khỏi xu hướng và biến "
+            "động giữa các năm; độ phủ các cohort mùa không đều (xem "
+            "`season_cohorts`/`winter_cohorts`) nên khác biệt mùa vẫn là thăm dò."
+        )
     return {
-        "n_seasonal_cycles": 1,
+        "n_seasonal_cycles": cohorts["n_seasonal_cycles"],
+        "span_days": cohorts["span_days"],
+        "winter_cohorts": cohorts["winter_cohorts"],
+        "full_winter_cohorts": cohorts["full_winter_cohorts"],
+        "partial_winter_cohorts": cohorts["partial_winter_cohorts"],
         "seasons_with_multiple_years": repeated,
         "season_year_breakdown": by_season_year,
         "coverage": coverage,
@@ -2992,10 +3228,7 @@ def season_generalization_diagnostics(panel: pd.DataFrame) -> Dict[str, Any]:
         "trend_to_contrast_ratio": (
             float(abs(trend_per_month * 12.0) / contrast) if contrast > 0 else float("nan")
         ),
-        "note": (
-            "Một chu kỳ mùa duy nhất: mọi khác biệt mùa quan sát được đều trộn với "
-            "xu hướng thời gian và với điều kiện khí tượng của chính năm đó."
-        ),
+        "note": note,
     }
 
 
@@ -4267,6 +4500,20 @@ def run_inference(
         test["p_holm_independence"] = float(p_holm_ref)
         test["reject_holm"] = bool(p_holm < ALPHA)
         test["reject_raw"] = bool(test["p_value"] < ALPHA)
+        test["test_design"] = (
+            "exploratory" if test["status"] == "exploratory" else "confirmatory"
+        )
+        test["statistical_decision"] = (
+            "reject_h0_after_holm" if test["reject_holm"] else "do_not_reject_h0_after_holm"
+        )
+        if test["test_design"] == "exploratory":
+            test["evidence_level"] = (
+                "exploratory_signal" if test["reject_holm"] else "no_exploratory_signal"
+            )
+        else:
+            test["evidence_level"] = (
+                "confirmatory_evidence" if test["reject_holm"] else "no_confirmatory_evidence"
+            )
         holm_table.append(
             {
                 "key": key,
@@ -4284,6 +4531,9 @@ def run_inference(
                 "effect_size": test["effect_size"],
                 "status": test["status"],
                 "status_reason": test["status_reason"],
+                "test_design": test["test_design"],
+                "statistical_decision": test["statistical_decision"],
+                "evidence_level": test["evidence_level"],
                 "method": test["method"]["primary"],
             }
         )
@@ -4303,6 +4553,23 @@ def run_inference(
         ),
         None,
     )
+    season_contrast_ci = season_test["ci_dong_vs_he"] or {}
+    season_test["secondary_ci_low"] = season_contrast_ci.get("ci_low")
+    season_test["secondary_ci_high"] = season_contrast_ci.get("ci_high")
+    season_test["secondary_ci_method"] = season_contrast_ci.get("method", "not available")
+    weekday_test["secondary_ci_low"] = weekday_test["ci"]["ci_low"]
+    weekday_test["secondary_ci_high"] = weekday_test["ci"]["ci_high"]
+    weekday_test["secondary_ci_method"] = weekday_test["ci"].get("method", "not available")
+    qcvn_24h_test["secondary_ci_low"] = qcvn_24h_test["ci_bootstrap"]["ci_low"]
+    qcvn_24h_test["secondary_ci_high"] = qcvn_24h_test["ci_bootstrap"]["ci_high"]
+    qcvn_24h_test["secondary_ci_method"] = "calendar block-bootstrap percentile interval"
+    annual_median_ci = calendar_bootstrap_ci(
+        calendar, statistic="median", block_length_days=BLOCK_LENGTH_DAYS,
+        n_bootstrap=n_bootstrap, seed=seed,
+    )
+    annual_test["secondary_ci_low"] = annual_median_ci["ci_low"]
+    annual_test["secondary_ci_high"] = annual_median_ci["ci_high"]
+    annual_test["secondary_ci_method"] = "calendar block-bootstrap percentile interval"
     sensitivity = {
         "paired_weeks": paired_weekly_differences(panel, calendar),
         "season_weekly": season_weekly_sensitivity(panel, calendar),

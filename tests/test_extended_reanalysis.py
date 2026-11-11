@@ -12,6 +12,8 @@ from PIL import Image
 
 from scripts import run_extended_reanalysis as ext
 from scripts.validate_extended_reanalysis import validate_outputs
+from src.reanalysis_validation import _contrast_ci, _group_replicates
+from src.extended_audit import group_quality_dimensions
 from src.inference import build_daily_panel, calendar_block_indices, holm_adjust
 from src.issue44_preparation import add_derived_short_gap_interpolation, validate_modeling_split, vietnam_season, winter_year
 from src.visualizer import compute_causal_rolling_pm25
@@ -37,6 +39,76 @@ def contract_fixture() -> pd.DataFrame:
 
 
 class TestExtendedReanalysis(unittest.TestCase):
+    def test_missing_raw_source_hours_are_not_hidden_by_duplicate_rows(self):
+        group = pd.DataFrame({
+            "station_id": ["A"] * 4,
+            "timestamp": pd.date_range("2024-01-01", periods=4, freq="h", tz="Asia/Ho_Chi_Minh"),
+            "pm25": [10., np.nan, 20., np.nan],
+        })
+        qc = group_quality_dimensions(
+            group, expected_calendar_hours=4, outside_active_window_hours=0,
+            raw_observations=4, raw_source_hours=2, raw_invalid_observations=1,
+        )
+        self.assertEqual(qc["missing_source_rows"], 2)
+        self.assertEqual(qc["invalid_source_rows"], 1)
+
+    def test_nonfinite_is_not_double_counted_as_out_of_bounds(self):
+        group = pd.DataFrame({
+            "timestamp": pd.date_range("2024-01-01", periods=3, freq="h", tz="Asia/Ho_Chi_Minh"),
+            "pm25": [float("inf"), -999., np.nan],
+        })
+        qc = group_quality_dimensions(
+            group, expected_calendar_hours=3, outside_active_window_hours=0,
+        )
+        self.assertEqual(qc["nonfinite_pm25_values"], 1)
+        self.assertEqual(qc["out_of_bounds_pm25_values"], 1)
+        self.assertEqual(qc["negative_sentinel_values"], 1)
+
+    def test_group_six_dimensions_catch_duplicate_irregular_and_invalid_timestamp(self):
+        stamps = pd.date_range("2024-01-01", periods=4, freq="h", tz="Asia/Ho_Chi_Minh")
+        group = pd.DataFrame({
+            "station_id": ["A"] * 4,
+            "timestamp": [stamps[0], stamps[0], stamps[2], pd.NaT],
+            "pm25": [10., np.nan, 20., 30.],
+        })
+        qc = group_quality_dimensions(
+            group, expected_calendar_hours=4, outside_active_window_hours=0,
+        )
+        self.assertEqual(qc["duplicate_keys"], 1)
+        self.assertEqual(qc["dim_uniqueness_status"], "FAIL")
+        self.assertEqual(qc["dim_consistency_status"], "FAIL")
+        self.assertEqual(qc["dim_timeliness_status"], "FAIL")
+
+    def test_group_weather_bound_violation_fails_validity_not_device_accuracy(self):
+        group = pd.DataFrame({
+            "timestamp": pd.date_range("2024-01-01", periods=2, freq="h", tz="Asia/Ho_Chi_Minh"),
+            "pm25": [10., 20.], "temperature": [20., 10000.],
+        })
+        qc = group_quality_dimensions(
+            group, expected_calendar_hours=2, outside_active_window_hours=0,
+            physical_bounds=ext.ATMOSPHERIC_BOUNDS,
+        )
+        self.assertGreater(qc["other_bound_violations"], 0)
+        self.assertEqual(qc["dim_validity_status"], "FAIL")
+        self.assertEqual(qc["dim_accuracy_status"], "UNVERIFIABLE")
+    def test_contrast_ci_resamples_calendar_groups_without_crossing_missing_days(self):
+        grid = {"values": np.array([10., np.nan, 12., 14., 40., np.nan, 42., 44.])}
+        winter = np.array([True, True, True, True, False, False, False, False])
+        summer = ~winter
+        ci = _contrast_ci(
+            grid, winter, summer, statistic="median", block=2,
+            n_bootstrap=60, seed=42,
+        )
+        self.assertEqual(ci["point"], -30.)
+        self.assertLess(ci["ci_high"], 0.)
+
+    def test_calendar_group_replicates_do_not_cross_separated_cohorts(self):
+        values = np.array([10., 10., np.nan, 10., 20., 20., 20., 100., 100., np.nan, 100.])
+        mask = np.array([True] * 4 + [False] * 3 + [True] * 4)
+        copies = _group_replicates(values, mask=mask, block=3, n_bootstrap=60, seed=42)
+        self.assertEqual(copies.shape, (60, 6))
+        self.assertTrue(np.isin(copies, [10., 100.]).all())
+
     def test_missing_input_fails_explicitly(self):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(FileNotFoundError):
@@ -141,6 +213,26 @@ class TestExtendedReanalysis(unittest.TestCase):
             finally:
                 ext.FIGURES = original
         pd.testing.assert_frame_equal(frame, before)
+
+    def test_monthly_figure_uses_full_calendar_coverage_not_bar_height_placeholder(self):
+        part = fixture().iloc[:6]
+        quality = pd.DataFrame([
+            {"station_id": part.station_id.iloc[0], "period_type": "month",
+             "period": "2024-12", "coverage_pct_calendar": 1 / 744 * 100,
+             "valid_pm25_observations": 1},
+            {"station_id": part.station_id.iloc[0], "period_type": "month",
+             "period": "2025-01", "coverage_pct_calendar": 3 / 744 * 100,
+             "valid_pm25_observations": 3},
+        ])
+        rows = ext.monthly_figure_groups(part, quality)
+        self.assertEqual([row["n"] for row in rows], [1, 3])
+        for row, n in zip(rows, [1, 3]):
+            self.assertAlmostEqual(row["coverage_pct_calendar"], n / 744 * 100)
+        self.assertEqual([row["month"] for row in rows], [12, 1])
+        altered = quality.copy()
+        altered.loc[0, "coverage_pct_calendar"] = 100.
+        with self.assertRaises(ValueError):
+            ext.monthly_figure_groups(part, altered)
 
     def test_baseline_list_includes_all_twelve_figures(self):
         for number in range(1, 13):
