@@ -21,7 +21,7 @@
 > cấp cao nhất** — đó là lý do đầu Phase 0 nói "8 việc" trong khi bảng này ghi `9`.
 > Trạng thái hiện tại: **65 đánh dấu `[x]` · 90 `[ ]`** (đếm bằng `^\s*- \[( |x)\]` theo công thức ở dòng trên, **bao gồm task lồng** `0.7b` và `1.15b`).
 > **Số mốc này được kiểm lại 2026-11-05** (đợt hoàn thiện W9 / PR #47): Phase 2 (#8) và Phase 3 (#9) đã `CLOSED` (PR #40, #41);
-> Phase 5 (#11) đã triển khai và xác minh đầy đủ (9 task `5.1`–`5.9`). **Phase 4 (#10) nộp W11; Phase 6–11 (issue #12–#17) chưa bắt đầu**.
+> Phase 5 (#11) và Phase 6 (#12) đã triển khai và xác minh đầy đủ. Phase 4 (#10) đóng/miễn trừ theo chỉ đạo người dùng. Phase 7–11 (issue #13–#17) chưa bắt đầu.
 
 > ### Trạng thái triển khai — đọc phần này trước khi tick checkbox
 >
@@ -681,17 +681,17 @@ Input: `data/processed/air_pollution_final.parquet` (9.044 dòng × 18 cột, gi
 
 ## Phase 6 — Issue #12: Hồi quy OLS (~2 buổi)
 
-- [ ] **6.1** Kế thừa điểm cắt Train/Test từ #7 (`2026-01-15 00:00:00+07:00`), giữ Test cho đánh giá độc lập.
-- [ ] **6.2** Khảo sát `$Y = \log(1 + pm25)$ trên Train; kiểm chứng qua chẩn đoán sau khớp.
-- [ ] **6.3** Dummy Regressor baseline + OLS (`statsmodels.api.OLS`).
-- [ ] **6.4** Chẩn đoán đủ 4 giả định LINE: Residuals vs Fitted · Durbin-Watson + ACF · Q-Q + Shapiro-Wilk ·
+- [x] **6.1** Kế thừa điểm cắt Train/Test từ #7 (`2026-01-15 00:00:00+07:00`), giữ Test cho đánh giá độc lập.
+- [x] **6.2** Khảo sát `$Y = \log(1 + pm25)$ trên Train; kiểm chứng qua chẩn đoán sau khớp.
+- [x] **6.3** Dummy Regressor baseline + OLS (`statsmodels.api.OLS`).
+- [x] **6.4** Chẩn đoán đủ 4 giả định LINE: Residuals vs Fitted · Durbin-Watson + ACF · Q-Q + Shapiro-Wilk ·
       Breusch-Pagan + Scale-Location.
-- [ ] **6.5** VIF (ngưỡng > 5.0) + Cook's Distance. Xử lý `pm10` theo phát hiện của #8 (task 2.10).
-- [ ] **6.6** Ridge/Lasso, tune `α` **hoàn toàn trên Train** (Time-Series Split). Không dùng Test để tune.
-- [ ] **6.7** Đánh giá trên **Test độc lập**: MAE, RMSE, `$R^2`, **Adjusted `$R^2$** so với baseline.
-- [ ] **6.8** 🔴 Diễn giải hệ số theo 3 nghĩa vụ: *liên hệ với* (không "gây ra") · *ceteris paribus* ·
+- [x] **6.5** VIF (ngưỡng > 5.0) + Cook's Distance. Xử lý `pm10` theo phát hiện của #8 (task 2.10).
+- [x] **6.6** Ridge/Lasso, tune `α` **hoàn toàn trên Train** (Time-Series Split). Không dùng Test để tune.
+- [x] **6.7** Đánh giá trên **Test độc lập**: MAE, RMSE, `$R^2`, **Adjusted `$R^2$** so với baseline.
+- [x] **6.8** 🔴 Diễn giải hệ số theo 3 nghĩa vụ: *liên hệ với* (không "gây ra") · *ceteris paribus* ·
       *giới hạn trong miền giá trị quan sát*. Không ngoại suy.
-- [ ] **6.9** Tạo `notebooks/06_regression_modeling.ipynb` + `figures/regression_line_diagnostics.png` +
+- [x] **6.9** Tạo `notebooks/06_regression_modeling.ipynb` + `figures/regression_line_diagnostics.png` +
       bảng tham số.
 
 **Deliverable:** `notebooks/06_regression_modeling.ipynb`, `figures/regression_line_diagnostics.png`, bảng tham số
