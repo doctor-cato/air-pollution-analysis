@@ -62,10 +62,10 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 | Con số | Ý nghĩa |
 |---|---|
 | **764** | Số **test method được định nghĩa** trong mã nguồn |
-| **740** | Số unittest **dự kiến chạy và báo cáo** trên CI (thiếu `data/`; xác minh trên Actions sau push) |
-| **736** | Số test **dự kiến chạy và pass** trên CI (740 − 4 skip nằm trong `Ran`; xác minh trên Actions) |
+| **740** | Số unittest **đã chạy và báo cáo** trên CI (thiếu `data/`; [Actions 43051282775](https://github.com/doctor-cato/air-pollution-analysis/actions/runs/43051282775)) |
+| **736** | Số test **đã chạy và pass** trên CI (740 − 4 skip nằm trong `Ran`) |
 
-> ⚠ **Dự kiến `skipped=7` không trừ thẳng vào `Ran`.** Ba trong bảy dòng skip là *class holder*
+> ⚠ **`skipped=7` không trừ thẳng vào `Ran`.** Ba trong bảy dòng skip là *class holder*
 > (`setUpClass` raise `SkipTest`): unittest bỏ qua cả class nên các method của nó **không
 > bao giờ vào `Ran`**, nhưng vẫn hiện một dòng trong `skipped=`. Vì vậy
 > `pass = Ran − (skipped − holders) = 740 − (7 − 3) = 736`, **không phải** `740 − 7`.
@@ -79,7 +79,7 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 | Môi trường | Lệnh | Kết quả |
 |---|---|---|
 | Windows local, **có `data/`**, 2026-11-11 | `.venv\Scripts\python.exe -W ignore::DeprecationWarning -m unittest discover tests -q` | **Thực chạy** `Ran 764 tests in 194.248s` + `OK` → **764 pass, 0 skip** |
-| Ubuntu CI `ubuntu-latest`, **không `data/`** | `python -m unittest discover tests -v` | **Dự kiến** `Ran 740 tests` + `OK (skipped=7)` → **736 pass, 7 skip (3 holder)**; đối chiếu Actions sau push |
+| Ubuntu CI `ubuntu-latest`, **không `data/`**, run 43051282775 | `python -m unittest discover tests -v` | **Thực chạy** `Ran 740 tests in 152.400s` + `OK (skipped=7)` → **736 pass, 7 skip (3 holder)** |
 
 > `data/` bị `.gitignore` loại khỏi repository, nên **CI không bao giờ có dataset**.
 
@@ -99,7 +99,7 @@ Phân biệt rõ: chúng **không chạy** (không tính vào `Ran`) chứ khôn
 
 ---
 
-## 4. Bảy skip dự kiến trên CI
+## 4. Bảy skip trên CI
 
 | # | Test | Lý do |
 |---|---|---|
@@ -116,7 +116,7 @@ bên trong **không** được tính vào `Ran` (xem §3).
 
 Skip 5 và 6 là **giới hạn nền tảng có chủ đích**: bất biến dấu phân cách chỉ tồn tại
 trên Windows. Chạy trên Windows thì 2 test này **chạy thật**, nên máy local báo
-`skipped=0`, còn CI dự kiến báo `skipped=7`. Không phải regression.
+`skipped=0`, còn CI báo `skipped=7`. Không phải regression.
 
 Không skip nào là do lỗi. Không có test nào skip vì "chưa viết xong".
 

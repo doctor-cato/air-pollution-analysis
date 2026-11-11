@@ -796,10 +796,10 @@ W01–W15.
 >   Số mà unittest **thực sự chạy và báo cáo** phụ thuộc cả nền tảng lẫn việc có
 >   `data/` hay không — **không phải con số 764 trên mọi nền tảng**:
 >   - **Windows local (có `data/interim/*.parquet`, 2026-11-11)**: `Ran 764 tests in 194.248s` + `OK` → **764 pass, 0 skip**.
->   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`)**: dự kiến `Ran 740 tests` + `OK (skipped=7)`
->     → **736 pass, 7 skip**; đối chiếu Actions sau push.
+>   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`, run 43051282775)**: `Ran 740 tests in 152.400s` + `OK (skipped=7)`
+>     → **736 pass, 7 skip**.
 >
->   CI dự kiến báo **740 chứ không phải 764** vì **24** phương thức nằm trong **3** lớp mà
+>   CI báo **740 chứ không phải 764** vì **24** phương thức nằm trong **3** lớp mà
 >   `setUpClass` ném `unittest.SkipTest` khi thiếu `data/` — `TestDocumentedReproduction`
 >   (4), `TestRealDataset` của `tests/test_inference.py` (12) và `TestSemanticMutations` (8); cả ba lớp bị bỏ qua nên
 >   các phương thức **không chạy, không được tính vào "Ran"**, nhưng mỗi lớp vẫn đóng góp
