@@ -47,12 +47,16 @@ reports/*
 # kiểm định giả thuyết được đối chiếu trực tiếp với notebook 05 khi chấm,
 # nên phải nằm trong Git dù toàn bộ reports/ còn lại là output sinh lại.
 !reports/inference_results.md
+# reports/regression_results.md là deliverable của Issue #12 (W10): báo cáo
+# hồi quy OLS và chẩn đoán LINE được đối chiếu trực tiếp khi chấm.
+!reports/regression_results.md
 # reports/inference_montecarlo.csv là bằng chứng kiểm chứng Monte Carlo của
 # Issue #11 (W9): nó cho phép người đọc kiểm tra tỷ lệ bác bỏ H0 mà không cần
 # chạy lại mô phỏng (vài chục phút). Sinh lại bằng
 # `python scripts/validate_inference_montecarlo.py --n-sim 1000`.
 !reports/inference_montecarlo.csv
-# Biên bản kiểm toán rò rỉ dữ liệu Issue #13:
+# Báo cáo kết quả và biên bản kiểm toán rò rỉ dữ liệu Issue #13:
+!reports/classification_results.md
 !reports/classification_leakage_audit.md
 
 # ⚠️ figures/ CỐ Ý KHÔNG bị ignore: FIG-01…FIG-07 là bằng chứng chấm điểm

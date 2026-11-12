@@ -93,6 +93,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from src.classification import (
     DEFAULT_SPLIT_TIMESTAMP,
+    ClassificationResults,
     compute_feature_importances,
     engineer_classification_features,
     evaluate_classifier,
@@ -102,6 +103,8 @@ from src.classification import (
     render_pr_curve_figure,
     run_classification_pipeline,
     tune_classification_threshold,
+    write_classification_findings,
+    write_classification_report,
 )
 from src.cleaning_pipeline import (
     DEFAULT_ALERT_MIN_PERIODS,
@@ -114,6 +117,8 @@ DATA_PATH = REPO_ROOT / "data" / "processed" / "air_pollution_final.parquet"
 PR_FIG_PATH = REPO_ROOT / "figures" / "precision_recall_curve.png"
 FEAT_FIG_PATH = REPO_ROOT / "figures" / "feature_importance.png"
 AUDIT_REPORT_PATH = REPO_ROOT / "reports" / "classification_leakage_audit.md"
+RESULTS_REPORT_PATH = REPO_ROOT / "reports" / "classification_results.md"
+FINDINGS_DOC_PATH = REPO_ROOT / "docs" / "classification_findings.md"
 
 print(f"Data path: {DATA_PATH.resolve()}")
 print(f"Tồn tại trên đĩa: {DATA_PATH.exists()}")
@@ -212,6 +217,10 @@ Ngưỡng quyết định $\tau$ được tối ưu hoàn toàn trên tập Trai
 add_code(r"""tau_logreg = tune_classification_threshold(logreg, X_train, y_train, metric="f2")
 tau_rf = tune_classification_threshold(rf, X_train, y_train, metric="f2")
 
+# Đảm bảo các mô hình đã được huấn luyện trọn vẹn trên toàn bộ Train trước khi test
+logreg.fit(X_train, y_train)
+rf.fit(X_train, y_train)
+
 print(f"Ngưỡng quyết định tối ưu F2 cho Logistic Regression: tau = {tau_logreg:.2f}")
 print(f"Ngưỡng quyết định tối ưu F2 cho Random Forest:       tau = {tau_rf:.2f}")
 """)
@@ -294,6 +303,42 @@ print(f"Đã xuất biên bản kiểm toán rò rỉ dữ liệu: {AUDIT_REPORT
 
 from IPython.display import Markdown
 Markdown(audit_md)
+""")
+
+# ---------------------------------------------------------------------------
+# CELL 11: Scientific Results Report & Findings Synthesis
+# ---------------------------------------------------------------------------
+add_md(r"""## 9. Báo Cáo Kết Quả Toàn Diện & Tổng Hợp Phát Hiện Khoa Học
+
+Xuất các báo cáo kết quả nghiệm thu:
+1. `reports/classification_results.md`: Tổng hợp bảng hiệu năng, phân tích ngưỡng, bẫy Accuracy, hai quần thể nhãn.
+2. `docs/classification_findings.md`: Tài liệu phát hiện khoa học, động lực khí tượng, tương tác nhiệt-ẩm, và đánh đổi Precision-Recall.
+""")
+
+add_code(r"""results_obj = ClassificationResults(
+    split_timestamp=DEFAULT_SPLIT_TIMESTAMP,
+    n_train_total=metadata["n_train_total"],
+    n_train_valid=metadata["n_train_valid"],
+    n_test_total=metadata["n_test_total"],
+    n_test_valid=metadata["n_test_valid"],
+    train_prevalence_valid=metadata["train_prevalence_valid"],
+    test_prevalence_valid=metadata["test_prevalence_valid"],
+    train_prevalence_all=metadata["train_prevalence_all"],
+    test_prevalence_all=metadata["test_prevalence_all"],
+    features=list(X_train.columns),
+    best_threshold_logreg=tau_logreg,
+    best_threshold_rf=tau_rf,
+    metrics_table=metrics_table,
+    model_metrics={"dummy": m_dummy, "logreg": m_logreg, "rf": m_rf},
+    feature_importances=imp_df,
+    leakage_audit_markdown=audit_md,
+)
+
+write_classification_report(results_obj, RESULTS_REPORT_PATH)
+write_classification_findings(results_obj, FINDINGS_DOC_PATH)
+
+print(f"Đã xuất báo cáo kết quả: {RESULTS_REPORT_PATH.resolve()}")
+print(f"Đã xuất tài liệu phát hiện khoa học: {FINDINGS_DOC_PATH.resolve()}")
 """)
 
 

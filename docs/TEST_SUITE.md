@@ -29,7 +29,7 @@ Không test nào gọi mạng. Không test nào phụ thuộc thứ tự chạy.
 
 | Module | Test methods | Phạm vi |
 |---|---|---|
-| `tests/test_classification.py` | 15 | Phân loại cảnh báo ô nhiễm (Issue #13): nhãn 24h, 2 mẫu số, past-only features, PR-AUC, tuning F2, 4-fold leakage audit |
+| `tests/test_classification.py` | 16 | Phân loại cảnh báo ô nhiễm (Issue #13): nhãn 24h, 2 mẫu số, past-only features, PR-AUC average precision, tuning F2 không đột biến mô hình, 4-fold leakage audit |
 | `tests/test_cleaning.py` | 114 | Làm sạch tất định, `assert_no_imputation()`, cờ chẩn đoán |
 | `tests/test_cleaning_pipeline.py` | 44 | Merge, freeze, split tuần tự, chống rò rỉ |
 | `tests/test_cleaning_pipeline_guards.py` | 43 | Guard chống rò rỉ (`validate_no_leakage`) |
@@ -41,11 +41,11 @@ Không test nào gọi mạng. Không test nào phụ thuộc thứ tự chạy.
 | `tests/test_issue44_preparation.py` | 17 | CP2/CP3 derived interpolation, masking metrics, winter/station boundaries, comparison report verification & mutation tests |
 | `tests/test_pipeline_runtime_log.py` | 40 | Nhật ký thực thi pipeline, dấu phân cách Windows |
 | `tests/test_profile_airnow_mirror.py` | 8 | CP0 pinned blobs, path preservation, period-aware duplicates/conflicts, QC and source-window gaps (synthetic) |
-| `tests/test_regression.py` | 14 | Hồi quy OLS & LINE (Issue #12): split tuần tự, VIF loại bỏ pm10, 4 giả định LINE, Cook's distance, Ridge/Lasso TimeSeriesSplit, bảng tham số phi nhân quả |
+| `tests/test_regression.py` | 15 | Hồi quy OLS & LINE (Issue #12): split tuần tự, VIF loại bỏ pm10, 4 giả định LINE, Cook's distance, Ridge/Lasso TimeSeriesSplit không rò rỉ, bảng tham số đối chứng HAC Newey-West |
 | `tests/test_validate_issue8.py` | 29 | Checksum, đồng bộ generator, circular stats, smoke fixture, canh số liệu tài liệu |
 | `tests/test_verify_claims_rolling.py` | 9 | Biên rolling 24h — dữ liệu đồng nhất che lỗi |
 | `tests/test_visualizer.py` | 35 | Bộ 7 biểu đồ ấn phẩm FIG-01..FIG-07 (300 DPI, Tufte, zero-baseline, chuỳ 24h, font tiếng Việt) |
-| **Tổng** | **754** | |
+| **Tổng** | **756** | |
 
 Đếm lại sau mỗi thay đổi:
 
@@ -61,25 +61,25 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 | Con số | Ý nghĩa |
 |---|---|
-| **754** | Số **test method được định nghĩa** trong mã nguồn |
-| **736** | Số unittest **thực sự chạy và báo cáo** trên CI (thiếu `data/`) |
-| **732** | Số test **chạy và pass** trên CI (736 − 4 skip nằm trong `Ran`) |
+| **756** | Số **test method được định nghĩa** trong mã nguồn |
+| **738** | Số unittest **thực sự chạy và báo cáo** trên CI (thiếu `data/`) |
+| **734** | Số test **chạy và pass** trên CI (738 − 4 skip nằm trong `Ran`) |
 
 > ⚠ **`skipped=8` không trừ thẳng vào `Ran`.** Bốn trong tám dòng skip là *class holder*
 > (`setUpClass` raise `SkipTest`): unittest bỏ qua cả class nên các method của nó **không
 > bao giờ vào `Ran`**, nhưng vẫn hiện một dòng trong `skipped=`. Vì vậy
-> `pass = Ran − (skipped − holders) = 736 − (8 − 4) = 732`, **không phải** `736 − 8`.
+> `pass = Ran − (skipped − holders) = 738 − (8 − 4) = 734`, **không phải** `738 − 8`.
 
 ### Kết quả thực tế theo môi trường
 
 | Môi trường | Lệnh | Kết quả |
 |---|---|---|
-| Windows local, **có `data/`** | `python -m unittest discover tests` | `Ran 754 tests` + `OK` → **754 pass, 0 skip** |
-| Ubuntu CI `ubuntu-latest`, **không `data/`** | `python -m unittest discover tests -v` | `Ran 736 tests` + `OK (skipped=8)` → **732 pass, 8 skip (4 holder)** |
+| Windows local, **có `data/`** | `python -m unittest discover tests` | `Ran 756 tests` + `OK` → **756 pass, 0 skip** |
+| Ubuntu CI `ubuntu-latest`, **không `data/`** | `python -m unittest discover tests -v` | `Ran 738 tests` + `OK (skipped=8)` → **734 pass, 8 skip (4 holder)** |
 
 > `data/` bị `.gitignore` loại khỏi repository, nên **CI không bao giờ có dataset**.
 
-### Vì sao 754 − 736 = 18
+### Vì sao 756 − 738 = 18
 
 Bốn lớp có `setUpClass` raise `unittest.SkipTest` khi thiếu dữ liệu, và unittest bỏ qua
 **cả class** — mọi method của chúng không bao giờ được tính vào bộ đếm `Ran`:

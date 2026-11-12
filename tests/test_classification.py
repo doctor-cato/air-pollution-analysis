@@ -183,6 +183,13 @@ class TestThresholdTuningAndEvaluation(unittest.TestCase):
         self.assertIn(m.recall, [0.0, 1.0])
         self.assertLess(m.pr_auc, 1.0)
 
+    def test_threshold_tuning_does_not_mutate_model(self):
+        # Kiểm tra mô hình truyền vào tune_classification_threshold không bị đột biến (mutate)
+        probs_before = self.rf.predict_proba(self.X_te)
+        tau = tune_classification_threshold(self.rf, self.X_tr, self.y_tr, metric="f2", n_splits=2)
+        probs_after = self.rf.predict_proba(self.X_te)
+        np.testing.assert_array_almost_equal(probs_before, probs_after)
+
 
 class TestFeatureImportanceAndAudit(unittest.TestCase):
     """Kiểm thử đo lường tầm quan trọng biến và lập biên bản kiểm toán rò rỉ."""
@@ -249,8 +256,12 @@ class TestClassificationRealDataset(unittest.TestCase):
             pr_fig = Path(tmp_dir) / "pr.png"
             feat_fig = Path(tmp_dir) / "feat.png"
             audit_rep = Path(tmp_dir) / "audit.md"
+            res_rep = Path(tmp_dir) / "results.md"
+            find_rep = Path(tmp_dir) / "findings.md"
             results = run_classification_pipeline(
-                REAL_DATA_PATH, pr_fig, feat_fig, audit_rep, split_timestamp=DEFAULT_SPLIT_TIMESTAMP
+                REAL_DATA_PATH, pr_fig, feat_fig, audit_rep,
+                report_results_path=res_rep, findings_path=find_rep,
+                split_timestamp=DEFAULT_SPLIT_TIMESTAMP
             )
             self.assertIsInstance(results, ClassificationResults)
             self.assertEqual(results.n_train_total, 4682)
@@ -258,6 +269,8 @@ class TestClassificationRealDataset(unittest.TestCase):
             self.assertTrue(pr_fig.exists())
             self.assertTrue(feat_fig.exists())
             self.assertTrue(audit_rep.exists())
+            self.assertTrue(res_rep.exists())
+            self.assertTrue(find_rep.exists())
 
 
 if __name__ == "__main__":

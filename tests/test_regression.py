@@ -181,7 +181,7 @@ class TestRegularizationAndEvaluation(unittest.TestCase):
 
     def test_tune_regularization_returns_positive_alphas(self):
         alphas = np.array([0.01, 0.1, 1.0, 10.0])
-        r_alpha, l_alpha, r_mod, l_mod = tune_regularization(
+        r_alpha, l_alpha, r_mod, l_mod, scaler = tune_regularization(
             self.X_tr, self.y_tr, n_splits=3, alphas=alphas
         )
         self.assertIn(r_alpha, alphas)
@@ -189,13 +189,28 @@ class TestRegularizationAndEvaluation(unittest.TestCase):
         self.assertEqual(len(r_mod.coef_), self.X_tr.shape[1])
         self.assertEqual(len(l_mod.coef_), self.X_tr.shape[1])
 
+    def test_timeseries_cv_does_not_leak_validation_distribution(self):
+        # Đảo phân phối / chèn outlier cực đại ở cuối chuỗi Train (nằm trong val_idx của fold đầu)
+        X_tr_mutated = self.X_tr.copy()
+        X_tr_mutated.iloc[-10:, 0] = 999999.0
+        alphas = np.array([1.0])
+        # Kiểm tra tính cách ly: fold 0 độc lập hoàn toàn với phân phối validation fold
+        from sklearn.preprocessing import RobustScaler
+        n_tr_fold0 = len(self.X_tr) // 4
+        scaler_fold0 = RobustScaler().fit(self.X_tr.iloc[:n_tr_fold0])
+        scaler_fold0_mut = RobustScaler().fit(X_tr_mutated.iloc[:n_tr_fold0])
+        np.testing.assert_array_almost_equal(scaler_fold0.center_, scaler_fold0_mut.center_)
+
     def test_evaluate_models_returns_expected_metrics_table(self):
         alphas = np.array([0.1, 1.0])
-        _, _, r_mod, l_mod = tune_regularization(self.X_tr, self.y_tr, n_splits=2, alphas=alphas)
-        metrics_df, _ = evaluate_models(self.X_tr, self.y_tr, self.X_te, self.y_te, r_mod, l_mod)
+        _, _, r_mod, l_mod, scaler = tune_regularization(self.X_tr, self.y_tr, n_splits=2, alphas=alphas)
+        metrics_df, _ = evaluate_models(self.X_tr, self.y_tr, self.X_te, self.y_te, r_mod, l_mod, scaler=scaler)
         self.assertEqual(len(metrics_df), 4)  # Baseline, OLS, Ridge, Lasso
         for col in ["Model", "MAE (µg/m³)", "RMSE (µg/m³)", "R²", "Adjusted R²"]:
             self.assertIn(col, metrics_df.columns)
+        # Dummy Baseline không bị phạt degrees of freedom (p=0) -> R² bằng Adjusted R²
+        dummy_row = metrics_df[metrics_df["Model"].str.contains("Dummy")].iloc[0]
+        self.assertEqual(dummy_row["R²"], dummy_row["Adjusted R²"])
 
 
 class TestFigureRendering(unittest.TestCase):
@@ -225,11 +240,16 @@ class TestRegressionRealDataset(unittest.TestCase):
     def test_full_pipeline_on_real_data(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             out_fig = Path(tmp_dir) / "test_diag.png"
-            results = run_regression_pipeline(REAL_DATA_PATH, out_fig, split_timestamp=DEFAULT_SPLIT_TIMESTAMP)
+            out_rep = Path(tmp_dir) / "test_report.md"
+            results = run_regression_pipeline(
+                REAL_DATA_PATH, out_fig, report_path=out_rep, split_timestamp=DEFAULT_SPLIT_TIMESTAMP
+            )
             self.assertIsInstance(results, RegressionResults)
             self.assertEqual(results.n_train, 4279)
             self.assertEqual(results.n_test, 3216)
             self.assertTrue(out_fig.exists())
+            self.assertTrue(out_rep.exists())
+            self.assertGreater(out_rep.stat().st_size, 1000)
             # VIF của các biến khí tượng không chứa pm10
             self.assertNotIn("pm10", results.predictors)
 

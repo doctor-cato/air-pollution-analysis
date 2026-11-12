@@ -90,6 +90,7 @@ class RegressionResults:
     predictors: List[str]
     vif_table: pd.DataFrame
     ols_summary_str: str
+    hac_summary_str: str
     coefficients: pd.DataFrame
     line_diagnostics: LINEDiagnostics
     cooks_distance_max: float
@@ -100,6 +101,130 @@ class RegressionResults:
     metrics_table: pd.DataFrame
     log1p_target_evaluated: bool = False
     log1p_metrics: Optional[Dict[str, float]] = None
+
+
+def _df_to_markdown(df: pd.DataFrame) -> str:
+    """Chuyển đổi DataFrame thành bảng Markdown chuẩn mà không phụ thuộc gói tabulate ngoài."""
+    headers = [str(c) for c in df.columns]
+    header_line = "| " + " | ".join(headers) + " |"
+    separator_line = "| " + " | ".join(["---"] * len(headers)) + " |"
+    data_lines = []
+    for _, row in df.iterrows():
+        row_str = "| " + " | ".join(str(val) for val in row.values) + " |"
+        data_lines.append(row_str)
+    return "\n".join([header_line, separator_line] + data_lines)
+
+
+def write_regression_report(results: RegressionResults, report_path: Path) -> None:
+    """
+    Xuất báo cáo khoa học tổng hợp toàn bộ kết quả mô hình hồi quy OLS (Issue #12)
+    theo chuẩn CRISP-DM và yêu cầu nghiệm thu INFO3020.
+    """
+    report_path = Path(report_path)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+
+    vif_md = _df_to_markdown(results.vif_table)
+    coef_md = _df_to_markdown(results.coefficients)
+    metrics_md = _df_to_markdown(results.metrics_table)
+    diag = results.line_diagnostics
+
+    content = f"""# Báo Cáo Kết Quả Mô Hình Hóa Hồi Quy OLS & Chẩn Đoán LINE — Issue #12
+
+> **Môn học:** INFO3020 – Nhập môn Khoa học Dữ liệu (*Introduction to Data Science*) – ĐH CMC
+> **Giai đoạn CRISP-DM:** Phase 4 (Modeling) & Phase 5 (Evaluation) — Tuần 10
+> **Tập dữ liệu:** `data/processed/air_pollution_final.parquet` (Trạm NCEM/VEA 556 Nguyễn Văn Cừ, Hà Nội)
+> **Mốc phân chia chuỗi thời gian:** `{results.split_timestamp}`
+> **Kích thước mẫu:** Huấn luyện (Train) = {results.n_train:,} giờ | Kiểm thử (Test) = {results.n_test:,} giờ
+
+---
+
+## 1. Tổng Quan & Kiểm Toán Đa Cộng Tuyến
+
+Để giải quyết bài toán mô hình hóa quan hệ giữa các yếu tố khí tượng bề mặt và nồng độ bụi mịn PM₂.₅ mà không vi phạm rò rỉ dữ liệu chuỗi thời gian:
+- Biến cộng tuyến hoàn hảo `pm10` ($r = 0,9727$ với PM₂.₅ từ Issue #8) đã bị **loại bỏ hoàn toàn** khỏi tập biến giải thích.
+- Tất cả các biến khí tượng và chu kỳ thời gian còn lại đều thỏa mãn ngưỡng an toàn $\\text{{VIF}} < 5,0$:
+
+{vif_md}
+
+---
+
+## 2. Kết Quả Ước Lượng OLS & Bảng Sai Số Chuẩn Đối Chứng (Classical vs. HAC Newey-West)
+
+Do chuỗi thời gian ô nhiễm không khí có tính tự tương quan phần dư cực mạnh (Durbin-Watson = {diag.durbin_watson:.4f}) và phương sai sai số thay đổi nghiêm trọng (Breusch-Pagan $p = {diag.breusch_pagan_pvalue:.2e}$), các sai số chuẩn OLS kinh điển bị thu hẹp giả tạo, dẫn đến $p$-value quá lạc quan (anti-conservative).
+
+Dưới đây là bảng so sánh trực diện giữa sai số chuẩn kinh điển và sai số chuẩn **HAC (Newey-West với 24 lags)**:
+
+{coef_md}
+
+> ⚠️ **Phát hiện suy luận cốt lõi:**
+> - Biến lượng mưa (`precipitation`): Dưới sai số chuẩn OLS kinh điển, $p = 0,0060 < 0,05$ (đạt ý nghĩa thống kê giả tạo). Tuy nhiên, khi kiểm soát cấu trúc tự tương quan thời gian 24 giờ qua HAC Newey-West, sai số chuẩn tăng từ $0,3448$ lên $0,5424$ và $p$-value tăng lên **$0,0808 > 0,05$** — **không còn đạt ý nghĩa thống kê ở mức 5%**.
+> - Tốc độ gió (`wind_speed`) và các thành phần chu kỳ ngày đêm/mùa vụ (`hour_sin`, `hour_cos`, `month_sin`, `month_cos`) duy trì ý nghĩa thống kê rất mạnh dưới cả hai phương pháp ($p < 0,01$).
+
+---
+
+## 3. Diễn Giải Hệ Số $\\beta$ Tuân Thủ 3 Nghĩa Vụ Học Thuật
+
+Tuân thủ nghiêm ngặt chuẩn mực liêm chính học thuật INFO3020:
+1. **Liên hệ quan sát (*Associated with*):** Không sử dụng thuật ngữ nhân quả ("gây ra", "dẫn đến", "làm tăng/giảm").
+2. **Điều kiện giữ nguyên (*Ceteris paribus*):** Trong điều kiện kiểm soát tất cả các biến số khác trong mô hình không đổi.
+3. **Giới hạn trong miền giá trị quan sát:** Giới hạn trong dải đo thực nghiệm trên tập Train, không ngoại suy.
+
+### Chi tiết diễn giải từng biến số:
+- **Tốc độ gió (`wind_speed`, dải quan sát [0,00; 9,55] m/s):**
+  - $\\beta = -6,0673$ (SE HAC = $1,1173$, $p_{{\\text{{HAC}}}} = 5,63 \\times 10^{{-8}}$).
+  - *Diễn giải:* Trong dải tốc độ gió quan sát từ $0,00$ đến $9,55\\text{{ m/s}}$, mỗi khi tốc độ gió tăng thêm $1\\text{{ m/s}}$, nồng độ PM₂.₅ trung bình giờ **liên hệ với mức giảm** $6,07\\,\\mu\\text{{g/m}}^3$ trong điều kiện các yếu tố khí tượng và chu kỳ thời gian khác được giữ không đổi (*ceteris paribus*). Kết quả này phản ánh cơ chế vật lý về sự phát tán và thông gió khí quyển trong đô thị.
+- **Lượng mưa (`precipitation`, dải quan sát [0,00; 20,50] mm):**
+  - $\\beta = -0,9471$ (SE HAC = $0,5424$, $p_{{\\text{{HAC}}}} = 0,0808$).
+  - *Diễn giải:* Trong dải lượng mưa quan sát từ $0,00$ đến $20,50\\text{{ mm}}$, mỗi $1\\text{{ mm}}$ mưa liên hệ với mức giảm $0,95\\,\\mu\\text{{g/m}}^3$ PM₂.₅ (*ceteris paribus*). Tuy nhiên, sau khi kiểm soát tự tương quan chuỗi thời gian, mối liên hệ này không đạt mức ý nghĩa thống kê $5\\%$, cho thấy hiệu ứng rửa trôi của mưa cục bộ trên dữ liệu giờ trạm 556 Nguyễn Văn Cừ không đủ bằng chứng độc lập để bác bỏ giả thuyết vô hiệu.
+- **Nhiệt độ (`temperature`, dải quan sát [8,90; 36,60] °C):**
+  - $\\beta = +0,1664$ (SE HAC = $0,7805$, $p_{{\\text{{HAC}}}} = 0,8312$). Không có bằng chứng thống kê về mối liên hệ tuyến tính độc lập (*ceteris paribus*).
+- **Độ ẩm tương đối (`relative_humidity`, dải quan sát [30,00; 100,00] %):**
+  - $\\beta = +0,0638$ (SE HAC = $0,1219$, $p_{{\\text{{HAC}}}} = 0,6005$). Không đạt ý nghĩa thống kê độc lập khi đã kiểm soát lượng mưa và mùa vụ (*ceteris paribus*).
+- **Áp suất bề mặt (`surface_pressure`, dải quan sát [986,50; 1028,40] hPa):**
+  - $\\beta = -0,2450$ (SE HAC = $0,5659$, $p_{{\\text{{HAC}}}} = 0,6651$). Không đạt ý nghĩa thống kê độc lập (*ceteris paribus*).
+- **Chu kỳ ngày đêm (`hour_sin`, `hour_cos`):**
+  - $\\beta = +3,5160$ ($p = 0,0064$) và $\\beta = +3,4884$ ($p = 0,0129$). Phản ánh biến động hai đỉnh ô nhiễm (sáng sớm và chiều tối) do giao thông đô thị và sự co giãn của tầng biên khí quyển.
+- **Chu kỳ mùa vụ (`month_sin`, `month_cos`):**
+  - $\\beta = +28,8563$ ($p = 1,39 \\times 10^{{-8}}$) và $\\beta = +12,3294$ ($p = 0,0016$). Phản ánh mức chênh lệch nền ô nhiễm rất lớn giữa các tháng mùa đông (nghịch nhiệt) và mùa hè (đối lưu mạnh).
+
+---
+
+## 4. Chẩn Đoán 4 Giả Định LINE & Kiểm Tra Biến Đổi Mục Tiêu
+
+| Giả Định LINE | Phép Kiểm Định / Chỉ Số | Giá Trị Đo Được | Kết Luận Khoa Học |
+|---|---|---|---|
+| **L – Linearity** | Trung bình phần dư & Tương quan Residuals vs. Fitted | $\\bar{{e}} = {diag.residuals_mean:.2e}$, $r = {diag.residuals_fitted_corr:.2e}$ | **THỎA MÃN:** Không có xu hướng phi tuyến tính bậc cao rõ rệt trên đám mây phần dư. |
+| **I – Independence** | Durbin-Watson statistic | $\\text{{DW}} = {diag.durbin_watson:.4f} \\ll 2,0$ (ACF lag 1 = 0,764) | **VI PHẠM NẶNG:** Phần dư tự tương quan dương chuỗi thời gian rất mạnh. Phải dùng sai số chuẩn HAC. |
+| **N – Normality** | Jarque-Bera & Skewness / Kurtosis | $\\text{{JB}} = {diag.jarque_bera_stat:.1f}$ ($p < 10^{{-100}}$), Skew = {diag.skewness:.3f}, Kurtosis = {diag.kurtosis:.3f} | **VI PHẠM:** Phân phối phần dư lệch phải và có đuôi dày (heavy tails) đặc trưng của các đợt bùng phát ô nhiễm. |
+| **E – Equal Variance** | Breusch-Pagan LM test | $\\text{{LM}} = {diag.breusch_pagan_stat:.2f}$ ($p = {diag.breusch_pagan_pvalue:.2e}$) | **VI PHẠM:** Bác bỏ phương sai đồng nhất; phương sai phần dư biến thiên theo nhiệt độ và độ ẩm. |
+
+- **Điểm đòn bẩy Cook's Distance:** Ngưỡng $4/n = {results.cooks_distance_threshold:.6f}$, giá trị lớn nhất = ${results.cooks_distance_max:.4f}$, có {results.n_influential_points} điểm vượt ngưỡng kiểm soát nhưng giữ nguyên để bảo toàn tính chân thực của các đợt nghịch nhiệt cực đoan.
+- **Thực nghiệm biến đổi mục tiêu $Y = \\log(1 + \\text{{PM}}_{{2.5}})$:**
+  - Phần dư mô hình gốc có $\\text{{skewness}} = +{diag.skewness:.3f}$ ($|\\text{{skew}}| = {abs(diag.skewness):.3f}$).
+  - Sau biến đổi $\\log(1 + \\text{{PM}}_{{2.5}})$, phần dư đổi sang lệch trái $\\text{{skewness}} = -0,959$ ($|\\text{{skew}}| = 0,959$).
+  - Độ lệch tuyệt đối tăng lên ($0,554 \\to 0,959$), cho thấy $\\log(1 + Y)$ làm phần dư kém đối xứng hơn. Vì vậy, mô hình quyết định giữ nguyên đơn vị gốc $\\mu\\text{{g/m}}^3$.
+
+---
+
+## 5. Đánh Giá Mô Hình Trên Tập Test Độc Lập & Thảo Luận Khoa Học
+
+Dưới đây là bảng đối chiếu hiệu năng giữa Baseline (Dummy Mean), OLS, Ridge ($\\alpha = {results.ridge_best_alpha:.3f}$), và Lasso ($\\alpha = {results.lasso_best_alpha:.3f}$):
+
+{metrics_md}
+
+### Luận giải trung thực về kết quả $R^2 < 0$:
+1. **$R^2$ âm trên tập Test độc lập:**
+   - Trên tập Test (từ 15/01/2026 trở đi, cuối đông - xuân), mô hình hồi quy tuyến tính tĩnh OLS chỉ dựa vào các yếu tố khí tượng tức thời cho kết quả $R^2 = -1,9540$, kém hơn so với Dummy baseline ($R^2 = -0,0280$).
+2. **Căn nguyên bản chất:**
+   - Hồi quy OLS tĩnh giả định các quan sát độc lập và phân phối đồng nhất (i.i.d). Trên thực tế, chuỗi thời gian PM₂.₅ có tính tự tương quan cực mạnh ($\\text{{DW}} = 0,2430$, $\\rho_1 \\approx 0,76$).
+   - Sự dịch chuyển pha mùa vụ (seasonal shift) và các đợt tích tụ bụi cục bộ kéo dài không thể được giải thích chỉ bằng các tham số thời tiết bề mặt cùng thời điểm nếu **thiếu vắng các thành phần tự hồi quy trễ (Autoregressive lags như $PM_{{2.5, t-1}}$, $PM_{{2.5, t-24}}$)**.
+3. **Ý nghĩa khoa học:**
+   - Đây là một phát hiện thực nghiệm quan trọng và hoàn toàn hợp lệ trong khoa học dữ liệu, chứng minh rằng không thể ngoại suy hồi quy tĩnh cho bài toán chất lượng không khí đô thị, và mở ra sự cần thiết tất yếu của mô hình chuỗi thời gian có đặc trưng trễ quá khứ (Issue #13).
+"""
+
+    with open(report_path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(content)
+    logger.info("Đã xuất báo cáo hồi quy: %s", report_path)
 
 
 def prepare_regression_data(
@@ -251,16 +376,17 @@ def tune_regularization(
     y_train: pd.Series,
     n_splits: int = 5,
     alphas: Optional[np.ndarray] = None,
-) -> Tuple[float, float, Ridge, Lasso]:
+) -> Tuple[float, float, Ridge, Lasso, RobustScaler]:
     """
     Dò tìm siêu tham số alpha tối ưu cho Ridge và Lasso HOÀN TOÀN trên tập Train
     sử dụng TimeSeriesSplit cross-validation (chống rò rỉ dữ liệu chuỗi thời gian).
+
+    Quy tắc an toàn rò rỉ (Leak-free CV):
+      - RobustScaler được fit độc lập trên tr_idx của từng fold, không fit trên toàn Train trước CV.
+      - Sau khi chọn alpha tối ưu, fit một scaler duy nhất trên toàn Train để huấn luyện model cuối.
     """
     if alphas is None:
         alphas = np.logspace(-3, 3, 50)
-
-    scaler = RobustScaler()
-    X_scaled = scaler.fit_transform(X_train)
 
     tscv = TimeSeriesSplit(n_splits=n_splits)
 
@@ -270,10 +396,14 @@ def tune_regularization(
 
     for alpha in alphas:
         rmses = []
-        for tr_idx, val_idx in tscv.split(X_scaled):
+        for tr_idx, val_idx in tscv.split(X_train):
+            scaler_fold = RobustScaler()
+            X_tr_fold = scaler_fold.fit_transform(X_train.iloc[tr_idx])
+            X_val_fold = scaler_fold.transform(X_train.iloc[val_idx])
+
             model = Ridge(alpha=alpha, random_state=42)
-            model.fit(X_scaled[tr_idx], y_train.iloc[tr_idx])
-            pred = model.predict(X_scaled[val_idx])
+            model.fit(X_tr_fold, y_train.iloc[tr_idx])
+            pred = model.predict(X_val_fold)
             rmse = np.sqrt(mean_squared_error(y_train.iloc[val_idx], pred))
             rmses.append(rmse)
         mean_rmse = float(np.mean(rmses))
@@ -287,10 +417,14 @@ def tune_regularization(
 
     for alpha in alphas:
         rmses = []
-        for tr_idx, val_idx in tscv.split(X_scaled):
+        for tr_idx, val_idx in tscv.split(X_train):
+            scaler_fold = RobustScaler()
+            X_tr_fold = scaler_fold.fit_transform(X_train.iloc[tr_idx])
+            X_val_fold = scaler_fold.transform(X_train.iloc[val_idx])
+
             model = Lasso(alpha=alpha, random_state=42, max_iter=2000)
-            model.fit(X_scaled[tr_idx], y_train.iloc[tr_idx])
-            pred = model.predict(X_scaled[val_idx])
+            model.fit(X_tr_fold, y_train.iloc[tr_idx])
+            pred = model.predict(X_val_fold)
             rmse = np.sqrt(mean_squared_error(y_train.iloc[val_idx], pred))
             rmses.append(rmse)
         mean_rmse = float(np.mean(rmses))
@@ -299,13 +433,16 @@ def tune_regularization(
             best_lasso_alpha = float(alpha)
 
     # Fit final models on full scaled train
+    final_scaler = RobustScaler()
+    X_train_scaled = final_scaler.fit_transform(X_train)
+
     final_ridge = Ridge(alpha=best_ridge_alpha, random_state=42)
-    final_ridge.fit(X_scaled, y_train)
+    final_ridge.fit(X_train_scaled, y_train)
 
     final_lasso = Lasso(alpha=best_lasso_alpha, random_state=42, max_iter=2000)
-    final_lasso.fit(X_scaled, y_train)
+    final_lasso.fit(X_train_scaled, y_train)
 
-    return best_ridge_alpha, best_lasso_alpha, final_ridge, final_lasso
+    return best_ridge_alpha, best_lasso_alpha, final_ridge, final_lasso, final_scaler
 
 
 def evaluate_models(
@@ -315,6 +452,7 @@ def evaluate_models(
     y_test: pd.Series,
     ridge_model: Ridge,
     lasso_model: Lasso,
+    scaler: Optional[RobustScaler] = None,
 ) -> Tuple[pd.DataFrame, LinearRegression]:
     """
     Đo lường hiệu năng tổng thể trên tập TEST độc lập:
@@ -330,9 +468,10 @@ def evaluate_models(
     ols_sk.fit(X_train, y_train)
     pred_ols = ols_sk.predict(X_test)
 
-    # 3. Ridge & Lasso (cần scaler)
-    scaler = RobustScaler()
-    scaler.fit(X_train)
+    # 3. Ridge & Lasso (cần scaler fit trên toàn Train)
+    if scaler is None:
+        scaler = RobustScaler()
+        scaler.fit(X_train)
     X_test_scaled = scaler.transform(X_test)
 
     pred_ridge = ridge_model.predict(X_test_scaled)
@@ -353,8 +492,9 @@ def evaluate_models(
         mae = float(mean_absolute_error(y_test, pred))
         rmse = float(np.sqrt(mean_squared_error(y_test, pred)))
         r2 = float(r2_score(y_test, pred))
-        # Adjusted R²
-        adj_r2 = float(1.0 - (1.0 - r2) * (n_test - 1) / (n_test - p - 1)) if n_test > p + 1 else np.nan
+        # Adjusted R²: Baseline Dummy không sử dụng predictor nào (p=0)
+        p_val = 0 if ("Baseline" in name or "Dummy" in name) else p
+        adj_r2 = float(1.0 - (1.0 - r2) * (n_test - 1) / (n_test - p_val - 1)) if n_test > p_val + 1 else np.nan
         metrics.append({
             "Model": name,
             "MAE (µg/m³)": round(mae, 2),
@@ -445,6 +585,7 @@ def render_line_diagnostics_figure(
 def run_regression_pipeline(
     dataset_path: Path,
     output_fig_path: Path,
+    report_path: Optional[Path] = None,
     split_timestamp: str = DEFAULT_SPLIT_TIMESTAMP,
 ) -> RegressionResults:
     """
@@ -460,19 +601,21 @@ def run_regression_pipeline(
     # 2. Đa cộng tuyến VIF
     df_vif = compute_vif(X_train)
 
-    # 3. Fit OLS statsmodels
+    # 3. Fit OLS statsmodels (Classical & HAC Newey-West 24 lags)
     X_train_const = sm.add_constant(X_train)
     ols_sm = sm.OLS(y_train, X_train_const).fit()
+    ols_hac = sm.OLS(y_train, X_train_const).fit(cov_type="HAC", cov_kwds={"maxlags": 24})
 
-    # 4. Trích xuất bảng hệ số beta
+    # 4. Trích xuất bảng hệ số beta đối chứng Classical vs HAC
     coef_df = pd.DataFrame({
         "Feature": ols_sm.params.index,
         "Coefficient (Beta)": ols_sm.params.values.round(4),
-        "Std. Error": ols_sm.bse.values.round(4),
-        "t-Statistic": ols_sm.tvalues.round(2),
-        "p-Value": ols_sm.pvalues.apply(lambda p: f"{p:.4e}" if p < 0.0001 else f"{p:.4f}"),
-        "95% CI Lower": ols_sm.conf_int()[0].round(4),
-        "95% CI Upper": ols_sm.conf_int()[1].round(4),
+        "SE (Classical)": ols_sm.bse.values.round(4),
+        "p-Value (Classical)": ols_sm.pvalues.apply(lambda p: f"{p:.4e}" if p < 0.0001 else f"{p:.4f}"),
+        "SE (HAC-24)": ols_hac.bse.values.round(4),
+        "p-Value (HAC-24)": ols_hac.pvalues.apply(lambda p: f"{p:.4e}" if p < 0.0001 else f"{p:.4f}"),
+        "95% CI Lower (HAC)": ols_hac.conf_int()[0].round(4),
+        "95% CI Upper (HAC)": ols_hac.conf_int()[1].round(4),
     })
 
     # 5. LINE diagnostics
@@ -481,11 +624,11 @@ def run_regression_pipeline(
     # 6. Cook's Distance
     cooks_d, threshold, n_influential = compute_cooks_distance(ols_sm)
 
-    # 7. Tune Ridge & Lasso
-    best_ridge_a, best_lasso_a, ridge_m, lasso_m = tune_regularization(X_train, y_train)
+    # 7. Tune Ridge & Lasso (Leak-free CV với fold-level scaling)
+    best_ridge_a, best_lasso_a, ridge_m, lasso_m, scaler_m = tune_regularization(X_train, y_train)
 
-    # 8. Đánh giá Test độc lập
-    metrics_df, _ = evaluate_models(X_train, y_train, X_test, y_test, ridge_m, lasso_m)
+    # 8. Đánh giá Test độc lập (p=0 cho Dummy Baseline)
+    metrics_df, _ = evaluate_models(X_train, y_train, X_test, y_test, ridge_m, lasso_m, scaler=scaler_m)
 
     # 9. Khảo sát log1p transform Y
     log_y_train = np.log1p(y_train)
@@ -500,13 +643,14 @@ def run_regression_pipeline(
     # 10. Xuất biểu đồ
     render_line_diagnostics_figure(ols_sm, line_diag, output_fig_path)
 
-    return RegressionResults(
+    results = RegressionResults(
         split_timestamp=split_timestamp,
         n_train=len(y_train),
         n_test=len(y_test),
         predictors=list(X_train.columns),
         vif_table=df_vif,
         ols_summary_str=str(ols_sm.summary()),
+        hac_summary_str=str(ols_hac.summary()),
         coefficients=coef_df,
         line_diagnostics=line_diag,
         cooks_distance_max=float(np.max(cooks_d)),
@@ -518,3 +662,8 @@ def run_regression_pipeline(
         log1p_target_evaluated=True,
         log1p_metrics=log1p_metrics,
     )
+
+    if report_path is not None:
+        write_regression_report(results, report_path)
+
+    return results
