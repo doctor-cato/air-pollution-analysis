@@ -1,5 +1,7 @@
 # Task List — Đối chiếu Slide Bài Giảng & Roadmap (M3 → M6)
 
+> **Issue #50 (bổ sung sau checklist gốc):** Kiểm toán M2, EDA M3 và suy luận W9 trên dataset tách trạm được triển khai trong `scripts/run_extended_reanalysis.py`, với báo cáo `reports/extended_*`, hai hình `figures/extended/`, validator và kiểm thử `tests/test_extended_reanalysis.py`. Theo dõi AC và giới hạn snapshot ERA5 ở [`docs/issue50_reproducibility.md`](issue50_reproducibility.md). Các task #12/#13 thuộc PR #48/#49 và không được gộp vào phạm vi này.
+
 > Sinh ra từ việc đối chiếu 6 slide tóm tắt trong Obsidian vault `CMC/datascience`
 > (W6, W7, W9, W10, W11, W12) với `docs/roadmap.md` và nội dung issue #8–#17 trên GitHub.
 >
