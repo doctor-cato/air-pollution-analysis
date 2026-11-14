@@ -5,7 +5,7 @@
 > **Đề tài:** Phân tích mức độ ô nhiễm không khí theo thời gian (*Time-Series Air Pollution Analysis*)  
 > **Căn cứ tài liệu:** Đề cương môn học INFO3020, Bài giảng ThS. Phạm Ngọc Đông – Khoa CNTT & Truyền thông, Trường Đại học CMC, và hệ thống 17 GitHub Issues (#1–#17, #19) làm đặc tả kỹ thuật có thẩm quyền.  
 > **Nơi lưu trữ:** `docs/roadmap.md`
-> **Kiểm thử hiện tại (Issue #50):** suite định nghĩa **764** test methods;
+> **Kiểm thử hiện tại (Issue #50 + #12):** suite định nghĩa **787** test methods;
 > [`docs/TEST_SUITE.md`](TEST_SUITE.md) là nguồn chuẩn cho breakdown và kết quả theo môi trường.
 
 ---
@@ -507,7 +507,7 @@ air-pollution-analysis/
 │   ├── 03_processed_data_preview.ipynb # Kiểm tra artifact đã đóng băng trước khi M3 đọc [Issue #7]
 │   ├── 04_descriptive_stats.ipynb      # Thống kê mô tả 4 họ chỉ số & phân tích chu kỳ [Issue #8]
 │   ├── 05_statistical_inference.ipynb  # Kế hoạch — Kiểm định phi tham số, Effect Size, Bootstrap CI [Issue #11]
-│   ├── 06_regression_modeling.ipynb    # Kế hoạch — Hồi quy OLS, chẩn đoán LINE, Ridge/Lasso [Issue #12]
+│   ├── 06_regression_modeling.ipynb    # Hồi quy OLS, chẩn đoán LINE, Ridge/Lasso TimeSeriesSplit [Issue #12]
 │   └── 07_classification_alerts.ipynb  # Kế hoạch — Phân loại cảnh báo sớm, PR-AUC, Threshold tuning [Issue #13]
 ├── src/
 │   ├── __init__.py
@@ -516,6 +516,7 @@ air-pollution-analysis/
 │   ├── cleaning.py                     # Làm sạch tất định, kẹt cảm biến, reindex, sinh Cleaning Log [Issue #6]
 │   ├── cleaning_pipeline.py            # Merge, freeze, split tuần tự, sklearn Pipeline chống rò rỉ [Issue #7]
 │   ├── flag_evidence.py                 # Tái lập số cho cờ is_high_humidity_fog từ dữ liệu thật [Issue #38]
+│   ├── regression.py                   # Mô hình hồi quy OLS, kiểm định 4 giả định LINE, Ridge/Lasso [Issue #12]
 │   └── visualizer.py                   # Kế hoạch — Hàm vẽ biểu đồ chuẩn Tufte/Cleveland [Issue #9, #15]
 ├── figures/                            # Kế hoạch — 7 biểu đồ ấn phẩm giải thích FIG-01→FIG-07, PNG 300 DPI [Issue #9]
 │   └── .gitkeep
@@ -791,19 +792,19 @@ W01–W15.
 >   `#12`, `#13`) **đã được mở lại** và không còn bị chặn.
 > - Các số liệu thực nghiệm nêu trong các báo cáo (#4, #5) là **kết quả của một lần thực thi cụ thể**
 >   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
-> - Bộ kiểm thử hiện gồm **764 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
+> - Bộ kiểm thử hiện gồm **787 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
 >   [`docs/TEST_SUITE.md`](TEST_SUITE.md) — nguồn chuẩn duy nhất cho số liệu kiểm thử).
 >   Số mà unittest **thực sự chạy và báo cáo** phụ thuộc cả nền tảng lẫn việc có
->   `data/` hay không — **không phải con số 764 trên mọi nền tảng**:
->   - **Windows local (có `data/interim/*.parquet`, 2026-11-11)**: `Ran 764 tests in 194.248s` + `OK` → **764 pass, 0 skip**.
->   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`, run 43051282775)**: `Ran 740 tests in 152.400s` + `OK (skipped=7)`
->     → **736 pass, 7 skip**.
+>   `data/` hay không — **không phải con số 787 trên mọi nền tảng**:
+>   - Trước khi gộp Issue #12, baseline Issue #50 trên **Windows local (có `data/`, 2026-11-11)**: `Ran 764 tests in 194.248s` + `OK` → **764 pass, 0 skip**.
+>   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`, run 43051282775)**: `Ran 740 tests in 152.400s` + `OK (skipped=7)` → **736 pass, 7 skip** (trên baseline 764; thêm Issue #12 là 787 defined / 25 không vào `Ran`).
 >
->   CI báo **740 chứ không phải 764** vì **24** phương thức nằm trong **3** lớp mà
+>   Trên `787` method định nghĩa, **25** phương thức nằm trong **4** lớp mà
 >   `setUpClass` ném `unittest.SkipTest` khi thiếu `data/` — `TestDocumentedReproduction`
->   (4), `TestRealDataset` của `tests/test_inference.py` (12) và `TestSemanticMutations` (8); cả ba lớp bị bỏ qua nên
+>   (4), `TestRealDataset` của `tests/test_inference.py` (12), `TestSemanticMutations` (8) và
+>   `TestRegressionRealDataset` của `tests/test_regression.py` (1); cả 4 lớp bị bỏ qua nên
 >   các phương thức **không chạy, không được tính vào "Ran"**, nhưng mỗi lớp vẫn đóng góp
->   **1 dòng** vào `skipped=`. Vì vậy `pass = Ran − (skipped − holder) = 740 − (7 − 3) = 736`.
+>   **1 dòng** vào `skipped=`. Vì vậy `pass = Ran − (skipped − holders)`.
 >   Danh sách skip còn lại: `TestScriptsUseTheComputation.test_progress_report_bullet_carries_the_computed_f_statistic`
 >   (cùng lý do thiếu dữ liệu); hai test `@unittest.skipUnless(os.name == "nt")` trong
 >   `tests/test_pipeline_runtime_log.py`; và `test_live_restart_kernel_and_run_all` trong
