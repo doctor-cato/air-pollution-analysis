@@ -4,7 +4,7 @@
 > `AGENTS.md` chỉ trỏ tới đây; con số kiểm thử thay đổi theo từng Issue nên
 > không nhân bản vào file hướng dẫn agent.
 >
-> **Cập nhật lần cuối:** Issue #50, sau khi bổ sung kiểm toán và tái phân tích trên dữ liệu mở rộng.
+> **Cập nhật lần cuối:** sau Issue #50, Issue #12 (W10 — hồi quy OLS) và Issue #13 (W11 — phân loại cảnh báo).
 
 ---
 
@@ -29,23 +29,25 @@ Không test nào gọi mạng. Không test nào phụ thuộc thứ tự chạy.
 
 | Module | Test methods | Phạm vi |
 |---|---|---|
-| `tests/test_data_collection.py` | 72 | Ingest OpenAQ / Open-Meteo / AirNow, provenance, SHA-256, fail-closed S3 cache preservation |
+| `tests/test_classification.py` | 24 | Phân loại cảnh báo ô nhiễm (Issue #13): nhãn 24h, 2 mẫu số & 4 quần thể, past-only features trên lưới 1h, PR-AUC average precision, tuning F2 không đột biến mô hình, ablation đa phạm vi & horizon có purge gap, xử lý 1 lớp (`UNESTIMABLE`), 4-fold leakage audit |
 | `tests/test_cleaning.py` | 114 | Làm sạch tất định, `assert_no_imputation()`, cờ chẩn đoán |
+| `tests/test_cleaning_pipeline.py` | 44 | Merge, freeze, split tuần tự, chống rò rỉ |
+| `tests/test_cleaning_pipeline_guards.py` | 43 | Guard chống rò rỉ (`validate_no_leakage`) |
+| `tests/test_data_collection.py` | 72 | Ingest OpenAQ / Open-Meteo / AirNow, provenance, SHA-256, fail-closed S3 cache preservation |
 | `tests/test_data_quality.py` | 44 | Kiểm toán chất lượng 6 chiều |
 | `tests/test_extended_reanalysis.py` | 22 | Hợp đồng Issue #50: tách trạm, rolling theo trạm, QC sáu chiều, bootstrap, FIG-03 full-calendar và đối chiếu artifact |
 | `tests/test_extended_validation_mutations.py` | 16 | Kiểm thử mutation: structural không cần dữ liệu, semantic chỉ với Parquet thật; kiểm tra status, CI, provenance và so sánh |
-| `tests/test_cleaning_pipeline.py` | 44 | Merge, freeze, split tuần tự, chống rò rỉ |
-| `tests/test_cleaning_pipeline_guards.py` | 43 | Guard chống rò rỉ (`validate_no_leakage`) |
 | `tests/test_fetch_dataset.py` | 9 | `scripts/fetch_dataset.py` |
 | `tests/test_flag_evidence.py` | 44 | Bằng chứng tái lập được cho `is_high_humidity_fog` |
 | `tests/test_inference.py` | 218 | W9 — Holm, effect size, chẩn đoán phân phối, QCVN; **bootstrap theo lịch ngày** (mặt nạ thiếu, nhãn theo vị trí đích), **HAC/Newey–West**, kiểm chứng **Monte Carlo đa kịch bản**, chẩn đoán khái quát hóa, guard `station_id` — số liệu thật: `TestRealDataset` |
 | `tests/test_issue44_preparation.py` | 17 | CP2/CP3 derived interpolation, masking metrics, winter/station boundaries, comparison report verification & mutation tests |
-| `tests/test_profile_airnow_mirror.py` | 8 | CP0 pinned blobs, path preservation, period-aware duplicates/conflicts, QC and source-window gaps (synthetic) |
 | `tests/test_pipeline_runtime_log.py` | 40 | Nhật ký thực thi pipeline, dấu phân cách Windows |
+| `tests/test_profile_airnow_mirror.py` | 8 | CP0 pinned blobs, path preservation, period-aware duplicates/conflicts, QC and source-window gaps (synthetic) |
+| `tests/test_regression.py` | 23 | Hồi quy OLS & LINE (Issue #12): split tuần tự tách trạm Protocol A, từ chối Protocol B, VIF, Ramsey RESET + 4 giả định LINE, Outliers/Leverage/Cook's D, Ridge/Lasso TimeSeriesSplit fold-level không rò rỉ, HAC lag sensitivity, ablation, derived interpolation sensitivity |
 | `tests/test_validate_issue8.py` | 29 | Checksum, đồng bộ generator, circular stats, smoke fixture, canh số liệu tài liệu |
 | `tests/test_verify_claims_rolling.py` | 9 | Biên rolling 24h — dữ liệu đồng nhất che lỗi |
 | `tests/test_visualizer.py` | 35 | Bộ 7 biểu đồ ấn phẩm FIG-01..FIG-07 (300 DPI, Tufte, zero-baseline, chuỳ 24h, font tiếng Việt) |
-| **Tổng** | **764** | |
+| **Tổng** | **811** | |
 
 Đếm lại sau mỗi thay đổi:
 
@@ -61,14 +63,14 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 | Con số | Ý nghĩa |
 |---|---|
-| **764** | Số **test method được định nghĩa** trong mã nguồn |
-| **740** | Số unittest **đã chạy và báo cáo** trên CI (thiếu `data/`; [Actions 43051282775](https://github.com/doctor-cato/air-pollution-analysis/actions/runs/43051282775)) |
-| **736** | Số test **đã chạy và pass** trên CI (740 − 4 skip nằm trong `Ran`) |
+| **811** | Số **test method được định nghĩa** trong mã nguồn |
+| **785** | Số unittest **dự kiến chạy và báo cáo** trên CI (thiếu `data/`; 811 − 26 trong 5 lớp skip) |
+| **781** | Số test **dự kiến chạy và pass** trên CI (785 − 4 skip nằm trong `Ran`) |
 
-> ⚠ **`skipped=7` không trừ thẳng vào `Ran`.** Ba trong bảy dòng skip là *class holder*
+> ⚠ **`skipped=9` không trừ thẳng vào `Ran`.** Năm trong chín dòng skip là *class holder*
 > (`setUpClass` raise `SkipTest`): unittest bỏ qua cả class nên các method của nó **không
 > bao giờ vào `Ran`**, nhưng vẫn hiện một dòng trong `skipped=`. Vì vậy
-> `pass = Ran − (skipped − holders) = 740 − (7 − 3) = 736`, **không phải** `740 − 7`.
+> `pass = Ran − (skipped − holders)`. Ví dụ ở snapshot Issue #50 trước khi thêm #12–#13: `740 − (7 − 3) = 736`, **không phải** `740 − 7`.
 >
 > Đính chính: bản trước của tài liệu này ghi `462 − 5 = 457`, tức đã trừ cả holder và
 > **đếm thiếu 1** so với số test thật sự chạy-pass (đúng phải là `462 − 4 = 458`).
@@ -78,14 +80,14 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 | Môi trường | Lệnh | Kết quả |
 |---|---|---|
-| Windows local, **có `data/`**, 2026-11-11 | `.venv\Scripts\python.exe -W ignore::DeprecationWarning -m unittest discover tests -q` | **Thực chạy** `Ran 764 tests in 194.248s` + `OK` → **764 pass, 0 skip** |
-| Ubuntu CI `ubuntu-latest`, **không `data/`**, run 43051282775 | `python -m unittest discover tests -v` | **Thực chạy** `Ran 740 tests in 152.400s` + `OK (skipped=7)` → **736 pass, 7 skip (3 holder)** |
+| Windows local, **có `data/`**, 2026-11-11 (Issue #50 baseline) | `.venv\Scripts\python.exe -W ignore::DeprecationWarning -m unittest discover tests -q` | **Thực chạy** `Ran 764 tests in 194.248s` + `OK` → **764 pass, 0 skip** |
+| Ubuntu CI `ubuntu-latest`, **không `data/`**, run 43051282775 (Issue #50 baseline) | `python -m unittest discover tests -v` | **Thực chạy** `Ran 740 tests in 152.400s` + `OK (skipped=7)` → **736 pass, 7 skip (3 holder)** |
 
 > `data/` bị `.gitignore` loại khỏi repository, nên **CI không bao giờ có dataset**.
 
-### Vì sao 764 − 740 = 24
+### Vì sao 811 − 785 = 26
 
-Ba lớp có `setUpClass` raise `unittest.SkipTest` khi thiếu dữ liệu, và unittest bỏ qua
+Năm lớp có `setUpClass` raise `unittest.SkipTest` khi thiếu dữ liệu, và unittest bỏ qua
 **cả class** — mọi method của chúng không bao giờ được tính vào bộ đếm `Ran`:
 
 | Lớp | File | Method không vào `Ran` | Điều kiện |
@@ -93,30 +95,37 @@ Ba lớp có `setUpClass` raise `unittest.SkipTest` khi thiếu dữ liệu, và
 | `TestDocumentedReproduction` | `tests/test_flag_evidence.py` | 4 | thiếu `data/interim/*.parquet` |
 | `TestRealDataset` | `tests/test_inference.py` | 12 | thiếu `data/processed/air_pollution_final.parquet` |
 | `TestSemanticMutations` | `tests/test_extended_validation_mutations.py` | 8 | thiếu `data/processed/air_pollution_extended_2022_2026.parquet` |
-| | | **24** | |
+| `TestRegressionRealDataset` | `tests/test_regression.py` | 1 | thiếu `data/processed/air_pollution_final.parquet` |
+| `TestClassificationRealDataset` | `tests/test_classification.py` | 1 | thiếu `data/processed/air_pollution_final.parquet` |
+| | | **26** | |
 
 Phân biệt rõ: chúng **không chạy** (không tính vào `Ran`) chứ không phải **chạy rồi bị skip**.
 
 ---
 
-## 4. Bảy skip trên CI
+## 4. Chín skip trên CI
 
 | # | Test | Lý do |
 |---|---|---|
 | 1 | `setUpClass (test_flag_evidence::TestDocumentedReproduction)` | Thiếu `data/interim/*.parquet` |
 | 2 | `setUpClass (test_inference::TestRealDataset)` | Thiếu `data/processed/air_pollution_final.parquet` |
 | 3 | `setUpClass (test_extended_validation_mutations::TestSemanticMutations)` | Thiếu extended Parquet |
-| 4 | `test_progress_report_bullet_carries_the_computed_f_statistic` | Cùng lý do thiếu `data/interim/` |
-| 5 | `test_windows_separators_in_payload_are_preserved_verbatim` | `skipUnless(os.name == "nt")` |
-| 6 | `test_metadata_block_and_runtime_log_disagree_on_separators` | `skipUnless(os.name == "nt")` |
-| 7 | `TestNotebookExecutionOutputs.test_live_restart_kernel_and_run_all` | Thiếu `data/processed/air_pollution_final.parquet` |
+| 4 | `setUpClass (test_regression::TestRegressionRealDataset)` | Thiếu `data/processed/air_pollution_final.parquet` |
+| 5 | `setUpClass (test_classification::TestClassificationRealDataset)` | Thiếu `data/processed/air_pollution_final.parquet` |
+| 6 | `test_progress_report_bullet_carries_the_computed_f_statistic` | Cùng lý do thiếu `data/interim/` |
+| 7 | `test_windows_separators_in_payload_are_preserved_verbatim` | `skipUnless(os.name == "nt")` |
+| 8 | `test_metadata_block_and_runtime_log_disagree_on_separators` | `skipUnless(os.name == "nt")` |
+| 9 | `TestNotebookExecutionOutputs.test_live_restart_kernel_and_run_all` | Thiếu `data/processed/air_pollution_final.parquet` |
 
-Dòng 1–3 là **class holder**: chúng đại diện cho cả lớp bị bỏ qua, và các method
+Dòng 1–5 là **class holder**: chúng đại diện cho cả lớp bị bỏ qua, và các method
 bên trong **không** được tính vào `Ran` (xem §3).
 
-Skip 5 và 6 là **giới hạn nền tảng có chủ đích**: bất biến dấu phân cách chỉ tồn tại
+Skip 7 và 8 là **giới hạn nền tảng có chủ đích**: bất biến dấu phân cách chỉ tồn tại
 trên Windows. Chạy trên Windows thì 2 test này **chạy thật**, nên máy local báo
-`skipped=0`, còn CI báo `skipped=7`. Không phải regression.
+`skipped=0`, còn CI báo `skipped=9`. Không phải regression.
+Job `validate` (ubuntu) luôn skip hai test này; job CI riêng `windows-paths`
+(`windows-latest`) chạy `tests.test_pipeline_runtime_log` để chúng **thực sự được kiểm**
+trên mỗi push/PR.
 
 Không skip nào là do lỗi. Không có test nào skip vì "chưa viết xong".
 
@@ -144,6 +153,8 @@ python -m unittest tests.test_inference -v
 | Mutation tests và tính lại toàn bộ QC/profile/inference Issue #50 trên Parquet thật | `test_extended_validation_mutations::TestSemanticMutations` và `scripts/validate_extended_reanalysis.py --real-data` (local) |
 | Số liệu W9 trong notebook 05 và `reports/inference_results.md` khớp dữ liệu thật | `test_inference::TestRealDataset` (local) |
 | Notebook 05 chạy trên **9.044 dòng thật** | `test_live_restart_kernel_and_run_all` (local) |
+| Mô hình OLS/LINE W10 trên dữ liệu thật (`VN001` & `VN003`) trong notebook 06 & `reports/regression_results.md` | `test_regression::TestRegressionRealDataset` (local) |
+| Mô hình phân loại cảnh báo W11 trên dữ liệu thật (`VN001` & `VN003`) trong notebook 07 & `reports/classification_results.md` | `test_classification::TestClassificationRealDataset` (local) |
 
 > **Ngược lại — những gì CI *có* kiểm chứng được cho W9:** các phép kiểm hiệu chỉnh phụ
 > thuộc thời gian chạy trên dữ liệu **tổng hợp** nên CI kiểm được: hiệp phương sai HAC
