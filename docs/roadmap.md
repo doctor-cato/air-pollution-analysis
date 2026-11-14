@@ -5,7 +5,7 @@
 > **Đề tài:** Phân tích mức độ ô nhiễm không khí theo thời gian (*Time-Series Air Pollution Analysis*)  
 > **Căn cứ tài liệu:** Đề cương môn học INFO3020, Bài giảng ThS. Phạm Ngọc Đông – Khoa CNTT & Truyền thông, Trường Đại học CMC, và hệ thống 17 GitHub Issues (#1–#17, #19) làm đặc tả kỹ thuật có thẩm quyền.  
 > **Nơi lưu trữ:** `docs/roadmap.md`
-> **Kiểm thử hiện tại (Issue #50 + #12 + #13):** suite định nghĩa **803** test methods;
+> **Kiểm thử hiện tại (Issue #50 + #12 + #13):** suite định nghĩa **811** test methods;
 > [`docs/TEST_SUITE.md`](TEST_SUITE.md) là nguồn chuẩn cho breakdown và kết quả theo môi trường.
 
 ---
@@ -525,7 +525,11 @@ air-pollution-analysis/
 │   └── .gitkeep
 └── reports/
     ├── statistical_profile.csv         # Bảng hồ sơ thống kê mô tả 4 họ chỉ số [Issue #8]
-    ├── midterm_report.pdf              # Kế hoạch — Báo cáo giữa kỳ EDA (8–10 trang, Tuần 11) [Issue #10]
+    ├── inference_results.md            # Báo cáo kiểm định giả thuyết W9 [Issue #11]
+    ├── regression_results.md           # Báo cáo hồi quy OLS/Ridge/Lasso & chẩn đoán LINE [Issue #12]
+    ├── classification_results.md       # Báo cáo phân loại cảnh báo sớm & threshold tuning [Issue #13]
+    ├── classification_leakage_audit.md # Biên bản kiểm toán 4 dạng rò rỉ dữ liệu [Issue #13]
+    ├── midterm_report.pdf              # Đã đóng Issue #10 theo yêu cầu
     ├── final_report.pdf                # Kế hoạch — Báo cáo đồ án cuối kỳ SCQA (Tuần 14–15) [Issue #16]
     ├── defense_minutes.md              # Kế hoạch — Biểu mẫu biên bản đánh giá bảo vệ đồ án [Issue #17]
     └── .gitkeep                        # *_minutes.md sẽ track khi sinh ra (task D28)
@@ -665,7 +669,7 @@ Chi tiết luồng thực hiện:
 
 ### E. Final Deliverables (Danh mục Sản phẩm Bàn giao Cuối cùng)
 1. **Repository GitHub chuẩn mực [Issue #1, #15, #17]:**
-   - Hoàn chỉnh cấu trúc thư mục CRISP-DM, mã nguồn module hóa trong `src/` (hiện có `data_collection.py`, `data_quality.py`, `cleaning.py`, `cleaning_pipeline.py`, `flag_evidence.py`; `visualizer.py` thuộc Issue #9; `inference.py` thuộc Issue #11; `issue44_preparation.py` thuộc Issue #44).
+   - Hoàn chỉnh cấu trúc thư mục CRISP-DM, mã nguồn module hóa trong `src/` (đã có `data_collection.py`, `data_quality.py`, `cleaning.py`, `cleaning_pipeline.py`, `flag_evidence.py`, `visualizer.py` [#9], `inference.py` [#11], `regression.py` [#12], `classification.py` [#13], `issue44_preparation.py` [#44], `extended_audit.py` & `reanalysis_validation.py` [#50]).
    - Chuỗi notebooks đánh số thứ tự từ `00_` đến `07_`, bảo đảm chạy thông suốt từ đầu đến cuối không lỗi unhandled exception trong môi trường sạch.
    - File `requirements.txt` cố định phiên bản các thư viện tương thích Python 3.10+.
    - Git tag chính thức `midterm-submission` [Issue #10] và `final-defense-submission` [Issue #17].
@@ -795,14 +799,14 @@ W01–W15.
 >   `#12`, `#13`) **đã được mở lại** và không còn bị chặn.
 > - Các số liệu thực nghiệm nêu trong các báo cáo (#4, #5) là **kết quả của một lần thực thi cụ thể**
 >   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
-> - Bộ kiểm thử hiện gồm **803 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
+> - Bộ kiểm thử hiện gồm **811 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
 >   [`docs/TEST_SUITE.md`](TEST_SUITE.md) — nguồn chuẩn duy nhất cho số liệu kiểm thử).
 >   Số mà unittest **thực sự chạy và báo cáo** phụ thuộc cả nền tảng lẫn việc có
->   `data/` hay không — **không phải con số 803 trên mọi nền tảng**:
+>   `data/` hay không — **không phải con số 811 trên mọi nền tảng**:
 >   - Trước khi gộp Issue #12 và #13, baseline Issue #50 trên **Windows local (có `data/`, 2026-11-11)**: `Ran 764 tests in 194.248s` + `OK` → **764 pass, 0 skip**.
->   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`, run 43051282775)**: `Ran 740 tests in 152.400s` + `OK (skipped=7)` → **736 pass, 7 skip** (trên baseline 764; thêm #12 và #13 là 803 defined / 26 không vào `Ran`).
+>   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`, run 43051282775)**: `Ran 740 tests in 152.400s` + `OK (skipped=7)` → **736 pass, 7 skip** (trên baseline 764; thêm #12 và #13 là 811 defined / 26 không vào `Ran`).
 >
->   Trên `803` method định nghĩa, **26** phương thức nằm trong **5** lớp mà
+>   Trên `811` method định nghĩa, **26** phương thức nằm trong **5** lớp mà
 >   `setUpClass` ném `unittest.SkipTest` khi thiếu `data/` — `TestDocumentedReproduction`
 >   (4), `TestRealDataset` của `tests/test_inference.py` (12), `TestSemanticMutations` (8),
 >   `TestRegressionRealDataset` của `tests/test_regression.py` (1), và
@@ -1332,12 +1336,13 @@ Con số cần đọc đúng: tổng số hàng `pm25` bị `NaN` là **1.549**,
 * **Mục tiêu tuần:** Thực hiện các phép kiểm định giả thuyết phi tham số có đối chứng trên dữ liệu chuỗi thời gian; kiểm tra tính chuẩn phân phối; báo cáo đầy đủ bộ bốn: Thống kê kiểm định, $p$-value, Kích thước hiệu ứng ($r_{rb}$) và Khoảng tin cậy Bootstrap 95%; đối chiếu nồng độ với quy chuẩn tương thích toán học.
 * **Kiến thức INFO3020 áp dụng:** Slide W9 – Bước nhảy nhận thức từ mẫu sang tổng thể, 4 sai lầm kinh điển khi đọc $p$-value, Sai lầm loại I ($\alpha$) vs Loại II ($\beta$), Kích thước hiệu ứng (*Effect size*), Kỹ thuật Bootstrap resampling, Cây quyết định chọn phép kiểm thống kê.
 * **Mã Issue sở hữu:** **#11**.
+* **Trạng thái:** ✅ **Đã triển khai & kiểm chứng** (`src/inference.py`, `notebooks/05_statistical_inference.ipynb`, `reports/inference_results.md`, `figures/FIG-08.png`–`FIG-12.png`, `tests/test_inference.py`).
 * **Tasks chi tiết:**
-  1. Kiểm định 1: So sánh nồng độ $\text{PM}_{2.5}$ giữa các mùa quan sát (Mùa khô/lạnh vs Mùa mưa/nóng). Kiểm tra tính chuẩn bằng Shapiro-Wilk; khi vi phạm tính chuẩn, áp dụng Mann-Whitney U test [Issue #11].
-  2. Tính toán kích thước hiệu ứng Rank-Biserial Correlation ($r_{rb} = 1 - 2U / (n_1 n_2)$) và ước lượng 95% Bootstrap CI cho chênh lệch trung vị (1.000 mẫu lặp, cố định `np.random.seed(42)`) [Issue #11].
-  3. Kiểm định 2: So sánh Ngày làm việc (Weekday) vs Ngày cuối tuần (Weekend) bằng Mann-Whitney U test; phân tích rạch ròi giữa ý nghĩa thống kê và ý nghĩa thực tiễn [Issue #11].
-  4. Kiểm định 3: Đối chiếu nồng độ với Quy chuẩn QCVN 05:2023/BTNMT bằng phép kiểm phi tham số phù hợp trên chuỗi tổng hợp tương thích toán học về chu kỳ lấy mẫu trung bình; báo cáo 95% CI [Issue #11].
-  5. Soạn thảo notebook `notebooks/05_statistical_inference.ipynb` và bảng tổng hợp kết quả kiểm định [Issue #11].
+  - [x] 1. Kiểm định 1: So sánh nồng độ $\text{PM}_{2.5}$ giữa các mùa quan sát (Mùa khô/lạnh vs Mùa mưa/nóng). Kiểm tra tính chuẩn bằng Shapiro-Wilk; khi vi phạm tính chuẩn, áp dụng kiểm định phi tham số có xét tự tương quan thời gian [Issue #11].
+  - [x] 2. Tính toán kích thước hiệu ứng Rank-Biserial Correlation ($r_{rb}$) và ước lượng 95% Calendar-Block Bootstrap CI [Issue #11].
+  - [x] 3. Kiểm định 2: So sánh Ngày làm việc (Weekday) vs Ngày cuối tuần (Weekend); phân tích rạch ròi giữa ý nghĩa thống kê và ý nghĩa thực tiễn [Issue #11].
+  - [x] 4. Kiểm định 3: Đối chiếu nồng độ với Quy chuẩn QCVN 05:2023/BTNMT trên chuỗi trung bình ngày tương thích toán học; báo cáo 95% CI [Issue #11].
+  - [x] 5. Soạn thảo notebook `notebooks/05_statistical_inference.ipynb` và bảng tổng hợp kết quả kiểm định [Issue #11].
 * **Deliverables:** Notebook `05_statistical_inference.ipynb`, bảng kết quả kiểm định giả thuyết.
 * **Definition of Done:** 100% các kết luận kiểm định đều trình bày đầy đủ bộ bốn: thống kê, $p$-value, Effect Size ($r_{rb}$), 95% Bootstrap CI; kiểm định quy chuẩn áp dụng đúng chỉ số tương thích toán học về chu kỳ lấy mẫu; không báo cáo $p$-value đơn độc.
 * **Dependencies:** Dữ liệu sạch đóng băng từ Week 05 (#7) và kết quả EDA từ Week 06 (#8).
@@ -1349,16 +1354,17 @@ Con số cần đọc đúng: tổng số hàng `pm25` bị `NaN` là **1.549**,
 * **Mục tiêu tuần:** Xây dựng mô hình hồi quy tuyến tính OLS đa biến khảo sát mối liên hệ giữa các yếu tố khí tượng và $\text{PM}_{2.5}$ trên dữ liệu phân chia theo chuỗi thời gian; thực hiện quy trình chẩn đoán toàn diện 4 giả định LINE trên phần dư; phân tích heuristics VIF và Cook's distance; tối ưu mô hình điều hòa Ridge/Lasso strictly trên Train; diễn giải hệ số $\beta$ phi nhân quả.
 * **Kiến thức INFO3020 áp dụng:** Slide W10 – Hồi quy OLS, 4 Giả định LINE (Linearity, Independence, Normality, Equal Variance), Biến đổi mục tiêu ứng viên, Đa cộng tuyến & VIF, Điểm ảnh hưởng Cook's distance, Điều hòa Ridge ($L_2$) & Lasso ($L_1$), Ba nghĩa vụ khi diễn giải hệ số $\beta$.
 * **Mã Issue sở hữu:** **#12**.
+* **Trạng thái:** ✅ **Đã triển khai & kiểm chứng** (`src/regression.py`, `notebooks/06_regression_modeling.ipynb`, `figures/regression_line_diagnostics*.png`, `reports/regression_results.md`, `docs/regression_findings.md`, `tests/test_regression.py` [23 tests]).
 * **Tasks chi tiết:**
-  1. Kế thừa điểm cắt phân chia Train/Test theo chuỗi thời gian tuyến tính từ Issue #7; bảo lưu tập Test cho đánh giá độc lập cuối cùng [Issue #12].
-  2. Khảo sát biến đổi logarit $Y = \log(1 + \text{PM}_{2.5})$ trên tập Train; tính tuyến tính và phân phối phần dư phải được kiểm chứng qua chẩn đoán thực nghiệm sau khớp [Issue #12].
-  3. Huấn luyện Dummy Regressor Baseline và mô hình OLS trên tập Train bằng `statsmodels.api.OLS` và Scikit-Learn [Issue #12].
-  4. Chẩn đoán 4 giả định LINE trên phần dư: Linearity (Residuals vs Fitted), Independence (Durbin-Watson & ACF), Normality (Q-Q plot & Shapiro-Wilk), Equal Variance (Breusch-Pagan & Scale-Location) [Issue #12].
-  5. Tính toán chỉ số VIF (xem xét VIF > 5.0 như chỉ báo heuristic gợi ý điều chỉnh đặc trưng) và khoảng cách Cook's Distance ($D_i$) [Issue #12].
-  6. Huấn luyện mô hình điều hòa Ridge/Lasso; dò tìm siêu tham số ($\alpha$) hoàn toàn trên tập Train (Time-Series Split / CV cục bộ trên Train); tuyệt đối không dùng Test để tune [Issue #12].
-  7. Đánh giá trên tập TEST độc lập: Đo lường MAE, RMSE, $R^2$ cạnh Baseline; nếu giả định LINE bị vi phạm, giải trình khách quan giới hạn của mô hình [Issue #12].
-  8. Diễn giải hệ số $\beta$ chuẩn 3 nghĩa vụ: liên hệ quan sát (*associated with*), giữ nguyên biến khác (*ceteris paribus*), giới hạn trong miền giá trị thực nghiệm; tuyệt đối không khẳng định quan hệ nhân quả [Issue #12].
-* **Deliverables:** Notebook `notebooks/06_regression_modeling.ipynb`, biểu đồ chẩn đoán LINE `figures/regression_line_diagnostics.png`, bảng tham số hồi quy.
+  - [x] 1. Kế thừa điểm cắt phân chia Train/Test theo chuỗi thời gian tuyến tính từ Issue #7; bảo lưu tập Test cho đánh giá độc lập cuối cùng [Issue #12].
+  - [x] 2. Khảo sát biến đổi logarit $Y = \log(1 + \text{PM}_{2.5})$ trên tập Train; tính tuyến tính và phân phối phần dư được kiểm chứng qua chẩn đoán thực nghiệm sau khớp [Issue #12].
+  - [x] 3. Huấn luyện Dummy Regressor Baseline và mô hình OLS trên tập Train bằng `statsmodels.api.OLS` (kèm HAC Newey–West) và Scikit-Learn [Issue #12].
+  - [x] 4. Chẩn đoán 4 giả định LINE trên phần dư: Linearity (Residuals vs Fitted + Ramsey RESET + LOWESS), Independence (Durbin-Watson & ACF), Normality (Q-Q plot & Shapiro-Wilk), Equal Variance (Breusch-Pagan & Scale-Location) [Issue #12].
+  - [x] 5. Tính toán chỉ số VIF (cùng trực giao hóa cụm gió & loại `pm10`) và khoảng cách Cook's Distance ($D_i$) + Leverage [Issue #12].
+  - [x] 6. Huấn luyện mô hình điều hòa Ridge/Lasso; dò tìm siêu tham số ($\alpha$) hoàn toàn trên tập Train (`TimeSeriesSplit`, tiền xử lý tái lập theo từng fold); tuyệt đối không dùng Test để tune [Issue #12].
+  - [x] 7. Đánh giá trên tập TEST độc lập (và 3 phạm vi `VN001_baseline`, `VN001_extended`, `VN003_extended`): Đo lường MAE, RMSE, $R^2$ cạnh Baseline; báo cáo trung thực vi phạm LINE và giới hạn kết luận [Issue #12].
+  - [x] 8. Diễn giải hệ số $\beta$ chuẩn 3 nghĩa vụ: liên hệ quan sát (*associated with*), giữ nguyên biến khác (*ceteris paribus*), giới hạn trong miền giá trị thực nghiệm; tuyệt đối không khẳng định quan hệ nhân quả [Issue #12].
+* **Deliverables:** Notebook `notebooks/06_regression_modeling.ipynb`, biểu đồ chẩn đoán LINE `figures/regression_line_diagnostics.png` (kèm biến thể `_vn001_extended.png`, `_vn003_extended.png`), bảng tham số hồi quy (`reports/regression_results.md`, `docs/regression_findings.md`).
 * **Definition of Done:** Đánh giá độc lập trên tập Test; toàn bộ 4 giả định LINE được chẩn đoán chi tiết; siêu tham số điều hòa được tune hoàn toàn trên Train; hệ số $\beta$ được diễn giải đúng chuẩn phi nhân quả.
 * **Dependencies:** Dữ liệu sạch và split thời gian từ Week 05 (#7), kết quả suy luận từ Week 09 (#11).
 
@@ -1369,15 +1375,16 @@ Con số cần đọc đúng: tổng số hàng `pm25` bị `NaN` là **1.549**,
 * **Mục tiêu tuần:** Xây dựng mô hình phân loại nhị phân cảnh báo sớm đợt ô nhiễm vượt ngưỡng an toàn; kỹ nghệ đặc trưng từ quá khứ; xử lý mất cân bằng lớp thực tế; tối ưu hóa ngưỡng quyết định theo mục tiêu vận hành trên Train/Validation; đánh giá độc lập trên Test; kiểm toán 4 dạng rò rỉ dữ liệu.
 * **Kiến thức INFO3020 áp dụng:** Slide W11 – Mô hình Logistic Regression & Random Forest, Bẫy Accuracy trên dữ liệu mất cân bằng, Ma trận nhầm lẫn (Confusion Matrix), Đánh đổi Precision vs Recall, Đường cong PR-AUC, Threshold Tuning, Kỹ nghệ đặc trưng thời gian từ quá khứ, 4 dạng rò rỉ dữ liệu.
 * **Mã Issue sở hữu:** **#13**.
+* **Trạng thái:** ✅ **Đã triển khai & kiểm chứng** (`src/classification.py`, `notebooks/07_classification_alerts.ipynb`, `figures/precision_recall_curve*.png`, `figures/feature_importance*.png`, `reports/classification_results.md`, `reports/classification_leakage_audit.md`, `docs/classification_findings.md`, `docs/leakage_audit.md`, `tests/test_classification.py` [24 tests]).
 * **Tasks chi tiết:**
-  1. Định nghĩa nhãn mục tiêu nhị phân tương thích toán học về chu kỳ tính toán với quy chuẩn (ví dụ nồng độ trung bình 24h $\text{PM}_{2.5} \ge 50\,\mu\text{g/m}^3$ theo QCVN 05:2023/BTNMT); đo đạc tỷ lệ mất cân bằng thực tế [Issue #13].
-  2. Tạo các đặc trưng trễ và thống kê trượt từ quá khứ (`pm25_rolling_mean_24h`, `pm25_rolling_std_24h`, `pm25_lag24`, nhiệt-ẩm, cờ lặng gió, sin/cos giờ/tháng); xác nhận không truy xuất thông tin tương lai [Issue #13].
-  3. Huấn luyện Baseline DummyClassifier, Logistic Regression (`class_weight='balanced'`) và Random Forest Classifier trên tập Train [Issue #13].
-  4. Vẽ đường cong Precision-Recall (PR Curve), đo đạc chỉ số PR-AUC [Issue #13].
-  5. Tinh chỉnh ngưỡng quyết định trên tập Train/Validation theo mục tiêu vận hành cụ thể (tối đa hóa $F_\beta$ với $\beta > 1$ hoặc tối đa hóa Recall dưới ràng buộc Precision tối thiểu) [Issue #13].
-  6. Đo lường hiệu năng cuối cùng trên tập TEST độc lập với ngưỡng đã chốt: Báo cáo Recall, Precision, F1/F-beta, PR-AUC, ROC-AUC và Confusion Matrix [Issue #13].
-  7. Lập biên bản kiểm toán rà soát 4 dạng rò rỉ dữ liệu (Target, Train-Test contamination, Temporal, Group) [Issue #13].
-* **Deliverables:** Notebook `notebooks/07_classification_alerts.ipynb`, biểu đồ PR Curve `figures/precision_recall_curve.png`, biên bản kiểm toán rò rỉ dữ liệu.
+  - [x] 1. Định nghĩa nhãn mục tiêu nhị phân tương thích toán học về chu kỳ tính toán với quy chuẩn (nồng độ trung bình 24h $\text{PM}_{2.5} \ge 50\,\mu\text{g/m}^3$ theo QCVN 05:2023/BTNMT, `min_periods=24`); đối soát đầy đủ 4 quần thể & 2 mẫu số chính thức (`Prevalence_valid = 31,13%`, `Prevalence_all = 18,30%`) [Issue #13].
+  - [x] 2. Tạo các đặc trưng trễ và thống kê trượt từ quá khứ trên lưới 1 giờ liên tục theo trạm (`pm25_rolling_mean_24h`, `pm25_rolling_std_24h`, `pm25_lag24`, nhiệt-ẩm, cờ `is_calm_wind` / bí danh `wind_stagnant`, sin/cos giờ/tháng); xác nhận không truy xuất thông tin tương lai và thêm ablation $h \in \{0, 1, 6, 12, 24\}$ với purge gap [Issue #13].
+  - [x] 3. Huấn luyện Baseline DummyClassifier, Persistence Rule, Logistic Regression (`class_weight='balanced'`) kèm Odds Ratios và Random Forest Classifier trên tập Train với fold-isolated preprocessing [Issue #13].
+  - [x] 4. Vẽ đường cong Precision-Recall (PR Curve) kèm đường baseline prevalence và chỉ số PR-AUC (`average_precision_score`), Calibration/Brier & FAR [Issue #13].
+  - [x] 5. Tinh chỉnh ngưỡng quyết định trên Train CV (`TimeSeriesSplit`) theo mục tiêu vận hành ($F_2$ với $\beta = 2$ và tối đa Recall dưới Precision $\ge 0,65$) mà không làm đột biến bộ ước lượng [Issue #13].
+  - [x] 6. Đo lường hiệu năng cuối cùng trên tập TEST độc lập với ngưỡng đã chốt: Báo cáo Recall, Precision, F1/F2, PR-AUC, ROC-AUC, FAR, Brier, Confusion Matrix trên 3 phạm vi dữ liệu & cảnh báo trạm `UNESTIMABLE` khi Test 1 lớp [Issue #13].
+  - [x] 7. Lập biên bản kiểm toán rà soát 4 dạng rò rỉ dữ liệu (Target, Train-Test contamination, Temporal, Group) kèm kiểm chứng code & test tự động (`reports/classification_leakage_audit.md`, `docs/leakage_audit.md`) [Issue #13].
+* **Deliverables:** Notebook `notebooks/07_classification_alerts.ipynb`, biểu đồ PR Curve `figures/precision_recall_curve.png` (`_vn003_extended.png`), biểu đồ Feature Importance `figures/feature_importance.png` (`_vn003_extended.png`), biên bản kiểm toán rò rỉ dữ liệu (`docs/leakage_audit.md`, `reports/classification_leakage_audit.md`) và tổng hợp kết quả (`docs/classification_findings.md`, `reports/classification_results.md`).
 * **Definition of Done:** Đánh giá trên tập Test độc lập sau khi đóng băng mô hình và ngưỡng; ngưỡng quyết định được tối ưu hoàn toàn trên Train/Val theo mục tiêu vận hành; biên bản kiểm toán 4 dạng rò rỉ dữ liệu đạt chuẩn.
 * **Dependencies:** Dữ liệu hoàn chỉnh từ Week 05 (#7) và mô hình hồi quy từ Week 10 (#12).
 

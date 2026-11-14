@@ -33,16 +33,16 @@
 > | `reports/statistical_profile.csv` | **đã có** | 8 biến × 27 cột; đối chiếu lại từ Parquet trong `validate_issue8.py` §4 |
 > | `notebooks/05_statistical_inference.ipynb` | **VERIFIED / IMPLEMENTED** | Sinh từ `scripts/generate_05_notebook.py`; `run_inference()` tái lập 100% payload, report và 5 figure [Issue #11] |
 > | `notebooks/06_regression_modeling.ipynb` | **VERIFIED / IMPLEMENTED** | Sinh từ `scripts/generate_06_notebook.py`; OLS/HAC/LINE/RESET/LOWESS/Ridge/Lasso + mở rộng Protocol A đa trạm [`reports/regression_results.md`](../reports/regression_results.md) [Issue #12] |
-> | `notebooks/07_classification_alerts.ipynb` | **`NOT IMPLEMENTED`** | Chưa hợp nhất trên nhánh này (Issue #13 thuộc PR #49) |
+> | `notebooks/07_classification_alerts.ipynb` | **VERIFIED / IMPLEMENTED** | `src/classification.py`, `scripts/generate_07_notebook.py`, `notebooks/07_classification_alerts.ipynb`, `tests/test_classification.py` (24 tests) [Issue #13] |
 > | `src/visualizer.py`, `tests/test_visualizer.py` | **VERIFIED / MERGED** (`6fe8eb6`) | Tồn tại; Tufte/Cleveland; 7 PNG render OK |
 > | `figures/FIG-01`…`FIG-07` | **VERIFIED / MERGED** (`6fe8eb6` PR #41, 2026-10-16) | 7 PNG (`300 DPI`, đọc trực tiếp chunk `pHYs`) đã commit; `src/visualizer.py` Tufte/Cleveland; `tests/test_visualizer.py` 35 test |
 > | **Task 2.10** — VIF cho cặp `pm25`/`pm10` | **`NOT IMPLEMENTED`** | Notebook 04 chỉ tính `r = 0,9727` và `r² = 0,9462`, **không** gọi `variance_inflation_factor`; VIF hoàn toàn để dành cho Issue #12. Task này **cố ý để `[ ]`** |
 > | **Task 3.13** — soi từng PNG bằng mắt | **`CHỜ NGƯỜI`** | Bước tự động **không thay thế được** bước này (chính task 3.13 ghi vậy). Test chỉ kiểm được 300 DPI + không tràn nhãn bằng assert, **không** kiểm được mắt thấy |
 > | Kiểm định giả thuyết của Issue #11 (Phase 5, task 5.1–5.9) | **VERIFIED / IMPLEMENTED** | `src/inference.py` (208 tests), `reports/inference_results.md`, `reports/inference_montecarlo.csv`, `figures/FIG-08`..`FIG-12` [Issue #11] |
-> | `DummyClassifier` baseline (task 7.4) | **`NOT IMPLEMENTED`** | `git grep DummyClassifier -- src notebooks tests scripts` → rỗng |
-> | PR-AUC / Recall / F1 (task 7.5–7.7) | **`NOT IMPLEMENTED`** | Phụ thuộc nhãn ở 0.7b, chưa có mô hình nào được huấn luyện |
-> | Tỷ lệ nhãn cảnh báo `31,13%` / `18,30%` | **`UNVERIFIED`** | Phép tính **tái lập được**, nhưng **định nghĩa nhãn chưa chốt** — xem task 0.7b |
-> | Nhãn cảnh báo trượt 24h (window · `min_periods` · ngưỡng · mẫu số) | **`UNVERIFIED`** | Không có hàm trong `src/`; `rg rolling src/` → rỗng |
+> | `DummyClassifier` baseline (task 7.4) | **VERIFIED / IMPLEMENTED** | `src/classification.py::evaluate_models` (`DummyClassifier(strategy="most_frequent")`, `PR-AUC = 0.2893` trên VN001 Test) |
+> | PR-AUC / Recall / F1 (task 7.5–7.7) | **VERIFIED / IMPLEMENTED** | LogReg & RF (balanced + tuned $F_2$) trên `VN001_baseline` (`PR-AUC = 0.9989` / `0.9985`), `VN001_extended_80_20`, `VN003_extended_2022_2025`; xem `reports/classification_results.md`, `docs/classification_findings.md`, `docs/leakage_audit.md` |
+> | Tỷ lệ nhãn cảnh báo `31,13%` / `18,30%` | **VERIFIED / IMPLEMENTED** | Đối soát đầy đủ 4 quần thể (`9.044 -> 7.495 -> 5.317 [1.655 dương] -> 5.267 đánh giá [1.644 dương]`) trong `src/classification.py` & `docs/data_dictionary.md` §10.2 |
+> | Nhãn cảnh báo trượt 24h (window · `min_periods` · ngưỡng · mẫu số) | **VERIFIED / IMPLEMENTED** | `src/classification.py::build_classification_target` / `src/cleaning_pipeline.py::build_alert_label` (cửa sổ `24h` theo nhóm trạm, `min_periods=24`, ngưỡng QCVN `50 µg/m³`) |
 > | `F = 16,78`, `p = 7,4·10⁻¹¹` (tương tác `fog × mùa`) | **`VERIFIED`** (Issue #38) | **Đã tái lập bằng mã**: `src/flag_evidence.fog_flag_evidence()` fit `pm25 ~ C(fog) + C(season) + C(fog):C(season)` trên 7.495 dòng → `F(3, 7487) = 16,7754`, `p = 7,3817·10⁻¹¹`. `verify_claims.py` kiểm chứng lại từng số; test hành vi ở `tests/test_flag_evidence.py`, phần ghim vào dữ liệu thật ở `TestDocumentedReproduction` (CI không chạy được vì repo không commit `data/`) |
 > | Mutual information `MI = 0,0024` | **`UNVERIFIED`** | Định nghĩa ước lượng **chưa đóng băng**: `mutual_info_score` cho `0,0024` khi chia `pm25` thành 7, 8 **hoặc** 10 nhóm phân vị (trùng hợp), `mutual_info_regression` cho `0,0081`, `mutual_info_classif` cho `0,0105`. **Không** dùng làm căn cứ kết luận — xem Issue #38 |
 >
@@ -478,12 +478,12 @@ thực hiện tốt: mỗi issue đều kèm 1 tài liệu sinh ra từ code th�
 - [x] **D12** 🔴 `docs/regression_findings.md` (xem thêm `reports/regression_results.md`) — bảng tham số OLS/Ridge/Lasso, kết quả 4 giả định LINE (bao gồm Ramsey RESET),
       VIF, Cook's Distance, Adjusted `$R^2$`, và **bảng đối chiếu Train/Test** (`VN001_baseline_2026_01_15`, `VN001_extended_80_20`, `VN003_extended_2022_2025`).
       Đã ghi rõ: vì cả 4 giả định LINE bị vi phạm nên **giới hạn** kết luận (mô hình chỉ mô tả xu hướng tuyến tính tổng quát theo giờ, không dùng làm dự báo chính xác hay suy diễn nhân quả) thay vì báo cáo `$R^2$` trần.
-- [ ] **D13** 🔴 `docs/classification_findings.md` — Confusion Matrix, Precision/Recall/F1/PR-AUC/ROC-AUC
+- [x] **D13** 🔴 `docs/classification_findings.md` — Confusion Matrix, Precision/Recall/F1/PR-AUC/ROC-AUC
       trên Test với ngưỡng đã chốt, **kèm prevalence của tập để mọi tỷ lệ có mẫu số**; kết quả
       feature importance; nêu rõ cách xử lý đa cộng tuyến `pm25`/`pm10`.
-- [ ] **D14** 🔴 `docs/leakage_audit.md` — biên bản kiểm toán 4 dạng rò rỉ (Target · Train-Test contamination ·
+- [x] **D14** 🔴 `docs/leakage_audit.md` — biên bản kiểm toán 4 dạng rò rỉ (Target · Train-Test contamination ·
       Temporal · Group), mỗi mục kèm **bằng chứng kiểm chứng** chứ không chỉ khẳng định.
-- [ ] **D15** 🔴 `docs/roadmap.md` §14 — tick Issue #11, #12, #13; sửa cây thư mục cho khớp tên notebook mới.
+- [x] **D15** 🔴 `docs/roadmap.md` §14 — tick Issue #11, #12, #13; sửa cây thư mục cho khớp tên notebook mới.
 
 ### 1B.4 — Sau Phase 8 (M5)
 

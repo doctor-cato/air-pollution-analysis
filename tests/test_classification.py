@@ -20,15 +20,19 @@ from src.classification import (
     DEFAULT_SPLIT_TIMESTAMP,
     ClassificationModelMetrics,
     ClassificationResults,
+    PersistenceRuleClassifier,
+    build_classification_pipeline,
     compute_feature_importances,
     engineer_classification_features,
     evaluate_classifier,
+    evaluate_derived_pm25_sensitivity,
     generate_leakage_audit_markdown,
     prepare_classification_data,
     render_feature_importance_figure,
     render_pr_curve_figure,
     run_classification_pipeline,
     tune_classification_threshold,
+    verify_classification_no_leakage,
 )
 from src.cleaning_pipeline import (
     DEFAULT_ALERT_MIN_PERIODS,
@@ -271,6 +275,150 @@ class TestClassificationRealDataset(unittest.TestCase):
             self.assertTrue(audit_rep.exists())
             self.assertTrue(res_rep.exists())
             self.assertTrue(find_rep.exists())
+
+
+class TestClassificationGuardsAndExtensions(unittest.TestCase):
+    """Kiểm thử các guard chống rò rỉ, baseline quy tắc, đa trạm, tầm dự báo và trường hợp Test đơn lớp."""
+
+    def test_dummy_pr_auc_equals_test_prevalence(self):
+        df = _synthetic_classification_fixture(120)
+        split_ts = "2026-01-03 12:00:00+07:00"
+        X_tr, y_tr, X_te, y_te, meta = prepare_classification_data(df, split_timestamp=split_ts)
+        dummy = DummyClassifier(strategy="prior").fit(X_tr, y_tr)
+        m = evaluate_classifier("Dummy", dummy, X_te, y_te, threshold=0.50)
+        self.assertAlmostEqual(m.pr_auc, round(float(y_te.mean()), 4), places=4)
+        self.assertAlmostEqual(m.pr_auc, round(meta["test_prevalence_valid"], 4), places=4)
+
+    def test_persistence_rule_baseline_metrics(self):
+        df = _synthetic_classification_fixture(120)
+        split_ts = "2026-01-03 12:00:00+07:00"
+        X_tr, y_tr, X_te, y_te, _ = prepare_classification_data(df, split_timestamp=split_ts)
+        rule = PersistenceRuleClassifier(feature_col="pm25_rolling_mean_24h", threshold_ug_m3=50.0).fit(X_tr, y_tr)
+        expected_preds = (X_te["pm25_rolling_mean_24h"] >= 50.0).astype(int).to_numpy()
+        np.testing.assert_array_equal(rule.predict(X_te), expected_preds)
+        m = evaluate_classifier("Persistence Rule", rule, X_te, y_te, threshold=0.50)
+        self.assertEqual(len(m.confusion_matrix), 2)
+        self.assertEqual(len(m.confusion_matrix[0]), 2)
+        self.assertTrue(np.isfinite(m.false_alarm_rate))
+        self.assertTrue(np.isfinite(m.brier_score))
+
+    def test_cross_station_isolation_and_timestamp_gap_safety(self):
+        df_a = _synthetic_classification_fixture(60)
+        df_a["station_id"] = "STATION_A"
+        df_b = _synthetic_classification_fixture(60)
+        df_b["station_id"] = "STATION_B"
+        df_multi = pd.concat([df_a, df_b], ignore_index=True)
+
+        feats = engineer_classification_features(df_multi, include_wind_stagnant_alias=True)
+        # 24 giờ đầu của trạm B tuyệt đối không được mượn từ cuối trạm A
+        b_mask = df_multi["station_id"] == "STATION_B"
+        feats_b = feats.loc[b_mask]
+        self.assertTrue(feats_b["pm25_rolling_mean_24h"].iloc[:24].isna().all())
+        self.assertTrue(feats_b["pm25_rolling_std_24h"].iloc[:24].isna().all())
+        self.assertTrue(feats_b["pm25_lag24"].iloc[:24].isna().all())
+        self.assertIn("wind_stagnant", feats.columns)
+        pd.testing.assert_series_equal(feats["wind_stagnant"], feats["is_calm_wind"], check_names=False)
+
+        # Kiểm tra bỏ qua khoảng trống thời gian: xóa hàng index 25 không được làm lag24 dịch sai giờ
+        df_gap = df_a.drop(index=25).reset_index(drop=True)
+        feats_gap = engineer_classification_features(df_gap)
+        # Giờ t = ts[24 + 25] tương ứng 2026-01-03 01:00 (24h trước là ts bị xóa -> phải là NaN)
+        missing_ts = df_a.loc[25, "timestamp"]
+        target_ts = missing_ts + pd.Timedelta(hours=24)
+        idx_target = df_gap.index[df_gap["timestamp"] == target_ts][0]
+        self.assertTrue(pd.isna(feats_gap.loc[idx_target, "pm25_lag24"]))
+
+    def test_prepare_data_rejects_unfiltered_multi_station_protocol_b(self):
+        df_a = _synthetic_classification_fixture(60)
+        df_a["station_id"] = "STATION_A"
+        df_b = _synthetic_classification_fixture(60)
+        df_b["station_id"] = "STATION_B"
+        df_multi = pd.concat([df_a, df_b], ignore_index=True)
+        with self.assertRaises(ValueError):
+            prepare_classification_data(df_multi, split_timestamp="2026-01-02 00:00:00+07:00")
+
+    def test_threshold_tuning_invariant_to_y_test_and_leakage_guard(self):
+        from sklearn.linear_model import LogisticRegression
+
+        df = _synthetic_classification_fixture(120)
+        split_ts = "2026-01-03 12:00:00+07:00"
+        X_tr, y_tr, X_te, y_te, _, ts_tr, ts_te = prepare_classification_data(
+            df, split_timestamp=split_ts, return_timestamps=True
+        )
+        pipe_clean = build_classification_pipeline(
+            LogisticRegression(class_weight="balanced", random_state=42, max_iter=500),
+            list(X_tr.columns),
+            scale_features=True,
+        )
+        tau_1 = tune_classification_threshold(pipe_clean, X_tr, y_tr, metric="f2", n_splits=2)
+        y_te_flipped = 1 - y_te  # Thử đột biến hoàn toàn y_test -> tau* trên Train phải bất biến
+        _ = y_te_flipped
+        tau_2 = tune_classification_threshold(pipe_clean, X_tr, y_tr, metric="f2", n_splits=2)
+        self.assertEqual(tau_1, tau_2)
+
+        pipe_clean.fit(X_tr, y_tr)
+        verify_classification_no_leakage(
+            pipe_clean, X_train=X_tr, X_test=X_te, timestamps=ts_tr, test_timestamps=ts_te
+        )
+
+        # Cố tình fit sai trên X_test -> guard phải phát hiện rò rỉ và ném AssertionError
+        pipe_leaked = build_classification_pipeline(
+            LogisticRegression(class_weight="balanced", random_state=42, max_iter=500),
+            list(X_tr.columns),
+            scale_features=True,
+        )
+        pipe_leaked.fit(X_te, y_te)
+        with self.assertRaises(AssertionError):
+            verify_classification_no_leakage(
+                pipe_leaked, X_train=X_tr, X_test=X_te, timestamps=ts_tr, test_timestamps=ts_te
+            )
+
+    def test_horizon_purge_gap_prevents_boundary_overlap(self):
+        df = _synthetic_classification_fixture(168)
+        split_ts = "2026-01-05 00:00:00+07:00"
+        _, _, _, _, meta_h24, ts_tr, ts_te = prepare_classification_data(
+            df, split_timestamp=split_ts, horizon_hours=24, return_timestamps=True
+        )
+        self.assertGreater(meta_h24["n_purged_horizon_rows"], 0)
+        self.assertLess(ts_tr.max() + pd.Timedelta(hours=24), ts_te.min())
+
+    def test_derived_pm25_sensitivity_keeps_test_and_labels_observed(self):
+        df = _synthetic_classification_fixture(140)
+        df["pm25_derived_interpolated"] = df["pm25"].copy()
+        # Tạo một khoảng trống ngắn 2h ở phần Train nơi pm25 gốc là NaN nhưng derived đã nội suy
+        df.loc[30:31, "pm25"] = np.nan
+        split_ts = "2026-01-04 00:00:00+07:00"
+        sens_df = evaluate_derived_pm25_sensitivity(df, split_timestamp=split_ts)
+        self.assertIsNotNone(sens_df)
+        self.assertEqual(len(sens_df), 2)
+        self.assertEqual(sens_df.iloc[0]["n_test"], sens_df.iloc[1]["n_test"])
+        self.assertEqual(sens_df.iloc[0]["Test Positives"], sens_df.iloc[1]["Test Positives"])
+        self.assertGreaterEqual(sens_df.iloc[1]["Train Recovered Rows"], 0)
+
+    def test_single_class_zero_positive_test_returns_unestimable(self):
+        df = _synthetic_classification_fixture(120)
+        split_ts = "2026-01-03 12:00:00+07:00"
+        X_tr, y_tr, X_te, _, _ = prepare_classification_data(df, split_timestamp=split_ts)
+        y_te_zero = pd.Series(0, index=X_te.index, dtype=int)
+        rf = RandomForestClassifier(n_estimators=20, max_depth=4, random_state=42).fit(X_tr, y_tr)
+
+        m = evaluate_classifier("RF_AllNeg", rf, X_te, y_te_zero, threshold=0.50)
+        self.assertEqual(m.confusion_matrix[0][0] + m.confusion_matrix[0][1], len(y_te_zero))
+        self.assertEqual(m.confusion_matrix[1], [0, 0])
+        self.assertIn("UNESTIMABLE", m.status)
+        self.assertTrue(np.isnan(m.pr_auc))
+        self.assertTrue(np.isnan(m.roc_auc))
+        self.assertTrue(np.isnan(m.recall))
+        self.assertTrue(np.isfinite(m.false_alarm_rate))
+
+        imp = compute_feature_importances(rf, X_te, y_te_zero)
+        self.assertTrue(imp["Permutation Mean"].isna().all())
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pr_path = Path(tmp_dir) / "unestimable_pr.png"
+            render_pr_curve_figure({"RF": rf}, X_te, y_te_zero, 0.0, pr_path)
+            self.assertTrue(pr_path.exists())
+            self.assertGreater(pr_path.stat().st_size, 10000)
 
 
 if __name__ == "__main__":

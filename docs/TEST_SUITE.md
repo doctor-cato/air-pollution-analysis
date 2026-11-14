@@ -29,7 +29,7 @@ Không test nào gọi mạng. Không test nào phụ thuộc thứ tự chạy.
 
 | Module | Test methods | Phạm vi |
 |---|---|---|
-| `tests/test_classification.py` | 16 | Phân loại cảnh báo ô nhiễm (Issue #13): nhãn 24h, 2 mẫu số, past-only features, PR-AUC average precision, tuning F2 không đột biến mô hình, 4-fold leakage audit |
+| `tests/test_classification.py` | 24 | Phân loại cảnh báo ô nhiễm (Issue #13): nhãn 24h, 2 mẫu số & 4 quần thể, past-only features trên lưới 1h, PR-AUC average precision, tuning F2 không đột biến mô hình, ablation đa phạm vi & horizon có purge gap, xử lý 1 lớp (`UNESTIMABLE`), 4-fold leakage audit |
 | `tests/test_cleaning.py` | 114 | Làm sạch tất định, `assert_no_imputation()`, cờ chẩn đoán |
 | `tests/test_cleaning_pipeline.py` | 44 | Merge, freeze, split tuần tự, chống rò rỉ |
 | `tests/test_cleaning_pipeline_guards.py` | 43 | Guard chống rò rỉ (`validate_no_leakage`) |
@@ -47,7 +47,7 @@ Không test nào gọi mạng. Không test nào phụ thuộc thứ tự chạy.
 | `tests/test_validate_issue8.py` | 29 | Checksum, đồng bộ generator, circular stats, smoke fixture, canh số liệu tài liệu |
 | `tests/test_verify_claims_rolling.py` | 9 | Biên rolling 24h — dữ liệu đồng nhất che lỗi |
 | `tests/test_visualizer.py` | 35 | Bộ 7 biểu đồ ấn phẩm FIG-01..FIG-07 (300 DPI, Tufte, zero-baseline, chuỳ 24h, font tiếng Việt) |
-| **Tổng** | **803** | |
+| **Tổng** | **811** | |
 
 Đếm lại sau mỗi thay đổi:
 
@@ -63,9 +63,9 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 | Con số | Ý nghĩa |
 |---|---|
-| **803** | Số **test method được định nghĩa** trong mã nguồn |
-| **777** | Số unittest **dự kiến chạy và báo cáo** trên CI (thiếu `data/`; 803 − 26 trong 5 lớp skip) |
-| **773** | Số test **dự kiến chạy và pass** trên CI (777 − 4 skip nằm trong `Ran`) |
+| **811** | Số **test method được định nghĩa** trong mã nguồn |
+| **785** | Số unittest **dự kiến chạy và báo cáo** trên CI (thiếu `data/`; 811 − 26 trong 5 lớp skip) |
+| **781** | Số test **dự kiến chạy và pass** trên CI (785 − 4 skip nằm trong `Ran`) |
 
 > ⚠ **`skipped=9` không trừ thẳng vào `Ran`.** Năm trong chín dòng skip là *class holder*
 > (`setUpClass` raise `SkipTest`): unittest bỏ qua cả class nên các method của nó **không
@@ -85,7 +85,7 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 > `data/` bị `.gitignore` loại khỏi repository, nên **CI không bao giờ có dataset**.
 
-### Vì sao 803 − 777 = 26
+### Vì sao 811 − 785 = 26
 
 Năm lớp có `setUpClass` raise `unittest.SkipTest` khi thiếu dữ liệu, và unittest bỏ qua
 **cả class** — mọi method của chúng không bao giờ được tính vào bộ đếm `Ran`:
@@ -150,6 +150,8 @@ python -m unittest tests.test_inference -v
 | Mutation tests và tính lại toàn bộ QC/profile/inference Issue #50 trên Parquet thật | `test_extended_validation_mutations::TestSemanticMutations` và `scripts/validate_extended_reanalysis.py --real-data` (local) |
 | Số liệu W9 trong notebook 05 và `reports/inference_results.md` khớp dữ liệu thật | `test_inference::TestRealDataset` (local) |
 | Notebook 05 chạy trên **9.044 dòng thật** | `test_live_restart_kernel_and_run_all` (local) |
+| Mô hình OLS/LINE W10 trên dữ liệu thật (`VN001` & `VN003`) trong notebook 06 & `reports/regression_results.md` | `test_regression::TestRegressionRealDataset` (local) |
+| Mô hình phân loại cảnh báo W11 trên dữ liệu thật (`VN001` & `VN003`) trong notebook 07 & `reports/classification_results.md` | `test_classification::TestClassificationRealDataset` (local) |
 
 > **Ngược lại — những gì CI *có* kiểm chứng được cho W9:** các phép kiểm hiệu chỉnh phụ
 > thuộc thời gian chạy trên dữ liệu **tổng hợp** nên CI kiểm được: hiệp phương sai HAC
