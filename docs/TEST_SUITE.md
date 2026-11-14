@@ -123,6 +123,9 @@ bên trong **không** được tính vào `Ran` (xem §3).
 Skip 7 và 8 là **giới hạn nền tảng có chủ đích**: bất biến dấu phân cách chỉ tồn tại
 trên Windows. Chạy trên Windows thì 2 test này **chạy thật**, nên máy local báo
 `skipped=0`, còn CI báo `skipped=9`. Không phải regression.
+Job `validate` (ubuntu) luôn skip hai test này; job CI riêng `windows-paths`
+(`windows-latest`) chạy `tests.test_pipeline_runtime_log` để chúng **thực sự được kiểm**
+trên mỗi push/PR.
 
 Không skip nào là do lỗi. Không có test nào skip vì "chưa viết xong".
 
