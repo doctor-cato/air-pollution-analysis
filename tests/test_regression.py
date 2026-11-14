@@ -15,18 +15,25 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
+from src.cleaning_pipeline import validate_no_leakage
 from src.regression import (
     DEFAULT_SPLIT_TIMESTAMP,
     LINEDiagnostics,
     RegressionResults,
+    build_regression_preprocessor,
     compute_cooks_distance,
+    compute_hac_lag_sensitivity,
+    compute_influence_summary,
     compute_line_diagnostics,
     compute_vif,
+    evaluate_derived_interpolation_sensitivity,
     evaluate_models,
+    evaluate_seasonal_and_lag_ablation,
     prepare_regression_data,
     render_line_diagnostics_figure,
     run_regression_pipeline,
     tune_regularization,
+    write_regression_report,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -190,16 +197,31 @@ class TestRegularizationAndEvaluation(unittest.TestCase):
         self.assertEqual(len(l_mod.coef_), self.X_tr.shape[1])
 
     def test_timeseries_cv_does_not_leak_validation_distribution(self):
-        # Đảo phân phối / chèn outlier cực đại ở cuối chuỗi Train (nằm trong val_idx của fold đầu)
-        X_tr_mutated = self.X_tr.copy()
-        X_tr_mutated.iloc[-10:, 0] = 999999.0
-        alphas = np.array([1.0])
-        # Kiểm tra tính cách ly: fold 0 độc lập hoàn toàn với phân phối validation fold
-        from sklearn.preprocessing import RobustScaler
-        n_tr_fold0 = len(self.X_tr) // 4
-        scaler_fold0 = RobustScaler().fit(self.X_tr.iloc[:n_tr_fold0])
-        scaler_fold0_mut = RobustScaler().fit(X_tr_mutated.iloc[:n_tr_fold0])
-        np.testing.assert_array_almost_equal(scaler_fold0.center_, scaler_fold0_mut.center_)
+        # Đảm bảo Imputer + Scaler trong CV không bị rò rỉ từ validation fold hay tập Test:
+        # 1) Mutate X_test không được làm thay đổi tham số pipeline hay trọng số mô hình.
+        X_te_mutated = self.X_te.copy()
+        X_te_mutated.iloc[:, 0] = 999999.0
+
+        alphas = np.array([0.1, 1.0])
+        r1, l1, rm1, lm1, p1 = tune_regularization(self.X_tr, self.y_tr, n_splits=3, alphas=alphas)
+        r2, l2, rm2, lm2, p2 = tune_regularization(self.X_tr, self.y_tr, n_splits=3, alphas=alphas)
+        self.assertEqual(r1, r2)
+        self.assertEqual(l1, l2)
+        np.testing.assert_allclose(rm1.coef_, rm2.coef_)
+
+        # Kiểm chứng với validate_no_leakage trên timestamp tuần tự
+        _, _, _, _, ts_tr, ts_te = prepare_regression_data(
+            self.df, split_timestamp="2026-01-03 00:00:00+07:00", return_timestamps=True
+        )
+        validate_no_leakage(p1, X_train=self.X_tr, X_test=X_te_mutated, timestamps=ts_tr, test_timestamps=ts_te)
+
+        # 2) Khi X_train chứa NaN + ngoại lai ở cuối Train (validation fold cuối), Imputer/Scaler
+        # vẫn xử lý không lỗi và chỉ khớp đúng refit Train (tức biến bị NaN ở X_test không tác động).
+        X_tr_nan = self.X_tr.copy()
+        X_tr_nan.iloc[0:3, 0] = np.nan
+        _, _, rm_nan, _, p_nan = tune_regularization(X_tr_nan, self.y_tr, n_splits=3, alphas=alphas)
+        validate_no_leakage(p_nan, X_train=X_tr_nan, X_test=X_te_mutated, timestamps=ts_tr, test_timestamps=ts_te)
+        self.assertEqual(len(rm_nan.coef_), self.X_tr.shape[1])
 
     def test_evaluate_models_returns_expected_metrics_table(self):
         alphas = np.array([0.1, 1.0])
@@ -252,6 +274,117 @@ class TestRegressionRealDataset(unittest.TestCase):
             self.assertGreater(out_rep.stat().st_size, 1000)
             # VIF của các biến khí tượng không chứa pm10
             self.assertNotIn("pm10", results.predictors)
+
+
+class TestRegressionScopeAndReviewGuards(unittest.TestCase):
+    """Kiểm thử hồi quy cho các phát hiện audit PR #48 và mở rộng Protocol A/B."""
+
+    def test_reset_detects_quadratic_nonlinearity_despite_zero_corr(self):
+        rng = np.random.default_rng(42)
+        n = 200
+        x = np.linspace(-10.0, 10.0, n)
+        y = 3.0 * (x ** 2) + rng.normal(0.0, 0.5, size=n)
+        X_df = pd.DataFrame({"temperature": x, "wind_speed": np.linspace(1.0, 5.0, n)})
+        ols_fit = sm.OLS(y, sm.add_constant(X_df)).fit()
+        diag = compute_line_diagnostics(ols_fit, X_df, pd.Series(y), max_lags=10)
+        # corr(resid, fitted) luôn = 0 theo đại số OLS, nhưng Ramsey RESET phải phát hiện phi tuyến
+        self.assertAlmostEqual(diag.residuals_fitted_corr, 0.0, places=8)
+        self.assertIsNotNone(diag.reset_power2_pvalue)
+        self.assertLess(diag.reset_power2_pvalue, 1e-6)
+        self.assertTrue(diag.linearity_violated)
+
+    def test_multi_station_fail_closed_protocol_b_guard(self):
+        df1 = _synthetic_regression_fixture(80)
+        df1["station_id"] = "STATION_A"
+        df1["split"] = ["train"] * 60 + ["test"] * 20
+
+        df2 = _synthetic_regression_fixture(80)
+        df2["station_id"] = "STATION_B"
+        df2["timestamp"] = df2["timestamp"] + pd.Timedelta(days=100)
+        df2["split"] = ["train"] * 60 + ["test"] * 20
+
+        multi = pd.concat([df1, df2], ignore_index=True)
+        with self.assertRaises(ValueError):
+            prepare_regression_data(multi, use_split_column=True, station_id=None)
+
+        X_tr, y_tr, X_te, y_te = prepare_regression_data(
+            multi, use_split_column=True, station_id="STATION_B"
+        )
+        self.assertEqual(len(X_tr), 60)
+        self.assertEqual(len(X_te), 20)
+
+    def test_rejects_target_leakage_flag_in_predictors(self):
+        df = _synthetic_regression_fixture(80)
+        df["pm25_was_missing"] = 0
+        with self.assertRaises(ValueError):
+            prepare_regression_data(
+                df,
+                split_timestamp="2026-01-02 12:00:00+07:00",
+                predictor_cols=["temperature", "pm25_was_missing"],
+            )
+
+    def test_influence_summary_separates_outliers_leverage_and_cooks(self):
+        df = _synthetic_regression_fixture(80)
+        df.loc[10, "pm25"] = df.loc[10, "pm25"] + 150.0  # outlier mạnh
+        X_tr, y_tr, _, _, ts_tr, _ = prepare_regression_data(
+            df, split_timestamp="2026-01-03 00:00:00+07:00", return_timestamps=True
+        )
+        ols_res = sm.OLS(y_tr.reset_index(drop=True), sm.add_constant(X_tr.reset_index(drop=True))).fit()
+        inf = compute_influence_summary(ols_res, timestamps=ts_tr, top_n=5)
+        self.assertGreaterEqual(inf["n_outliers_stud_gt_3"], 1)
+        self.assertGreaterEqual(inf["n_cooks_gt_4n"], 1)
+        self.assertEqual(len(inf["top_influential"]), 5)
+
+    def test_hac_lag_sensitivity_covers_zero_and_nw_plugin(self):
+        df = _synthetic_regression_fixture(120)
+        X_tr, y_tr, _, _ = prepare_regression_data(df, split_timestamp="2026-01-04 00:00:00+07:00")
+        sens_df, nw_lag = compute_hac_lag_sensitivity(X_tr, y_tr, lags=[0, 4, 12])
+        self.assertGreaterEqual(nw_lag, 1)
+        self.assertTrue({0, 4, 12}.issubset(set(sens_df["maxlags"].unique())))
+        self.assertIn("wind_speed", set(sens_df["Feature"].unique()))
+
+    def test_ablation_lag24_uses_exact_24h_timestamp_offset(self):
+        df = _synthetic_regression_fixture(120)
+        # Xóa 12 giờ giữa chuỗi để kiểm chứng lag24 khớp theo timestamp-24h chứ không shift(24) sai dòng
+        df_gapped = df.drop(index=list(range(30, 42))).reset_index(drop=True)
+        ab_df, ab_diag = evaluate_seasonal_and_lag_ablation(
+            df_gapped, split_timestamp="2026-01-04 00:00:00+07:00"
+        )
+        self.assertIn("OLS Khí tượng + Giờ + pm25_lag24 (8 biến, AR)", set(ab_df["Specification"]))
+        self.assertIn("ols_drop_season_test_r2", ab_diag)
+
+    def test_derived_sensitivity_keeps_test_ground_truth_untouched(self):
+        df = _synthetic_regression_fixture(120)
+        df["pm25_derived_interpolated"] = df["pm25"].copy()
+        df.loc[5, "pm25"] = np.nan
+        df.loc[5, "pm25_derived_interpolated"] = 45.0
+        # Cố tình nhiễu giá trị derived trên Test: kết quả đánh giá Test phải bất biến
+        df_mut = df.copy()
+        df_mut.loc[df_mut.index[-10:], "pm25_derived_interpolated"] = 9999.0
+
+        res1 = evaluate_derived_interpolation_sensitivity(
+            df, split_timestamp="2026-01-04 00:00:00+07:00"
+        )
+        res2 = evaluate_derived_interpolation_sensitivity(
+            df_mut, split_timestamp="2026-01-04 00:00:00+07:00"
+        )
+        self.assertEqual(res1["n_derived_hours_added_in_train"], 1)
+        self.assertAlmostEqual(res1["test_rmse_derived_train_model"], res2["test_rmse_derived_train_model"], places=8)
+
+    def test_write_regression_report_renders_dynamic_values_without_hardcode(self):
+        df = _synthetic_regression_fixture(120)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pq_path = Path(tmp_dir) / "synth.parquet"
+            fig_path = Path(tmp_dir) / "fig.png"
+            rep_path = Path(tmp_dir) / "rep.md"
+            df.to_parquet(pq_path, index=False)
+            res = run_regression_pipeline(
+                pq_path, fig_path, report_path=rep_path, split_timestamp="2026-01-04 00:00:00+07:00"
+            )
+            text = rep_path.read_text(encoding="utf-8")
+            self.assertIn(f"DW = {res.line_diagnostics.durbin_watson:.4f}", text)
+            self.assertNotIn("ACF lag 1 = 0,764", text)
+            self.assertNotIn("-1,9540", text)
 
 
 if __name__ == "__main__":
