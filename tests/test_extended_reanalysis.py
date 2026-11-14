@@ -118,6 +118,7 @@ class TestExtendedReanalysis(unittest.TestCase):
         stamps = pd.date_range("2024-01-01", periods=3, freq="h", tz="Asia/Ho_Chi_Minh")
         old = pd.DataFrame({"station_id": "VN001_HANOI_556_NGUYEN_VAN_CU",
                             "timestamp": stamps, "pm25": [10., np.nan, 40.]})
+        old["timestamp"] = old["timestamp"].astype("datetime64[ns, Asia/Ho_Chi_Minh]")
         for unit in ("ns", "us"):
             new = old.copy()
             new["timestamp"] = new["timestamp"].astype(f"datetime64[{unit}, Asia/Ho_Chi_Minh]")
