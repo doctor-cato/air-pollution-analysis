@@ -1,9 +1,11 @@
 # LỘ TRÌNH THỰC HIỆN ĐỒ ÁN MÔN HỌC: INFO3020 – INTRODUCTION TO DATA SCIENCE
 
+> **Phụ lục Issue #50:** Pipeline tái phân tích lịch sử tách trạm chạy bằng `scripts/run_extended_reanalysis.py`; đối chiếu trên dữ liệu thật bằng `scripts/validate_extended_reanalysis.py --real-data`. Bảng A–G, provenance hai snapshot và giới hạn suy luận nằm ở [`docs/issue50_reproducibility.md`](issue50_reproducibility.md). Các artifact `extended_*` không thay thế kết quả baseline Issue #8/#11 hoặc Issue #44.
+
 > **Đề tài:** Phân tích mức độ ô nhiễm không khí theo thời gian (*Time-Series Air Pollution Analysis*)  
 > **Căn cứ tài liệu:** Đề cương môn học INFO3020, Bài giảng ThS. Phạm Ngọc Đông – Khoa CNTT & Truyền thông, Trường Đại học CMC, và hệ thống 17 GitHub Issues (#1–#17, #19) làm đặc tả kỹ thuật có thẩm quyền.  
 > **Nơi lưu trữ:** `docs/roadmap.md`
-> **Kiểm thử hiện tại (Issue #13):** suite định nghĩa **756** test methods;
+> **Kiểm thử hiện tại (Issue #50 + #12 + #13):** suite định nghĩa **803** test methods;
 > [`docs/TEST_SUITE.md`](TEST_SUITE.md) là nguồn chuẩn cho breakdown và kết quả theo môi trường.
 
 ---
@@ -793,20 +795,20 @@ W01–W15.
 >   `#12`, `#13`) **đã được mở lại** và không còn bị chặn.
 > - Các số liệu thực nghiệm nêu trong các báo cáo (#4, #5) là **kết quả của một lần thực thi cụ thể**
 >   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
-> - Bộ kiểm thử hiện gồm **756 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
+> - Bộ kiểm thử hiện gồm **803 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
 >   [`docs/TEST_SUITE.md`](TEST_SUITE.md) — nguồn chuẩn duy nhất cho số liệu kiểm thử).
 >   Số mà unittest **thực sự chạy và báo cáo** phụ thuộc cả nền tảng lẫn việc có
->   `data/` hay không — **không phải con số 756 trên mọi nền tảng**:
->   - **Windows local (có `data/interim/*.parquet`)**: `Ran 756 tests` + `OK` → **756 pass, 0 skip**.
->   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`)**: `Ran 738 tests` + `OK (skipped=8)`
->     → **734 pass, 8 skip**.
+>   `data/` hay không — **không phải con số 803 trên mọi nền tảng**:
+>   - Trước khi gộp Issue #12 và #13, baseline Issue #50 trên **Windows local (có `data/`, 2026-11-11)**: `Ran 764 tests in 194.248s` + `OK` → **764 pass, 0 skip**.
+>   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`, run 43051282775)**: `Ran 740 tests in 152.400s` + `OK (skipped=7)` → **736 pass, 7 skip** (trên baseline 764; thêm #12 và #13 là 803 defined / 26 không vào `Ran`).
 >
->   CI báo **738 chứ không phải 756** vì **18** phương thức nằm trong **4** lớp mà
+>   Trên `803` method định nghĩa, **26** phương thức nằm trong **5** lớp mà
 >   `setUpClass` ném `unittest.SkipTest` khi thiếu `data/` — `TestDocumentedReproduction`
->   (4), `TestRealDataset` của `tests/test_inference.py` (12), `TestRegressionRealDataset` (1),
->   và `TestClassificationRealDataset` (1); các lớp này bị bỏ qua nên các phương thức
->   **không chạy, không được tính vào "Ran"**, nhưng mỗi lớp vẫn đóng góp **1 dòng** vào `skipped=`.
->   Vì vậy `pass = Ran − (skipped − holder) = 738 − (8 − 4) = 734`.
+>   (4), `TestRealDataset` của `tests/test_inference.py` (12), `TestSemanticMutations` (8),
+>   `TestRegressionRealDataset` của `tests/test_regression.py` (1), và
+>   `TestClassificationRealDataset` của `tests/test_classification.py` (1); cả 5 lớp bị bỏ qua nên
+>   các phương thức **không chạy, không được tính vào "Ran"**, nhưng mỗi lớp vẫn đóng góp
+>   **1 dòng** vào `skipped=`. Vì vậy `pass = Ran − (skipped − holders)`.
 >   Danh sách skip còn lại: `TestScriptsUseTheComputation.test_progress_report_bullet_carries_the_computed_f_statistic`
 >   (cùng lý do thiếu dữ liệu); hai test `@unittest.skipUnless(os.name == "nt")` trong
 >   `tests/test_pipeline_runtime_log.py`; và `test_live_restart_kernel_and_run_all` trong

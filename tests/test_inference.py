@@ -2782,6 +2782,18 @@ class TestCalendarAwarePipeline(unittest.TestCase):
                 self.assertIn("p_value_bootstrap", results["tests"][key])
                 self.assertGreater(results["tests"][key]["p_value_bootstrap"], 0.0)
 
+    def test_annual_secondary_median_ci_is_not_a_mean_ci(self):
+        frame = _synthetic_hourly(days=400)
+        result = inf.run_inference(frame, n_bootstrap=40, seed=42, include_simulation=False)
+        annual = result["tests"]["qcvn_annual"]
+        median_ci = inf.calendar_bootstrap_ci(
+            inf.build_daily_calendar(frame), statistic="median",
+            block_length_days=inf.BLOCK_LENGTH_DAYS, n_bootstrap=40, seed=42,
+        )
+        self.assertEqual(annual["secondary_estimate"], median_ci["point"])
+        self.assertEqual(annual["secondary_ci_low"], median_ci["ci_low"])
+        self.assertEqual(annual["secondary_ci_high"], median_ci["ci_high"])
+
     def test_data_source_is_a_relative_path(self):
         frame = _synthetic_hourly(days=400)
         results = inf.run_inference(frame, n_bootstrap=20, seed=42, include_simulation=False)

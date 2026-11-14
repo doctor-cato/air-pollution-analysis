@@ -1,5 +1,7 @@
 # Task List — Đối chiếu Slide Bài Giảng & Roadmap (M3 → M6)
 
+> **Issue #50 (bổ sung sau checklist gốc):** Kiểm toán M2, EDA M3 và suy luận W9 trên dataset tách trạm được triển khai trong `scripts/run_extended_reanalysis.py`, với báo cáo `reports/extended_*`, hai hình `figures/extended/`, validator và kiểm thử `tests/test_extended_reanalysis.py`. Theo dõi AC và giới hạn snapshot ERA5 ở [`docs/issue50_reproducibility.md`](issue50_reproducibility.md). Các task #12/#13 thuộc PR #48/#49 và không được gộp vào phạm vi này.
+
 > Sinh ra từ việc đối chiếu 6 slide tóm tắt trong Obsidian vault `CMC/datascience`
 > (W6, W7, W9, W10, W11, W12) với `docs/roadmap.md` và nội dung issue #8–#17 trên GitHub.
 >
@@ -30,7 +32,8 @@
 > | `notebooks/04_descriptive_stats.ipynb` | **đã merge** (PR #40 → `c078444`, Issue #8 `CLOSED`) | Sinh từ `scripts/generate_04_notebook.py`; `scripts/validate_issue8.py` 215 assertion, live kernel 0 lỗi |
 > | `reports/statistical_profile.csv` | **đã có** | 8 biến × 27 cột; đối chiếu lại từ Parquet trong `validate_issue8.py` §4 |
 > | `notebooks/05_statistical_inference.ipynb` | **VERIFIED / IMPLEMENTED** | Sinh từ `scripts/generate_05_notebook.py`; `run_inference()` tái lập 100% payload, report và 5 figure [Issue #11] |
-> | `notebooks/06`–`07` | **`NOT IMPLEMENTED`** | Chưa tồn tại (Issue #12 hồi quy OLS và Issue #13 phân loại cảnh báo) |
+> | `notebooks/06_regression_modeling.ipynb` | **VERIFIED / IMPLEMENTED** | Sinh từ `scripts/generate_06_notebook.py`; OLS/HAC/LINE/RESET/LOWESS/Ridge/Lasso + mở rộng Protocol A đa trạm [`reports/regression_results.md`](../reports/regression_results.md) [Issue #12] |
+> | `notebooks/07_classification_alerts.ipynb` | **`NOT IMPLEMENTED`** | Chưa hợp nhất trên nhánh này (Issue #13 thuộc PR #49) |
 > | `src/visualizer.py`, `tests/test_visualizer.py` | **VERIFIED / MERGED** (`6fe8eb6`) | Tồn tại; Tufte/Cleveland; 7 PNG render OK |
 > | `figures/FIG-01`…`FIG-07` | **VERIFIED / MERGED** (`6fe8eb6` PR #41, 2026-10-16) | 7 PNG (`300 DPI`, đọc trực tiếp chunk `pHYs`) đã commit; `src/visualizer.py` Tufte/Cleveland; `tests/test_visualizer.py` 35 test |
 > | **Task 2.10** — VIF cho cặp `pm25`/`pm10` | **`NOT IMPLEMENTED`** | Notebook 04 chỉ tính `r = 0,9727` và `r² = 0,9462`, **không** gọi `variance_inflation_factor`; VIF hoàn toàn để dành cho Issue #12. Task này **cố ý để `[ ]`** |
@@ -472,9 +475,9 @@ thực hiện tốt: mỗi issue đều kèm 1 tài liệu sinh ra từ code th�
 - [ ] **D11** 🔴 `docs/inference_results.md` — bảng đầy đủ bộ bốn (thống kê kiểm định · p-value thô + hiệu chỉnh ·
       `$r_{rb}$` · Bootstrap CI 95%) cho cả 3 kiểm định, kèm diễn giải **không nhân quả**.
       Roadmap cũ (`ROADMAP_INFO3020…:713`) đã từng quy định tên file này → giữ đúng tên.
-- [ ] **D12** 🔴 `docs/regression_findings.md` — bảng tham số OLS/Ridge/Lasso, kết quả 4 giả định LINE,
-      VIF, Cook's Distance, Adjusted `$R^2`, và **bảng đối chiếu Train/Test**.
-      Phải ghi rõ: nếu LINE bị vi phạm thì **giới hạn** kết luận thay vì báo cáo `$R^2` trần.
+- [x] **D12** 🔴 `docs/regression_findings.md` (xem thêm `reports/regression_results.md`) — bảng tham số OLS/Ridge/Lasso, kết quả 4 giả định LINE (bao gồm Ramsey RESET),
+      VIF, Cook's Distance, Adjusted `$R^2$`, và **bảng đối chiếu Train/Test** (`VN001_baseline_2026_01_15`, `VN001_extended_80_20`, `VN003_extended_2022_2025`).
+      Đã ghi rõ: vì cả 4 giả định LINE bị vi phạm nên **giới hạn** kết luận (mô hình chỉ mô tả xu hướng tuyến tính tổng quát theo giờ, không dùng làm dự báo chính xác hay suy diễn nhân quả) thay vì báo cáo `$R^2$` trần.
 - [ ] **D13** 🔴 `docs/classification_findings.md` — Confusion Matrix, Precision/Recall/F1/PR-AUC/ROC-AUC
       trên Test với ngưỡng đã chốt, **kèm prevalence của tập để mọi tỷ lệ có mẫu số**; kết quả
       feature importance; nêu rõ cách xử lý đa cộng tuyến `pm25`/`pm10`.
