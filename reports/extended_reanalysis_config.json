@@ -1,0 +1,20 @@
+{
+  "issue": 50,
+  "dataset_version": "2.0.0-issue44-extended",
+  "dataset_sha256_actual": "124c7fc851b89114d7734ed73e4834945d2f589cec263ffe443f23956d35bb4b",
+  "dataset_sha256_snapshot": "6930557fbfc8e31dbcb062065b1903ccf27c433e9c0f062bd0dc382a9a1f9b02",
+  "snapshot_byte_match": false,
+  "weather_raw_sha256_actual": "a0d841fc92efd3e63f4e3f5664fed9211a7cc50ba50ff5a632a288ff7329d99b",
+  "weather_raw_sha256_snapshot": "303aacb68798667e2c838be09ad0047a6cedf292282e9ab250a7dfa88160923f",
+  "weather_raw_snapshot_match": false,
+  "seed": 42,
+  "n_ci_bootstrap": 1000,
+  "n_null_bootstrap": 5000,
+  "block_length_days": 28,
+  "hac_lag_days": 28,
+  "min_valid_hours_per_day": 18,
+  "numpy": "2.5.3",
+  "pandas": "2.3.3",
+  "scipy": "1.18.1",
+  "command": "python scripts/run_extended_reanalysis.py"
+}
