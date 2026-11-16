@@ -1247,3 +1247,80 @@ def freeze_dataset_with_audit(
         }
 
     return freeze_info, audit_results
+
+
+# ---------------------------------------------------------------------------
+# J. Alert Label Construction (Issue #13 & Task 0.7b)
+# ---------------------------------------------------------------------------
+
+DEFAULT_ALERT_WINDOW_HOURS: int = 24
+DEFAULT_ALERT_MIN_PERIODS: int = 24
+DEFAULT_ALERT_THRESHOLD_UG_M3: float = 50.0
+
+
+def build_alert_label(
+    df: pd.DataFrame,
+    target_col: str = TARGET_CANDIDATE,
+    window: int = DEFAULT_ALERT_WINDOW_HOURS,
+    min_periods: int = DEFAULT_ALERT_MIN_PERIODS,
+    threshold: float = DEFAULT_ALERT_THRESHOLD_UG_M3,
+    station_col: Optional[str] = "station_id",
+    timestamp_col: str = "timestamp",
+) -> pd.Series:
+    """
+    Sinh nhãn cảnh báo ô nhiễm nhị phân (0.0 hoặc 1.0) dựa trên trung bình trượt quá khứ.
+
+    Tuân thủ quy chuẩn QCVN 05:2023/BTNMT:
+        Ngưỡng trung bình 24 giờ cho bụi mịn PM2.5 là 50 µg/m³.
+        Tại thời điểm t, cửa sổ tính từ [t - (window - 1), t] (hoàn toàn là thông tin
+        quá khứ và hiện tại, không có lookahead leakage).
+
+    Quy tắc xử lý thiếu dữ liệu (min_periods):
+        Đòi hỏi ít nhất min_periods quan sát hợp lệ (không NaN) trong cửa sổ.
+        Nếu cửa sổ không đủ min_periods, giá trị nhãn trả về là NaN (không suy diễn
+        nhãn khi thiếu dữ liệu).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame chứa chuỗi thời gian đã sắp xếp theo thứ tự tuyến tính.
+    target_col : str
+        Tên cột nồng độ ô nhiễm (mặc định 'pm25').
+    window : int
+        Độ dài cửa sổ trượt theo giờ (mặc định 24).
+    min_periods : int
+        Số giờ tối thiểu phải có dữ liệu hợp lệ trong cửa sổ (mặc định 24).
+    threshold : float
+        Ngưỡng nồng độ vượt quy chuẩn kỹ thuật (mặc định 50.0 µg/m³).
+    station_col : str | None
+        Tên cột trạm quan trắc (nếu có để tính rolling độc lập theo từng trạm).
+    timestamp_col : str
+        Tên cột thời gian để kiểm tra tính đơn điệu tăng dần.
+
+    Returns
+    -------
+    pd.Series
+        Series kiểu Float64 (chứa 1.0, 0.0 hoặc np.nan), đồng chỉ mục với df.
+    """
+    if target_col not in df.columns:
+        raise KeyError(f"Không tìm thấy cột '{target_col}' trong DataFrame.")
+
+    if timestamp_col in df.columns and not df[timestamp_col].is_monotonic_increasing:
+        raise ValueError("DataFrame phải được sắp xếp thời gian tăng dần trước khi tính rolling.")
+
+    if station_col and station_col in df.columns and df[station_col].nunique() > 1:
+        roll = (
+            df.groupby(station_col)[target_col]
+            .rolling(window=window, min_periods=min_periods)
+            .mean()
+            .reset_index(level=0, drop=True)
+        )
+    else:
+        roll = df[target_col].rolling(window=window, min_periods=min_periods).mean()
+
+    # Nhãn nhị phân: 1.0 nếu >= threshold, 0.0 nếu < threshold, NaN nếu cửa sổ không đủ min_periods
+    label = pd.Series(np.nan, index=df.index, dtype="float64")
+    label[roll >= threshold] = 1.0
+    label[(roll < threshold) & roll.notna()] = 0.0
+    label.name = f"{target_col}_alert_{window}h"
+    return label
