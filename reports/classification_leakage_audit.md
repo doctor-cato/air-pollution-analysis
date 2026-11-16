@@ -47,5 +47,5 @@
 | h=24h — Full Feature Set | 2369 | 1893 | 543 | 0.2868 | 0.7513 | 0.6041 | 0.5876 | 1.0 | 0.7158 | OK |
 
 ### Ghi chú bão hòa ngưỡng trên OOF
-- Cảnh báo bão hòa biên lưới (recall_constrained): tau*=0.10 chạm cận dưới 0.10 trên OOF (phổ xác suất phân tách mạnh hoặc đồng phẳng quanh cực trị hàm mục tiêu).
-- Cảnh báo bão hòa biên lưới (recall_constrained): tau*=0.10 chạm cận dưới 0.10 trên OOF (phổ xác suất phân tách mạnh hoặc đồng phẳng quanh cực trị hàm mục tiêu).
+- [LogReg (Prec>=0.60)] Cảnh báo bão hòa biên lưới (recall_constrained): tau*=0.10 chạm cận dưới 0.10 trên OOF (phổ xác suất phân tách mạnh hoặc đồng phẳng quanh cực trị hàm mục tiêu).
+- [RF (Prec>=0.60)] Cảnh báo bão hòa biên lưới (recall_constrained): tau*=0.10 chạm cận dưới 0.10 trên OOF (phổ xác suất phân tách mạnh hoặc đồng phẳng quanh cực trị hàm mục tiêu).

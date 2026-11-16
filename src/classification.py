@@ -919,6 +919,161 @@ def compute_feature_importances(
     return df_imp.sort_values(sort_col, ascending=False, na_position="last").reset_index(drop=True)
 
 
+def _derive_season_label(ts: pd.Series) -> pd.Series:
+    """Ánh xạ tháng sang 4 mùa khí tượng miền Bắc Việt Nam."""
+    months = ts.dt.month
+    return pd.Series(
+        np.select(
+            [months.isin([12, 1, 2]), months.isin([3, 4, 5]), months.isin([6, 7, 8])],
+            ["Winter (Dec-Feb)", "Spring (Mar-May)", "Summer (Jun-Aug)"],
+            default="Autumn (Sep-Nov)",
+        ),
+        index=ts.index,
+        dtype="object",
+    )
+
+
+def _build_coverage_base_frame(
+    df_station: pd.DataFrame,
+    *,
+    split_timestamp: Optional[str] = DEFAULT_SPLIT_TIMESTAMP,
+    use_split_column: bool = False,
+    target_col: str = "pm25",
+    station_id: Optional[str] = None,
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series, pd.Series, pd.Series, pd.Series, pd.Series]:
+    """Chuẩn hóa khung đếm phân tầng theo Station × {Year, Season, YearMonth} × Split cho 1 trạm."""
+    df_s = _select_single_station(df_station, station_id=station_id)
+    ts = df_s["timestamp"]
+    y_raw = _build_hourly_safe_alert_label(df_s, target_col=target_col)
+    X_raw = engineer_classification_features(df_s, target_col=target_col)
+    eval_mask = y_raw.notna() & X_raw["pm25_rolling_mean_24h"].notna()
+    valid_pm25 = df_s[target_col].notna()
+    valid_y = y_raw.notna()
+
+    if use_split_column:
+        validate_modeling_split(df_s, "station_specific")
+        train_m = df_s["split"] == "train"
+        test_m = df_s["split"] == "test"
+        split_vals = df_s["split"].astype(str)
+    else:
+        split_dt = _align_split_timestamp(ts, split_timestamp or DEFAULT_SPLIT_TIMESTAMP)
+        train_m = ts < split_dt
+        test_m = ts >= split_dt
+        split_vals = pd.Series(np.where(train_m, "train", "test"), index=df_s.index, dtype="object")
+
+    season_vals = df_s["season"].astype(str) if "season" in df_s.columns else _derive_season_label(ts)
+    st_name = str(df_s["station_id"].iloc[0]) if "station_id" in df_s.columns else (station_id or "UNKNOWN")
+
+    base_df = pd.DataFrame({
+        "Station": st_name,
+        "Year": ts.dt.year.astype(str),
+        "Season": season_vals,
+        "YearMonth": ts.dt.strftime("%Y-%m"),
+        "Split": split_vals,
+        "grid_hours": 1,
+        "valid_pm25": valid_pm25.astype(int),
+        "missing_pm25": (~valid_pm25).astype(int),
+        "valid_y": valid_y.astype(int),
+        "evaluable_rows": eval_mask.astype(int),
+        "pos_y": (y_raw == 1.0).astype(int),
+        "pos_eval": ((y_raw == 1.0) & eval_mask).astype(int),
+    })
+    return df_s, base_df, y_raw, valid_pm25, valid_y, eval_mask, train_m, test_m
+
+
+def _aggregate_coverage_stratum(
+    base_df: pd.DataFrame,
+    group_cols: Sequence[str],
+    *,
+    order_col_values: Optional[Sequence[str]] = None,
+) -> pd.DataFrame:
+    """Tổng hợp độ phủ, missingness & prevalence theo từng nhóm có sẵn đầy đủ tử/mẫu số và thứ tự Train -> Test."""
+    cols = list(group_cols)
+    g = base_df.groupby(cols, as_index=False, sort=True).sum(numeric_only=True)
+
+    sort_keys: List[str] = []
+    drop_helpers: List[str] = []
+    if "Station" in cols:
+        sort_keys.append("Station")
+    if order_col_values is not None and len(cols) >= 2:
+        order_map = {k: i for i, k in enumerate(order_col_values)}
+        g["_period_ord"] = g[cols[1]].map(lambda x: order_map.get(x, 99))
+        sort_keys.append("_period_ord")
+        drop_helpers.append("_period_ord")
+    else:
+        for c in cols:
+            if c not in ("Station", "Split"):
+                sort_keys.append(c)
+    if "Split" in cols:
+        split_map = {"train": 0, "test": 1}
+        g["_split_ord"] = g["Split"].map(lambda x: split_map.get(str(x).lower(), 99))
+        sort_keys.append("_split_ord")
+        drop_helpers.append("_split_ord")
+
+    g = g.sort_values(sort_keys).drop(columns=drop_helpers).reset_index(drop=True)
+    g["Valid PM2.5 (%)"] = (g["valid_pm25"] / g["grid_hours"] * 100.0).round(1)
+    g["Missing PM2.5 (%)"] = (g["missing_pm25"] / g["grid_hours"] * 100.0).round(1)
+    g["Valid Label 24h (%)"] = (g["valid_y"] / g["grid_hours"] * 100.0).round(1)
+    g["Evaluable (%)"] = (g["evaluable_rows"] / g["grid_hours"] * 100.0).round(1)
+    g["Positives / Valid y"] = [
+        f"{int(p):,}/{int(v):,} ({(p / v):.2%})" if v > 0 else "0/0 (UNESTIMABLE)"
+        for p, v in zip(g["pos_y"], g["valid_y"])
+    ]
+    g["Positives / Evaluable (Prevalence)"] = [
+        f"{int(p):,}/{int(e):,} ({(p / e):.2%})" if e > 0 else "0/0 (UNESTIMABLE)"
+        for p, e in zip(g["pos_eval"], g["evaluable_rows"])
+    ]
+    g["Positive Rate (% valid y)"] = np.where(
+        g["valid_y"] > 0,
+        (g["pos_y"] / g["valid_y"] * 100.0).round(2),
+        np.nan,
+    )
+    return g.rename(columns={
+        "grid_hours": "Grid Hours",
+        "valid_pm25": "Valid PM2.5",
+        "missing_pm25": "Missing PM2.5",
+        "valid_y": "Valid Label 24h",
+        "evaluable_rows": "Evaluable",
+        "pos_y": "Positives (Valid y)",
+        "pos_eval": "Positives (Eval)",
+    })
+
+
+def _assert_split_totals_match(
+    stratum_df: pd.DataFrame,
+    base_df: pd.DataFrame,
+    *,
+    label: str,
+) -> None:
+    """Bảo đảm tổng Train, Test và All giữa các bảng phân tầng khớp 100% với tổng dữ liệu gốc."""
+    sum_cols = [
+        ("Grid Hours", "grid_hours"),
+        ("Valid PM2.5", "valid_pm25"),
+        ("Missing PM2.5", "missing_pm25"),
+        ("Valid Label 24h", "valid_y"),
+        ("Evaluable", "evaluable_rows"),
+        ("Positives (Valid y)", "pos_y"),
+        ("Positives (Eval)", "pos_eval"),
+    ]
+    for sp in ("train", "test"):
+        sub_b = base_df.loc[base_df["Split"] == sp]
+        sub_s = stratum_df.loc[stratum_df["Split"] == sp]
+        for disp_col, raw_col in sum_cols:
+            got = int(sub_s[disp_col].sum())
+            exp = int(sub_b[raw_col].sum())
+            if got != exp:
+                raise AssertionError(
+                    f"Lệch tổng `{disp_col}` ở split='{sp}' của `{label}`: {got} != {exp}"
+                )
+    for disp_col, raw_col in sum_cols:
+        got_tot = int(stratum_df[disp_col].sum())
+        exp_tot = int(base_df[raw_col].sum())
+        if got_tot != exp_tot:
+            raise AssertionError(
+                f"Lệch tổng toàn bộ `{disp_col}` của `{label}`: {got_tot} != {exp_tot}"
+            )
+
+
 def compute_coverage_and_outage_tables(
     df_station: pd.DataFrame,
     *,
@@ -926,30 +1081,21 @@ def compute_coverage_and_outage_tables(
     use_split_column: bool = False,
     target_col: str = "pm25",
     top_n_gaps: int = 10,
+    station_id: Optional[str] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Tạo 3 bảng minh bạch độ phủ dữ liệu cho phạm vi đơn trạm:
       1. Đối soát 4 quần thể dữ liệu (Grid -> Valid PM2.5 -> Valid y_raw 24h -> Evaluable valid_mask).
       2. Danh sách top đợt gián đoạn quan trắc PM2.5 liên tục dài nhất.
-      3. Độ phủ & tỷ lệ dương tính theo từng tháng.
+      3. Độ phủ & tỷ lệ dương tính theo `Station × YearMonth × Split`.
     """
-    df_s = _select_single_station(df_station)
-    ts = df_s["timestamp"]
-    y_raw = _build_hourly_safe_alert_label(df_s, target_col=target_col)
-    X_raw = engineer_classification_features(df_s, target_col=target_col)
-    eval_mask = y_raw.notna() & X_raw["pm25_rolling_mean_24h"].notna()
-
-    if use_split_column:
-        validate_modeling_split(df_s, "station_specific")
-        train_m = df_s["split"] == "train"
-        test_m = df_s["split"] == "test"
-    else:
-        split_dt = _align_split_timestamp(ts, split_timestamp or DEFAULT_SPLIT_TIMESTAMP)
-        train_m = ts < split_dt
-        test_m = ts >= split_dt
-
-    valid_pm25 = df_s[target_col].notna()
-    valid_y = y_raw.notna()
+    df_s, base_df, y_raw, valid_pm25, valid_y, eval_mask, train_m, test_m = _build_coverage_base_frame(
+        df_station,
+        split_timestamp=split_timestamp,
+        use_split_column=use_split_column,
+        target_col=target_col,
+        station_id=station_id,
+    )
 
     def _row_stats(label: str, mask: pd.Series) -> Dict[str, Any]:
         sub_tr = mask & train_m
@@ -1001,46 +1147,9 @@ def compute_coverage_and_outage_tables(
         if gap_rows else pd.DataFrame(columns=["Start", "End", "Duration (hours)", "Split"])
     )
 
-    # Độ phủ theo tháng (có đầy đủ missingness và tử/mẫu số)
-    df_m = pd.DataFrame({
-        "YearMonth": ts.dt.strftime("%Y-%m"),
-        "grid_hours": 1,
-        "valid_pm25": valid_pm25.astype(int),
-        "missing_pm25": (~valid_pm25).astype(int),
-        "valid_y": valid_y.astype(int),
-        "evaluable_rows": eval_mask.astype(int),
-        "pos_y": (y_raw == 1.0).astype(int),
-        "pos_eval": ((y_raw == 1.0) & eval_mask).astype(int),
-    })
-    monthly_df = df_m.groupby("YearMonth", as_index=False).sum()
-    monthly_df["Valid PM2.5 (%)"] = (monthly_df["valid_pm25"] / monthly_df["grid_hours"] * 100.0).round(1)
-    monthly_df["Missing PM2.5 (%)"] = (monthly_df["missing_pm25"] / monthly_df["grid_hours"] * 100.0).round(1)
-    monthly_df["Valid Label 24h (%)"] = (monthly_df["valid_y"] / monthly_df["grid_hours"] * 100.0).round(1)
-    monthly_df["Positives / Valid y"] = [
-        f"{int(p)}/{int(v)} ({(p / v):.2%})" if v > 0 else "0/0 (UNESTIMABLE)"
-        for p, v in zip(monthly_df["pos_y"], monthly_df["valid_y"])
-    ]
-    monthly_df["Positive Rate (% valid y)"] = np.where(
-        monthly_df["valid_y"] > 0,
-        (monthly_df["pos_y"] / monthly_df["valid_y"] * 100.0).round(2),
-        np.nan,
-    )
-
+    monthly_df = _aggregate_coverage_stratum(base_df, ["Station", "YearMonth", "Split"])
+    _assert_split_totals_match(monthly_df, base_df, label="monthly_coverage")
     return coverage_table, outage_gaps_table, monthly_df
-
-
-def _derive_season_label(ts: pd.Series) -> pd.Series:
-    """Ánh xạ tháng sang 4 mùa khí tượng miền Bắc Việt Nam."""
-    months = ts.dt.month
-    return pd.Series(
-        np.select(
-            [months.isin([12, 1, 2]), months.isin([3, 4, 5]), months.isin([6, 7, 8])],
-            ["Winter (Dec-Feb)", "Spring (Mar-May)", "Summer (Jun-Aug)"],
-            default="Autumn (Sep-Nov)",
-        ),
-        index=ts.index,
-        dtype="object",
-    )
 
 
 def compute_year_season_coverage_tables(
@@ -1052,80 +1161,24 @@ def compute_year_season_coverage_tables(
     station_id: Optional[str] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Tính bảng độ phủ, missingness và prevalence (kèm tử/mẫu số) theo Năm và theo Mùa cho một trạm.
+    Tính bảng độ phủ, missingness và prevalence (kèm tử/mẫu số) theo
+    `Station × Year × Split` và `Station × Season × Split`.
     """
-    df_s = _select_single_station(df_station, station_id=station_id)
-    ts = df_s["timestamp"]
-    y_raw = _build_hourly_safe_alert_label(df_s, target_col=target_col)
-    X_raw = engineer_classification_features(df_s, target_col=target_col)
-    eval_mask = y_raw.notna() & X_raw["pm25_rolling_mean_24h"].notna()
-    valid_pm25 = df_s[target_col].notna()
-    valid_y = y_raw.notna()
-
-    if use_split_column and "split" in df_s.columns:
-        split_vals = df_s["split"].astype(str)
-    else:
-        split_dt = _align_split_timestamp(ts, split_timestamp or DEFAULT_SPLIT_TIMESTAMP)
-        split_vals = np.where(ts < split_dt, "train", "test")
-
-    season_vals = df_s["season"].astype(str) if "season" in df_s.columns else _derive_season_label(ts)
-    st_name = str(df_s["station_id"].iloc[0]) if "station_id" in df_s.columns else (station_id or "UNKNOWN")
-
-    base_df = pd.DataFrame({
-        "Station": st_name,
-        "Year": ts.dt.year.astype(str),
-        "Season": season_vals,
-        "Split": split_vals,
-        "grid_hours": 1,
-        "valid_pm25": valid_pm25.astype(int),
-        "missing_pm25": (~valid_pm25).astype(int),
-        "valid_y": valid_y.astype(int),
-        "evaluable": eval_mask.astype(int),
-        "pos_eval": ((y_raw == 1.0) & eval_mask).astype(int),
-    })
-
-    def _agg_stratum(group_cols: List[str], order_col: Optional[List[str]] = None) -> pd.DataFrame:
-        g = base_df.groupby(group_cols, as_index=False, sort=True).sum(numeric_only=True)
-        if order_col is not None and len(group_cols) == 2:
-            order_map = {k: i for i, k in enumerate(order_col)}
-            g["_ord"] = g[group_cols[1]].map(lambda x: order_map.get(x, 99))
-            g = g.sort_values([group_cols[0], "_ord"]).drop(columns=["_ord"]).reset_index(drop=True)
-        g["Valid PM2.5 (n / %)"] = [
-            f"{int(v):,}/{int(t):,} ({(v / t):.1%})" if t > 0 else "0/0"
-            for v, t in zip(g["valid_pm25"], g["grid_hours"])
-        ]
-        g["Missing PM2.5 (n / %)"] = [
-            f"{int(m):,}/{int(t):,} ({(m / t):.1%})" if t > 0 else "0/0"
-            for m, t in zip(g["missing_pm25"], g["grid_hours"])
-        ]
-        g["Valid Label 24h (n / %)"] = [
-            f"{int(y):,}/{int(t):,} ({(y / t):.1%})" if t > 0 else "0/0"
-            for y, t in zip(g["valid_y"], g["grid_hours"])
-        ]
-        g["Evaluable (n / %)"] = [
-            f"{int(e):,}/{int(t):,} ({(e / t):.1%})" if t > 0 else "0/0"
-            for e, t in zip(g["evaluable"], g["grid_hours"])
-        ]
-        g["Positives / Evaluable (Prevalence)"] = [
-            f"{int(p):,}/{int(e):,} ({(p / e):.2%})" if e > 0 else "0/0 (UNESTIMABLE)"
-            for p, e in zip(g["pos_eval"], g["evaluable"])
-        ]
-        keep_cols = [
-            *group_cols,
-            "grid_hours",
-            "Valid PM2.5 (n / %)",
-            "Missing PM2.5 (n / %)",
-            "Valid Label 24h (n / %)",
-            "Evaluable (n / %)",
-            "Positives / Evaluable (Prevalence)",
-        ]
-        return g[keep_cols].rename(columns={"grid_hours": "Grid Hours"})
-
-    yearly_df = _agg_stratum(["Station", "Year"])
-    seasonal_df = _agg_stratum(
-        ["Station", "Season"],
-        order_col=["Winter (Dec-Feb)", "Spring (Mar-May)", "Summer (Jun-Aug)", "Autumn (Sep-Nov)"],
+    _, base_df, *_ = _build_coverage_base_frame(
+        df_station,
+        split_timestamp=split_timestamp,
+        use_split_column=use_split_column,
+        target_col=target_col,
+        station_id=station_id,
     )
+    yearly_df = _aggregate_coverage_stratum(base_df, ["Station", "Year", "Split"])
+    seasonal_df = _aggregate_coverage_stratum(
+        base_df,
+        ["Station", "Season", "Split"],
+        order_col_values=["Winter (Dec-Feb)", "Spring (Mar-May)", "Summer (Jun-Aug)", "Autumn (Sep-Nov)"],
+    )
+    _assert_split_totals_match(yearly_df, base_df, label="yearly_coverage")
+    _assert_split_totals_match(seasonal_df, base_df, label="seasonal_coverage")
     return yearly_df, seasonal_df
 
 
@@ -1930,7 +1983,7 @@ def _render_scope_markdown(res: ClassificationResults, heading: str = "##") -> s
         lines.extend(["**Độ phủ & tỷ lệ thiếu dữ liệu theo mùa khí tượng & split:**", "", _df_to_markdown(res.seasonal_coverage_table), ""])
 
     if res.monthly_coverage_table is not None and not res.monthly_coverage_table.empty:
-        lines.extend(["**Độ phủ & tỷ lệ thiếu dữ liệu theo từng tháng:**", "", _df_to_markdown(res.monthly_coverage_table), ""])
+        lines.extend(["**Độ phủ & tỷ lệ thiếu dữ liệu theo tháng & split:**", "", _df_to_markdown(res.monthly_coverage_table), ""])
 
     if res.outage_gaps_table is not None and not res.outage_gaps_table.empty:
         lines.extend(["**Top đợt gián đoạn PM2.5 liên tục dài nhất:**", "", _df_to_markdown(res.outage_gaps_table.head(5)), ""])
@@ -2040,7 +2093,7 @@ def write_classification_report(
     if results.seasonal_coverage_table is not None and not results.seasonal_coverage_table.empty:
         cov_extra_parts.extend(["**Độ phủ & tỷ lệ thiếu dữ liệu theo mùa khí tượng & split:**", "", _df_to_markdown(results.seasonal_coverage_table), ""])
     if results.monthly_coverage_table is not None and not results.monthly_coverage_table.empty:
-        cov_extra_parts.extend(["**Độ phủ & tỷ lệ thiếu dữ liệu theo từng tháng:**", "", _df_to_markdown(results.monthly_coverage_table), ""])
+        cov_extra_parts.extend(["**Độ phủ & tỷ lệ thiếu dữ liệu theo tháng & split:**", "", _df_to_markdown(results.monthly_coverage_table), ""])
     if results.outage_gaps_table is not None and not results.outage_gaps_table.empty:
         cov_extra_parts.extend(["**Top đợt gián đoạn PM2.5 liên tục dài nhất:**", "", _df_to_markdown(results.outage_gaps_table.head(5)), ""])
     cov_extra_block = ("\n" + "\n".join(cov_extra_parts)) if cov_extra_parts else ""
@@ -2310,9 +2363,14 @@ def run_classification_pipeline(
     best_tau_rf_c, w4 = tune_classification_threshold(
         rf_pipe, X_train, y_train, metric="recall_constrained", min_precision=0.60, return_details=True
     )
-    for w in (w1, w2, w3, w4):
+    for label, w in (
+        ("LogReg (F2)", w1),
+        ("RF (F2)", w2),
+        ("LogReg (Prec>=0.60)", w3),
+        ("RF (Prec>=0.60)", w4),
+    ):
         if w:
-            warnings_list.append(w)
+            warnings_list.append(f"[{label}] {w}")
 
     # 5. Fit trọn vẹn trên Train & xác thực rò rỉ qua validate_no_leakage
     logreg_pipe.fit(X_train, y_train)
@@ -2372,7 +2430,7 @@ def run_classification_pipeline(
     cal_df, cal_status, cal_note = compute_calibration_summary(models_to_plot, X_test, y_test)
     if compute_extended_diagnostics:
         cov_df, gaps_df, monthly_df = compute_coverage_and_outage_tables(
-            df_station, split_timestamp=split_timestamp, use_split_column=use_split_column
+            df_station, split_timestamp=split_timestamp, use_split_column=use_split_column, station_id=resolved_station
         )
         yr_cov_df, sea_cov_df = compute_year_season_coverage_tables(
             df_station, split_timestamp=split_timestamp, use_split_column=use_split_column, station_id=resolved_station

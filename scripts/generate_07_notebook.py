@@ -312,7 +312,31 @@ if "VN003_extended" in suite_results:
     assert ext3.dataset_sha256 in report_text
     assert ext3.calibration_status == "OK"
 
-print("Mọi kiểm chứng độc lập trên dữ liệu thật, provenance và tái tính toán metric ĐỀU ĐẠT.")
+# Đối soát bảo toàn Train + Test = Total trên tất cả bảng Station x {Year, Season, Month} x Split
+for scope_key, sc_res in suite_results.items():
+    cov_tot = sc_res.coverage_table
+    for tbl_name, tbl in (
+        ("yearly", sc_res.yearly_coverage_table),
+        ("seasonal", sc_res.seasonal_coverage_table),
+        ("monthly", sc_res.monthly_coverage_table),
+    ):
+        assert tbl is not None and "Split" in tbl.columns and "Station" in tbl.columns, (
+            f"Thiếu Station/Split ở {scope_key}.{tbl_name}"
+        )
+        assert set(tbl["Split"].unique()) == {"train", "test"}, f"Split bất thường ở {scope_key}.{tbl_name}"
+        tr_rows = tbl.loc[tbl["Split"] == "train"]
+        te_rows = tbl.loc[tbl["Split"] == "test"]
+        assert int(tr_rows["Grid Hours"].sum()) == int(cov_tot.loc[0, "Train (giờ)"])
+        assert int(te_rows["Grid Hours"].sum()) == int(cov_tot.loc[0, "Test (giờ)"])
+        assert int(tbl["Grid Hours"].sum()) == int(cov_tot.loc[0, "Total (giờ)"])
+        assert int(tr_rows["Valid PM2.5"].sum()) == int(cov_tot.loc[1, "Train (giờ)"])
+        assert int(te_rows["Valid PM2.5"].sum()) == int(cov_tot.loc[1, "Test (giờ)"])
+        assert int(tr_rows["Evaluable"].sum()) == int(cov_tot.loc[3, "Train (giờ)"])
+        assert int(te_rows["Evaluable"].sum()) == int(cov_tot.loc[3, "Test (giờ)"])
+        assert int(tr_rows["Positives (Eval)"].sum()) == int(cov_tot.loc[3, "Positives Train"])
+        assert int(te_rows["Positives (Eval)"].sum()) == int(cov_tot.loc[3, "Positives Test"])
+
+print("Mọi kiểm chứng độc lập trên dữ liệu thật, provenance, bảo toàn Train/Test và tái tính toán metric ĐỀU ĐẠT.")
 display(Markdown(res_base.leakage_audit_markdown))
 """)
 

@@ -22,6 +22,8 @@ from src.classification import (
     ClassificationModelMetrics,
     ClassificationResults,
     PersistenceRuleClassifier,
+    _assert_split_totals_match,
+    _build_coverage_base_frame,
     _df_to_markdown,
     build_classification_pipeline,
     compute_calibration_summary,
@@ -323,6 +325,22 @@ class TestClassificationRealDataset(unittest.TestCase):
             self.assertTrue((tmp / "figures" / "calibration_reliability_vn001_extended.png").exists())
             self.assertTrue((tmp / "figures" / "calibration_reliability_vn003_extended.png").exists())
 
+            for sc_key, sc_res in suite.items():
+                cov_tot = sc_res.coverage_table
+                for tbl in (sc_res.yearly_coverage_table, sc_res.seasonal_coverage_table, sc_res.monthly_coverage_table):
+                    self.assertIn("Split", tbl.columns, msg=f"Thiếu Split ở {sc_key}")
+                    self.assertIn("Station", tbl.columns, msg=f"Thiếu Station ở {sc_key}")
+                    self.assertEqual(set(tbl["Split"].unique()), {"train", "test"})
+                    self.assertEqual(int(tbl["Grid Hours"].sum()), int(cov_tot.loc[0, "Total (giờ)"]))
+                    self.assertEqual(
+                        int(tbl.loc[tbl["Split"] == "train", "Evaluable"].sum()),
+                        int(cov_tot.loc[3, "Train (giờ)"]),
+                    )
+                    self.assertEqual(
+                        int(tbl.loc[tbl["Split"] == "test", "Evaluable"].sum()),
+                        int(cov_tot.loc[3, "Test (giờ)"]),
+                    )
+
 
 class TestClassificationGuardsAndExtensions(unittest.TestCase):
     """Kiểm thử các guard chống rò rỉ, baseline quy tắc, đa trạm, tầm dự báo và trường hợp Test đơn lớp."""
@@ -599,6 +617,74 @@ class TestClassificationGuardsAndExtensions(unittest.TestCase):
             build_classification_pipeline(
                 LogisticRegression(), ["pm25_rolling_mean_24h", "pm25_lead_1h"]
             )
+
+    def test_coverage_tables_stratify_by_station_period_and_split_and_conserve_totals(self):
+        # Chuỗi liên tục từ 2025-12-20 đến 2026-03-10 cắt giữa tháng 2026-01 (và giữa mùa Winter, giữa 2 năm)
+        df = _synthetic_classification_fixture(2000)
+        df["timestamp"] = pd.date_range("2025-12-20 00:00:00+07:00", periods=len(df), freq="h")
+        df["station_id"] = "SYNTH_ST"
+        df.loc[150:160, "pm25"] = np.nan
+        df.loc[900:915, "pm25"] = np.nan
+        split_ts = "2026-01-15 00:00:00+07:00"
+
+        cov_df, _, monthly_df = compute_coverage_and_outage_tables(
+            df, split_timestamp=split_ts, station_id="SYNTH_ST"
+        )
+        yr_df, sea_df = compute_year_season_coverage_tables(
+            df, split_timestamp=split_ts, station_id="SYNTH_ST"
+        )
+
+        # Kiểm tra sự hiện diện của Station và Split ở cả 3 bảng (phát hiện lỗi thiếu Split)
+        for name, tbl in (("monthly", monthly_df), ("yearly", yr_df), ("seasonal", sea_df)):
+            self.assertIn("Station", tbl.columns, msg=name)
+            self.assertIn("Split", tbl.columns, msg=name)
+            self.assertEqual(set(tbl["Split"].unique()), {"train", "test"}, msg=name)
+
+        # Tháng cắt 2026-01 và mùa Winter (Dec-Feb) phải có cả hàng train lẫn test
+        jan_splits = set(monthly_df.loc[monthly_df["YearMonth"] == "2026-01", "Split"])
+        self.assertEqual(jan_splits, {"train", "test"})
+        winter_splits = set(sea_df.loc[sea_df["Season"] == "Winter (Dec-Feb)", "Split"])
+        self.assertEqual(winter_splits, {"train", "test"})
+        y2026_splits = set(yr_df.loc[yr_df["Year"] == "2026", "Split"])
+        self.assertEqual(y2026_splits, {"train", "test"})
+
+        # Bảo đảm tử/mẫu số và tổng Train + Test = Total khớp 100% với coverage_table ở cả 3 bảng
+        for tbl in (monthly_df, yr_df, sea_df):
+            self.assertTrue((tbl["Grid Hours"] == tbl["Valid PM2.5"] + tbl["Missing PM2.5"]).all())
+            self.assertEqual(int(tbl.loc[tbl["Split"] == "train", "Grid Hours"].sum()), int(cov_df.loc[0, "Train (giờ)"]))
+            self.assertEqual(int(tbl.loc[tbl["Split"] == "test", "Grid Hours"].sum()), int(cov_df.loc[0, "Test (giờ)"]))
+            self.assertEqual(int(tbl["Grid Hours"].sum()), int(cov_df.loc[0, "Total (giờ)"]))
+            self.assertEqual(int(tbl.loc[tbl["Split"] == "train", "Valid PM2.5"].sum()), int(cov_df.loc[1, "Train (giờ)"]))
+            self.assertEqual(int(tbl.loc[tbl["Split"] == "test", "Valid PM2.5"].sum()), int(cov_df.loc[1, "Test (giờ)"]))
+            self.assertEqual(int(tbl.loc[tbl["Split"] == "train", "Valid Label 24h"].sum()), int(cov_df.loc[2, "Train (giờ)"]))
+            self.assertEqual(int(tbl.loc[tbl["Split"] == "test", "Valid Label 24h"].sum()), int(cov_df.loc[2, "Test (giờ)"]))
+            self.assertEqual(int(tbl.loc[tbl["Split"] == "train", "Evaluable"].sum()), int(cov_df.loc[3, "Train (giờ)"]))
+            self.assertEqual(int(tbl.loc[tbl["Split"] == "test", "Evaluable"].sum()), int(cov_df.loc[3, "Test (giờ)"]))
+            self.assertEqual(int(tbl.loc[tbl["Split"] == "train", "Positives (Eval)"].sum()), int(cov_df.loc[3, "Positives Train"]))
+            self.assertEqual(int(tbl.loc[tbl["Split"] == "test", "Positives (Eval)"].sum()), int(cov_df.loc[3, "Positives Test"]))
+
+    def test_assert_split_totals_match_detects_missing_split_wrong_denominator_and_aggregation_error(self):
+        df = _synthetic_classification_fixture(200)
+        split_ts = "2026-01-05 00:00:00+07:00"
+        _, _, monthly_df = compute_coverage_and_outage_tables(df, split_timestamp=split_ts)
+        _, base_df, *_ = _build_coverage_base_frame(df, split_timestamp=split_ts)
+
+        # 1. Thiếu phân nhóm Split (bị gộp mất toàn bộ dòng test) -> phải bắt lỗi
+        missing_split_df = monthly_df.loc[monthly_df["Split"] == "train"].copy()
+        with self.assertRaises(AssertionError):
+            _assert_split_totals_match(missing_split_df, base_df, label="missing_split_check")
+
+        # 2. Sai mẫu số (Grid Hours lệch +1) -> phải bắt lỗi
+        wrong_denom_df = monthly_df.copy()
+        wrong_denom_df.loc[0, "Grid Hours"] += 1
+        with self.assertRaises(AssertionError):
+            _assert_split_totals_match(wrong_denom_df, base_df, label="wrong_denom_check")
+
+        # 3. Lỗi tổng hợp tử số (Positives (Eval) lệch) -> phải bắt lỗi
+        wrong_agg_df = monthly_df.copy()
+        wrong_agg_df.loc[0, "Positives (Eval)"] += 5
+        with self.assertRaises(AssertionError):
+            _assert_split_totals_match(wrong_agg_df, base_df, label="wrong_agg_check")
 
 
 if __name__ == "__main__":
