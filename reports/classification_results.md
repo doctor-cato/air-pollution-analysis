@@ -2,8 +2,18 @@
 
 > **Môn học:** INFO3020 – Nhập môn Khoa học Dữ liệu (*Introduction to Data Science*) – ĐH CMC
 > **Giai đoạn CRISP-DM:** Phase 4 (Modeling) & Phase 5 (Evaluation) — Tuần 11
-> **Phạm vi chính:** `VN001_baseline_2026_01_15` (`VN001_HANOI_556_NGUYEN_VAN_CU`) | **SHA-256:** `866f39de1720c727...`
+> **Phạm vi chính:** `VN001_baseline_2026_01_15` (`VN001_HANOI_556_NGUYEN_VAN_CU`) | **Version:** `1.0.0-m2-baseline` | **SHA-256:** `866f39de1720c7273dc1f09c4932e508835589383820ad425c19521592586efd`
 > **Mốc phân chia chuỗi thời gian:** `2026-01-15 00:00:00+07:00` | **Kích thước Evaluable:** Train = 2,965 giờ | Test = 2,302 giờ (666 ca dương tính)
+
+---
+
+## 0. Provenance Dữ Liệu & Đặc Tả Cohort
+
+| Cohort | Station ID | Dataset Version | Dataset SHA-256 | Split Cut | Horizon | Feature Availability | Label Window & QCVN Standard | Train Valid / Grid (Pos) | Test Valid / Grid (Pos) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| VN001_baseline_2026_01_15 | VN001_HANOI_556_NGUYEN_VAN_CU | `1.0.0-m2-baseline` | `866f39de1720c7273dc1f09c4932e508835589383820ad425c19521592586efd` | 2026-01-15 00:00:00+07:00 | h=0h (ablation 0,1,6,12,24h) | 14 retrospective features: past-only PM2.5 (`t-1..t-24`, no `pm25_derived_interpolated` in primary) + Open-Meteo ERA5 (~5d reanalysis latency) + cyclic time; excludes `pm10`, `pm25_was_missing`, `is_high_humidity_fog` | Observed 24h rolling mean `pm25` (`min_periods=24`) >= 50.0 ug/m3 (QCVN 05:2023/BTNMT) | 2,965 / 4,682 (978 pos) | 2,302 / 4,362 (666 pos) |
+| VN001_extended_80_20 | VN001_HANOI_556_NGUYEN_VAN_CU | `2.0.0-issue44-extended` | `6930557fbfc8e31dbcb062065b1903ccf27c433e9c0f062bd0dc382a9a1f9b02` | 2026-05-01 09:00:00+07:00 | h=0h (ablation 0,1,6,12,24h) | 14 retrospective features: past-only PM2.5 (`t-1..t-24`, no `pm25_derived_interpolated` in primary) + Open-Meteo ERA5 (~5d reanalysis latency) + cyclic time; excludes `pm10`, `pm25_was_missing`, `is_high_humidity_fog` | Observed 24h rolling mean `pm25` (`min_periods=24`) >= 50.0 ug/m3 (QCVN 05:2023/BTNMT) | 5,025 / 7,235 (1,644 pos) | 242 / 1,809 (0 pos) |
+| VN003_extended_2022_2025 | VN003_HANOI_OPENAQ_7441 | `2.0.0-issue44-extended` | `6930557fbfc8e31dbcb062065b1903ccf27c433e9c0f062bd0dc382a9a1f9b02` | 2024-08-13 23:00:00+07:00 | h=0h (ablation 0,1,6,12,24h) | 14 retrospective features: past-only PM2.5 (`t-1..t-24`, no `pm25_derived_interpolated` in primary) + Open-Meteo ERA5 (~5d reanalysis latency) + cyclic time; excludes `pm10`, `pm25_was_missing`, `is_high_humidity_fog` | Observed 24h rolling mean `pm25` (`min_periods=24`) >= 50.0 ug/m3 (QCVN 05:2023/BTNMT) | 10,636 / 22,942 (2,677 pos) | 3,439 / 5,736 (1,713 pos) |
 
 ---
 
@@ -21,6 +31,50 @@
 | 3. Đủ nhãn cửa sổ 24h (y_raw.notna()) | 5317 | 2994 | 2323 | 1655 | 986 | 669 | 32.93% / 28.80% |
 | 4. Đủ nhãn & đặc trưng trễ 24h (Evaluable) | 5267 | 2965 | 2302 | 1644 | 978 | 666 | 32.98% / 28.93% |
 
+**Độ phủ & tỷ lệ thiếu dữ liệu theo năm & split:**
+
+| Station | Year | Grid Hours | Valid PM2.5 (n / %) | Missing PM2.5 (n / %) | Valid Label 24h (n / %) | Evaluable (n / %) | Positives / Evaluable (Prevalence) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| VN001_HANOI_556_NGUYEN_VAN_CU | 2025 | 4346 | 3,966/4,346 (91.3%) | 380/4,346 (8.7%) | 2,808/4,346 (64.6%) | 2,781/4,346 (64.0%) | 876/2,781 (31.50%) |
+| VN001_HANOI_556_NGUYEN_VAN_CU | 2026 | 4698 | 3,529/4,698 (75.1%) | 1,169/4,698 (24.9%) | 2,509/4,698 (53.4%) | 2,486/4,698 (52.9%) | 768/2,486 (30.89%) |
+
+**Độ phủ & tỷ lệ thiếu dữ liệu theo mùa khí tượng & split:**
+
+| Station | Season | Grid Hours | Valid PM2.5 (n / %) | Missing PM2.5 (n / %) | Valid Label 24h (n / %) | Evaluable (n / %) | Positives / Evaluable (Prevalence) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| VN001_HANOI_556_NGUYEN_VAN_CU | Winter (Dec-Feb) | 2160 | 1,958/2,160 (90.6%) | 202/2,160 (9.4%) | 1,564/2,160 (72.4%) | 1,554/2,160 (71.9%) | 946/1,554 (60.88%) |
+| VN001_HANOI_556_NGUYEN_VAN_CU | Spring (Mar-May) | 2208 | 2,042/2,208 (92.5%) | 166/2,208 (7.5%) | 1,482/2,208 (67.1%) | 1,467/2,208 (66.4%) | 257/1,467 (17.52%) |
+| VN001_HANOI_556_NGUYEN_VAN_CU | Summer (Jun-Aug) | 2492 | 1,478/2,492 (59.3%) | 1,014/2,492 (40.7%) | 1,037/2,492 (41.6%) | 1,028/2,492 (41.3%) | 66/1,028 (6.42%) |
+| VN001_HANOI_556_NGUYEN_VAN_CU | Autumn (Sep-Nov) | 2184 | 2,017/2,184 (92.4%) | 167/2,184 (7.6%) | 1,234/2,184 (56.5%) | 1,218/2,184 (55.8%) | 375/1,218 (30.79%) |
+
+**Độ phủ & tỷ lệ thiếu dữ liệu theo từng tháng:**
+
+| YearMonth | grid_hours | valid_pm25 | missing_pm25 | valid_y | evaluable_rows | pos_y | pos_eval | Valid PM2.5 (%) | Missing PM2.5 (%) | Valid Label 24h (%) | Positives / Valid y | Positive Rate (% valid y) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2025-07 | 674 | 643 | 31 | 503 | 499 | 58 | 57 | 95.4 | 4.6 | 74.6 | 58/503 (11.53%) | 11.53 |
+| 2025-08 | 744 | 683 | 61 | 534 | 529 | 9 | 9 | 91.8 | 8.2 | 71.8 | 9/534 (1.69%) | 1.69 |
+| 2025-09 | 720 | 667 | 53 | 368 | 363 | 29 | 29 | 92.6 | 7.4 | 51.1 | 29/368 (7.88%) | 7.88 |
+| 2025-10 | 744 | 698 | 46 | 466 | 460 | 156 | 155 | 93.8 | 6.2 | 62.6 | 156/466 (33.48%) | 33.48 |
+| 2025-11 | 720 | 652 | 68 | 400 | 395 | 193 | 191 | 90.6 | 9.4 | 55.6 | 193/400 (48.25%) | 48.25 |
+| 2025-12 | 744 | 623 | 121 | 537 | 535 | 437 | 435 | 83.7 | 16.3 | 72.2 | 437/537 (81.38%) | 81.38 |
+| 2026-01 | 744 | 684 | 60 | 446 | 440 | 306 | 302 | 91.9 | 8.1 | 59.9 | 306/446 (68.61%) | 68.61 |
+| 2026-02 | 672 | 651 | 21 | 581 | 579 | 209 | 209 | 96.9 | 3.1 | 86.5 | 209/581 (35.97%) | 35.97 |
+| 2026-03 | 744 | 736 | 8 | 657 | 654 | 80 | 80 | 98.9 | 1.1 | 88.3 | 80/657 (12.18%) | 12.18 |
+| 2026-04 | 720 | 703 | 17 | 567 | 562 | 178 | 177 | 97.6 | 2.4 | 78.8 | 178/567 (31.39%) | 31.39 |
+| 2026-05 | 744 | 603 | 141 | 258 | 251 | 0 | 0 | 81.0 | 19.0 | 34.7 | 0/258 (0.00%) | 0.0 |
+| 2026-06 | 720 | 151 | 569 | 0 | 0 | 0 | 0 | 21.0 | 79.0 | 0.0 | 0/0 (UNESTIMABLE) | UNESTIMABLE |
+| 2026-07 | 354 | 1 | 353 | 0 | 0 | 0 | 0 | 0.3 | 99.7 | 0.0 | 0/0 (UNESTIMABLE) | UNESTIMABLE |
+
+**Top đợt gián đoạn PM2.5 liên tục dài nhất:**
+
+| Start | End | Duration (hours) | Split |
+| --- | --- | --- | --- |
+| 2026-06-19 11:00:00+07:00 | 2026-07-15 16:00:00+07:00 | 630 | test |
+| 2025-12-14 10:00:00+07:00 | 2025-12-16 13:00:00+07:00 | 52 | train |
+| 2025-11-30 00:00:00+07:00 | 2025-12-01 12:00:00+07:00 | 37 | train |
+| 2025-09-30 09:00:00+07:00 | 2025-10-01 08:00:00+07:00 | 24 | train |
+| 2025-08-19 01:00:00+07:00 | 2025-08-19 23:00:00+07:00 | 23 | train |
+
 ---
 
 ## 2. Tổng Hợp Hiệu Năng Phân Loại Trên Tập Test Độc Lập (`VN001_baseline_2026_01_15`)
@@ -28,7 +82,7 @@
 - **Bẫy Accuracy & Baseline tham chiếu:**
   - `DummyClassifier(strategy='prior')` đạt Accuracy = **71.07%**, nhưng Recall = **0.00%** và PR-AUC = **0.2893** (bằng đúng tỷ lệ dương tính của tập Test).
   - `PersistenceRuleClassifier` (ngưỡng cơ học 1 biến `pm25_rolling_mean_24h >= 50`) đạt Recall = **98.50%**, PR-AUC = **0.9992**.
-- **Mô hình Học máy (ngưỡng $F_2$ tinh chỉnh hoàn toàn trên Train OOF):**
+- **Mô hình Học máy (ngưỡng $F_2$ tinh chỉnh hoàn toàn trên Train OOF & khóa trước khi chạm Test):**
   - **Logistic Regression (Balanced, $\tau^*=0.43$):** Recall = **99.55%** (663/666 ca dương), Precision = **94.18%**, F2 = **0.9843**, PR-AUC = **0.9989**, FAR = **2.51%**.
   - **Random Forest (Balanced, $\tau^*=0.32$):** Recall = **100.00%** (666/666 ca dương, bỏ sót 0 ca), Precision = **96.10%**, F2 = **0.9920**, PR-AUC = **0.9985**, FAR = **1.65%**.
 
@@ -41,6 +95,16 @@
 | Random Forest (Balanced, F2) | 0.32 | 0.9883 | 0.961 | 1.0 | 0.0165 | 0.9801 | 0.992 | 0.0134 | 0.9995 | 0.9985 | [[1609, 27], [0, 666]] | OK |
 | Random Forest (Prec>=0.60) | 0.1 | 0.8097 | 0.6033 | 1.0 | 0.2677 | 0.7525 | 0.8838 | 0.0134 | 0.9995 | 0.9985 | [[1198, 438], [0, 666]] | OK |
 
+### Đánh giá hiệu chuẩn xác suất (Calibration / Brier / ECE — `OK`)
+
+- Ước lượng hợp lệ trên 2,302 mẫu (666 dương tính). Các bin có cỡ mẫu < 10 được đánh dấu thưa trên đường cong hiệu chuẩn (Reliability plot).
+
+| Model | Brier Score | ECE (10 bins) | Bins (n >= 10) | Calibration Status |
+| --- | --- | --- | --- | --- |
+| Persistence Rule (>=50) | 0.0845 | 0.2592 | 10/10 non-empty | OK |
+| Logistic Regression | 0.0143 | 0.0351 | 10/10 non-empty | OK |
+| Random Forest | 0.0134 | 0.075 | 7/10 non-empty | OK |
+
 ---
 
 ## 3. Phân Tích Chồng Lấn Cửa Sổ (Window Overlap), Ablation & Tầm Dự Báo Tương Lai ($h \ge 1\text{h}$)
@@ -50,13 +114,13 @@
 
 | Setting | n_train | n_test | Test Positives | Dummy PR-AUC | LogReg PR-AUC | LogReg Recall | RF PR-AUC | RF Recall | RF F2 | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| h=0h | Full (Rolling24 + Lag24 + Met) | 2965 | 2302 | 666 | 0.2893 | 0.9989 | 0.9955 | 0.9985 | 1.0 | 0.992 | OK |
-| h=0h | Lag24 + Met (No 24h Rolling) | 2965 | 2302 | 666 | 0.2893 | 0.7908 | 0.8529 | 0.7364 | 0.994 | 0.6904 | OK |
-| h=0h | Meteorology + Time Only (No PM2.5) | 2994 | 2323 | 669 | 0.288 | 0.4338 | 1.0 | 0.5954 | 0.9985 | 0.6708 | OK |
-| h=1h | Full Feature Set | 2936 | 2281 | 663 | 0.2907 | 0.9966 | 0.9804 | 0.9951 | 0.994 | 0.978 | OK |
-| h=6h | Full Feature Set | 2803 | 2186 | 647 | 0.296 | 0.9696 | 0.8887 | 0.9509 | 1.0 | 0.7352 | OK |
-| h=12h | Full Feature Set | 2647 | 2084 | 619 | 0.297 | 0.9094 | 0.7205 | 0.8586 | 0.9984 | 0.7423 | OK |
-| h=24h | Full Feature Set | 2369 | 1893 | 543 | 0.2868 | 0.7513 | 0.6041 | 0.5876 | 1.0 | 0.7158 | OK |
+| h=0h — Full (Rolling24 + Lag24 + Met) | 2965 | 2302 | 666 | 0.2893 | 0.9989 | 0.9955 | 0.9985 | 1.0 | 0.992 | OK |
+| h=0h — Lag24 + Met (No 24h Rolling) | 2965 | 2302 | 666 | 0.2893 | 0.7908 | 0.8529 | 0.7364 | 0.994 | 0.6904 | OK |
+| h=0h — Meteorology + Time Only (No PM2.5) | 2994 | 2323 | 669 | 0.288 | 0.4338 | 1.0 | 0.5954 | 0.9985 | 0.6708 | OK |
+| h=1h — Full Feature Set | 2936 | 2281 | 663 | 0.2907 | 0.9966 | 0.9804 | 0.9951 | 0.994 | 0.978 | OK |
+| h=6h — Full Feature Set | 2803 | 2186 | 647 | 0.296 | 0.9696 | 0.8887 | 0.9509 | 1.0 | 0.7352 | OK |
+| h=12h — Full Feature Set | 2647 | 2084 | 619 | 0.297 | 0.9094 | 0.7205 | 0.8586 | 0.9984 | 0.7423 | OK |
+| h=24h — Full Feature Set | 2369 | 1893 | 543 | 0.2868 | 0.7513 | 0.6041 | 0.5876 | 1.0 | 0.7158 | OK |
 
 ---
 
@@ -82,28 +146,62 @@
 | hour_cos | 0.0029 | -3.5e-05 | 6.1e-05 | -6.2e-05 | -9e-06 | -0.2601 | 0.7709 |
 | hour_sin | 0.0034 | -0.000153 | 0.000143 | -0.000216 | -9e-05 | -0.0475 | 0.9536 |
 
+### Logistic Regression Odds Ratios (trên không gian chuẩn hóa Train)
+
+| Feature | LogReg Coef (RobustScaler) | Odds Ratio (exp(beta)) |
+| --- | --- | --- |
+| pm25_rolling_mean_24h | 11.5228 | 100990.2253 |
+| month_cos | 0.6283 | 1.8744 |
+| temp_humidity_interaction | 0.5578 | 1.7469 |
+| is_calm_wind | -0.465 | 0.6281 |
+| wind_speed | -0.3781 | 0.6852 |
+| pm25_rolling_std_24h | 0.2653 | 1.3039 |
+| hour_cos | -0.2601 | 0.7709 |
+| temperature | -0.1931 | 0.8244 |
+| relative_humidity | -0.1592 | 0.8528 |
+| pm25_lag24 | -0.1148 | 0.8916 |
+| month_sin | 0.0754 | 1.0783 |
+| hour_sin | -0.0475 | 0.9536 |
+| surface_pressure | 0.0252 | 1.0255 |
+| precipitation | -0.0073 | 0.9928 |
+
 ---
 
-## 5. Khả Năng Tổng Quát Hóa Thời Gian (Temporal Backtest) & Độ Nhạy Nội Suy Ngắn Hạn
+## 5. Khả Năng Tổng Quát Hóa Thời Gian (Temporal Backtest), Dịch Chuyển & Độ Nhạy Nội Suy Ngắn Hạn
 
-| Fold | Train N | Val N | Val Positives | Val Prevalence | RF PR-AUC | RF Recall | RF Brier | Status |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Fold 1 | 495 | 494 | 9 | 0.0182 | 0.9627 | 1.0 | 0.0062 | OK |
-| Fold 2 | 989 | 494 | 50 | 0.1012 | 0.9908 | 0.48 | 0.0261 | OK |
-| Fold 3 | 1483 | 494 | 139 | 0.2814 | 0.9834 | 0.8129 | 0.0627 | OK |
-| Fold 4 | 1977 | 494 | 411 | 0.832 | 0.9981 | 1.0 | 0.1012 | OK |
-| Fold 5 | 2471 | 494 | 312 | 0.6316 | 0.9887 | 0.9936 | 0.0375 | OK |
+| Fold | Train N | Val N | Val Positives / N | Val Prevalence | Fold Tau (RF / LogReg) | RF PR-AUC | RF Recall | RF FAR | RF Brier | LogReg PR-AUC | LogReg Recall | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Fold 1 | 495 | 494 | 9/494 | 0.0182 | 0.17 / 0.31 | 0.9627 | 1.0 | 0.0124 | 0.0062 | 0.6856 | 1.0 | OK |
+| Fold 2 | 989 | 494 | 50/494 | 0.1012 | 0.20 / 0.36 | 0.9908 | 0.98 | 0.0068 | 0.0261 | 0.9899 | 1.0 | OK |
+| Fold 3 | 1483 | 494 | 139/494 | 0.2814 | 0.45 / 0.75 | 0.9834 | 0.8633 | 0.0169 | 0.0627 | 0.9901 | 0.8417 | OK |
+| Fold 4 | 1977 | 494 | 411/494 | 0.832 | 0.29 / 0.45 | 0.9981 | 1.0 | 0.0723 | 0.1012 | 0.9999 | 1.0 | OK |
+| Fold 5 | 2471 | 494 | 312/494 | 0.6316 | 0.24 / 0.41 | 0.9887 | 1.0 | 0.5055 | 0.0375 | 0.9997 | 1.0 | OK |
 
+### Dịch chuyển theo năm trên tập Test (dùng ngưỡng khóa chính thức)
 
+| Test Year | Positives / N | Prevalence | Locked Tau (RF / LogReg) | RF PR-AUC | RF Recall | RF Precision | RF FAR | RF Brier | LogReg PR-AUC | LogReg Recall | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026 | 666/2302 | 0.2893 | 0.32 / 0.43 | 0.9985 | 1.0 | 0.961 | 0.0165 | 0.0134 | 0.9989 | 0.9955 | OK |
+
+### Dịch chuyển theo tháng trên tập Test (dùng ngưỡng khóa chính thức)
+
+| Test Month | Positives / N | Prevalence | Locked Tau (RF / LogReg) | RF PR-AUC | RF Recall | RF Precision | RF FAR | RF Brier | LogReg PR-AUC | LogReg Recall | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-01 | 200/256 | 0.7812 | 0.32 / 0.43 | 1.0 | 1.0 | 0.9901 | 0.0357 | 0.0104 | 1.0 | 1.0 | OK |
+| 2026-02 | 209/579 | 0.361 | 0.32 / 0.43 | 0.9981 | 1.0 | 0.9414 | 0.0351 | 0.0192 | 0.999 | 1.0 | OK |
+| 2026-03 | 80/654 | 0.1223 | 0.32 / 0.43 | 0.9987 | 1.0 | 0.9639 | 0.0052 | 0.0077 | 0.9976 | 0.9875 | OK |
+| 2026-04 | 177/562 | 0.3149 | 0.32 / 0.43 | 0.9994 | 1.0 | 0.9516 | 0.0234 | 0.0179 | 0.9985 | 0.9887 | OK |
+| 2026-05 | 0/251 | 0.0 | 0.32 / 0.43 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | 0.0 | 0.0075 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE (0 positives in Test) |
 
 
 ---
 
 ## Phạm vi `VN001_extended_80_20` (`VN001_HANOI_556_NGUYEN_VAN_CU`)
 
+- **Dataset Version:** `2.0.0-issue44-extended` | **Dataset SHA-256:** `6930557fbfc8e31dbcb062065b1903ccf27c433e9c0f062bd0dc382a9a1f9b02`
 - **Mốc cắt thời gian:** `2026-05-01 09:00:00+07:00` | **Tầm dự báo:** `h = 0h`
 - **Kích thước evaluable:** Train = 5,025 / 7,235 giờ (Prevalence = 32.72% hợp lệ; 22.72% toàn lưới) | Test = 242 / 1,809 giờ (Prevalence = 0.00% hợp lệ; 0.00% toàn lưới)
-- **Ngưỡng tối ưu OOF trên Train:** LogReg ($F_2$) $\tau^* = 0.47$, LogReg (`Prec>=0.60`) $\tau^* = 0.10$ | RF ($F_2$) $\tau^* = 0.28$, RF (`Prec>=0.60`) $\tau^* = 0.10$
+- **Ngưỡng tối ưu OOF trên Train (khóa trước Test):** LogReg ($F_2$) $\tau^* = 0.47$, LogReg (`Prec>=0.60`) $\tau^* = 0.10$ | RF ($F_2$) $\tau^* = 0.28$, RF (`Prec>=0.60`) $\tau^* = 0.10$
 
 ### Bảng hiệu năng trên tập Test độc lập
 
@@ -121,6 +219,16 @@
 - Cảnh báo bão hòa biên lưới (recall_constrained): tau*=0.10 chạm cận dưới 0.10 trên OOF (phổ xác suất phân tách mạnh hoặc đồng phẳng quanh cực trị hàm mục tiêu).
 - Cảnh báo bão hòa biên lưới (recall_constrained): tau*=0.10 chạm cận dưới 0.10 trên OOF (phổ xác suất phân tách mạnh hoặc đồng phẳng quanh cực trị hàm mục tiêu).
 
+### Đánh giá hiệu chuẩn xác suất (Calibration / Brier / ECE)
+
+- **Trạng thái hiệu chuẩn:** `UNESTIMABLE` — UNESTIMABLE: Tập Test có 0/242 ca dương tính (đơn lớp); chỉ tính được Brier Score trên lớp âm, không thể dựng độ tin cậy thực nghiệm theo bin (Reliability curve) hay ECE.
+
+| Model | Brier Score | ECE (10 bins) | Bins (n >= 10) | Calibration Status |
+| --- | --- | --- | --- | --- |
+| Persistence Rule (>=50) | 0.0696 | UNESTIMABLE | 0/10 | UNESTIMABLE (0 positives in Test) |
+| Logistic Regression | 0.0008 | UNESTIMABLE | 0/10 | UNESTIMABLE (0 positives in Test) |
+| Random Forest | 0.0013 | UNESTIMABLE | 0/10 | UNESTIMABLE (0 positives in Test) |
+
 ### Đối soát 4 quần thể dữ liệu & gián đoạn quan trắc
 
 | Quần thể | Total (giờ) | Train (giờ) | Test (giờ) | Positives Total | Positives Train | Positives Test | Prevalence (Train / Test) |
@@ -129,6 +237,40 @@
 | 2. Có quan trắc PM2.5 hợp lệ | 7495 | 6749 | 746 | 1655 | 1655 | 0 | 24.52% / 0.00% |
 | 3. Đủ nhãn cửa sổ 24h (y_raw.notna()) | 5317 | 5068 | 249 | 1655 | 1655 | 0 | 32.66% / 0.00% |
 | 4. Đủ nhãn & đặc trưng trễ 24h (Evaluable) | 5267 | 5025 | 242 | 1644 | 1644 | 0 | 32.72% / 0.00% |
+
+**Độ phủ & tỷ lệ thiếu dữ liệu theo năm & split:**
+
+| Station | Year | Grid Hours | Valid PM2.5 (n / %) | Missing PM2.5 (n / %) | Valid Label 24h (n / %) | Evaluable (n / %) | Positives / Evaluable (Prevalence) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| VN001_HANOI_556_NGUYEN_VAN_CU | 2025 | 4346 | 3,966/4,346 (91.3%) | 380/4,346 (8.7%) | 2,808/4,346 (64.6%) | 2,781/4,346 (64.0%) | 876/2,781 (31.50%) |
+| VN001_HANOI_556_NGUYEN_VAN_CU | 2026 | 4698 | 3,529/4,698 (75.1%) | 1,169/4,698 (24.9%) | 2,509/4,698 (53.4%) | 2,486/4,698 (52.9%) | 768/2,486 (30.89%) |
+
+**Độ phủ & tỷ lệ thiếu dữ liệu theo mùa khí tượng & split:**
+
+| Station | Season | Grid Hours | Valid PM2.5 (n / %) | Missing PM2.5 (n / %) | Valid Label 24h (n / %) | Evaluable (n / %) | Positives / Evaluable (Prevalence) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| VN001_HANOI_556_NGUYEN_VAN_CU | Winter (Dec-Feb) | 2160 | 1,958/2,160 (90.6%) | 202/2,160 (9.4%) | 1,564/2,160 (72.4%) | 1,554/2,160 (71.9%) | 946/1,554 (60.88%) |
+| VN001_HANOI_556_NGUYEN_VAN_CU | Spring (Mar-May) | 2208 | 2,042/2,208 (92.5%) | 166/2,208 (7.5%) | 1,482/2,208 (67.1%) | 1,467/2,208 (66.4%) | 257/1,467 (17.52%) |
+| VN001_HANOI_556_NGUYEN_VAN_CU | Summer (Jun-Aug) | 2492 | 1,478/2,492 (59.3%) | 1,014/2,492 (40.7%) | 1,037/2,492 (41.6%) | 1,028/2,492 (41.3%) | 66/1,028 (6.42%) |
+| VN001_HANOI_556_NGUYEN_VAN_CU | Autumn (Sep-Nov) | 2184 | 2,017/2,184 (92.4%) | 167/2,184 (7.6%) | 1,234/2,184 (56.5%) | 1,218/2,184 (55.8%) | 375/1,218 (30.79%) |
+
+**Độ phủ & tỷ lệ thiếu dữ liệu theo từng tháng:**
+
+| YearMonth | grid_hours | valid_pm25 | missing_pm25 | valid_y | evaluable_rows | pos_y | pos_eval | Valid PM2.5 (%) | Missing PM2.5 (%) | Valid Label 24h (%) | Positives / Valid y | Positive Rate (% valid y) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2025-07 | 674 | 643 | 31 | 503 | 499 | 58 | 57 | 95.4 | 4.6 | 74.6 | 58/503 (11.53%) | 11.53 |
+| 2025-08 | 744 | 683 | 61 | 534 | 529 | 9 | 9 | 91.8 | 8.2 | 71.8 | 9/534 (1.69%) | 1.69 |
+| 2025-09 | 720 | 667 | 53 | 368 | 363 | 29 | 29 | 92.6 | 7.4 | 51.1 | 29/368 (7.88%) | 7.88 |
+| 2025-10 | 744 | 698 | 46 | 466 | 460 | 156 | 155 | 93.8 | 6.2 | 62.6 | 156/466 (33.48%) | 33.48 |
+| 2025-11 | 720 | 652 | 68 | 400 | 395 | 193 | 191 | 90.6 | 9.4 | 55.6 | 193/400 (48.25%) | 48.25 |
+| 2025-12 | 744 | 623 | 121 | 537 | 535 | 437 | 435 | 83.7 | 16.3 | 72.2 | 437/537 (81.38%) | 81.38 |
+| 2026-01 | 744 | 684 | 60 | 446 | 440 | 306 | 302 | 91.9 | 8.1 | 59.9 | 306/446 (68.61%) | 68.61 |
+| 2026-02 | 672 | 651 | 21 | 581 | 579 | 209 | 209 | 96.9 | 3.1 | 86.5 | 209/581 (35.97%) | 35.97 |
+| 2026-03 | 744 | 736 | 8 | 657 | 654 | 80 | 80 | 98.9 | 1.1 | 88.3 | 80/657 (12.18%) | 12.18 |
+| 2026-04 | 720 | 703 | 17 | 567 | 562 | 178 | 177 | 97.6 | 2.4 | 78.8 | 178/567 (31.39%) | 31.39 |
+| 2026-05 | 744 | 603 | 141 | 258 | 251 | 0 | 0 | 81.0 | 19.0 | 34.7 | 0/258 (0.00%) | 0.0 |
+| 2026-06 | 720 | 151 | 569 | 0 | 0 | 0 | 0 | 21.0 | 79.0 | 0.0 | 0/0 (UNESTIMABLE) | UNESTIMABLE |
+| 2026-07 | 354 | 1 | 353 | 0 | 0 | 0 | 0 | 0.3 | 99.7 | 0.0 | 0/0 (UNESTIMABLE) | UNESTIMABLE |
 
 **Top đợt gián đoạn PM2.5 liên tục dài nhất:**
 
@@ -144,13 +286,13 @@
 
 | Setting | n_train | n_test | Test Positives | Dummy PR-AUC | LogReg PR-AUC | LogReg Recall | RF PR-AUC | RF Recall | RF F2 | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| h=0h | Full (Rolling24 + Lag24 + Met) | 5025 | 242 | 0 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE (0 positives in Test) |
-| h=0h | Lag24 + Met (No 24h Rolling) | 5025 | 242 | 0 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE (0 positives in Test) |
-| h=0h | Meteorology + Time Only (No PM2.5) | 5068 | 249 | 0 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE (0 positives in Test) |
-| h=1h | Full Feature Set | 4982 | 234 | 0 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE (0 positives in Test) |
-| h=6h | Full Feature Set | 4779 | 204 | 0 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE (0 positives in Test) |
-| h=12h | Full Feature Set | 4545 | 174 | 0 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE (0 positives in Test) |
-| h=24h | Full Feature Set | 4123 | 127 | 0 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE (0 positives in Test) |
+| h=0h — Full (Rolling24 + Lag24 + Met) | 5025 | 242 | 0 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE (0 positives in Test) |
+| h=0h — Lag24 + Met (No 24h Rolling) | 5025 | 242 | 0 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE (0 positives in Test) |
+| h=0h — Meteorology + Time Only (No PM2.5) | 5068 | 249 | 0 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE (0 positives in Test) |
+| h=1h — Full Feature Set | 4982 | 234 | 0 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE (0 positives in Test) |
+| h=6h — Full Feature Set | 4779 | 204 | 0 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE (0 positives in Test) |
+| h=12h — Full Feature Set | 4545 | 174 | 0 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE (0 positives in Test) |
+| h=24h — Full Feature Set | 4123 | 127 | 0 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE (0 positives in Test) |
 
 ### Permutation Importance (`average_precision`) & Logistic Odds Ratios
 
@@ -173,35 +315,44 @@
 
 ### Expanding-Window Temporal Backtest (trên Train)
 
-| Fold | Train N | Val N | Val Positives | Val Prevalence | RF PR-AUC | RF Recall | RF Brier | Status |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Fold 1 | 840 | 837 | 110 | 0.1314 | 0.9735 | 0.5182 | 0.036 | OK |
-| Fold 2 | 1677 | 837 | 533 | 0.6368 | 0.987 | 0.9981 | 0.0663 | OK |
-| Fold 3 | 2514 | 837 | 577 | 0.6894 | 0.9965 | 0.9965 | 0.0262 | OK |
-| Fold 4 | 3351 | 837 | 173 | 0.2067 | 0.9859 | 0.9884 | 0.0118 | OK |
-| Fold 5 | 4188 | 837 | 185 | 0.221 | 0.9993 | 0.9784 | 0.0117 | OK |
+| Fold | Train N | Val N | Val Positives / N | Val Prevalence | Fold Tau (RF / LogReg) | RF PR-AUC | RF Recall | RF FAR | RF Brier | LogReg PR-AUC | LogReg Recall | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Fold 1 | 840 | 837 | 110/837 | 0.1314 | 0.10 / 0.17 | 0.9735 | 0.9909 | 0.0206 | 0.036 | 0.9551 | 1.0 | OK |
+| Fold 2 | 1677 | 837 | 533/837 | 0.6368 | 0.21 / 0.42 | 0.987 | 1.0 | 0.0428 | 0.0663 | 0.9999 | 1.0 | OK |
+| Fold 3 | 2514 | 837 | 577/837 | 0.6894 | 0.21 / 0.42 | 0.9965 | 0.9983 | 0.6923 | 0.0262 | 0.9996 | 1.0 | OK |
+| Fold 4 | 3351 | 837 | 173/837 | 0.2067 | 0.28 / 0.47 | 0.9859 | 1.0 | 0.0151 | 0.0118 | 0.9985 | 1.0 | OK |
+| Fold 5 | 4188 | 837 | 185/837 | 0.221 | 0.23 / 0.29 | 0.9993 | 1.0 | 0.0215 | 0.0117 | 0.9982 | 1.0 | OK |
 
-### Dịch chuyển theo năm trên tập Test
+### Dịch chuyển theo năm trên tập Test (dùng ngưỡng khóa chính thức)
 
-| Test Year | N (hours) | Positives | Prevalence | RF PR-AUC | RF Recall | RF FAR | Status |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026 | 242 | 0 | 0.0 | UNESTIMABLE | UNESTIMABLE | 0.0 | UNESTIMABLE (0 positives in Test) |
+| Test Year | Positives / N | Prevalence | Locked Tau (RF / LogReg) | RF PR-AUC | RF Recall | RF Precision | RF FAR | RF Brier | LogReg PR-AUC | LogReg Recall | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026 | 0/242 | 0.0 | 0.28 / 0.47 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | 0.0 | 0.0013 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE (0 positives in Test) |
 
-### Kiểm tra độ nhạy dùng `pm25_derived_interpolated` chỉ cho đặc trưng Train (nhãn luôn giữ observed)
+### Dịch chuyển theo tháng trên tập Test (dùng ngưỡng khóa chính thức)
+
+| Test Month | Positives / N | Prevalence | Locked Tau (RF / LogReg) | RF PR-AUC | RF Recall | RF Precision | RF FAR | RF Brier | LogReg PR-AUC | LogReg Recall | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-05 | 0/242 | 0.0 | 0.28 / 0.47 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | 0.0 | 0.0013 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE (0 positives in Test) |
+
+### Kiểm tra độ nhạy dùng `pm25_derived_interpolated` (`max_gap_hours=2` hai phía — chỉ cho đặc trưng Train, nhãn luôn giữ observed)
+
+- **Lưu ý phương pháp:** Cột `pm25_derived_interpolated` sử dụng nội suy tuyến tính hai phía `max_gap_hours=2` từ Issue #44 (chế độ retrospective offline-only; không dùng cho vận hành real-time và không bao giờ thay nhãn quan trắc).
 
 | Setting | n_train | n_test | Test Positives | Dummy PR-AUC | LogReg PR-AUC | LogReg Recall | RF PR-AUC | RF Recall | RF F2 | Status | Train Recovered Rows |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Observed-Only Features & Labels (Chính thức) | 5025 | 242 | 0 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE (0 positives in Test) | 0 |
-| Train Derived Features (<=3h) + Observed Labels | 5051 | 242 | 0 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE (0 positives in Test) | 26 |
+| Train Derived Features (max_gap_hours=2) + Observed Labels | 5051 | 242 | 0 | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE | UNESTIMABLE (0 positives in Test) | 26 |
 
 
 ---
 
 ## Phạm vi `VN003_extended_2022_2025` (`VN003_HANOI_OPENAQ_7441`)
 
+- **Dataset Version:** `2.0.0-issue44-extended` | **Dataset SHA-256:** `6930557fbfc8e31dbcb062065b1903ccf27c433e9c0f062bd0dc382a9a1f9b02`
 - **Mốc cắt thời gian:** `2024-08-13 23:00:00+07:00` | **Tầm dự báo:** `h = 0h`
 - **Kích thước evaluable:** Train = 10,636 / 22,942 giờ (Prevalence = 25.17% hợp lệ; 11.67% toàn lưới) | Test = 3,439 / 5,736 giờ (Prevalence = 49.81% hợp lệ; 29.86% toàn lưới)
-- **Ngưỡng tối ưu OOF trên Train:** LogReg ($F_2$) $\tau^* = 0.36$, LogReg (`Prec>=0.60`) $\tau^* = 0.10$ | RF ($F_2$) $\tau^* = 0.30$, RF (`Prec>=0.60`) $\tau^* = 0.10$
+- **Ngưỡng tối ưu OOF trên Train (khóa trước Test):** LogReg ($F_2$) $\tau^* = 0.36$, LogReg (`Prec>=0.60`) $\tau^* = 0.10$ | RF ($F_2$) $\tau^* = 0.30$, RF (`Prec>=0.60`) $\tau^* = 0.10$
 
 ### Bảng hiệu năng trên tập Test độc lập
 
@@ -219,6 +370,16 @@
 - Cảnh báo bão hòa biên lưới (recall_constrained): tau*=0.10 chạm cận dưới 0.10 trên OOF (phổ xác suất phân tách mạnh hoặc đồng phẳng quanh cực trị hàm mục tiêu).
 - Cảnh báo bão hòa biên lưới (recall_constrained): tau*=0.10 chạm cận dưới 0.10 trên OOF (phổ xác suất phân tách mạnh hoặc đồng phẳng quanh cực trị hàm mục tiêu).
 
+### Đánh giá hiệu chuẩn xác suất (Calibration / Brier / ECE)
+
+- **Trạng thái hiệu chuẩn:** `OK` — Ước lượng hợp lệ trên 3,439 mẫu (1,713 dương tính). Các bin có cỡ mẫu < 10 được đánh dấu thưa trên đường cong hiệu chuẩn (Reliability plot).
+
+| Model | Brier Score | ECE (10 bins) | Bins (n >= 10) | Calibration Status |
+| --- | --- | --- | --- | --- |
+| Persistence Rule (>=50) | 0.0732 | 0.216 | 10/10 non-empty | OK |
+| Logistic Regression | 0.012 | 0.0176 | 10/10 non-empty | OK |
+| Random Forest | 0.0135 | 0.0343 | 8/10 non-empty | OK |
+
 ### Đối soát 4 quần thể dữ liệu & gián đoạn quan trắc
 
 | Quần thể | Total (giờ) | Train (giờ) | Test (giờ) | Positives Total | Positives Train | Positives Test | Prevalence (Train / Test) |
@@ -227,6 +388,69 @@
 | 2. Có quan trắc PM2.5 hợp lệ | 18208 | 13835 | 4373 | 4435 | 2708 | 1727 | 19.57% / 39.49% |
 | 3. Đủ nhãn cửa sổ 24h (y_raw.notna()) | 14207 | 10737 | 3470 | 4435 | 2708 | 1727 | 25.22% / 49.77% |
 | 4. Đủ nhãn & đặc trưng trễ 24h (Evaluable) | 14075 | 10636 | 3439 | 4390 | 2677 | 1713 | 25.17% / 49.81% |
+
+**Độ phủ & tỷ lệ thiếu dữ liệu theo năm & split:**
+
+| Station | Year | Grid Hours | Valid PM2.5 (n / %) | Missing PM2.5 (n / %) | Valid Label 24h (n / %) | Evaluable (n / %) | Positives / Evaluable (Prevalence) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| VN003_HANOI_OPENAQ_7441 | 2022 | 8759 | 3,079/8,759 (35.2%) | 5,680/8,759 (64.8%) | 2,311/8,759 (26.4%) | 2,284/8,759 (26.1%) | 1,056/2,284 (46.23%) |
+| VN003_HANOI_OPENAQ_7441 | 2023 | 8760 | 5,646/8,760 (64.5%) | 3,114/8,760 (35.5%) | 4,384/8,760 (50.0%) | 4,343/8,760 (49.6%) | 1,034/4,343 (23.81%) |
+| VN003_HANOI_OPENAQ_7441 | 2024 | 8784 | 7,218/8,784 (82.2%) | 1,566/8,784 (17.8%) | 5,634/8,784 (64.1%) | 5,585/8,784 (63.6%) | 1,460/5,585 (26.14%) |
+| VN003_HANOI_OPENAQ_7441 | 2025 | 2375 | 2,265/2,375 (95.4%) | 110/2,375 (4.6%) | 1,878/2,375 (79.1%) | 1,863/2,375 (78.4%) | 840/1,863 (45.09%) |
+
+**Độ phủ & tỷ lệ thiếu dữ liệu theo mùa khí tượng & split:**
+
+| Station | Season | Grid Hours | Valid PM2.5 (n / %) | Missing PM2.5 (n / %) | Valid Label 24h (n / %) | Evaluable (n / %) | Positives / Evaluable (Prevalence) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| VN003_HANOI_OPENAQ_7441 | Winter (Dec-Feb) | 7919 | 5,558/7,919 (70.2%) | 2,361/7,919 (29.8%) | 4,334/7,919 (54.7%) | 4,293/7,919 (54.2%) | 2,104/4,293 (49.01%) |
+| VN003_HANOI_OPENAQ_7441 | Spring (Mar-May) | 7583 | 4,392/7,583 (57.9%) | 3,191/7,583 (42.1%) | 3,074/7,583 (40.5%) | 3,031/7,583 (40.0%) | 726/3,031 (23.95%) |
+| VN003_HANOI_OPENAQ_7441 | Summer (Jun-Aug) | 6624 | 3,799/6,624 (57.4%) | 2,825/6,624 (42.6%) | 3,241/6,624 (48.9%) | 3,223/6,624 (48.7%) | 132/3,223 (4.10%) |
+| VN003_HANOI_OPENAQ_7441 | Autumn (Sep-Nov) | 6552 | 4,459/6,552 (68.1%) | 2,093/6,552 (31.9%) | 3,558/6,552 (54.3%) | 3,528/6,552 (53.8%) | 1,428/3,528 (40.48%) |
+
+**Độ phủ & tỷ lệ thiếu dữ liệu theo từng tháng:**
+
+| YearMonth | grid_hours | valid_pm25 | missing_pm25 | valid_y | evaluable_rows | pos_y | pos_eval | Valid PM2.5 (%) | Missing PM2.5 (%) | Valid Label 24h (%) | Positives / Valid y | Positive Rate (% valid y) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2022-01 | 743 | 642 | 101 | 504 | 498 | 236 | 232 | 86.4 | 13.6 | 67.8 | 236/504 (46.83%) | 46.83 |
+| 2022-02 | 672 | 97 | 575 | 51 | 49 | 1 | 0 | 14.4 | 85.6 | 7.6 | 1/51 (1.96%) | 1.96 |
+| 2022-03 | 744 | 189 | 555 | 75 | 72 | 8 | 7 | 25.4 | 74.6 | 10.1 | 8/75 (10.67%) | 10.67 |
+| 2022-04 | 720 | 0 | 720 | 0 | 0 | 0 | 0 | 0.0 | 100.0 | 0.0 | 0/0 (UNESTIMABLE) | UNESTIMABLE |
+| 2022-05 | 744 | 338 | 406 | 197 | 191 | 0 | 0 | 45.4 | 54.6 | 26.5 | 0/197 (0.00%) | 0.0 |
+| 2022-06 | 720 | 97 | 623 | 74 | 73 | 0 | 0 | 13.5 | 86.5 | 10.3 | 0/74 (0.00%) | 0.0 |
+| 2022-07 | 744 | 0 | 744 | 0 | 0 | 0 | 0 | 0.0 | 100.0 | 0.0 | 0/0 (UNESTIMABLE) | UNESTIMABLE |
+| 2022-08 | 744 | 0 | 744 | 0 | 0 | 0 | 0 | 0.0 | 100.0 | 0.0 | 0/0 (UNESTIMABLE) | UNESTIMABLE |
+| 2022-09 | 720 | 197 | 523 | 157 | 156 | 60 | 60 | 27.4 | 72.6 | 21.8 | 60/157 (38.22%) | 38.22 |
+| 2022-10 | 744 | 79 | 665 | 53 | 52 | 40 | 39 | 10.6 | 89.4 | 7.1 | 40/53 (75.47%) | 75.47 |
+| 2022-11 | 720 | 712 | 8 | 589 | 585 | 282 | 280 | 98.9 | 1.1 | 81.8 | 282/589 (47.88%) | 47.88 |
+| 2022-12 | 744 | 728 | 16 | 611 | 608 | 440 | 438 | 97.8 | 2.2 | 82.1 | 440/611 (72.01%) | 72.01 |
+| 2023-01 | 744 | 604 | 140 | 429 | 425 | 386 | 383 | 81.2 | 18.8 | 57.7 | 386/429 (89.98%) | 89.98 |
+| 2023-02 | 672 | 80 | 592 | 57 | 56 | 33 | 33 | 11.9 | 88.1 | 8.5 | 33/57 (57.89%) | 57.89 |
+| 2023-03 | 744 | 0 | 744 | 0 | 0 | 0 | 0 | 0.0 | 100.0 | 0.0 | 0/0 (UNESTIMABLE) | UNESTIMABLE |
+| 2023-04 | 720 | 262 | 458 | 155 | 151 | 115 | 113 | 36.4 | 63.6 | 21.5 | 115/155 (74.19%) | 74.19 |
+| 2023-05 | 744 | 521 | 223 | 360 | 354 | 50 | 50 | 70.0 | 30.0 | 48.4 | 50/360 (13.89%) | 13.89 |
+| 2023-06 | 720 | 670 | 50 | 599 | 597 | 18 | 18 | 93.1 | 6.9 | 83.2 | 18/599 (3.01%) | 3.01 |
+| 2023-07 | 744 | 708 | 36 | 529 | 524 | 31 | 31 | 95.2 | 4.8 | 71.1 | 31/529 (5.86%) | 5.86 |
+| 2023-08 | 744 | 738 | 6 | 652 | 649 | 24 | 23 | 99.2 | 0.8 | 87.6 | 24/652 (3.68%) | 3.68 |
+| 2023-09 | 720 | 715 | 5 | 634 | 631 | 52 | 52 | 99.3 | 0.7 | 88.1 | 52/634 (8.20%) | 8.2 |
+| 2023-10 | 744 | 736 | 8 | 585 | 579 | 185 | 183 | 98.9 | 1.1 | 78.6 | 185/585 (31.62%) | 31.62 |
+| 2023-11 | 720 | 156 | 564 | 88 | 86 | 24 | 23 | 21.7 | 78.3 | 12.2 | 24/88 (27.27%) | 27.27 |
+| 2023-12 | 744 | 456 | 288 | 296 | 291 | 127 | 125 | 61.3 | 38.7 | 39.8 | 127/296 (42.91%) | 42.91 |
+| 2024-01 | 744 | 700 | 44 | 606 | 603 | 142 | 141 | 94.1 | 5.9 | 81.5 | 142/606 (23.43%) | 23.43 |
+| 2024-02 | 696 | 672 | 24 | 549 | 545 | 72 | 71 | 96.6 | 3.4 | 78.9 | 72/549 (13.11%) | 13.11 |
+| 2024-03 | 744 | 721 | 23 | 413 | 403 | 135 | 130 | 96.9 | 3.1 | 55.5 | 135/413 (32.69%) | 32.69 |
+| 2024-04 | 720 | 703 | 17 | 519 | 515 | 157 | 155 | 97.6 | 2.4 | 72.1 | 157/519 (30.25%) | 30.25 |
+| 2024-05 | 744 | 728 | 16 | 568 | 563 | 30 | 30 | 97.8 | 2.2 | 76.3 | 30/568 (5.28%) | 5.28 |
+| 2024-06 | 720 | 710 | 10 | 625 | 621 | 60 | 60 | 98.6 | 1.4 | 86.8 | 60/625 (9.60%) | 9.6 |
+| 2024-07 | 744 | 721 | 23 | 607 | 604 | 0 | 0 | 96.9 | 3.1 | 81.6 | 0/607 (0.00%) | 0.0 |
+| 2024-08 | 744 | 155 | 589 | 155 | 155 | 0 | 0 | 20.8 | 79.2 | 20.8 | 0/155 (0.00%) | 0.0 |
+| 2024-09 | 720 | 476 | 244 | 298 | 293 | 37 | 36 | 66.1 | 33.9 | 41.4 | 37/298 (12.42%) | 12.42 |
+| 2024-10 | 744 | 678 | 66 | 560 | 556 | 299 | 297 | 91.1 | 8.9 | 75.3 | 299/560 (53.39%) | 53.39 |
+| 2024-11 | 720 | 710 | 10 | 594 | 590 | 461 | 458 | 98.6 | 1.4 | 82.5 | 461/594 (77.61%) | 77.61 |
+| 2024-12 | 744 | 244 | 500 | 140 | 137 | 82 | 82 | 32.8 | 67.2 | 18.8 | 82/140 (58.57%) | 58.57 |
+| 2025-01 | 744 | 669 | 75 | 517 | 511 | 390 | 384 | 89.9 | 10.1 | 69.5 | 390/517 (75.44%) | 75.44 |
+| 2025-02 | 672 | 666 | 6 | 574 | 570 | 216 | 215 | 99.1 | 0.9 | 85.4 | 216/574 (37.63%) | 37.63 |
+| 2025-03 | 744 | 716 | 28 | 613 | 610 | 187 | 187 | 96.2 | 3.8 | 82.4 | 187/613 (30.51%) | 30.51 |
+| 2025-04 | 215 | 214 | 1 | 174 | 172 | 55 | 54 | 99.5 | 0.5 | 80.9 | 55/174 (31.61%) | 31.61 |
 
 **Top đợt gián đoạn PM2.5 liên tục dài nhất:**
 
@@ -242,13 +466,13 @@
 
 | Setting | n_train | n_test | Test Positives | Dummy PR-AUC | LogReg PR-AUC | LogReg Recall | RF PR-AUC | RF Recall | RF F2 | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| h=0h | Full (Rolling24 + Lag24 + Met) | 10636 | 3439 | 1713 | 0.4981 | 0.9995 | 0.9977 | 0.9983 | 0.993 | 0.9884 | OK |
-| h=0h | Lag24 + Met (No 24h Rolling) | 10636 | 3439 | 1713 | 0.4981 | 0.8811 | 0.9842 | 0.8762 | 0.9988 | 0.8423 | OK |
-| h=0h | Meteorology + Time Only (No PM2.5) | 10737 | 3470 | 1727 | 0.4977 | 0.6839 | 0.9716 | 0.7169 | 0.9983 | 0.8333 | OK |
-| h=1h | Full Feature Set | 10541 | 3408 | 1699 | 0.4985 | 0.998 | 0.9947 | 0.9953 | 0.9929 | 0.9815 | OK |
-| h=6h | Full Feature Set | 10075 | 3253 | 1626 | 0.4998 | 0.9841 | 0.9889 | 0.9771 | 0.9908 | 0.9481 | OK |
-| h=12h | Full Feature Set | 9535 | 3070 | 1542 | 0.5023 | 0.9589 | 0.9773 | 0.9483 | 0.9747 | 0.9149 | OK |
-| h=24h | Full Feature Set | 8582 | 2754 | 1376 | 0.4996 | 0.8852 | 0.9462 | 0.8479 | 0.9273 | 0.8605 | OK |
+| h=0h — Full (Rolling24 + Lag24 + Met) | 10636 | 3439 | 1713 | 0.4981 | 0.9995 | 0.9977 | 0.9983 | 0.993 | 0.9884 | OK |
+| h=0h — Lag24 + Met (No 24h Rolling) | 10636 | 3439 | 1713 | 0.4981 | 0.8811 | 0.9842 | 0.8762 | 0.9988 | 0.8423 | OK |
+| h=0h — Meteorology + Time Only (No PM2.5) | 10737 | 3470 | 1727 | 0.4977 | 0.6839 | 0.9716 | 0.7169 | 0.9983 | 0.8333 | OK |
+| h=1h — Full Feature Set | 10541 | 3408 | 1699 | 0.4985 | 0.998 | 0.9947 | 0.9953 | 0.9929 | 0.9815 | OK |
+| h=6h — Full Feature Set | 10075 | 3253 | 1626 | 0.4998 | 0.9841 | 0.9889 | 0.9771 | 0.9908 | 0.9481 | OK |
+| h=12h — Full Feature Set | 9535 | 3070 | 1542 | 0.5023 | 0.9589 | 0.9773 | 0.9483 | 0.9747 | 0.9149 | OK |
+| h=24h — Full Feature Set | 8582 | 2754 | 1376 | 0.4996 | 0.8852 | 0.9462 | 0.8479 | 0.9273 | 0.8605 | OK |
 
 ### Permutation Importance (`average_precision`) & Logistic Odds Ratios
 
@@ -271,24 +495,39 @@
 
 ### Expanding-Window Temporal Backtest (trên Train)
 
-| Fold | Train N | Val N | Val Positives | Val Prevalence | RF PR-AUC | RF Recall | RF Brier | Status |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Fold 1 | 1776 | 1772 | 1035 | 0.5841 | 0.9988 | 0.9043 | 0.0531 | OK |
-| Fold 2 | 3548 | 1772 | 101 | 0.057 | 0.9504 | 0.9307 | 0.0128 | OK |
-| Fold 3 | 5320 | 1772 | 395 | 0.2229 | 0.9942 | 0.9899 | 0.0139 | OK |
-| Fold 4 | 7092 | 1772 | 451 | 0.2545 | 0.9956 | 0.9845 | 0.013 | OK |
-| Fold 5 | 8864 | 1772 | 77 | 0.0435 | 0.9723 | 0.9481 | 0.0052 | OK |
+| Fold | Train N | Val N | Val Positives / N | Val Prevalence | Fold Tau (RF / LogReg) | RF PR-AUC | RF Recall | RF FAR | RF Brier | LogReg PR-AUC | LogReg Recall | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Fold 1 | 1776 | 1772 | 1035/1772 | 0.5841 | 0.38 / 0.60 | 0.9988 | 0.9826 | 0.0149 | 0.0531 | 0.997 | 0.8995 | OK |
+| Fold 2 | 3548 | 1772 | 101/1772 | 0.057 | 0.21 / 0.26 | 0.9504 | 0.9802 | 0.0281 | 0.0128 | 0.9549 | 0.9406 | OK |
+| Fold 3 | 5320 | 1772 | 395/1772 | 0.2229 | 0.36 / 0.29 | 0.9942 | 0.9924 | 0.0174 | 0.0139 | 0.9983 | 1.0 | OK |
+| Fold 4 | 7092 | 1772 | 451/1772 | 0.2545 | 0.27 / 0.35 | 0.9956 | 0.9956 | 0.0204 | 0.013 | 0.999 | 1.0 | OK |
+| Fold 5 | 8864 | 1772 | 77/1772 | 0.0435 | 0.27 / 0.24 | 0.9723 | 0.961 | 0.0041 | 0.0052 | 0.9963 | 1.0 | OK |
 
-### Dịch chuyển theo năm trên tập Test
+### Dịch chuyển theo năm trên tập Test (dùng ngưỡng khóa chính thức)
 
-| Test Year | N (hours) | Positives | Prevalence | RF PR-AUC | RF Recall | RF FAR | Status |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 2024 | 1576 | 873 | 0.5539 | 0.9986 | 0.992 | 0.0284 | OK |
-| 2025 | 1863 | 840 | 0.4509 | 0.998 | 0.9917 | 0.0166 | OK |
+| Test Year | Positives / N | Prevalence | Locked Tau (RF / LogReg) | RF PR-AUC | RF Recall | RF Precision | RF FAR | RF Brier | LogReg PR-AUC | LogReg Recall | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2024 | 873/1576 | 0.5539 | 0.30 / 0.36 | 0.9986 | 0.9931 | 0.972 | 0.0356 | 0.0145 | 0.9995 | 0.9977 | OK |
+| 2025 | 840/1863 | 0.4509 | 0.30 / 0.36 | 0.998 | 0.9929 | 0.9686 | 0.0264 | 0.0126 | 0.9994 | 0.9976 | OK |
 
-### Kiểm tra độ nhạy dùng `pm25_derived_interpolated` chỉ cho đặc trưng Train (nhãn luôn giữ observed)
+### Dịch chuyển theo tháng trên tập Test (dùng ngưỡng khóa chính thức)
+
+| Test Month | Positives / N | Prevalence | Locked Tau (RF / LogReg) | RF PR-AUC | RF Recall | RF Precision | RF FAR | RF Brier | LogReg PR-AUC | LogReg Recall | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2024-09 | 36/293 | 0.1229 | 0.30 / 0.36 | 0.9958 | 0.9722 | 0.8974 | 0.0156 | 0.0111 | 0.9966 | 1.0 | OK |
+| 2024-10 | 297/556 | 0.5342 | 0.30 / 0.36 | 0.9991 | 0.9933 | 0.9801 | 0.0232 | 0.0101 | 0.9998 | 0.9966 | OK |
+| 2024-11 | 458/590 | 0.7763 | 0.30 / 0.36 | 0.9992 | 0.9978 | 0.9786 | 0.0758 | 0.016 | 0.9997 | 0.9978 | OK |
+| 2024-12 | 82/137 | 0.5985 | 0.30 / 0.36 | 0.9965 | 0.9756 | 0.9412 | 0.0909 | 0.0331 | 0.9961 | 1.0 | OK |
+| 2025-01 | 384/511 | 0.7515 | 0.30 / 0.36 | 0.9993 | 0.9948 | 0.9671 | 0.1024 | 0.0159 | 0.9997 | 0.9974 | OK |
+| 2025-02 | 215/570 | 0.3772 | 0.30 / 0.36 | 0.9969 | 0.986 | 0.9725 | 0.0169 | 0.0129 | 0.9991 | 0.9953 | OK |
+| 2025-03 | 187/610 | 0.3066 | 0.30 / 0.36 | 1.0 | 1.0 | 0.9842 | 0.0071 | 0.0056 | 1.0 | 1.0 | OK |
+| 2025-04 | 54/172 | 0.314 | 0.30 / 0.36 | 0.9772 | 0.9815 | 0.9138 | 0.0424 | 0.0268 | 0.9972 | 1.0 | OK |
+
+### Kiểm tra độ nhạy dùng `pm25_derived_interpolated` (`max_gap_hours=2` hai phía — chỉ cho đặc trưng Train, nhãn luôn giữ observed)
+
+- **Lưu ý phương pháp:** Cột `pm25_derived_interpolated` sử dụng nội suy tuyến tính hai phía `max_gap_hours=2` từ Issue #44 (chế độ retrospective offline-only; không dùng cho vận hành real-time và không bao giờ thay nhãn quan trắc).
 
 | Setting | n_train | n_test | Test Positives | Dummy PR-AUC | LogReg PR-AUC | LogReg Recall | RF PR-AUC | RF Recall | RF F2 | Status | Train Recovered Rows |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Observed-Only Features & Labels (Chính thức) | 10636 | 3439 | 1713 | 0.4981 | 0.9995 | 0.9977 | 0.9983 | 0.993 | 0.9884 | OK | 0 |
-| Train Derived Features (<=3h) + Observed Labels | 10702 | 3439 | 1713 | 0.4981 | 0.9995 | 0.9977 | 0.9985 | 0.993 | 0.9886 | OK | 66 |
+| Train Derived Features (max_gap_hours=2) + Observed Labels | 10702 | 3439 | 1713 | 0.4981 | 0.9995 | 0.9977 | 0.9985 | 0.993 | 0.9886 | OK | 66 |

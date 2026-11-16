@@ -17,20 +17,30 @@ from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import RandomForestClassifier
 
 from src.classification import (
+    BASELINE_DATASET_VERSION,
     DEFAULT_SPLIT_TIMESTAMP,
     ClassificationModelMetrics,
     ClassificationResults,
     PersistenceRuleClassifier,
+    _df_to_markdown,
     build_classification_pipeline,
+    compute_calibration_summary,
+    compute_coverage_and_outage_tables,
     compute_feature_importances,
+    compute_monthly_test_drift,
+    compute_year_season_coverage_tables,
     engineer_classification_features,
     evaluate_classifier,
     evaluate_derived_pm25_sensitivity,
+    evaluate_feature_ablation_and_horizons,
     generate_leakage_audit_markdown,
     prepare_classification_data,
     render_feature_importance_figure,
     render_pr_curve_figure,
+    render_reliability_figure,
     run_classification_pipeline,
+    run_extended_classification_suite,
+    run_temporal_backtest_and_drift,
     tune_classification_threshold,
     verify_classification_no_leakage,
 )
@@ -275,6 +285,43 @@ class TestClassificationRealDataset(unittest.TestCase):
             self.assertTrue(audit_rep.exists())
             self.assertTrue(res_rep.exists())
             self.assertTrue(find_rep.exists())
+            self.assertTrue((Path(tmp_dir) / "calibration_reliability_VN001_baseline_2026_01_15.png").exists())
+
+    def test_real_extended_suite_vn001_and_vn003_protocol_a_and_unestimable(self):
+        ext_path = REPO_ROOT / "data" / "processed" / "air_pollution_extended_2022_2026.parquet"
+        if not ext_path.exists():
+            self.skipTest("Thiếu air_pollution_extended_2022_2026.parquet")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            suite = run_extended_classification_suite(
+                baseline_path=REAL_DATA_PATH,
+                extended_path=ext_path,
+                figures_dir=tmp / "figures",
+                report_results_path=tmp / "classification_results.md",
+                findings_path=tmp / "classification_findings.md",
+                report_audit_path=tmp / "classification_leakage_audit.md",
+                docs_audit_path=tmp / "leakage_audit.md",
+            )
+            self.assertIn("VN001_baseline", suite)
+            self.assertIn("VN001_extended", suite)
+            self.assertIn("VN003_extended", suite)
+
+            ext1 = suite["VN001_extended"]
+            self.assertEqual(ext1.calibration_status, "UNESTIMABLE")
+            self.assertTrue(np.isnan(ext1.model_metrics["rf"].pr_auc))
+            self.assertIn("UNESTIMABLE", ext1.model_metrics["rf"].status)
+
+            ext3 = suite["VN003_extended"]
+            self.assertEqual(ext3.calibration_status, "OK")
+            self.assertGreater(ext3.n_test_valid, 1000)
+
+            rep_txt = (tmp / "classification_results.md").read_text(encoding="utf-8")
+            self.assertIn(ext1.dataset_sha256, rep_txt)
+            self.assertIn(ext3.dataset_sha256, rep_txt)
+            self.assertIn("UNESTIMABLE", rep_txt)
+            self.assertTrue((tmp / "figures" / "calibration_reliability.png").exists())
+            self.assertTrue((tmp / "figures" / "calibration_reliability_vn001_extended.png").exists())
+            self.assertTrue((tmp / "figures" / "calibration_reliability_vn003_extended.png").exists())
 
 
 class TestClassificationGuardsAndExtensions(unittest.TestCase):
@@ -419,6 +466,139 @@ class TestClassificationGuardsAndExtensions(unittest.TestCase):
             render_pr_curve_figure({"RF": rf}, X_te, y_te_zero, 0.0, pr_path)
             self.assertTrue(pr_path.exists())
             self.assertGreater(pr_path.stat().st_size, 10000)
+
+    def test_markdown_ablation_table_escapes_pipes_and_columns_align(self):
+        df = _synthetic_classification_fixture(180)
+        split_ts = "2026-01-05 00:00:00+07:00"
+        ab_df = evaluate_feature_ablation_and_horizons(df, split_timestamp=split_ts)
+        md = _df_to_markdown(ab_df)
+        lines = [ln for ln in md.splitlines() if ln.strip().startswith("|")]
+        self.assertGreaterEqual(len(lines), 5)
+        expected_pipes = lines[0].count("|")
+        for ln in lines[2:]:
+            # Đếm cột dữ liệu thật (bỏ `\|` đã escape) phải khớp header
+            unescaped = ln.replace(r"\|", "")
+            self.assertEqual(unescaped.count("|"), expected_pipes, msg=f"Lệch cột ở dòng: {ln}")
+
+    def test_coverage_year_season_month_and_report_provenance(self):
+        df = _synthetic_classification_fixture(168)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            pq_path = tmp / "synthetic.parquet"
+            df.to_parquet(pq_path, index=False)
+            res = run_classification_pipeline(
+                pq_path,
+                tmp / "precision_recall_curve.png",
+                tmp / "feature_importance.png",
+                tmp / "audit.md",
+                report_results_path=tmp / "results.md",
+                findings_path=tmp / "findings.md",
+                split_timestamp="2026-01-05 00:00:00+07:00",
+                scope_name="SYNTH_TEST",
+            )
+            self.assertEqual(res.dataset_version, BASELINE_DATASET_VERSION)
+            self.assertEqual(len(res.dataset_sha256), 64)
+            self.assertIsNotNone(res.yearly_coverage_table)
+            self.assertIsNotNone(res.seasonal_coverage_table)
+            self.assertIsNotNone(res.monthly_coverage_table)
+            self.assertIsNotNone(res.monthly_drift_table)
+            self.assertIsNotNone(res.calibration_table)
+            self.assertIsNotNone(res.test_predictions)
+            self.assertTrue((tmp / "calibration_reliability.png").exists())
+
+            rep_txt = (tmp / "results.md").read_text(encoding="utf-8")
+            self.assertIn(res.dataset_sha256, rep_txt)
+            self.assertIn(res.dataset_version, rep_txt)
+            self.assertIn("Provenance Dữ Liệu & Đặc Tả Cohort", rep_txt)
+            self.assertIn("Độ phủ & tỷ lệ thiếu dữ liệu theo năm & split", rep_txt)
+            self.assertIn("Độ phủ & tỷ lệ thiếu dữ liệu theo mùa khí tượng & split", rep_txt)
+
+    def test_locked_threshold_consistency_in_backtest_and_monthly_drift(self):
+        df = _synthetic_classification_fixture(180)
+        split_ts = "2026-01-05 00:00:00+07:00"
+        X_tr, y_tr, X_te, y_te, _, _, ts_te = prepare_classification_data(
+            df, split_timestamp=split_ts, return_timestamps=True
+        )
+        rf = build_classification_pipeline(
+            RandomForestClassifier(n_estimators=20, max_depth=4, class_weight="balanced", random_state=42),
+            list(X_tr.columns),
+            scale_features=False,
+        ).fit(X_tr, y_tr)
+        bt_df, drift_df = run_temporal_backtest_and_drift(
+            df,
+            split_timestamp=split_ts,
+            n_folds=3,
+            rf_model=rf,
+            logreg_model=rf,
+            threshold_rf=0.37,
+            threshold_logreg=0.41,
+        )
+        self.assertIn("Fold Tau (RF / LogReg)", bt_df.columns)
+        self.assertTrue((drift_df["Locked Tau (RF / LogReg)"] == "0.37 / 0.41").all())
+
+        m_drift = compute_monthly_test_drift(
+            X_te, y_te, ts_te, rf, rf, threshold_rf=0.37, threshold_logreg=0.41
+        )
+        self.assertTrue((m_drift["Locked Tau (RF / LogReg)"] == "0.37 / 0.41").all())
+
+        m_drift_zero = compute_monthly_test_drift(
+            X_te, pd.Series(0, index=y_te.index), ts_te, rf, rf, threshold_rf=0.37, threshold_logreg=0.41
+        )
+        self.assertTrue(m_drift_zero["Status"].str.contains("UNESTIMABLE").all())
+
+    def test_calibration_summary_and_reliability_figure_valid_and_unestimable(self):
+        df = _synthetic_classification_fixture(160)
+        split_ts = "2026-01-04 12:00:00+07:00"
+        X_tr, y_tr, X_te, y_te, _ = prepare_classification_data(df, split_timestamp=split_ts)
+        rf = RandomForestClassifier(n_estimators=20, max_depth=4, random_state=42).fit(X_tr, y_tr)
+
+        cal_ok, status_ok, note_ok = compute_calibration_summary({"RF": rf}, X_te, y_te, min_bin_samples=1)
+        self.assertEqual(status_ok, "OK")
+        self.assertIn("Ước lượng hợp lệ", note_ok)
+        self.assertTrue(np.isfinite(cal_ok.loc[0, "Brier Score"]))
+        self.assertTrue(np.isfinite(cal_ok.loc[0, "ECE (10 bins)"]))
+
+        y_zero = pd.Series(0, index=y_te.index, dtype=int)
+        cal_un, status_un, note_un = compute_calibration_summary({"RF": rf}, X_te, y_zero)
+        self.assertEqual(status_un, "UNESTIMABLE")
+        self.assertIn("UNESTIMABLE", note_un)
+        self.assertTrue(np.isnan(cal_un.loc[0, "ECE (10 bins)"]))
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            p_ok = Path(tmp_dir) / "rel_ok.png"
+            p_un = Path(tmp_dir) / "rel_un.png"
+            render_reliability_figure({"RF": rf}, X_te, y_te, p_ok, min_bin_samples=1)
+            render_reliability_figure({"RF": rf}, X_te, y_zero, p_un)
+            self.assertTrue(p_ok.exists() and p_ok.stat().st_size > 10000)
+            self.assertTrue(p_un.exists() and p_un.stat().st_size > 10000)
+
+    def test_guards_reject_derived_pm25_ground_truth_and_future_feature_names(self):
+        from sklearn.linear_model import LogisticRegression
+
+        df = _synthetic_classification_fixture(120)
+        df["pm25_derived_interpolated"] = df["pm25"].copy()
+        split_ts = "2026-01-03 12:00:00+07:00"
+
+        with self.assertRaises(ValueError):
+            prepare_classification_data(
+                df, split_timestamp=split_ts, target_col="pm25_derived_interpolated"
+            )
+        with self.assertRaises(ValueError):
+            prepare_classification_data(
+                df, split_timestamp=split_ts, feature_source_col="pm25_derived_interpolated"
+            )
+        with self.assertRaises(ValueError):
+            prepare_classification_data(
+                df,
+                split_timestamp=split_ts,
+                horizon_hours=6,
+                feature_source_col="pm25_derived_interpolated",
+                allow_derived_feature_source=True,
+            )
+        with self.assertRaises(ValueError):
+            build_classification_pipeline(
+                LogisticRegression(), ["pm25_rolling_mean_24h", "pm25_lead_1h"]
+            )
 
 
 if __name__ == "__main__":

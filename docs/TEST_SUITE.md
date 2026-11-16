@@ -29,7 +29,7 @@ Không test nào gọi mạng. Không test nào phụ thuộc thứ tự chạy.
 
 | Module | Test methods | Phạm vi |
 |---|---|---|
-| `tests/test_classification.py` | 24 | Phân loại cảnh báo ô nhiễm (Issue #13): nhãn 24h, 2 mẫu số & 4 quần thể, past-only features trên lưới 1h, PR-AUC average precision, tuning F2 không đột biến mô hình, ablation đa phạm vi & horizon có purge gap, xử lý 1 lớp (`UNESTIMABLE`), 4-fold leakage audit |
+| `tests/test_classification.py` | 30 | Phân loại cảnh báo ô nhiễm (Issue #13): nhãn 24h, 2 mẫu số & 4 quần thể, độ phủ năm/mùa/tháng, calibration/Brier/ECE, past-only features trên lưới 1h, PR-AUC average precision, tuning F2 & khóa ngưỡng nhất quán, ablation đa phạm vi & horizon có purge gap & markdown alignment, xử lý 1 lớp (`UNESTIMABLE`), guard chống derived/future leakage, 4-fold leakage audit |
 | `tests/test_cleaning.py` | 114 | Làm sạch tất định, `assert_no_imputation()`, cờ chẩn đoán |
 | `tests/test_cleaning_pipeline.py` | 44 | Merge, freeze, split tuần tự, chống rò rỉ |
 | `tests/test_cleaning_pipeline_guards.py` | 43 | Guard chống rò rỉ (`validate_no_leakage`) |
@@ -47,7 +47,7 @@ Không test nào gọi mạng. Không test nào phụ thuộc thứ tự chạy.
 | `tests/test_validate_issue8.py` | 29 | Checksum, đồng bộ generator, circular stats, smoke fixture, canh số liệu tài liệu |
 | `tests/test_verify_claims_rolling.py` | 9 | Biên rolling 24h — dữ liệu đồng nhất che lỗi |
 | `tests/test_visualizer.py` | 35 | Bộ 7 biểu đồ ấn phẩm FIG-01..FIG-07 (300 DPI, Tufte, zero-baseline, chuỳ 24h, font tiếng Việt) |
-| **Tổng** | **816** | |
+| **Tổng** | **822** | |
 
 Đếm lại sau mỗi thay đổi:
 
@@ -63,9 +63,9 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 | Con số | Ý nghĩa |
 |---|---|
-| **816** | Số **test method được định nghĩa** trong mã nguồn |
-| **789** | Số unittest **dự kiến chạy và báo cáo** trên CI (thiếu `data/`; 816 − 27 trong 5 lớp skip) |
-| **785** | Số test **dự kiến chạy và pass** trên CI (789 − 4 skip nằm trong `Ran`) |
+| **822** | Số **test method được định nghĩa** trong mã nguồn |
+| **794** | Số unittest **dự kiến chạy và báo cáo** trên CI (thiếu `data/`; 822 − 28 trong 5 lớp skip) |
+| **790** | Số test **dự kiến chạy và pass** trên CI (794 − 4 skip nằm trong `Ran`) |
 
 > ⚠ **`skipped=9` không trừ thẳng vào `Ran`.** Năm trong chín dòng skip là *class holder*
 > (`setUpClass` raise `SkipTest`): unittest bỏ qua cả class nên các method của nó **không
@@ -85,7 +85,7 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 > `data/` bị `.gitignore` loại khỏi repository, nên **CI không bao giờ có dataset**.
 
-### Vì sao 816 − 789 = 27
+### Vì sao 822 − 794 = 28
 
 Năm lớp có `setUpClass` raise `unittest.SkipTest` khi thiếu dữ liệu, và unittest bỏ qua
 **cả class** — mọi method của chúng không bao giờ được tính vào bộ đếm `Ran`:
@@ -96,8 +96,8 @@ Năm lớp có `setUpClass` raise `unittest.SkipTest` khi thiếu dữ liệu, v
 | `TestRealDataset` | `tests/test_inference.py` | 12 | thiếu `data/processed/air_pollution_final.parquet` |
 | `TestSemanticMutations` | `tests/test_extended_validation_mutations.py` | 8 | thiếu `data/processed/air_pollution_extended_2022_2026.parquet` |
 | `TestRegressionRealDataset` | `tests/test_regression.py` | 2 | thiếu `data/processed/air_pollution_final.parquet` |
-| `TestClassificationRealDataset` | `tests/test_classification.py` | 1 | thiếu `data/processed/air_pollution_final.parquet` |
-| | | **27** | |
+| `TestClassificationRealDataset` | `tests/test_classification.py` | 2 | thiếu `data/processed/air_pollution_final.parquet` |
+| | | **28** | |
 
 Phân biệt rõ: chúng **không chạy** (không tính vào `Ran`) chứ không phải **chạy rồi bị skip**.
 

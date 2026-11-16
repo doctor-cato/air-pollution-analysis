@@ -219,7 +219,7 @@ jobs:
                   "FIG-02-extended", "FIG-03-extended", "FIG-03b-winter-coverage")]
               + [f"figures/{stem}{sfx}.png"                                  # W10 #12, W11 #13
                  for stem in ("regression_line_diagnostics", "precision_recall_curve",
-                              "feature_importance")
+                              "calibration_reliability", "feature_importance")
                  for sfx in ("", "_vn001_extended", "_vn003_extended")]
           )
           REQUIRED_TEXT = [

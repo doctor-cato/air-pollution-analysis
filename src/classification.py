@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
@@ -71,9 +72,15 @@ logger = logging.getLogger(__name__)
 DEFAULT_SPLIT_TIMESTAMP: str = "2026-01-15 00:00:00+07:00"
 PRIMARY_BASELINE_STATION: str = "VN001_HANOI_556_NGUYEN_VAN_CU"
 EXTENDED_HISTORICAL_STATION: str = "VN003_HANOI_OPENAQ_7441"
+BASELINE_DATASET_VERSION: str = "1.0.0-m2-baseline"
+EXTENDED_DATASET_VERSION: str = "2.0.0-issue44-extended"
 
 FORBIDDEN_CLASSIFICATION_COLS: Tuple[str, ...] = tuple(
     ["pm25", "pm10", *TARGET_DERIVED_FLAGS, *NON_PREDICTIVE_FLAGS]
+)
+
+_FUTURE_FEATURE_PATTERN = re.compile(
+    r"(^|_)(lead|future|next|target)(_|\d|$)|t\+", re.IGNORECASE
 )
 
 # Danh sách đặc trưng đầu vào chuẩn cho phân loại cảnh báo
@@ -200,14 +207,22 @@ class ClassificationResults:
     best_threshold_rf_constrained: float = 0.50
     logreg_odds_ratios: Optional[pd.DataFrame] = None
     coverage_table: Optional[pd.DataFrame] = None
+    yearly_coverage_table: Optional[pd.DataFrame] = None
+    seasonal_coverage_table: Optional[pd.DataFrame] = None
     outage_gaps_table: Optional[pd.DataFrame] = None
     monthly_coverage_table: Optional[pd.DataFrame] = None
     ablation_horizon_table: Optional[pd.DataFrame] = None
     backtest_table: Optional[pd.DataFrame] = None
     annual_drift_table: Optional[pd.DataFrame] = None
+    monthly_drift_table: Optional[pd.DataFrame] = None
+    calibration_table: Optional[pd.DataFrame] = None
+    calibration_status: str = "OK"
+    calibration_note: str = ""
     derived_sensitivity_table: Optional[pd.DataFrame] = None
     threshold_warnings: List[str] = field(default_factory=list)
     dataset_sha256: str = ""
+    dataset_version: str = ""
+    test_predictions: Optional[pd.DataFrame] = None
     extra_runs: List["ClassificationResults"] = field(default_factory=list)
 
 
@@ -243,7 +258,7 @@ def _df_to_markdown(df: Optional[pd.DataFrame]) -> str:
             if isinstance(val, (float, np.floating)) and np.isnan(val):
                 cells.append("UNESTIMABLE")
             else:
-                cells.append(str(val))
+                cells.append(str(val).replace("|", "\\|"))
         data_lines.append("| " + " | ".join(cells) + " |")
     return "\n".join([header_line, separator_line, *data_lines])
 
@@ -460,6 +475,7 @@ def prepare_classification_data(
     horizon_hours: int = 0,
     feature_cols: Optional[Sequence[str]] = None,
     feature_source_col: Optional[str] = None,
+    allow_derived_feature_source: bool = False,
     return_timestamps: bool = False,
 ) -> Union[
     Tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series, Dict[str, Any]],
@@ -468,15 +484,33 @@ def prepare_classification_data(
     """
     Chuẩn bị dữ liệu phân loại nhị phân cảnh báo theo Protocol A và thứ tự thời gian nghiêm ngặt:
       - Kiểm chứng đơn trạm (từ chối fail-closed nếu nhiều trạm mà chưa chọn `station_id`).
+      - Cấm dùng cột nội suy (`pm25_derived_interpolated`) làm ground truth nhãn mục tiêu.
+      - Cấm dùng đặc trưng nội suy hai đầu cho luồng chính (chỉ cho phép khi `allow_derived_feature_source=True` ở nhánh kiểm tra độ nhạy trên Train).
       - KHÔNG thực hiện impute toàn cục trước Cross-Validation.
       - Hỗ trợ tầm dự báo tương lai `horizon_hours >= 0` kèm vùng đệm loại bỏ (purge gap)
         để không một nhãn huấn luyện nào chồng lấn sang miền thời gian tập Test.
     """
     if horizon_hours < 0:
         raise ValueError("horizon_hours phải >= 0.")
+    if "derived" in target_col.lower() or "interpolated" in target_col.lower():
+        raise ValueError(
+            f"Cấm sử dụng cột nội suy phái sinh '{target_col}' làm ground truth nhãn phân loại!"
+        )
 
     df_sorted = _select_single_station(df, station_id=station_id)
     feat_src = feature_source_col or target_col
+    if feat_src != target_col and (
+        "derived" in feat_src.lower() or "interpolated" in feat_src.lower()
+    ):
+        if not allow_derived_feature_source:
+            raise ValueError(
+                f"Cột nội suy hai đầu '{feat_src}' sử dụng quan trắc tương lai trong khoảng trống nên bị cấm "
+                "làm đặc trưng cảnh báo sớm (chỉ dùng trong nhánh độ nhạy ngoại tuyến khi `allow_derived_feature_source=True`)."
+            )
+        if horizon_hours > 0:
+            raise ValueError(
+                "Cấm sử dụng nội suy hai đầu `pm25_derived_interpolated` trong kịch bản dự báo tương lai horizon_hours > 0."
+            )
 
     if target_col not in df_sorted.columns:
         raise KeyError(f"Thiếu cột mục tiêu '{target_col}'.")
@@ -527,6 +561,9 @@ def prepare_classification_data(
     for forbidden in FORBIDDEN_CLASSIFICATION_COLS:
         if forbidden in requested_cols:
             raise ValueError(f"Cột '{forbidden}' bị cấm xuất hiện trong tập đặc trưng phân loại.")
+    for col in requested_cols:
+        if _FUTURE_FEATURE_PATTERN.search(col):
+            raise ValueError(f"Cột '{col}' mang dấu hiệu tương lai/lead và bị cấm dùng làm đặc trưng phân loại.")
     selected_cols = [c for c in requested_cols if c in X_raw.columns]
     if not selected_cols:
         raise ValueError("Không có đặc trưng hợp lệ nào được chọn cho mô hình phân loại.")
@@ -609,6 +646,9 @@ def build_classification_pipeline(
     for forbidden in FORBIDDEN_CLASSIFICATION_COLS:
         if forbidden in cols:
             raise ValueError(f"Cột '{forbidden}' bị cấm nằm trong pipeline phân loại.")
+    for col in cols:
+        if _FUTURE_FEATURE_PATTERN.search(col):
+            raise ValueError(f"Cột '{col}' mang dấu hiệu tương lai/lead và bị cấm nằm trong pipeline phân loại.")
 
     num_steps: List[Tuple[str, Any]] = [
         ("imputer", SimpleImputer(strategy="median", keep_empty_features=True))
@@ -961,17 +1001,25 @@ def compute_coverage_and_outage_tables(
         if gap_rows else pd.DataFrame(columns=["Start", "End", "Duration (hours)", "Split"])
     )
 
-    # Độ phủ theo tháng
+    # Độ phủ theo tháng (có đầy đủ missingness và tử/mẫu số)
     df_m = pd.DataFrame({
         "YearMonth": ts.dt.strftime("%Y-%m"),
         "grid_hours": 1,
         "valid_pm25": valid_pm25.astype(int),
+        "missing_pm25": (~valid_pm25).astype(int),
         "valid_y": valid_y.astype(int),
+        "evaluable_rows": eval_mask.astype(int),
         "pos_y": (y_raw == 1.0).astype(int),
+        "pos_eval": ((y_raw == 1.0) & eval_mask).astype(int),
     })
     monthly_df = df_m.groupby("YearMonth", as_index=False).sum()
     monthly_df["Valid PM2.5 (%)"] = (monthly_df["valid_pm25"] / monthly_df["grid_hours"] * 100.0).round(1)
+    monthly_df["Missing PM2.5 (%)"] = (monthly_df["missing_pm25"] / monthly_df["grid_hours"] * 100.0).round(1)
     monthly_df["Valid Label 24h (%)"] = (monthly_df["valid_y"] / monthly_df["grid_hours"] * 100.0).round(1)
+    monthly_df["Positives / Valid y"] = [
+        f"{int(p)}/{int(v)} ({(p / v):.2%})" if v > 0 else "0/0 (UNESTIMABLE)"
+        for p, v in zip(monthly_df["pos_y"], monthly_df["valid_y"])
+    ]
     monthly_df["Positive Rate (% valid y)"] = np.where(
         monthly_df["valid_y"] > 0,
         (monthly_df["pos_y"] / monthly_df["valid_y"] * 100.0).round(2),
@@ -979,6 +1027,106 @@ def compute_coverage_and_outage_tables(
     )
 
     return coverage_table, outage_gaps_table, monthly_df
+
+
+def _derive_season_label(ts: pd.Series) -> pd.Series:
+    """Ánh xạ tháng sang 4 mùa khí tượng miền Bắc Việt Nam."""
+    months = ts.dt.month
+    return pd.Series(
+        np.select(
+            [months.isin([12, 1, 2]), months.isin([3, 4, 5]), months.isin([6, 7, 8])],
+            ["Winter (Dec-Feb)", "Spring (Mar-May)", "Summer (Jun-Aug)"],
+            default="Autumn (Sep-Nov)",
+        ),
+        index=ts.index,
+        dtype="object",
+    )
+
+
+def compute_year_season_coverage_tables(
+    df_station: pd.DataFrame,
+    *,
+    split_timestamp: Optional[str] = DEFAULT_SPLIT_TIMESTAMP,
+    use_split_column: bool = False,
+    target_col: str = "pm25",
+    station_id: Optional[str] = None,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Tính bảng độ phủ, missingness và prevalence (kèm tử/mẫu số) theo Năm và theo Mùa cho một trạm.
+    """
+    df_s = _select_single_station(df_station, station_id=station_id)
+    ts = df_s["timestamp"]
+    y_raw = _build_hourly_safe_alert_label(df_s, target_col=target_col)
+    X_raw = engineer_classification_features(df_s, target_col=target_col)
+    eval_mask = y_raw.notna() & X_raw["pm25_rolling_mean_24h"].notna()
+    valid_pm25 = df_s[target_col].notna()
+    valid_y = y_raw.notna()
+
+    if use_split_column and "split" in df_s.columns:
+        split_vals = df_s["split"].astype(str)
+    else:
+        split_dt = _align_split_timestamp(ts, split_timestamp or DEFAULT_SPLIT_TIMESTAMP)
+        split_vals = np.where(ts < split_dt, "train", "test")
+
+    season_vals = df_s["season"].astype(str) if "season" in df_s.columns else _derive_season_label(ts)
+    st_name = str(df_s["station_id"].iloc[0]) if "station_id" in df_s.columns else (station_id or "UNKNOWN")
+
+    base_df = pd.DataFrame({
+        "Station": st_name,
+        "Year": ts.dt.year.astype(str),
+        "Season": season_vals,
+        "Split": split_vals,
+        "grid_hours": 1,
+        "valid_pm25": valid_pm25.astype(int),
+        "missing_pm25": (~valid_pm25).astype(int),
+        "valid_y": valid_y.astype(int),
+        "evaluable": eval_mask.astype(int),
+        "pos_eval": ((y_raw == 1.0) & eval_mask).astype(int),
+    })
+
+    def _agg_stratum(group_cols: List[str], order_col: Optional[List[str]] = None) -> pd.DataFrame:
+        g = base_df.groupby(group_cols, as_index=False, sort=True).sum(numeric_only=True)
+        if order_col is not None and len(group_cols) == 2:
+            order_map = {k: i for i, k in enumerate(order_col)}
+            g["_ord"] = g[group_cols[1]].map(lambda x: order_map.get(x, 99))
+            g = g.sort_values([group_cols[0], "_ord"]).drop(columns=["_ord"]).reset_index(drop=True)
+        g["Valid PM2.5 (n / %)"] = [
+            f"{int(v):,}/{int(t):,} ({(v / t):.1%})" if t > 0 else "0/0"
+            for v, t in zip(g["valid_pm25"], g["grid_hours"])
+        ]
+        g["Missing PM2.5 (n / %)"] = [
+            f"{int(m):,}/{int(t):,} ({(m / t):.1%})" if t > 0 else "0/0"
+            for m, t in zip(g["missing_pm25"], g["grid_hours"])
+        ]
+        g["Valid Label 24h (n / %)"] = [
+            f"{int(y):,}/{int(t):,} ({(y / t):.1%})" if t > 0 else "0/0"
+            for y, t in zip(g["valid_y"], g["grid_hours"])
+        ]
+        g["Evaluable (n / %)"] = [
+            f"{int(e):,}/{int(t):,} ({(e / t):.1%})" if t > 0 else "0/0"
+            for e, t in zip(g["evaluable"], g["grid_hours"])
+        ]
+        g["Positives / Evaluable (Prevalence)"] = [
+            f"{int(p):,}/{int(e):,} ({(p / e):.2%})" if e > 0 else "0/0 (UNESTIMABLE)"
+            for p, e in zip(g["pos_eval"], g["evaluable"])
+        ]
+        keep_cols = [
+            *group_cols,
+            "grid_hours",
+            "Valid PM2.5 (n / %)",
+            "Missing PM2.5 (n / %)",
+            "Valid Label 24h (n / %)",
+            "Evaluable (n / %)",
+            "Positives / Evaluable (Prevalence)",
+        ]
+        return g[keep_cols].rename(columns={"grid_hours": "Grid Hours"})
+
+    yearly_df = _agg_stratum(["Station", "Year"])
+    seasonal_df = _agg_stratum(
+        ["Station", "Season"],
+        order_col=["Winter (Dec-Feb)", "Spring (Mar-May)", "Summer (Jun-Aug)", "Autumn (Sep-Nov)"],
+    )
+    return yearly_df, seasonal_df
 
 
 def _fit_and_eval_scope(
@@ -1084,7 +1232,7 @@ def evaluate_feature_ablation_and_horizons(
             feature_cols=f_cols,
             return_timestamps=True,
         )
-        rows.append(_fit_and_eval_scope(X_tr, y_tr, X_te, y_te, ts_tr, ts_te, list(X_tr.columns), f"h=0h | {fs_name}"))
+        rows.append(_fit_and_eval_scope(X_tr, y_tr, X_te, y_te, ts_tr, ts_te, list(X_tr.columns), f"h=0h — {fs_name}"))
 
     # 2. Khảo sát các tầm dự báo h > 0 (dự báo tương lai thực thụ có purge gap)
     for h in horizons:
@@ -1097,7 +1245,7 @@ def evaluate_feature_ablation_and_horizons(
             horizon_hours=int(h),
             return_timestamps=True,
         )
-        rows.append(_fit_and_eval_scope(X_tr, y_tr, X_te, y_te, ts_tr, ts_te, list(X_tr.columns), f"h={h}h | Full Feature Set"))
+        rows.append(_fit_and_eval_scope(X_tr, y_tr, X_te, y_te, ts_tr, ts_te, list(X_tr.columns), f"h={h}h — Full Feature Set"))
 
     return pd.DataFrame(rows)
 
@@ -1109,10 +1257,15 @@ def run_temporal_backtest_and_drift(
     use_split_column: bool = False,
     station_id: Optional[str] = None,
     n_folds: int = 5,
+    rf_model: Optional[Any] = None,
+    logreg_model: Optional[Any] = None,
+    threshold_rf: Optional[float] = None,
+    threshold_logreg: Optional[float] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Thực hiện Expanding-Window Backtest trên tập Train và đo lường dịch chuyển phân phối
-    (Prevalence & PR-AUC drift) theo năm/mùa trên tập Test.
+    Thực hiện Expanding-Window Backtest trên tập Train (tinh chỉnh ngưỡng nội bộ từng fold `tr_i`
+    để tránh rò rỉ validation) và đo lường dịch chuyển phân phối trên tập Test bằng đúng
+    mô hình và ngưỡng chính thức đã khóa (`threshold_rf`, `threshold_logreg`).
     """
     X_tr, y_tr, X_te, y_te, _, ts_tr, ts_te = prepare_classification_data(
         df_station,
@@ -1131,60 +1284,310 @@ def run_temporal_backtest_and_drift(
                 "Fold": f"Fold {fold_idx}",
                 "Train N": len(tr_i),
                 "Val N": len(val_i),
-                "Val Positives": int(y_f_val.sum()),
+                "Val Positives / N": f"{int(y_f_val.sum())}/{len(val_i)}",
                 "Val Prevalence": round(float(y_f_val.mean()), 4),
+                "Fold Tau (RF / LogReg)": "N/A",
                 "RF PR-AUC": float("nan"),
                 "RF Recall": float("nan"),
+                "RF FAR": float("nan"),
                 "RF Brier": float("nan"),
+                "LogReg PR-AUC": float("nan"),
+                "LogReg Recall": float("nan"),
                 "Status": "SINGLE_CLASS_FOLD",
             })
             continue
+
         rf_p = build_classification_pipeline(
             RandomForestClassifier(n_estimators=80, max_depth=8, class_weight="balanced", random_state=42),
             list(X_tr.columns),
             scale_features=False,
         )
+        log_p = build_classification_pipeline(
+            LogisticRegression(class_weight="balanced", random_state=42, max_iter=1000),
+            list(X_tr.columns),
+            scale_features=True,
+        )
+        # Tinh chỉnh ngưỡng nội bộ trên `tr_i` (tối đa 3 inner folds) nếu đủ mẫu; tuyệt đối không nhìn `val_i`
+        if int(y_f_tr.sum()) >= 15 and len(tr_i) >= 80:
+            tau_rf_f = tune_classification_threshold(rf_p, X_tr.iloc[tr_i], y_f_tr, metric="f2", n_splits=3)
+            tau_log_f = tune_classification_threshold(log_p, X_tr.iloc[tr_i], y_f_tr, metric="f2", n_splits=3)
+        else:
+            tau_rf_f = 0.50
+            tau_log_f = 0.50
+
         rf_p.fit(X_tr.iloc[tr_i], y_f_tr)
-        m_val = evaluate_classifier(f"Fold {fold_idx}", rf_p, X_tr.iloc[val_i], y_f_val, threshold=0.50)
+        log_p.fit(X_tr.iloc[tr_i], y_f_tr)
+
+        m_val_rf = evaluate_classifier(f"Fold {fold_idx} RF", rf_p, X_tr.iloc[val_i], y_f_val, threshold=tau_rf_f)
+        m_val_log = evaluate_classifier(f"Fold {fold_idx} LogReg", log_p, X_tr.iloc[val_i], y_f_val, threshold=tau_log_f)
         fold_rows.append({
             "Fold": f"Fold {fold_idx}",
             "Train N": len(tr_i),
             "Val N": len(val_i),
-            "Val Positives": int(y_f_val.sum()),
+            "Val Positives / N": f"{int(y_f_val.sum())}/{len(val_i)}",
             "Val Prevalence": round(float(y_f_val.mean()), 4),
-            "RF PR-AUC": m_val.pr_auc,
-            "RF Recall": m_val.recall,
-            "RF Brier": m_val.brier_score,
-            "Status": m_val.status,
+            "Fold Tau (RF / LogReg)": f"{tau_rf_f:.2f} / {tau_log_f:.2f}",
+            "RF PR-AUC": m_val_rf.pr_auc,
+            "RF Recall": m_val_rf.recall,
+            "RF FAR": m_val_rf.false_alarm_rate,
+            "RF Brier": m_val_rf.brier_score,
+            "LogReg PR-AUC": m_val_log.pr_auc,
+            "LogReg Recall": m_val_log.recall,
+            "Status": m_val_rf.status,
         })
     backtest_df = pd.DataFrame(fold_rows)
 
-    # Phân tầng dịch chuyển theo năm trên Test
-    rf_full = build_classification_pipeline(
-        RandomForestClassifier(n_estimators=100, max_depth=8, class_weight="balanced", random_state=42),
-        list(X_tr.columns),
-        scale_features=False,
-    )
-    rf_full.fit(X_tr, y_tr)
+    # Dùng đúng mô hình & ngưỡng chính thức đã khóa từ Train (nếu chưa truyền thì fit + tune trên Train)
+    if rf_model is None:
+        rf_eval = build_classification_pipeline(
+            RandomForestClassifier(n_estimators=100, max_depth=8, class_weight="balanced", random_state=42),
+            list(X_tr.columns),
+            scale_features=False,
+        )
+        eff_tau_rf = threshold_rf if threshold_rf is not None else tune_classification_threshold(rf_eval, X_tr, y_tr, metric="f2")
+        rf_eval.fit(X_tr, y_tr)
+    else:
+        rf_eval = rf_model
+        eff_tau_rf = float(threshold_rf) if threshold_rf is not None else 0.50
+
+    if logreg_model is None:
+        log_eval = build_classification_pipeline(
+            LogisticRegression(class_weight="balanced", random_state=42, max_iter=1000),
+            list(X_tr.columns),
+            scale_features=True,
+        )
+        eff_tau_log = threshold_logreg if threshold_logreg is not None else tune_classification_threshold(log_eval, X_tr, y_tr, metric="f2")
+        log_eval.fit(X_tr, y_tr)
+    else:
+        log_eval = logreg_model
+        eff_tau_log = float(threshold_logreg) if threshold_logreg is not None else 0.50
+
     drift_rows: List[Dict[str, Any]] = []
     years = pd.to_datetime(ts_te).dt.year
-    for yr, grp_idx in pd.Series(y_te.index, index=years).groupby(level=0):
+    for yr, _ in pd.Series(y_te.index, index=years).groupby(level=0):
         idx_pos = np.where(years.to_numpy() == yr)[0]
         X_sub = X_te.iloc[idx_pos]
         y_sub = y_te.iloc[idx_pos]
-        m_yr = evaluate_classifier(f"Test {yr}", rf_full, X_sub, y_sub, threshold=0.50)
+        m_yr_rf = evaluate_classifier(f"Test {yr} RF", rf_eval, X_sub, y_sub, threshold=eff_tau_rf)
+        m_yr_log = evaluate_classifier(f"Test {yr} LogReg", log_eval, X_sub, y_sub, threshold=eff_tau_log)
         drift_rows.append({
             "Test Year": int(yr),
-            "N (hours)": int(len(y_sub)),
-            "Positives": int(y_sub.sum()),
+            "Positives / N": f"{int(y_sub.sum())}/{int(len(y_sub))}",
             "Prevalence": round(float(y_sub.mean()), 4) if len(y_sub) > 0 else float("nan"),
-            "RF PR-AUC": m_yr.pr_auc,
-            "RF Recall": m_yr.recall,
-            "RF FAR": m_yr.false_alarm_rate,
-            "Status": m_yr.status,
+            "Locked Tau (RF / LogReg)": f"{eff_tau_rf:.2f} / {eff_tau_log:.2f}",
+            "RF PR-AUC": m_yr_rf.pr_auc,
+            "RF Recall": m_yr_rf.recall,
+            "RF Precision": m_yr_rf.precision,
+            "RF FAR": m_yr_rf.false_alarm_rate,
+            "RF Brier": m_yr_rf.brier_score,
+            "LogReg PR-AUC": m_yr_log.pr_auc,
+            "LogReg Recall": m_yr_log.recall,
+            "Status": m_yr_rf.status,
         })
     drift_df = pd.DataFrame(drift_rows)
     return backtest_df, drift_df
+
+
+def compute_monthly_test_drift(
+    X_test: pd.DataFrame,
+    y_test: pd.Series,
+    ts_test: pd.Series,
+    rf_model: Any,
+    logreg_model: Any,
+    *,
+    threshold_rf: float,
+    threshold_logreg: float,
+) -> pd.DataFrame:
+    """
+    Đo lường dịch chuyển phân phối theo từng tháng trên tập Test với đúng ngưỡng chính thức đã khóa,
+    đánh dấu rõ `UNESTIMABLE` khi tháng không có ca dương (ví dụ 2026-05).
+    """
+    if len(y_test) == 0:
+        return pd.DataFrame()
+    ym = pd.to_datetime(ts_test).dt.strftime("%Y-%m")
+    rows: List[Dict[str, Any]] = []
+    for period in sorted(ym.unique()):
+        idx_pos = np.where(ym.to_numpy() == period)[0]
+        X_sub = X_test.iloc[idx_pos]
+        y_sub = y_test.iloc[idx_pos]
+        m_rf = evaluate_classifier(f"Test {period} RF", rf_model, X_sub, y_sub, threshold=threshold_rf)
+        m_log = evaluate_classifier(f"Test {period} LogReg", logreg_model, X_sub, y_sub, threshold=threshold_logreg)
+        rows.append({
+            "Test Month": period,
+            "Positives / N": f"{int(y_sub.sum())}/{int(len(y_sub))}",
+            "Prevalence": round(float(y_sub.mean()), 4),
+            "Locked Tau (RF / LogReg)": f"{threshold_rf:.2f} / {threshold_logreg:.2f}",
+            "RF PR-AUC": m_rf.pr_auc,
+            "RF Recall": m_rf.recall,
+            "RF Precision": m_rf.precision,
+            "RF FAR": m_rf.false_alarm_rate,
+            "RF Brier": m_rf.brier_score,
+            "LogReg PR-AUC": m_log.pr_auc,
+            "LogReg Recall": m_log.recall,
+            "Status": m_rf.status,
+        })
+    return pd.DataFrame(rows)
+
+
+def compute_calibration_summary(
+    models_dict: Dict[str, Any],
+    X_test: pd.DataFrame,
+    y_test: pd.Series,
+    *,
+    n_bins: int = 10,
+    min_bin_samples: int = 10,
+) -> Tuple[pd.DataFrame, str, str]:
+    """
+    Đánh giá hiệu chuẩn xác suất (Calibration / Brier Score / Expected Calibration Error & per-bin table).
+    Trả về (summary_df, status, explanation_note). Nếu tập Test không đủ 2 lớp hoặc 0 ca dương,
+    ghi rõ `UNESTIMABLE` cùng nguyên nhân.
+    """
+    y_arr = pd.Series(y_test).to_numpy(dtype=int)
+    n_obs = len(y_arr)
+    n_pos = int(np.sum(y_arr))
+    if n_obs == 0 or pd.Series(y_arr).nunique() < 2 or n_pos == 0:
+        rows = []
+        for name, model in models_dict.items():
+            probs = _extract_pos_probs(model, X_test) if n_obs > 0 else np.array([])
+            brier = round(float(brier_score_loss(y_arr, probs)), 4) if n_obs > 0 else float("nan")
+            rows.append({
+                "Model": name,
+                "Brier Score": brier,
+                "ECE (10 bins)": float("nan"),
+                "Bins (n >= 10)": f"0/{n_bins}",
+                "Calibration Status": "UNESTIMABLE (0 positives in Test)",
+            })
+        note = (
+            f"UNESTIMABLE: Tập Test có {n_pos}/{n_obs} ca dương tính (đơn lớp); chỉ tính được Brier Score "
+            "trên lớp âm, không thể dựng độ tin cậy thực nghiệm theo bin (Reliability curve) hay ECE."
+        )
+        return pd.DataFrame(rows), "UNESTIMABLE", note
+
+    edges = np.linspace(0.0, 1.0, n_bins + 1)
+    summary_rows: List[Dict[str, Any]] = []
+    for name, model in models_dict.items():
+        probs = np.clip(_extract_pos_probs(model, X_test), 0.0, 1.0)
+        brier = round(float(brier_score_loss(y_arr, probs)), 4)
+        ece = 0.0
+        sufficient_bins = 0
+        nonempty_bins = 0
+        for b_idx in range(n_bins):
+            lo, hi = edges[b_idx], edges[b_idx + 1]
+            if b_idx == n_bins - 1:
+                mask = (probs >= lo) & (probs <= hi)
+            else:
+                mask = (probs >= lo) & (probs < hi)
+            cnt = int(np.sum(mask))
+            if cnt == 0:
+                continue
+            nonempty_bins += 1
+            if cnt >= min_bin_samples:
+                sufficient_bins += 1
+            mean_p = float(np.mean(probs[mask]))
+            emp_rate = float(np.mean(y_arr[mask]))
+            ece += (cnt / n_obs) * abs(emp_rate - mean_p)
+
+        status = "OK" if sufficient_bins >= 3 else "SPARSE_BINS"
+        summary_rows.append({
+            "Model": name,
+            "Brier Score": brier,
+            "ECE (10 bins)": round(float(ece), 4),
+            "Bins (n >= 10)": f"{sufficient_bins}/{nonempty_bins} non-empty",
+            "Calibration Status": status,
+        })
+
+    note = (
+        f"Ước lượng hợp lệ trên {n_obs:,} mẫu ({n_pos:,} dương tính). "
+        "Các bin có cỡ mẫu < 10 được đánh dấu thưa trên đường cong hiệu chuẩn (Reliability plot)."
+    )
+    return pd.DataFrame(summary_rows), "OK", note
+
+
+def render_reliability_figure(
+    models_dict: Dict[str, Any],
+    X_test: pd.DataFrame,
+    y_test: pd.Series,
+    output_path: Path,
+    *,
+    n_bins: int = 10,
+    min_bin_samples: int = 5,
+    title_suffix: str = "Tập Test Độc Lập",
+) -> None:
+    """
+    Xuất biểu đồ Reliability Diagram (Calibration Curve) chuẩn Tufte ở 300 DPI.
+    Khi Test đơn lớp (0 ca dương), vẽ khung thông báo `UNESTIMABLE` kèm Brier score lớp âm.
+    """
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(7.5, 6), dpi=300)
+
+    y_arr = pd.Series(y_test).to_numpy(dtype=int)
+    n_obs = len(y_arr)
+    n_pos = int(np.sum(y_arr))
+    if n_obs == 0 or pd.Series(y_arr).nunique() < 2 or n_pos == 0:
+        brier_lines = []
+        for name, m in models_dict.items():
+            if n_obs > 0:
+                b_val = float(brier_score_loss(y_arr, _extract_pos_probs(m, X_test)))
+                brier_lines.append(f"{name}: Brier={b_val:.4f}")
+        ax.text(
+            0.5,
+            0.5,
+            f"CALIBRATION / RELIABILITY PLOT: UNESTIMABLE\n"
+            f"Tập Test có {n_pos} ca dương / {n_obs} giờ (đơn lớp âm)\n"
+            + ("\n".join(brier_lines) if brier_lines else ""),
+            ha="center",
+            va="center",
+            fontsize=10.5,
+            bbox={"boxstyle": "round,pad=0.6", "facecolor": "#f8f9fa", "edgecolor": "#adb5bd"},
+        )
+        ax.set_title(
+            f"Reliability Plot (Calibration) — {title_suffix}\n[UNESTIMABLE trên Test 0 ca dương]",
+            fontsize=11,
+            fontweight="bold",
+        )
+        ax.set_xlim([0.0, 1.0])
+        ax.set_ylim([0.0, 1.0])
+        ax.set_xlabel("Xác suất dự báo trung bình (Mean Predicted Probability)", fontsize=10)
+        ax.set_ylabel("Tần suất thực nghiệm dương tính (Empirical Positive Rate)", fontsize=10)
+        plt.tight_layout()
+        fig.savefig(output_path, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+        return
+
+    ax.plot([0.0, 1.0], [0.0, 1.0], "k--", linewidth=1.2, label="Hiệu chuẩn hoàn hảo (y = x)")
+    edges = np.linspace(0.0, 1.0, n_bins + 1)
+    colors = ["#7f7f7f", "#d95f02", "#2b5c8f", "#1b9e77"]
+
+    for (name, model), color in zip(models_dict.items(), colors):
+        probs = np.clip(_extract_pos_probs(model, X_test), 0.0, 1.0)
+        brier = float(brier_score_loss(y_arr, probs))
+        xs, ys = [], []
+        for b_idx in range(n_bins):
+            lo, hi = edges[b_idx], edges[b_idx + 1]
+            mask = (probs >= lo) & (probs <= hi) if b_idx == n_bins - 1 else (probs >= lo) & (probs < hi)
+            if int(np.sum(mask)) >= min_bin_samples:
+                xs.append(float(np.mean(probs[mask])))
+                ys.append(float(np.mean(y_arr[mask])))
+        if xs:
+            ax.plot(xs, ys, marker="o", linewidth=2.0, markersize=5, color=color, label=f"{name} (Brier={brier:.4f})")
+
+    ax.set_title(
+        f"Reliability Diagram (Calibration Curve) — {title_suffix}\n(n={n_obs:,}, Positives={n_pos:,}, bins với n_bin>={min_bin_samples})",
+        fontsize=11,
+        fontweight="bold",
+        pad=10,
+    )
+    ax.set_xlabel("Xác suất dự báo trung bình (Mean Predicted Probability)", fontsize=10)
+    ax.set_ylabel("Tần suất thực nghiệm dương tính (Empirical Positive Rate)", fontsize=10)
+    ax.set_xlim([-0.02, 1.02])
+    ax.set_ylim([-0.02, 1.02])
+    ax.grid(True, linestyle=":", alpha=0.5)
+    ax.legend(loc="upper left", frameon=True, fontsize=8.5)
+    plt.tight_layout()
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    logger.info("Đã lưu biểu đồ Reliability Curve: %s", output_path)
 
 
 def evaluate_derived_pm25_sensitivity(
@@ -1216,6 +1619,7 @@ def evaluate_derived_pm25_sensitivity(
         split_timestamp=split_timestamp,
         target_col="pm25",
         feature_source_col="pm25_derived_interpolated",
+        allow_derived_feature_source=True,
         use_split_column=use_split_column,
         station_id=station_id,
         return_timestamps=True,
@@ -1230,7 +1634,7 @@ def evaluate_derived_pm25_sensitivity(
     )
     res_der = _fit_and_eval_scope(
         X_tr_der, y_tr_der, X_te_der, y_te_der, ts_tr_der, ts_te_der, list(X_tr_der.columns),
-        "Train Derived Features (<=3h) + Observed Labels",
+        "Train Derived Features (max_gap_hours=2) + Observed Labels",
     )
     res_obs["Train Recovered Rows"] = 0
     res_der["Train Recovered Rows"] = int(meta_der["n_train_valid"] - meta_obs["n_train_valid"])
@@ -1451,18 +1855,48 @@ def generate_leakage_audit_markdown(
     return md
 
 
+def _build_cohort_provenance_table(runs: List[ClassificationResults]) -> pd.DataFrame:
+    """Tổng hợp bảng provenance & đặc tả cohort đầy đủ cho tất cả các phạm vi chạy."""
+    rows: List[Dict[str, Any]] = []
+    for r in runs:
+        rf_m = r.model_metrics.get("rf")
+        n_tr_pos = int(round(r.n_train_valid * r.train_prevalence_valid)) if r.n_train_valid > 0 and not np.isnan(r.train_prevalence_valid) else 0
+        n_te_pos = int(sum(rf_m.confusion_matrix[1])) if rf_m else 0
+        sha_full = f"`{r.dataset_sha256}`" if r.dataset_sha256 else "N/A"
+        ver = f"`{r.dataset_version}`" if r.dataset_version else "N/A"
+        rows.append({
+            "Cohort": r.scope_name,
+            "Station ID": r.station_id,
+            "Dataset Version": ver,
+            "Dataset SHA-256": sha_full,
+            "Split Cut": r.split_timestamp,
+            "Horizon": f"h={r.horizon_hours}h (ablation 0,1,6,12,24h)",
+            "Feature Availability": (
+                "14 retrospective features: past-only PM2.5 (`t-1..t-24`, no `pm25_derived_interpolated` in primary) "
+                "+ Open-Meteo ERA5 (~5d reanalysis latency) + cyclic time; excludes `pm10`, `pm25_was_missing`, `is_high_humidity_fog`"
+            ),
+            "Label Window & QCVN Standard": "Observed 24h rolling mean `pm25` (`min_periods=24`) >= 50.0 ug/m3 (QCVN 05:2023/BTNMT)",
+            "Train Valid / Grid (Pos)": f"{r.n_train_valid:,} / {r.n_train_total:,} ({n_tr_pos:,} pos)",
+            "Test Valid / Grid (Pos)": f"{r.n_test_valid:,} / {r.n_test_total:,} ({n_te_pos:,} pos)",
+        })
+    return pd.DataFrame(rows)
+
+
 def _render_scope_markdown(res: ClassificationResults, heading: str = "##") -> str:
     """Sinh phần báo cáo động hoàn toàn cho một phạm vi chạy đơn trạm."""
     sub = "#" + heading
+    sha_display = f"`{res.dataset_sha256}`" if res.dataset_sha256 else "N/A"
+    ver_display = f"`{res.dataset_version}`" if res.dataset_version else "N/A"
     lines: List[str] = [
         f"{heading} Phạm vi `{res.scope_name}` (`{res.station_id}`)",
         "",
+        f"- **Dataset Version:** {ver_display} | **Dataset SHA-256:** {sha_display}",
         f"- **Mốc cắt thời gian:** `{res.split_timestamp}` | **Tầm dự báo:** `h = {res.horizon_hours}h`",
         f"- **Kích thước evaluable:** Train = {res.n_train_valid:,} / {res.n_train_total:,} giờ "
         f"(Prevalence = {res.train_prevalence_valid:.2%} hợp lệ; {res.train_prevalence_all:.2%} toàn lưới) | "
         f"Test = {res.n_test_valid:,} / {res.n_test_total:,} giờ "
         f"(Prevalence = {_fmt_metric_pct(res.test_prevalence_valid)} hợp lệ; {_fmt_metric_pct(res.test_prevalence_all)} toàn lưới)",
-        f"- **Ngưỡng tối ưu OOF trên Train:** LogReg ($F_2$) $\\tau^* = {res.best_threshold_logreg:.2f}$, LogReg (`Prec>=0.60`) $\\tau^* = {res.best_threshold_logreg_constrained:.2f}$ | "
+        f"- **Ngưỡng tối ưu OOF trên Train (khóa trước Test):** LogReg ($F_2$) $\\tau^* = {res.best_threshold_logreg:.2f}$, LogReg (`Prec>=0.60`) $\\tau^* = {res.best_threshold_logreg_constrained:.2f}$ | "
         f"RF ($F_2$) $\\tau^* = {res.best_threshold_rf:.2f}$, RF (`Prec>=0.60`) $\\tau^* = {res.best_threshold_rf_constrained:.2f}$",
         "",
         f"{sub} Bảng hiệu năng trên tập Test độc lập",
@@ -1476,8 +1910,27 @@ def _render_scope_markdown(res: ClassificationResults, heading: str = "##") -> s
         lines.extend([f"- {w}" for w in res.threshold_warnings])
         lines.append("")
 
+    if res.calibration_table is not None and not res.calibration_table.empty:
+        lines.extend([
+            f"{sub} Đánh giá hiệu chuẩn xác suất (Calibration / Brier / ECE)",
+            "",
+            f"- **Trạng thái hiệu chuẩn:** `{res.calibration_status}` — {res.calibration_note}",
+            "",
+            _df_to_markdown(res.calibration_table),
+            "",
+        ])
+
     if res.coverage_table is not None:
         lines.extend([f"{sub} Đối soát 4 quần thể dữ liệu & gián đoạn quan trắc", "", _df_to_markdown(res.coverage_table), ""])
+
+    if res.yearly_coverage_table is not None and not res.yearly_coverage_table.empty:
+        lines.extend(["**Độ phủ & tỷ lệ thiếu dữ liệu theo năm & split:**", "", _df_to_markdown(res.yearly_coverage_table), ""])
+
+    if res.seasonal_coverage_table is not None and not res.seasonal_coverage_table.empty:
+        lines.extend(["**Độ phủ & tỷ lệ thiếu dữ liệu theo mùa khí tượng & split:**", "", _df_to_markdown(res.seasonal_coverage_table), ""])
+
+    if res.monthly_coverage_table is not None and not res.monthly_coverage_table.empty:
+        lines.extend(["**Độ phủ & tỷ lệ thiếu dữ liệu theo từng tháng:**", "", _df_to_markdown(res.monthly_coverage_table), ""])
 
     if res.outage_gaps_table is not None and not res.outage_gaps_table.empty:
         lines.extend(["**Top đợt gián đoạn PM2.5 liên tục dài nhất:**", "", _df_to_markdown(res.outage_gaps_table.head(5)), ""])
@@ -1492,10 +1945,20 @@ def _render_scope_markdown(res: ClassificationResults, heading: str = "##") -> s
         lines.extend([f"{sub} Expanding-Window Temporal Backtest (trên Train)", "", _df_to_markdown(res.backtest_table), ""])
 
     if res.annual_drift_table is not None and not res.annual_drift_table.empty:
-        lines.extend([f"{sub} Dịch chuyển theo năm trên tập Test", "", _df_to_markdown(res.annual_drift_table), ""])
+        lines.extend([f"{sub} Dịch chuyển theo năm trên tập Test (dùng ngưỡng khóa chính thức)", "", _df_to_markdown(res.annual_drift_table), ""])
+
+    if res.monthly_drift_table is not None and not res.monthly_drift_table.empty:
+        lines.extend([f"{sub} Dịch chuyển theo tháng trên tập Test (dùng ngưỡng khóa chính thức)", "", _df_to_markdown(res.monthly_drift_table), ""])
 
     if res.derived_sensitivity_table is not None and not res.derived_sensitivity_table.empty:
-        lines.extend([f"{sub} Kiểm tra độ nhạy dùng `pm25_derived_interpolated` chỉ cho đặc trưng Train (nhãn luôn giữ observed)", "", _df_to_markdown(res.derived_sensitivity_table), ""])
+        lines.extend([
+            f"{sub} Kiểm tra độ nhạy dùng `pm25_derived_interpolated` (`max_gap_hours=2` hai phía — chỉ cho đặc trưng Train, nhãn luôn giữ observed)",
+            "",
+            "- **Lưu ý phương pháp:** Cột `pm25_derived_interpolated` sử dụng nội suy tuyến tính hai phía `max_gap_hours=2` từ Issue #44 (chế độ retrospective offline-only; không dùng cho vận hành real-time và không bao giờ thay nhãn quan trắc).",
+            "",
+            _df_to_markdown(res.derived_sensitivity_table),
+            "",
+        ])
 
     return "\n".join(lines)
 
@@ -1556,16 +2019,64 @@ def write_classification_report(
             "còn vai trò khí tượng bộc lộ rõ hơn qua **Logistic Regression Odds Ratios** và mô hình **Meteorology-Only** trong bảng Ablation."
         )
 
-    sha_note = f" | **SHA-256:** `{results.dataset_sha256[:16]}...`" if results.dataset_sha256 else ""
+    sha_note = f" | **SHA-256:** `{results.dataset_sha256}`" if results.dataset_sha256 else ""
+    ver_note = f" | **Version:** `{results.dataset_version}`" if results.dataset_version else ""
+    provenance_df = _build_cohort_provenance_table([results, *extras])
     extra_sections = "\n\n---\n\n".join(_render_scope_markdown(ex, heading="##") for ex in extras)
     extra_block = f"\n\n---\n\n{extra_sections}" if extra_sections else ""
+
+    cal_block = ""
+    if results.calibration_table is not None and not results.calibration_table.empty:
+        cal_block = (
+            f"\n### Đánh giá hiệu chuẩn xác suất (Calibration / Brier / ECE — `{results.calibration_status}`)\n\n"
+            f"- {results.calibration_note}\n\n"
+            + _df_to_markdown(results.calibration_table)
+            + "\n"
+        )
+
+    cov_extra_parts: List[str] = []
+    if results.yearly_coverage_table is not None and not results.yearly_coverage_table.empty:
+        cov_extra_parts.extend(["**Độ phủ & tỷ lệ thiếu dữ liệu theo năm & split:**", "", _df_to_markdown(results.yearly_coverage_table), ""])
+    if results.seasonal_coverage_table is not None and not results.seasonal_coverage_table.empty:
+        cov_extra_parts.extend(["**Độ phủ & tỷ lệ thiếu dữ liệu theo mùa khí tượng & split:**", "", _df_to_markdown(results.seasonal_coverage_table), ""])
+    if results.monthly_coverage_table is not None and not results.monthly_coverage_table.empty:
+        cov_extra_parts.extend(["**Độ phủ & tỷ lệ thiếu dữ liệu theo từng tháng:**", "", _df_to_markdown(results.monthly_coverage_table), ""])
+    if results.outage_gaps_table is not None and not results.outage_gaps_table.empty:
+        cov_extra_parts.extend(["**Top đợt gián đoạn PM2.5 liên tục dài nhất:**", "", _df_to_markdown(results.outage_gaps_table.head(5)), ""])
+    cov_extra_block = ("\n" + "\n".join(cov_extra_parts)) if cov_extra_parts else ""
+
+    drift_extra_parts: List[str] = []
+    if results.annual_drift_table is not None and not results.annual_drift_table.empty:
+        drift_extra_parts.extend(["### Dịch chuyển theo năm trên tập Test (dùng ngưỡng khóa chính thức)", "", _df_to_markdown(results.annual_drift_table), ""])
+    if results.monthly_drift_table is not None and not results.monthly_drift_table.empty:
+        drift_extra_parts.extend(["### Dịch chuyển theo tháng trên tập Test (dùng ngưỡng khóa chính thức)", "", _df_to_markdown(results.monthly_drift_table), ""])
+    drift_extra_block = ("\n" + "\n".join(drift_extra_parts)) if drift_extra_parts else ""
+
+    or_block = ""
+    if results.logreg_odds_ratios is not None and not results.logreg_odds_ratios.empty:
+        or_block = "\n### Logistic Regression Odds Ratios (trên không gian chuẩn hóa Train)\n\n" + _df_to_markdown(results.logreg_odds_ratios) + "\n"
+
+    derived_block = ""
+    if results.derived_sensitivity_table is not None and not results.derived_sensitivity_table.empty:
+        derived_block = (
+            "\n### Độ nhạy nội suy ngắn hạn (`pm25_derived_interpolated`, `max_gap_hours=2` hai phía — chỉ cho đặc trưng Train)\n\n"
+            "- **Lưu ý phương pháp:** `pm25_derived_interpolated` chỉ được dùng trong phân tích độ nhạy offline-only trên đặc trưng Train; nhãn mục tiêu $y_t$ luôn giữ nguyên quan trắc gốc (`pm25`).\n\n"
+            + _df_to_markdown(results.derived_sensitivity_table)
+            + "\n"
+        )
 
     content = f"""# Báo Cáo Kết Quả Mô Hình Phân Loại Cảnh Báo Ô Nhiễm (Truy Hồi Tức Thời & Đa Tầm) — Issue #13
 
 > **Môn học:** INFO3020 – Nhập môn Khoa học Dữ liệu (*Introduction to Data Science*) – ĐH CMC
 > **Giai đoạn CRISP-DM:** Phase 4 (Modeling) & Phase 5 (Evaluation) — Tuần 11
-> **Phạm vi chính:** `{results.scope_name}` (`{results.station_id}`){sha_note}
+> **Phạm vi chính:** `{results.scope_name}` (`{results.station_id}`){ver_note}{sha_note}
 > **Mốc phân chia chuỗi thời gian:** `{results.split_timestamp}` | **Kích thước Evaluable:** Train = {results.n_train_valid:,} giờ | Test = {results.n_test_valid:,} giờ ({n_te_pos:,} ca dương tính)
+
+---
+
+## 0. Provenance Dữ Liệu & Đặc Tả Cohort
+
+{_df_to_markdown(provenance_df)}
 
 ---
 
@@ -1577,7 +2088,7 @@ def write_classification_report(
   - Tập Test hợp lệ: **{results.n_test_valid:,} / {results.n_test_total:,}** giờ lưới (Prevalence = **{_fmt_metric_pct(results.test_prevalence_valid)}** trên mẫu hợp lệ; **{_fmt_metric_pct(results.test_prevalence_all)}** trên tổng lưới).
 
 {_df_to_markdown(results.coverage_table)}
-
+{cov_extra_block}
 ---
 
 ## 2. Tổng Hợp Hiệu Năng Phân Loại Trên Tập Test Độc Lập (`{results.scope_name}`)
@@ -1585,12 +2096,12 @@ def write_classification_report(
 - **Bẫy Accuracy & Baseline tham chiếu:**
   - `DummyClassifier(strategy='prior')` đạt Accuracy = **{dum_acc}**, nhưng Recall = **{dum_rec}** và PR-AUC = **{dum_pr}** (bằng đúng tỷ lệ dương tính của tập Test).
   - `PersistenceRuleClassifier` (ngưỡng cơ học 1 biến `pm25_rolling_mean_24h >= 50`) đạt Recall = **{pers_rec}**, PR-AUC = **{pers_pr}**.
-- **Mô hình Học máy (ngưỡng $F_2$ tinh chỉnh hoàn toàn trên Train OOF):**
+- **Mô hình Học máy (ngưỡng $F_2$ tinh chỉnh hoàn toàn trên Train OOF & khóa trước khi chạm Test):**
   - **Logistic Regression (Balanced, $\\tau^*={results.best_threshold_logreg:.2f}$):** Recall = **{log_rec}** ({log_tp:,}/{n_te_pos:,} ca dương), Precision = **{log_prec}**, F2 = **{log_f2}**, PR-AUC = **{log_pr}**, FAR = **{log_far}**.
   - **Random Forest (Balanced, $\\tau^*={results.best_threshold_rf:.2f}$):** Recall = **{rf_rec}** ({rf_tp:,}/{n_te_pos:,} ca dương, bỏ sót {rf_fn:,} ca), Precision = **{rf_prec}**, F2 = **{rf_f2}**, PR-AUC = **{rf_pr}**, FAR = **{rf_far}**.
 
 {_df_to_markdown(results.metrics_table)}
-
+{cal_block}
 ---
 
 ## 3. Phân Tích Chồng Lấn Cửa Sổ (Window Overlap), Ablation & Tầm Dự Báo Tương Lai ($h \\ge 1\\text{{h}}$)
@@ -1608,15 +2119,13 @@ def write_classification_report(
 - **Đánh giá trung thực về biến khí tượng ở $h=0$:** {met_verdict}
 
 {_df_to_markdown(results.feature_importances)}
-
+{or_block}
 ---
 
-## 5. Khả Năng Tổng Quát Hóa Thời Gian (Temporal Backtest) & Độ Nhạy Nội Suy Ngắn Hạn
+## 5. Khả Năng Tổng Quát Hóa Thời Gian (Temporal Backtest), Dịch Chuyển & Độ Nhạy Nội Suy Ngắn Hạn
 
 {_df_to_markdown(results.backtest_table)}
-
-{_df_to_markdown(results.derived_sensitivity_table) if results.derived_sensitivity_table is not None else ""}
-{extra_block}
+{drift_extra_block}{derived_block}{extra_block}
 """
     _write_lf_text(report_path, content)
     logger.info("Đã lưu báo cáo kết quả phân loại: %s", report_path)
@@ -1655,17 +2164,30 @@ def write_classification_findings(
         ext_summary_rows.append({
             "Scope": run.scope_name,
             "Station": run.station_id,
+            "Dataset Version": run.dataset_version or "N/A",
+            "Dataset SHA-256": f"`{run.dataset_sha256}`" if run.dataset_sha256 else "N/A",
             "Train Valid (Prev)": f"{run.n_train_valid:,} ({run.train_prevalence_valid:.2%})",
             "Test Valid (Prev)": f"{run.n_test_valid:,} ({_fmt_metric_pct(run.test_prevalence_valid)})",
             "Dummy PR-AUC": _fmt_metric_f4(dum_r.pr_auc) if dum_r else "N/A",
             "LogReg PR-AUC / Rec": f"{_fmt_metric_f4(log_r.pr_auc)} / {_fmt_metric_pct(log_r.recall)}" if log_r else "N/A",
             "RF PR-AUC / Rec": f"{_fmt_metric_f4(rf_r.pr_auc)} / {_fmt_metric_pct(rf_r.recall)}" if rf_r else "N/A",
+            "Calibration": run.calibration_status,
         })
+
+    cal_section = ""
+    if results.calibration_table is not None and not results.calibration_table.empty:
+        cal_section = (
+            f"\n- **Hiệu chuẩn xác suất (Calibration / Reliability):** `{results.calibration_status}` — {results.calibration_note}\n\n"
+            + _df_to_markdown(results.calibration_table)
+            + "\n"
+        )
+
+    sha_line = f" (`{results.dataset_version}`, SHA-256 `{results.dataset_sha256}`)" if results.dataset_sha256 else ""
 
     content = f"""# Tổng Hợp Phát Hiện Khoa Học: Mô Hình Phân Loại Cảnh Báo Ô Nhiễm PM2.5 — Task D13 (Issue #13)
 
 > **Môn học:** INFO3020 – Nhập môn Khoa học Dữ liệu (*Introduction to Data Science*) – ĐH CMC
-> **Phạm vi dữ liệu chính:** `{results.scope_name}` (`{results.station_id}`, cắt thời gian `{results.split_timestamp}`)
+> **Phạm vi dữ liệu chính:** `{results.scope_name}` (`{results.station_id}`, cắt thời gian `{results.split_timestamp}`){sha_line}
 > **Tập Test độc lập:** {results.n_test_valid:,} giờ hợp lệ (trong {results.n_test_total:,} giờ lưới; **{n_te_pos:,} ca dương tính**, Prevalence = {_fmt_metric_pct(results.test_prevalence_valid)} trên mẫu hợp lệ / {_fmt_metric_pct(results.test_prevalence_all)} trên tổng lưới)
 
 ---
@@ -1680,14 +2202,14 @@ def write_classification_findings(
 
 ---
 
-## 2. Confusion Matrix & Đánh Đổi Precision–Recall–FAR Trên Tập Test Đã Chốt Ngưỡng
+## 2. Confusion Matrix, Hiệu Chuẩn & Đánh Đổi Precision–Recall–FAR Trên Tập Test Đã Chốt Ngưỡng
 
 - **Baseline `DummyClassifier(strategy='prior')`:** Accuracy = **{_fmt_metric_pct(dum_m.accuracy) if dum_m else 'N/A'}**, Recall = **{_fmt_metric_pct(dum_m.recall) if dum_m else 'N/A'}**, PR-AUC = **{_fmt_metric_f4(dum_m.pr_auc) if dum_m else 'N/A'}** (khớp chính xác tỷ lệ dương tính của Test, chứng minh *Bẫy Accuracy*).
 - **Random Forest (`Balanced`, $\\tau^* = {results.best_threshold_rf:.2f}$ tối ưu $F_2$ trên Train OOF):**
   - Confusion Matrix `[[TN, FP], [FN, TP]]` = `[[{rf_tn}, {rf_fp}], [{rf_fn}, {rf_tp}]]` (mẫu số dương: {n_te_pos:,} ca; mẫu số âm: {rf_tn + rf_fp:,} giờ).
   - Precision = **{_fmt_metric_pct(rf_m.precision) if rf_m else 'N/A'}**, Recall = **{_fmt_metric_pct(rf_m.recall) if rf_m else 'N/A'}**, F1 = **{_fmt_metric_f4(rf_m.f1) if rf_m else 'N/A'}**, F2 = **{_fmt_metric_f4(rf_m.f2) if rf_m else 'N/A'}**, FAR = **{_fmt_metric_pct(rf_m.false_alarm_rate) if rf_m else 'N/A'}**, Brier = **{_fmt_metric_f4(rf_m.brier_score) if rf_m else 'N/A'}**, ROC-AUC = **{_fmt_metric_f4(rf_m.roc_auc) if rf_m else 'N/A'}**, PR-AUC = **{_fmt_metric_f4(rf_m.pr_auc) if rf_m else 'N/A'}**.
 - **Logistic Regression (`Balanced`, $\\tau^* = {results.best_threshold_logreg:.2f}$):** bắt được {log_tp:,}/{n_te_pos:,} ca (bỏ sót {log_fn:,} ca), Recall = **{_fmt_metric_pct(log_m.recall) if log_m else 'N/A'}**, Precision = **{_fmt_metric_pct(log_m.precision) if log_m else 'N/A'}**, PR-AUC = **{_fmt_metric_f4(log_m.pr_auc) if log_m else 'N/A'}**.
-
+{cal_section}
 ---
 
 ## 3. Feature Importance (`average_precision`) & Kiểm Soát Đa Cộng Tuyến `pm25`/`pm10`
@@ -1703,7 +2225,7 @@ def write_classification_findings(
 
 ## 4. Tổng Hợp Đa Phạm Vi (Protocol A: `VN001` & `VN003_OPENAQ_7441`)
 
-- Khi đánh giá trên `VN001_extended_80_20` (mốc Test từ tháng 05–07/2026 là mùa sạch mưa nhiều kèm đợt mất dữ liệu dài **630 giờ**), tập Test ghi nhận **0 ca dương tính** (`Test positives = 0`); các chỉ số cần phân lớp dương (`PR-AUC`, `ROC-AUC`, `Recall`) được báo cáo minh bạch là **`UNESTIMABLE`** thay vì bị bóp méo.
+- Khi đánh giá trên `VN001_extended_80_20` (mốc Test từ tháng 05–07/2026 là mùa sạch mưa nhiều kèm đợt mất dữ liệu dài **630 giờ**), tập Test ghi nhận **0 ca dương tính** (`Test positives = 0`); các chỉ số cần phân lớp dương (`PR-AUC`, `ROC-AUC`, `Recall`, `Calibration`) được báo cáo minh bạch là **`UNESTIMABLE`** thay vì bị bóp méo.
 - Tập lịch sử dài `VN003_extended_2022_2025` (14.207 giờ hợp lệ có nhãn) cung cấp bằng chứng kiểm chứng đa năm cho cả Train và Test có đủ cả hai lớp.
 
 {_df_to_markdown(pd.DataFrame(ext_summary_rows))}
@@ -1740,6 +2262,11 @@ def run_classification_pipeline(
     df = pd.read_parquet(dataset_path)
     df_station = _select_single_station(df, station_id=station_id)
     resolved_station = str(df_station["station_id"].iloc[0]) if "station_id" in df_station.columns else (station_id or "UNKNOWN")
+    resolved_version = (
+        EXTENDED_DATASET_VERSION
+        if {"split", "pm25_derived_interpolated"}.issubset(df.columns)
+        else BASELINE_DATASET_VERSION
+    )
 
     # 1. Chuẩn bị dữ liệu sạch không impute trước CV
     X_train, y_train, X_test, y_test, metadata, ts_train, ts_test = prepare_classification_data(
@@ -1837,35 +2364,75 @@ def run_classification_pipeline(
     or_df = compute_logreg_odds_ratios(logreg_pipe, feature_cols)
 
     # 8. Các phân tích chẩn đoán mở rộng
-    if compute_extended_diagnostics:
-        cov_df, gaps_df, monthly_df = compute_coverage_and_outage_tables(
-            df_station, split_timestamp=split_timestamp, use_split_column=use_split_column
-        )
-        ablation_df = evaluate_feature_ablation_and_horizons(
-            df_station, split_timestamp=split_timestamp, use_split_column=use_split_column
-        )
-        bt_df, drift_df = run_temporal_backtest_and_drift(
-            df_station, split_timestamp=split_timestamp, use_split_column=use_split_column
-        )
-        derived_df = evaluate_derived_pm25_sensitivity(
-            df_station, split_timestamp=split_timestamp, use_split_column=use_split_column
-        )
-    else:
-        cov_df = gaps_df = monthly_df = ablation_df = bt_df = drift_df = derived_df = None
-
-    # 9. Xuất biểu đồ PR Curve & Feature Importance
     models_to_plot = {
         "Persistence Rule (>=50)": persistence,
         "Logistic Regression": logreg_pipe,
         "Random Forest": rf_pipe,
     }
+    cal_df, cal_status, cal_note = compute_calibration_summary(models_to_plot, X_test, y_test)
+    if compute_extended_diagnostics:
+        cov_df, gaps_df, monthly_df = compute_coverage_and_outage_tables(
+            df_station, split_timestamp=split_timestamp, use_split_column=use_split_column
+        )
+        yr_cov_df, sea_cov_df = compute_year_season_coverage_tables(
+            df_station, split_timestamp=split_timestamp, use_split_column=use_split_column, station_id=resolved_station
+        )
+        ablation_df = evaluate_feature_ablation_and_horizons(
+            df_station, split_timestamp=split_timestamp, use_split_column=use_split_column
+        )
+        bt_df, drift_df = run_temporal_backtest_and_drift(
+            df_station,
+            split_timestamp=split_timestamp,
+            use_split_column=use_split_column,
+            station_id=resolved_station,
+            rf_model=rf_pipe,
+            logreg_model=logreg_pipe,
+            threshold_rf=best_tau_rf,
+            threshold_logreg=best_tau_logreg,
+        )
+        monthly_drift_df = compute_monthly_test_drift(
+            X_test,
+            y_test,
+            ts_test,
+            rf_pipe,
+            logreg_pipe,
+            threshold_rf=best_tau_rf,
+            threshold_logreg=best_tau_logreg,
+        )
+        derived_df = evaluate_derived_pm25_sensitivity(
+            df_station, split_timestamp=split_timestamp, use_split_column=use_split_column
+        )
+    else:
+        cov_df = yr_cov_df = sea_cov_df = gaps_df = monthly_df = None
+        ablation_df = bt_df = drift_df = monthly_drift_df = derived_df = None
+
+    # 9. Xuất biểu đồ PR Curve, Calibration Reliability & Feature Importance
+    output_pr_path = Path(output_pr_path)
+    if "precision_recall_curve" in output_pr_path.name:
+        cal_filename = output_pr_path.name.replace("precision_recall_curve", "calibration_reliability")
+    else:
+        cal_filename = f"calibration_reliability_{scope_name}.png"
+    output_cal_path = output_pr_path.parent / cal_filename
+
     test_prev_plot = 0.0 if np.isnan(metadata["test_prevalence_valid"]) else metadata["test_prevalence_valid"]
     render_pr_curve_figure(
         models_to_plot, X_test, y_test, test_prev_plot, output_pr_path, title_suffix=f"{scope_name}"
     )
+    render_reliability_figure(
+        models_to_plot, X_test, y_test, output_cal_path, title_suffix=f"{scope_name}"
+    )
     render_feature_importance_figure(
         df_imp, output_feat_path, title_suffix=f"{scope_name} — Test n={metadata['n_test_valid']:,}"
     )
+
+    test_predictions_df = pd.DataFrame({
+        "timestamp": pd.to_datetime(ts_test).to_numpy(),
+        "y_true": y_test.to_numpy(dtype=int),
+        "prob_dummy": _extract_pos_probs(dummy, X_test) if len(y_test) > 0 else np.array([], dtype=float),
+        "prob_persistence": _extract_pos_probs(persistence, X_test) if len(y_test) > 0 else np.array([], dtype=float),
+        "prob_logreg": _extract_pos_probs(logreg_pipe, X_test) if len(y_test) > 0 else np.array([], dtype=float),
+        "prob_rf": _extract_pos_probs(rf_pipe, X_test) if len(y_test) > 0 else np.array([], dtype=float),
+    })
 
     # 10. Biên bản kiểm toán rò rỉ dữ liệu
     audit_md = generate_leakage_audit_markdown(
@@ -1906,14 +2473,22 @@ def run_classification_pipeline(
         best_threshold_rf_constrained=best_tau_rf_c,
         logreg_odds_ratios=or_df,
         coverage_table=cov_df,
+        yearly_coverage_table=yr_cov_df,
+        seasonal_coverage_table=sea_cov_df,
         outage_gaps_table=gaps_df,
         monthly_coverage_table=monthly_df,
         ablation_horizon_table=ablation_df,
         backtest_table=bt_df,
         annual_drift_table=drift_df,
+        monthly_drift_table=monthly_drift_df,
+        calibration_table=cal_df,
+        calibration_status=cal_status,
+        calibration_note=cal_note,
         derived_sensitivity_table=derived_df,
         threshold_warnings=warnings_list,
         dataset_sha256=_sha256_file(dataset_path),
+        dataset_version=resolved_version,
+        test_predictions=test_predictions_df,
     )
 
     if report_results_path is not None:

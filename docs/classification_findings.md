@@ -1,7 +1,7 @@
 # Tổng Hợp Phát Hiện Khoa Học: Mô Hình Phân Loại Cảnh Báo Ô Nhiễm PM2.5 — Task D13 (Issue #13)
 
 > **Môn học:** INFO3020 – Nhập môn Khoa học Dữ liệu (*Introduction to Data Science*) – ĐH CMC
-> **Phạm vi dữ liệu chính:** `VN001_baseline_2026_01_15` (`VN001_HANOI_556_NGUYEN_VAN_CU`, cắt thời gian `2026-01-15 00:00:00+07:00`)
+> **Phạm vi dữ liệu chính:** `VN001_baseline_2026_01_15` (`VN001_HANOI_556_NGUYEN_VAN_CU`, cắt thời gian `2026-01-15 00:00:00+07:00`) (`1.0.0-m2-baseline`, SHA-256 `866f39de1720c7273dc1f09c4932e508835589383820ad425c19521592586efd`)
 > **Tập Test độc lập:** 2,302 giờ hợp lệ (trong 4,362 giờ lưới; **666 ca dương tính**, Prevalence = 28.93% trên mẫu hợp lệ / 15.27% trên tổng lưới)
 
 ---
@@ -16,13 +16,21 @@
 
 ---
 
-## 2. Confusion Matrix & Đánh Đổi Precision–Recall–FAR Trên Tập Test Đã Chốt Ngưỡng
+## 2. Confusion Matrix, Hiệu Chuẩn & Đánh Đổi Precision–Recall–FAR Trên Tập Test Đã Chốt Ngưỡng
 
 - **Baseline `DummyClassifier(strategy='prior')`:** Accuracy = **71.07%**, Recall = **0.00%**, PR-AUC = **0.2893** (khớp chính xác tỷ lệ dương tính của Test, chứng minh *Bẫy Accuracy*).
 - **Random Forest (`Balanced`, $\tau^* = 0.32$ tối ưu $F_2$ trên Train OOF):**
   - Confusion Matrix `[[TN, FP], [FN, TP]]` = `[[1609, 27], [0, 666]]` (mẫu số dương: 666 ca; mẫu số âm: 1,636 giờ).
   - Precision = **96.10%**, Recall = **100.00%**, F1 = **0.9801**, F2 = **0.9920**, FAR = **1.65%**, Brier = **0.0134**, ROC-AUC = **0.9995**, PR-AUC = **0.9985**.
 - **Logistic Regression (`Balanced`, $\tau^* = 0.43$):** bắt được 663/666 ca (bỏ sót 3 ca), Recall = **99.55%**, Precision = **94.18%**, PR-AUC = **0.9989**.
+
+- **Hiệu chuẩn xác suất (Calibration / Reliability):** `OK` — Ước lượng hợp lệ trên 2,302 mẫu (666 dương tính). Các bin có cỡ mẫu < 10 được đánh dấu thưa trên đường cong hiệu chuẩn (Reliability plot).
+
+| Model | Brier Score | ECE (10 bins) | Bins (n >= 10) | Calibration Status |
+| --- | --- | --- | --- | --- |
+| Persistence Rule (>=50) | 0.0845 | 0.2592 | 10/10 non-empty | OK |
+| Logistic Regression | 0.0143 | 0.0351 | 10/10 non-empty | OK |
+| Random Forest | 0.0134 | 0.075 | 7/10 non-empty | OK |
 
 ---
 
@@ -54,14 +62,14 @@
 
 ## 4. Tổng Hợp Đa Phạm Vi (Protocol A: `VN001` & `VN003_OPENAQ_7441`)
 
-- Khi đánh giá trên `VN001_extended_80_20` (mốc Test từ tháng 05–07/2026 là mùa sạch mưa nhiều kèm đợt mất dữ liệu dài **630 giờ**), tập Test ghi nhận **0 ca dương tính** (`Test positives = 0`); các chỉ số cần phân lớp dương (`PR-AUC`, `ROC-AUC`, `Recall`) được báo cáo minh bạch là **`UNESTIMABLE`** thay vì bị bóp méo.
+- Khi đánh giá trên `VN001_extended_80_20` (mốc Test từ tháng 05–07/2026 là mùa sạch mưa nhiều kèm đợt mất dữ liệu dài **630 giờ**), tập Test ghi nhận **0 ca dương tính** (`Test positives = 0`); các chỉ số cần phân lớp dương (`PR-AUC`, `ROC-AUC`, `Recall`, `Calibration`) được báo cáo minh bạch là **`UNESTIMABLE`** thay vì bị bóp méo.
 - Tập lịch sử dài `VN003_extended_2022_2025` (14.207 giờ hợp lệ có nhãn) cung cấp bằng chứng kiểm chứng đa năm cho cả Train và Test có đủ cả hai lớp.
 
-| Scope | Station | Train Valid (Prev) | Test Valid (Prev) | Dummy PR-AUC | LogReg PR-AUC / Rec | RF PR-AUC / Rec |
-| --- | --- | --- | --- | --- | --- | --- |
-| VN001_baseline_2026_01_15 | VN001_HANOI_556_NGUYEN_VAN_CU | 2,965 (32.98%) | 2,302 (28.93%) | 0.2893 | 0.9989 / 99.55% | 0.9985 / 100.00% |
-| VN001_extended_80_20 | VN001_HANOI_556_NGUYEN_VAN_CU | 5,025 (32.72%) | 242 (0.00%) | UNESTIMABLE | UNESTIMABLE / UNESTIMABLE | UNESTIMABLE / UNESTIMABLE |
-| VN003_extended_2022_2025 | VN003_HANOI_OPENAQ_7441 | 10,636 (25.17%) | 3,439 (49.81%) | 0.4981 | 0.9995 / 99.77% | 0.9983 / 99.30% |
+| Scope | Station | Dataset Version | Dataset SHA-256 | Train Valid (Prev) | Test Valid (Prev) | Dummy PR-AUC | LogReg PR-AUC / Rec | RF PR-AUC / Rec | Calibration |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| VN001_baseline_2026_01_15 | VN001_HANOI_556_NGUYEN_VAN_CU | 1.0.0-m2-baseline | `866f39de1720c7273dc1f09c4932e508835589383820ad425c19521592586efd` | 2,965 (32.98%) | 2,302 (28.93%) | 0.2893 | 0.9989 / 99.55% | 0.9985 / 100.00% | OK |
+| VN001_extended_80_20 | VN001_HANOI_556_NGUYEN_VAN_CU | 2.0.0-issue44-extended | `6930557fbfc8e31dbcb062065b1903ccf27c433e9c0f062bd0dc382a9a1f9b02` | 5,025 (32.72%) | 242 (0.00%) | UNESTIMABLE | UNESTIMABLE / UNESTIMABLE | UNESTIMABLE / UNESTIMABLE | UNESTIMABLE |
+| VN003_extended_2022_2025 | VN003_HANOI_OPENAQ_7441 | 2.0.0-issue44-extended | `6930557fbfc8e31dbcb062065b1903ccf27c433e9c0f062bd0dc382a9a1f9b02` | 10,636 (25.17%) | 3,439 (49.81%) | 0.4981 | 0.9995 / 99.77% | 0.9983 / 99.30% | OK |
 
 ---
 

@@ -89,6 +89,7 @@ from src.classification import (
     DEFAULT_SPLIT_TIMESTAMP,
     PRIMARY_BASELINE_STATION,
     compute_coverage_and_outage_tables,
+    compute_year_season_coverage_tables,
     prepare_classification_data,
     run_extended_classification_suite,
 )
@@ -119,15 +120,24 @@ add_code(r"""df_base = pd.read_parquet(BASELINE_PATH)
 cov_base, gaps_base, monthly_base = compute_coverage_and_outage_tables(
     df_base, split_timestamp=DEFAULT_SPLIT_TIMESTAMP, use_split_column=False
 )
+yr_cov_base, sea_cov_base = compute_year_season_coverage_tables(
+    df_base, split_timestamp=DEFAULT_SPLIT_TIMESTAMP, use_split_column=False, station_id=PRIMARY_BASELINE_STATION
+)
 print("ĐỐI SOÁT 4 QUẦN THỂ DỮ LIỆU — VN001 BASELINE:")
 display(cov_base)
+print("ĐỘ PHỦ THEO NĂM & MÙA KHÍ TƯỢNG — VN001 BASELINE:")
+display(yr_cov_base)
+display(sea_cov_base)
+print("ĐỘ PHỦ THEO THÁNG — VN001 BASELINE:")
+display(monthly_base)
 
 print("TOP ĐỢT GIÁN ĐOẠN PM2.5 LIÊN TỤC DÀI NHẤT:")
 display(gaps_base.head(5))
 
-X_tr_chk, y_tr_chk, X_te_chk, y_te_chk, meta_chk = prepare_classification_data(
-    df_base, split_timestamp=DEFAULT_SPLIT_TIMESTAMP, station_id=PRIMARY_BASELINE_STATION
+X_tr_chk, y_tr_chk, X_te_chk, y_te_chk, meta_chk, ts_tr_chk, ts_te_chk = prepare_classification_data(
+    df_base, split_timestamp=DEFAULT_SPLIT_TIMESTAMP, station_id=PRIMARY_BASELINE_STATION, return_timestamps=True
 )
+assert pd.to_datetime(ts_tr_chk).max() < pd.to_datetime(ts_te_chk).min(), "Vi phạm thứ tự thời gian Train/Test!"
 print("THỐNG KÊ MẪU SỐ VÀ PREVALENCE THỰC TẾ:")
 print(f"  Train: {meta_chk['n_train_valid']:,} / {meta_chk['n_train_total']:,} giờ | Prevalence valid={meta_chk['train_prevalence_valid']:.2%} | all={meta_chk['train_prevalence_all']:.2%}")
 print(f"  Test : {meta_chk['n_test_valid']:,} / {meta_chk['n_test_total']:,} giờ | Prevalence valid={meta_chk['test_prevalence_valid']:.2%} | all={meta_chk['test_prevalence_all']:.2%}")
@@ -177,16 +187,21 @@ add_md(r"""## 3. Hiệu Năng Trên Tập Test Độc Lập & Đối Chứng Bas
 
 add_code(r"""print("BẢNG HIỆU NĂNG PHÂN LOẠI TRÊN TẬP TEST ĐỘC LẬP (VN001 BASELINE):")
 display(res_base.metrics_table)
+print(f"\nHIỆU CHUẨN XÁC SUẤT (Calibration — {res_base.calibration_status}): {res_base.calibration_note}")
+display(res_base.calibration_table)
 """)
 
 # ---------------------------------------------------------------------------
-# CELL 6: PR Curve Figure
+# CELL 6: PR Curve & Reliability Diagram Figures
 # ---------------------------------------------------------------------------
-add_md(r"""## 4. Đường cong Precision-Recall (PR Curve) vs Baseline Prevalence""")
+add_md(r"""## 4. Đường cong Precision-Recall (PR Curve) & Hiệu Chuẩn Xác Suất (Reliability Diagram)""")
 
 add_code(r"""pr_path = FIGURES_DIR / "precision_recall_curve.png"
+cal_path = FIGURES_DIR / "calibration_reliability.png"
 print(f"Biểu đồ PR Curve: {pr_path.resolve()} ({pr_path.stat().st_size:,} bytes)")
 display(Image(filename=str(pr_path)))
+print(f"Biểu đồ Reliability Diagram: {cal_path.resolve()} ({cal_path.stat().st_size:,} bytes)")
+display(Image(filename=str(cal_path)))
 """)
 
 # ---------------------------------------------------------------------------
@@ -224,16 +239,25 @@ add_md(r"""## 7. Kiểm Chứng Mở Rộng Đa Phạm Vi (Protocol A), Backtest
 
 add_code(r"""print("EXPANDING-WINDOW TEMPORAL BACKTEST (TRAIN FOLDS — VN001 BASELINE):")
 display(res_base.backtest_table)
+print("DỊCH CHUYỂN THEO THÁNG TRÊN TẬP TEST (VN001 BASELINE — DÙNG NGƯỠNG KHÓA):")
+display(res_base.monthly_drift_table)
 
 if "VN001_extended" in suite_results:
     res_ext1 = suite_results["VN001_extended"]
     print("\n--- PHẠM VI VN001_extended_80_20 (Mùa sạch, Test 0 ca dương -> UNESTIMABLE) ---")
     display(res_ext1.metrics_table)
+    print(f"Calibration ({res_ext1.calibration_status}): {res_ext1.calibration_note}")
+    display(res_ext1.calibration_table)
+    fig_ext1_cal = FIGURES_DIR / "calibration_reliability_vn001_extended.png"
+    if fig_ext1_cal.exists():
+        display(Image(filename=str(fig_ext1_cal)))
 
 if "VN003_extended" in suite_results:
     res_vn003 = suite_results["VN003_extended"]
     print("\n--- PHẠM VI VN003_extended_2022_2025 (Lịch sử 2022-2025) ---")
     display(res_vn003.metrics_table)
+    print(f"Calibration ({res_vn003.calibration_status}): {res_vn003.calibration_note}")
+    display(res_vn003.calibration_table)
     print("Feature Ablation & Horizon Decay (VN003):")
     display(res_vn003.ablation_horizon_table)
     print("Dịch chuyển theo năm trên Test (VN003):")
@@ -241,22 +265,54 @@ if "VN003_extended" in suite_results:
     if res_vn003.derived_sensitivity_table is not None:
         print("Kiểm tra độ nhạy `pm25_derived_interpolated` chỉ cho đặc trưng Train (VN003):")
         display(res_vn003.derived_sensitivity_table)
-    fig_vn003_pr = FIGURES_DIR / "precision_recall_curve_vn003_extended.png"
-    if fig_vn003_pr.exists():
-        display(Image(filename=str(fig_vn003_pr)))
-    fig_vn003_fi = FIGURES_DIR / "feature_importance_vn003_extended.png"
-    if fig_vn003_fi.exists():
-        display(Image(filename=str(fig_vn003_fi)))
+    for fname in (
+        "precision_recall_curve_vn003_extended.png",
+        "calibration_reliability_vn003_extended.png",
+        "feature_importance_vn003_extended.png",
+    ):
+        fpath = FIGURES_DIR / fname
+        if fpath.exists():
+            display(Image(filename=str(fpath)))
 """)
 
 # ---------------------------------------------------------------------------
-# CELL 10: Formal 4-Form Leakage Audit & Deliverable Summary
+# CELL 10: Formal 4-Form Leakage Audit, Verification Assertions & Deliverable Summary
 # ---------------------------------------------------------------------------
-add_md(r"""## 8. Biên bản Kiểm toán 4 Dạng Rò rỉ Dữ liệu & Tệp Bàn Giao Chính Thức""")
+add_md(r"""## 8. Biên bản Kiểm toán 4 Dạng Rò rỉ Dữ liệu, Kiểm Chứng Độc Lập & Tệp Bàn Giao""")
 
-add_code(r"""for p in [AUDIT_REPORT_PATH, DOCS_AUDIT_PATH, RESULTS_REPORT_PATH, FINDINGS_DOC_PATH]:
+add_code(r"""from sklearn.metrics import average_precision_score, brier_score_loss, fbeta_score, precision_score, recall_score
+
+for p in [AUDIT_REPORT_PATH, DOCS_AUDIT_PATH, RESULTS_REPORT_PATH, FINDINGS_DOC_PATH]:
+    assert p.exists() and p.stat().st_size > 0, f"Thiếu artifact: {p}"
     print(f"Artifact đã ghi: {p.resolve()} (exists={p.exists()}, size={p.stat().st_size:,} bytes)")
 
+# Kiểm chứng đối soát số liệu trực tiếp từ `test_predictions` và báo cáo
+report_text = RESULTS_REPORT_PATH.read_text(encoding="utf-8")
+assert res_base.dataset_sha256 in report_text, "Thiếu SHA-256 đầy đủ trong báo cáo!"
+assert res_base.dataset_version in report_text, "Thiếu dataset version trong báo cáo!"
+
+tp_df = res_base.test_predictions
+assert tp_df is not None and len(tp_df) == res_base.n_test_valid
+y_t = tp_df["y_true"].to_numpy()
+p_rf = tp_df["prob_rf"].to_numpy()
+rf_pred = (p_rf >= res_base.best_threshold_rf).astype(int)
+assert np.isclose(average_precision_score(y_t, p_rf), res_base.model_metrics["rf"].pr_auc, atol=1e-4)
+assert np.isclose(brier_score_loss(y_t, p_rf), res_base.model_metrics["rf"].brier_score, atol=1e-4)
+assert np.isclose(precision_score(y_t, rf_pred), res_base.model_metrics["rf"].precision, atol=1e-4)
+assert np.isclose(recall_score(y_t, rf_pred), res_base.model_metrics["rf"].recall, atol=1e-4)
+assert np.isclose(fbeta_score(y_t, rf_pred, beta=2.0), res_base.model_metrics["rf"].f2, atol=1e-4)
+
+if "VN001_extended" in suite_results:
+    ext1 = suite_results["VN001_extended"]
+    assert ext1.calibration_status == "UNESTIMABLE"
+    assert ext1.dataset_sha256 in report_text
+    assert np.isnan(ext1.model_metrics["rf"].pr_auc)
+if "VN003_extended" in suite_results:
+    ext3 = suite_results["VN003_extended"]
+    assert ext3.dataset_sha256 in report_text
+    assert ext3.calibration_status == "OK"
+
+print("Mọi kiểm chứng độc lập trên dữ liệu thật, provenance và tái tính toán metric ĐỀU ĐẠT.")
 display(Markdown(res_base.leakage_audit_markdown))
 """)
 
