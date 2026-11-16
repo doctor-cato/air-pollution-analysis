@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
@@ -56,6 +57,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_SPLIT_TIMESTAMP: str = "2026-01-15 00:00:00+07:00"
 PRIMARY_BASELINE_STATION: str = "VN001_HANOI_556_NGUYEN_VAN_CU"
 EXTENDED_HISTORICAL_STATION: str = "VN003_HANOI_OPENAQ_7441"
+BASELINE_DATASET_VERSION: str = "1.0.0-m2-baseline"
+EXTENDED_DATASET_VERSION: str = "2.0.0-issue44-extended"
 
 # Tập biến giải thích mặc định: khí tượng bề mặt + chu kỳ thời gian
 # - `pm10`: loại trừ do cộng tuyến gần hoàn hảo với PM2.5 (r = 0.9727, VIF > 30)
@@ -86,6 +89,10 @@ FORBIDDEN_TARGET_FLAGS: Tuple[str, ...] = (
     "pm25_was_missing",
     "pm25_derived_interpolated",
     "pm25_is_derived",
+)
+
+_FUTURE_PREDICTOR_PATTERN = re.compile(
+    r"(^|_)(lead|future|next|target)(_|\d|$)|t\+", re.IGNORECASE
 )
 
 _FEATURE_METADATA: Dict[str, Tuple[str, str, str]] = {
@@ -208,6 +215,7 @@ class RegressionResults:
     derived_sensitivity: Optional[Dict[str, Any]] = None
     metadata_summary: Optional[Dict[str, Any]] = None
     test_target_stats: Optional[Dict[str, float]] = None
+    test_predictions: Optional[pd.DataFrame] = None
     n_train_imputed_features: int = 0
     n_test_imputed_features: int = 0
 
@@ -296,6 +304,9 @@ def build_regression_preprocessor(predictor_cols: Sequence[str]) -> Pipeline:
     for forbidden in FORBIDDEN_TARGET_FLAGS:
         if forbidden in cols:
             raise ValueError(f"Biến '{forbidden}' bị cấm xuất hiện trong tập predictor hồi quy.")
+    for col in cols:
+        if _FUTURE_PREDICTOR_PATTERN.search(col):
+            raise ValueError(f"Biến '{col}' mang dấu hiệu tương lai/lead và bị cấm dùng làm predictor.")
 
     numeric_pipe = Pipeline(
         steps=[
@@ -370,11 +381,14 @@ def prepare_regression_data(
     if drop_collinear_pm10 and "pm10" in candidates:
         candidates.remove("pm10")
 
-    for col in (target_col, "pm25_was_missing", "is_high_humidity_fog"):
+    for col in (target_col, *FORBIDDEN_TARGET_FLAGS):
         if col in candidates:
-            if col in (target_col, "pm25_was_missing"):
-                raise ValueError(f"Biến '{col}' gây rò rỉ mục tiêu và không được nằm trong predictors.")
-            candidates.remove(col)
+            raise ValueError(f"Biến '{col}' gây rò rỉ mục tiêu/nội suy và không được nằm trong predictors.")
+    for col in candidates:
+        if _FUTURE_PREDICTOR_PATTERN.search(col):
+            raise ValueError(f"Biến '{col}' mang dấu hiệu tương lai/lead và bị cấm dùng làm predictor.")
+    if "is_high_humidity_fog" in candidates:
+        candidates.remove("is_high_humidity_fog")
 
     missing_preds = [c for c in candidates if c not in df_valid.columns]
     if missing_preds:
@@ -774,32 +788,33 @@ def evaluate_models(
 
     n_test = len(y_test)
     p = X_train.shape[1]
+    lasso_active = int(np.sum(np.abs(lasso_model.coef_) > 1e-12))
 
     models_preds = {
-        "Baseline (Dummy Mean)": pred_dummy,
-        "OLS Linear Regression": pred_ols,
-        f"Ridge (alpha={ridge_model.alpha:.3f})": pred_ridge,
-        f"Lasso (alpha={lasso_model.alpha:.3f})": pred_lasso,
+        "Baseline (Dummy Mean)": (pred_dummy, 0, "0/0"),
+        "OLS Linear Regression": (pred_ols, p, f"{p}/{p}"),
+        f"Ridge (alpha={ridge_model.alpha:.3f})": (pred_ridge, p, f"{p}/{p}"),
+        f"Lasso (alpha={lasso_model.alpha:.3f})": (pred_lasso, p, f"{lasso_active}/{p}"),
     }
 
     metrics = []
-    for name, pred in models_preds.items():
+    for name, (pred, p_val, p_display) in models_preds.items():
         mae = float(mean_absolute_error(y_test, pred))
         rmse = float(np.sqrt(mean_squared_error(y_test, pred)))
         r2 = float(r2_score(y_test, pred))
-        p_val = 0 if ("Baseline" in name or "Dummy" in name) else p
         adj_r2 = (
-            float(1.0 - (1.0 - r2) * (n_test - 1) / (n_test - p_val - 1))
+            round(float(1.0 - (1.0 - r2) * (n_test - 1) / (n_test - p_val - 1)), 4)
             if n_test > p_val + 1
             else np.nan
         )
         metrics.append(
             {
                 "Model": name,
+                "Predictors (active/total)": p_display,
                 "MAE (µg/m³)": round(mae, 2),
                 "RMSE (µg/m³)": round(rmse, 2),
                 "R²": round(r2, 4),
-                "Adjusted R²": round(adj_r2, 4),
+                "Adjusted R²": adj_r2,
             }
         )
 
@@ -970,6 +985,20 @@ def run_rolling_origin_backtest(
     return pd.DataFrame(rows)
 
 
+def _derive_meteorological_season(ts: pd.Series) -> pd.Series:
+    """Ánh xạ tháng dương lịch sang 4 mùa khí tượng miền Bắc Việt Nam."""
+    months = ts.dt.month
+    return pd.Series(
+        np.select(
+            [months.isin([12, 1, 2]), months.isin([3, 4, 5]), months.isin([6, 7, 8])],
+            ["Winter (Dec-Feb)", "Spring (Mar-May)", "Summer (Jun-Aug)"],
+            default="Autumn (Sep-Nov)",
+        ),
+        index=ts.index,
+        dtype="object",
+    )
+
+
 def compute_stratified_coefficient_stability(
     df_station: pd.DataFrame,
     split_timestamp: Optional[str] = DEFAULT_SPLIT_TIMESTAMP,
@@ -979,7 +1008,8 @@ def compute_stratified_coefficient_stability(
 ) -> pd.DataFrame:
     """
     Kiểm định độ ổn định hệ số khí tượng trên Train phân tầng theo năm (`year`) và mùa (`season`),
-    báo cáo kèm hệ số tự tương quan phần dư bậc 1 (`rho1`) và cỡ mẫu hiệu dụng `n_eff = n*(1-rho1)/(1+rho1)`.
+    báo cáo kèm hệ số tự tương quan phần dư bậc 1 (`rho1`), cỡ mẫu hiệu dụng `n_eff = n*(1-rho1)/(1+rho1)`
+    và ghi nhận tường minh các phân tầng thiếu dữ liệu.
     """
     df_sorted = _select_single_station(df_station, station_id=station_id)
     df_valid = df_sorted[df_sorted["pm25"].notna()].copy()
@@ -998,6 +1028,12 @@ def compute_stratified_coefficient_stability(
         df_tr = df_valid.copy()
 
     df_tr["year_str"] = df_tr["timestamp"].dt.year.astype(str)
+    season_series = (
+        df_tr["season"]
+        if "season" in df_tr.columns
+        else _derive_meteorological_season(df_tr["timestamp"])
+    )
+    df_tr["_season_str"] = season_series.astype(str)
     met_cols = [c for c in METEOROLOGY_PREDICTORS if c in df_tr.columns]
     if not met_cols or df_tr.empty:
         return pd.DataFrame()
@@ -1005,18 +1041,50 @@ def compute_stratified_coefficient_stability(
     strata: List[Tuple[str, pd.DataFrame]] = []
     for yr, grp in df_tr.groupby("year_str", sort=True):
         strata.append((f"Year {yr}", grp))
-    if "season" in df_tr.columns:
-        for sea, grp in df_tr.groupby("season", sort=False):
+    for sea in ["Winter (Dec-Feb)", "Spring (Mar-May)", "Summer (Jun-Aug)", "Autumn (Sep-Nov)"]:
+        grp = df_tr[df_tr["_season_str"] == sea]
+        if not grp.empty:
+            strata.append((f"Season {sea}", grp))
+    for sea, grp in df_tr.groupby("_season_str", sort=False):
+        if sea not in {"Winter (Dec-Feb)", "Spring (Mar-May)", "Summer (Jun-Aug)", "Autumn (Sep-Nov)"}:
             strata.append((f"Season {sea}", grp))
 
     rows = []
     for name, grp in strata:
         if len(grp) < min_obs_per_stratum:
+            rows.append(
+                {
+                    "Stratum": name,
+                    "n_obs": int(len(grp)),
+                    "rho1_resid": "N/A",
+                    "n_eff": "N/A",
+                    "Train R²": "N/A",
+                    "wind_speed Beta": "N/A",
+                    "wind_speed p(HAC)": "N/A",
+                    "precip Beta": "N/A",
+                    "precip p(HAC)": "N/A",
+                    "Coverage Status": f"THIEU DU LIEU (n_obs < {min_obs_per_stratum})",
+                }
+            )
             continue
         X_sub, _, _, _ = _fit_transform_train_only_ols_inputs(grp[met_cols])
         # Bỏ cột hằng số trong phân tầng hẹp nếu xảy ra (ví dụ toàn 0 mưa)
         varying_cols = [c for c in met_cols if X_sub[c].std() > 1e-12]
         if not varying_cols:
+            rows.append(
+                {
+                    "Stratum": name,
+                    "n_obs": int(len(grp)),
+                    "rho1_resid": "N/A",
+                    "n_eff": "N/A",
+                    "Train R²": "N/A",
+                    "wind_speed Beta": "N/A",
+                    "wind_speed p(HAC)": "N/A",
+                    "precip Beta": "N/A",
+                    "precip p(HAC)": "N/A",
+                    "Coverage Status": "THIEU BIEN THIEN (constant predictors)",
+                }
+            )
             continue
         X_const = sm.add_constant(X_sub[varying_cols].reset_index(drop=True), has_constant="add")
         y_sub = grp["pm25"].astype(float).reset_index(drop=True)
@@ -1025,20 +1093,29 @@ def compute_stratified_coefficient_stability(
         rho1 = float(np.corrcoef(res[:-1], res[1:])[0, 1]) if len(res) > 2 else 0.0
         n_obs = len(res)
         n_eff = max(1.0, n_obs * (1.0 - rho1) / max(1e-6, 1.0 + rho1))
+        n_eff_int = int(round(n_eff))
+        status_note = "LOW_NEFF (n_eff < 30)" if n_eff_int < 30 else "DU COVERAGE"
 
         row: Dict[str, Any] = {
             "Stratum": name,
             "n_obs": n_obs,
             "rho1_resid": round(rho1, 3),
-            "n_eff": int(round(n_eff)),
+            "n_eff": n_eff_int,
             "Train R²": round(float(ols_hac.rsquared), 4),
+            "wind_speed Beta": round(float(ols_hac.params["wind_speed"]), 3)
+            if "wind_speed" in ols_hac.params.index
+            else "N/A",
+            "wind_speed p(HAC)": _fmt_p(float(ols_hac.pvalues["wind_speed"]))
+            if "wind_speed" in ols_hac.params.index
+            else "N/A",
+            "precip Beta": round(float(ols_hac.params["precipitation"]), 3)
+            if "precipitation" in ols_hac.params.index
+            else "N/A",
+            "precip p(HAC)": _fmt_p(float(ols_hac.pvalues["precipitation"]))
+            if "precipitation" in ols_hac.params.index
+            else "N/A",
+            "Coverage Status": status_note,
         }
-        if "wind_speed" in ols_hac.params.index:
-            row["wind_speed Beta"] = round(float(ols_hac.params["wind_speed"]), 3)
-            row["wind_speed p(HAC)"] = _fmt_p(float(ols_hac.pvalues["wind_speed"]))
-        if "precipitation" in ols_hac.params.index:
-            row["precip Beta"] = round(float(ols_hac.params["precipitation"]), 3)
-            row["precip p(HAC)"] = _fmt_p(float(ols_hac.pvalues["precipitation"]))
         rows.append(row)
 
     return pd.DataFrame(rows)
@@ -1107,16 +1184,44 @@ def evaluate_derived_interpolation_sensitivity(
             }
         )
 
+    masking_eval: Optional[Dict[str, float]] = None
+    eval_csv = Path(__file__).resolve().parent.parent / "reports" / "issue44_interpolation_evaluation.csv"
+    eff_st = str(df_sorted["station_id"].iloc[0]) if "station_id" in df_sorted.columns else None
+    if eval_csv.exists() and eff_st is not None:
+        try:
+            ev = pd.read_csv(eval_csv)
+            sub_ev = ev[
+                (ev["station_id"] == eff_st)
+                & (ev["season_scope"] == "ALL")
+                & (ev["masked_gap_length_hours"] == 2)
+                & (ev["max_gap_hours"] == 2)
+            ]
+            if not sub_ev.empty:
+                r0 = sub_ev.iloc[0]
+                masking_eval = {
+                    "gap_hours": 2,
+                    "mae": float(r0["mae"]),
+                    "rmse": float(r0["rmse"]),
+                    "bias": float(r0["bias"]),
+                }
+        except Exception:
+            masking_eval = None
+
     return {
         "n_train_observed": int(len(y_tr_obs)),
         "n_train_derived": int(len(y_tr_der)),
         "n_derived_hours_added_in_train": int(len(y_tr_der) - len(y_tr_obs)),
         "n_test_observed_ground_truth": int(len(y_te_obs)),
         "max_abs_beta_diff": float(beta_delta.max()),
+        "test_mae_observed_model": float(mean_absolute_error(y_te_obs, pred_te_obs)),
+        "test_mae_derived_train_model": float(mean_absolute_error(y_te_obs, pred_te_der)),
         "test_rmse_observed_model": float(np.sqrt(mean_squared_error(y_te_obs, pred_te_obs))),
         "test_rmse_derived_train_model": float(np.sqrt(mean_squared_error(y_te_obs, pred_te_der))),
+        "test_bias_observed_model": float(np.mean(np.asarray(pred_te_obs, dtype=float) - np.asarray(y_te_obs, dtype=float))),
+        "test_bias_derived_train_model": float(np.mean(np.asarray(pred_te_der, dtype=float) - np.asarray(y_te_obs, dtype=float))),
         "test_r2_observed_model": float(r2_score(y_te_obs, pred_te_obs)),
         "test_r2_derived_train_model": float(r2_score(y_te_obs, pred_te_der)),
+        "masking_validation_2h": masking_eval,
         "coef_comparison": pd.DataFrame(comp_rows),
     }
 
@@ -1409,16 +1514,40 @@ def _render_single_scope_section(results: RegressionResults, heading_prefix: str
     der_block = ""
     if results.derived_sensitivity is not None:
         ds = results.derived_sensitivity
+        mask_note = ""
+        if ds.get("masking_validation_2h"):
+            mv = ds["masking_validation_2h"]
+            mask_note = (
+                f"- **Đối chuẩn masking-validation Issue #44 (`max_gap_hours={mv['gap_hours']}`h):** "
+                f"MAE = {mv['mae']:.4f}, RMSE = {mv['rmse']:.4f}, Bias = {mv['bias']:+.4f} µg/m³.\n"
+            )
         der_block = (
             f"\n{heading_prefix}# Độ Nhạy Nội Suy Phái Sinh `pm25_derived_interpolated` (Chỉ Trong Train)\n\n"
             f"- Train quan trắc gốc: {ds['n_train_observed']:,} giờ | Train + nội suy phái sinh ngắn: "
             f"{ds['n_train_derived']:,} giờ (+{ds['n_derived_hours_added_in_train']:,} giờ); "
             f"Test ground truth LUÔN giữ 100% quan trắc gốc ({ds['n_test_observed_ground_truth']:,} giờ).\n"
+            f"{mask_note}"
             f"- Sai khác hệ số lớn nhất (`max |ΔBeta|`) = {ds['max_abs_beta_diff']:.4f}; "
-            f"Test RMSE (Observed vs Derived Train) = {ds['test_rmse_observed_model']:.2f} vs "
-            f"{ds['test_rmse_derived_train_model']:.2f} µg/m³ "
+            f"Test MAE (Observed vs Derived Train) = {ds['test_mae_observed_model']:.2f} vs "
+            f"{ds['test_mae_derived_train_model']:.2f} µg/m³; "
+            f"Test RMSE = {ds['test_rmse_observed_model']:.2f} vs "
+            f"{ds['test_rmse_derived_train_model']:.2f} µg/m³; "
+            f"Test Bias = {ds['test_bias_observed_model']:+.2f} vs "
+            f"{ds['test_bias_derived_train_model']:+.2f} µg/m³ "
             f"(R² = {ds['test_r2_observed_model']:.4f} vs {ds['test_r2_derived_train_model']:.4f}).\n\n"
             + _df_to_markdown(ds["coef_comparison"])
+            + "\n"
+        )
+
+    binned_block = ""
+    if diag.binned_residual_means is not None and not diag.binned_residual_means.empty:
+        b_df = diag.binned_residual_means.copy()
+        for col_num in ("mean_fitted", "mean_residual", "std_residual"):
+            if col_num in b_df.columns:
+                b_df[col_num] = b_df[col_num].astype(float).round(2)
+        binned_block = (
+            f"\n{heading_prefix}# Trung Bình Phần Dư Theo Phân Vị Giá Trị Dự Báo (Kiểm Chứng Tuyến Tính L)\n\n"
+            + _df_to_markdown(b_df)
             + "\n"
         )
 
@@ -1430,7 +1559,10 @@ def _render_single_scope_section(results: RegressionResults, heading_prefix: str
             + "\n"
         )
 
+    meta_s = results.metadata_summary or {}
     return f"""- **Trạm & Phạm vi:** `{results.station_id or 'Single-Station'}` | Nhãn chạy: `{results.run_label}` | Chế độ split: `{results.split_mode}` (`{results.split_timestamp}`)
+- **Nguồn dữ liệu & SHA-256:** Version `{meta_s.get('dataset_version', 'custom')}` | SHA-256 `{meta_s.get('dataset_sha256', 'N/A')}`
+- **Tính khả dụng đặc trưng (Feature Availability):** {meta_s.get('feature_availability', 'N/A')}
 - **Kích thước mẫu:** Train = {results.n_train:,} giờ | Test = {results.n_test:,} giờ | Imputed feature cells = {results.n_train_imputed_features} (Train), {results.n_test_imputed_features} (Test)
 
 {heading_prefix}# Kiểm Toán Đa Cộng Tuyến VIF
@@ -1457,7 +1589,7 @@ def _render_single_scope_section(results: RegressionResults, heading_prefix: str
 
 - **Điểm đòn bẩy & Cook's Distance:** {inf_line} Giữ nguyên các điểm cực trị vì phản ánh các đợt nghịch nhiệt thực tế.
 - **Khảo sát `log(1 + PM2.5)` trên Train:** {log1p_verdict}
-{top_inf_block}
+{binned_block}{top_inf_block}
 {heading_prefix}# Hiệu Năng Tập Test Độc Lập (MAE vs RMSE)
 
 {metrics_md}
@@ -1482,21 +1614,25 @@ def write_regression_report(
     if extra_runs:
         runs.extend(extra_runs)
 
-    # Bảng metadata tổng hợp nguồn dữ liệu
+    # Bảng metadata tổng hợp nguồn dữ liệu (ghi đủ version, full SHA-256, station_id, split, feature availability)
     meta_rows = []
     for r in runs:
         m = r.metadata_summary or {}
+        grid_val = m.get("grid_rows", "N/A")
+        grid_fmt = f"{int(grid_val):,}" if isinstance(grid_val, (int, np.integer)) else str(grid_val)
         meta_rows.append(
             {
                 "Run": r.run_label,
+                "Dataset Version": m.get("dataset_version", "custom"),
                 "Station": r.station_id or m.get("station_id", "N/A"),
                 "Date Window": f"{m.get('date_min', 'N/A')} .. {m.get('date_max', 'N/A')}",
                 "Obs Hours": f"{m.get('valid_pm25_rows', r.n_train + r.n_test):,}",
-                "Grid Hours": f"{m.get('grid_rows', 'N/A')}",
+                "Grid Hours": grid_fmt,
                 "Missing PM2.5": m.get("pm25_missing_pct", "N/A"),
-                "Split Cut": r.split_timestamp,
+                "Split Mode & Cut": f"{r.split_mode} (`{r.split_timestamp}`)",
                 "Train / Test": f"{r.n_train:,} / {r.n_test:,}",
-                "Dataset SHA-256 (prefix)": str(m.get("dataset_sha256", "N/A"))[:12],
+                "Dataset SHA-256": str(m.get("dataset_sha256", "N/A")),
+                "Feature Availability": m.get("feature_availability", "N/A"),
             }
         )
     meta_md = _df_to_markdown(pd.DataFrame(meta_rows))
@@ -1568,12 +1704,27 @@ def write_regression_report(
 
 
 def _build_metadata_summary(df: pd.DataFrame, df_station: pd.DataFrame, dataset_path: Path) -> Dict[str, Any]:
-    """Thu thập metadata provenance chuẩn xác cho một trạm và tệp parquet."""
+    """Thu thập metadata provenance chuẩn xác (version, full SHA-256, feature availability) cho một trạm."""
     n_grid = len(df_station)
     n_valid = int(df_station["pm25"].notna().sum())
     miss_pct = f"{100.0 * (1.0 - n_valid / n_grid):.1f}%" if n_grid > 0 else "N/A"
+    is_extended = {"split", "pm25_derived_interpolated"}.issubset(df.columns)
+    if is_extended:
+        dataset_version = EXTENDED_DATASET_VERSION
+    elif "air_pollution_final" in str(dataset_path):
+        dataset_version = BASELINE_DATASET_VERSION
+    else:
+        dataset_version = "custom-parquet"
+
+    feature_avail = (
+        "5 biến khí tượng Open-Meteo ECMWF ERA5 tại t (tái phân tích hồi cứu ~5 ngày độ trễ; "
+        "hợp lệ cho mô hình liên hệ quan sát, không mặc nhiên là dự báo thời gian thực nếu thiếu NWP forecast) + "
+        "4 đặc trưng chu kỳ tất định tại t (`hour_sin/cos`, `month_sin/cos`); "
+        "ablation AR bổ sung `pm25_lag24` quan trắc nội trạm tại t-24h."
+    )
     return {
         "dataset_path": str(dataset_path),
+        "dataset_version": dataset_version,
         "dataset_sha256": _sha256_file(dataset_path) if dataset_path.exists() else "N/A",
         "station_id": str(df_station["station_id"].iloc[0]) if "station_id" in df_station.columns else "N/A",
         "date_min": str(df_station["timestamp"].min())[:19],
@@ -1582,6 +1733,7 @@ def _build_metadata_summary(df: pd.DataFrame, df_station: pd.DataFrame, dataset_
         "valid_pm25_rows": n_valid,
         "pm25_missing_pct": miss_pct,
         "total_dataset_rows": len(df),
+        "feature_availability": feature_avail,
     }
 
 
@@ -1710,7 +1862,21 @@ def run_regression_pipeline(
     )
     meta_summary = _build_metadata_summary(df, df_station, dataset_path)
 
+    pred_dummy_test = DummyRegressor(strategy="mean").fit(X_tr_clean, y_train).predict(X_te_clean)
     pred_ols_test = ols_sk.predict(X_te_clean)
+    X_te_scaled = prep_pipe.transform(X_test)
+    pred_ridge_test = ridge_m.predict(X_te_scaled)
+    pred_lasso_test = lasso_m.predict(X_te_scaled)
+    test_preds_df = pd.DataFrame(
+        {
+            "timestamp": ts_test.reset_index(drop=True),
+            "y_true": y_test.to_numpy(dtype=float),
+            "pred_dummy": pred_dummy_test,
+            "pred_ols": pred_ols_test,
+            "pred_ridge": pred_ridge_test,
+            "pred_lasso": pred_lasso_test,
+        }
+    )
     target_stats = {
         "train_mean": float(y_train.mean()),
         "test_mean": float(y_test.mean()),
@@ -1759,6 +1925,7 @@ def run_regression_pipeline(
         derived_sensitivity=der_sens,
         metadata_summary=meta_summary,
         test_target_stats=target_stats,
+        test_predictions=test_preds_df,
         n_train_imputed_features=n_tr_imp,
         n_test_imputed_features=n_te_imp,
     )

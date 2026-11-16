@@ -10,11 +10,13 @@
 
 Nhằm kiểm chứng tính ổn định theo mùa và theo trạm quan trắc đồng thời chặn gộp đa trạm bất hợp lệ (Protocol B — `VN003` 2022–2025 và `VN001` 2025–2026 lệch pha thời gian), quy trình hồi quy `src/regression.py` khóa chặt thực nghiệm đơn trạm theo **Protocol A**:
 
-| Phạm vi thực nghiệm | Trạm (`station_id`) | Khoảng thời gian | Số giờ `pm25` hợp lệ / Tổng lưới (Tỷ lệ thiếu) | Mốc chia Train / Test | Kích thước Train / Test | Dataset SHA-256 (prefix) |
-| --- | --- | --- | --- | --- | --- | --- |
-| **`VN001_baseline_2026_01_15`** | `VN001_HANOI_556_NGUYEN_VAN_CU` | `2025-07-03 22:00` → `2026-07-15 17:00` | `7,495 / 9,044` (17.1%) | `< 2026-01-15 00:00+07:00` | `4,279 / 3,216` | `866f39de1720` |
-| **`VN001_extended_80_20`** | `VN001_HANOI_556_NGUYEN_VAN_CU` | `2025-07-03 22:00` → `2026-07-15 17:00` | `7,495 / 9,044` (17.1%) | Cột `split` 80/20 (cut `> 2026-05-01 08:00`) | `6,749 / 746` | `6930557fbfc8` |
-| **`VN003_extended_2022_2025`** | `VN003_HANOI_OPENAQ_7441` | `2022-01-01 01:00` → `2025-04-09 22:00` | `18,208 / 28,678` (36.5%) | Cột `split` 80/20 (cut `> 2024-08-13 22:00`) | `13,835 / 4,373` | `6930557fbfc8` |
+| Phạm vi thực nghiệm | Dataset Version | Trạm (`station_id`) | Khoảng thời gian | Số giờ `pm25` hợp lệ / Tổng lưới (Tỷ lệ thiếu) | Mốc chia Train / Test | Kích thước Train / Test | Dataset SHA-256 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| **`VN001_baseline_2026_01_15`** | `1.0.0-m2-baseline` | `VN001_HANOI_556_NGUYEN_VAN_CU` | `2025-07-03 22:00` → `2026-07-15 17:00` | `7,495 / 9,044` (17.1%) | `< 2026-01-15 00:00+07:00` | `4,279 / 3,216` | `866f39de1720c7273dc1f09c4932e508835589383820ad425c19521592586efd` |
+| **`VN001_extended_80_20`** | `2.0.0-issue44-extended` | `VN001_HANOI_556_NGUYEN_VAN_CU` | `2025-07-03 22:00` → `2026-07-15 17:00` | `7,495 / 9,044` (17.1%) | Cột `split` 80/20 (cut `> 2026-05-01 08:00`) | `6,749 / 746` | `6930557fbfc8e31dbcb062065b1903ccf27c433e9c0f062bd0dc382a9a1f9b02` |
+| **`VN003_extended_2022_2025`** | `2.0.0-issue44-extended` | `VN003_HANOI_OPENAQ_7441` | `2022-01-01 01:00` → `2025-04-09 22:00` | `18,208 / 28,678` (36.5%) | Cột `split` 80/20 (cut `> 2024-08-13 22:00`) | `13,835 / 4,373` | `6930557fbfc8e31dbcb062065b1903ccf27c433e9c0f062bd0dc382a9a1f9b02` |
+
+- **Tính khả dụng đặc trưng (Feature Availability):** 5 biến khí tượng bề mặt (`temperature`, `relative_humidity`, `wind_speed`, `precipitation`, `surface_pressure`) lấy từ Open-Meteo ECMWF ERA5 hourly reanalysis tại `t` (độ trễ đồng hóa ~5 ngày; hợp lệ cho phân tích liên hệ quan sát hồi cứu, **không** mặc nhiên khả dụng ở thời điểm phát cảnh báo thời gian thực nếu thiếu NWP forecast với issue time hợp lệ); 4 biến chu kỳ (`hour_sin/cos`, `month_sin/cos`) tất định theo lịch; biến tự hồi quy `pm25_lag24` (trong nhánh ablation) chỉ sử dụng `pm25` quan trắc nội trạm tại `t - 24h`.
 
 **Kiểm soát rò rỉ biến giải thích:** Tập 9 biến giải thích mặc định gồm 5 biến khí tượng (`temperature`, `relative_humidity`, `wind_speed`, `precipitation`, `surface_pressure`) và 4 biến điều hòa chu kỳ (`hour_sin`, `hour_cos`, `month_sin`, `month_cos`). Các cột `pm10` (đa cộng tuyến nguồn đồng phát thải), `pm25_was_missing` (rò rỉ cấu trúc mục tiêu) và `is_high_humidity_fog` (không có giá trị dự báo biên độc lập theo `src/flag_evidence.py`) bị loại khỏi ma trận đặc trưng trước khi huấn luyện. Mọi phép `SimpleImputer(strategy="median")` và `RobustScaler()` cho Ridge/Lasso được cô lập hoàn toàn trong từng fold của `TimeSeriesSplit(n_splits=5)` và được kiểm chứng bằng `validate_no_leakage()`.
 

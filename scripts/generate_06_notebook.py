@@ -181,15 +181,19 @@ print(f"Jarque-Bera = {d.jarque_bera_stat:.1f} (p = {d.jarque_bera_pvalue:.2e}),
 print(f"Breusch-Pagan LM = {d.breusch_pagan_stat:.2f} (p = {d.breusch_pagan_pvalue:.2e})")
 print(f"Log1p Skew Comparison: original={res_b.log1p_metrics['original_resid_skew']:.3f} vs log1p={res_b.log1p_metrics['log1p_resid_skew']:.3f}")
 
+print("\nTrung bình phần dư theo 10 phân vị Fitted (kiểm chứng phi tuyến L):")
+display(d.binned_residual_means)
+
 inf = res_b.influence_summary
 print("\nPhân loại Outliers / High Leverage / Influential Points:")
 print({k: v for k, v in inf.items() if k != "top_influential"})
 display(inf["top_influential"])
 
-print("\nThử nghiệm Ablation giải phẫu R² âm & Rolling-Origin CV:")
+print("\nThử nghiệm Ablation giải phẫu R² âm, Rolling-Origin CV & Độ ổn định phân tầng:")
 display(res_b.ablation_table)
 print("Chẩn đoán dịch chuyển phân phối:", res_b.ablation_diagnostics)
 display(res_b.rolling_origin_cv)
+display(res_b.stratified_stability)
 """)
 
 # ---------------------------------------------------------------------------
@@ -212,6 +216,7 @@ add_code(r"""for key in ["VN001_extended", "VN003_extended"]:
             print(
                 f"Độ nhạy pm25_derived_interpolated (Train-only): +{ds['n_derived_hours_added_in_train']}h, "
                 f"max|ΔBeta|={ds['max_abs_beta_diff']:.4f}, "
+                f"Test MAE obs={ds['test_mae_observed_model']:.2f} vs der_train={ds['test_mae_derived_train_model']:.2f}, "
                 f"Test RMSE obs={ds['test_rmse_observed_model']:.2f} vs der_train={ds['test_rmse_derived_train_model']:.2f}"
             )
 """)
@@ -233,6 +238,40 @@ if fig_vn003.exists():
     display(Image(filename=str(fig_vn003)))
 
 print(f"Đã xuất báo cáo động: {REPORT_PATH.resolve()} ({REPORT_PATH.stat().st_size:,} bytes)")
+
+# Kiểm chứng độc lập Issue #12: thứ tự thời gian theo trạm, tái tính metrics từ dự đoán và đối chiếu SHA-256
+import hashlib
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
+report_text = REPORT_PATH.read_text(encoding="utf-8")
+for scope_key, res in suite.items():
+    p_path = BASELINE_PATH if scope_key == "VN001_baseline" else EXTENDED_PATH
+    df_src = pd.read_parquet(p_path)
+    _, _, _, _, ts_tr_chk, ts_te_chk = prepare_regression_data(
+        df_src,
+        split_timestamp=DEFAULT_SPLIT_TIMESTAMP if scope_key == "VN001_baseline" else None,
+        station_id=res.station_id,
+        use_split_column=(scope_key != "VN001_baseline"),
+        return_timestamps=True,
+    )
+    assert ts_tr_chk.max() < ts_te_chk.min(), f"{scope_key}: vi phạm max(train) < min(test)"
+    assert hashlib.sha256(p_path.read_bytes()).hexdigest() in report_text, f"{scope_key}: thiếu full SHA-256 trong report"
+
+    preds_df = res.test_predictions
+    y_t = preds_df["y_true"].to_numpy()
+    mt = res.metrics_table.set_index("Model")
+    col_map = [
+        ("Baseline (Dummy Mean)", "pred_dummy"),
+        ("OLS Linear Regression", "pred_ols"),
+        (f"Ridge (alpha={res.ridge_best_alpha:.3f})", "pred_ridge"),
+        (f"Lasso (alpha={res.lasso_best_alpha:.3f})", "pred_lasso"),
+    ]
+    for m_name, p_col in col_map:
+        p_arr = preds_df[p_col].to_numpy()
+        assert round(float(mean_absolute_error(y_t, p_arr)), 2) == mt.loc[m_name, "MAE (µg/m³)"]
+        assert round(float(np.sqrt(mean_squared_error(y_t, p_arr))), 2) == mt.loc[m_name, "RMSE (µg/m³)"]
+        assert round(float(r2_score(y_t, p_arr)), 4) == mt.loc[m_name, "R²"]
+    print(f"✓ Verified {scope_key}: max(train) < min(test), full SHA-256 & recomputed Test metrics khớp 100%.")
 """)
 
 
