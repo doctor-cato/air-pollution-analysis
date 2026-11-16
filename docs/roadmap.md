@@ -5,7 +5,7 @@
 > **Đề tài:** Phân tích mức độ ô nhiễm không khí theo thời gian (*Time-Series Air Pollution Analysis*)  
 > **Căn cứ tài liệu:** Đề cương môn học INFO3020, Bài giảng ThS. Phạm Ngọc Đông – Khoa CNTT & Truyền thông, Trường Đại học CMC, và hệ thống 17 GitHub Issues (#1–#17, #19) làm đặc tả kỹ thuật có thẩm quyền.  
 > **Nơi lưu trữ:** `docs/roadmap.md`
-> **Kiểm thử hiện tại (Issue #50 + #12 + #13):** suite định nghĩa **811** test methods;
+> **Kiểm thử hiện tại (Issue #50 + #12 + #13):** suite định nghĩa **816** test methods;
 > [`docs/TEST_SUITE.md`](TEST_SUITE.md) là nguồn chuẩn cho breakdown và kết quả theo môi trường.
 
 ---
@@ -799,17 +799,17 @@ W01–W15.
 >   `#12`, `#13`) **đã được mở lại** và không còn bị chặn.
 > - Các số liệu thực nghiệm nêu trong các báo cáo (#4, #5) là **kết quả của một lần thực thi cụ thể**
 >   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
-> - Bộ kiểm thử hiện gồm **811 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
+> - Bộ kiểm thử hiện gồm **816 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
 >   [`docs/TEST_SUITE.md`](TEST_SUITE.md) — nguồn chuẩn duy nhất cho số liệu kiểm thử).
 >   Số mà unittest **thực sự chạy và báo cáo** phụ thuộc cả nền tảng lẫn việc có
->   `data/` hay không — **không phải con số 811 trên mọi nền tảng**:
+>   `data/` hay không — **không phải con số 816 trên mọi nền tảng**:
 >   - Trước khi gộp Issue #12 và #13, baseline Issue #50 trên **Windows local (có `data/`, 2026-11-11)**: `Ran 764 tests in 194.248s` + `OK` → **764 pass, 0 skip**.
->   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`, run 43051282775)**: `Ran 740 tests in 152.400s` + `OK (skipped=7)` → **736 pass, 7 skip** (trên baseline 764; thêm #12 và #13 là 811 defined / 26 không vào `Ran`).
+>   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`, run 43051282775)**: `Ran 740 tests in 152.400s` + `OK (skipped=7)` → **736 pass, 7 skip** (trên baseline 764; thêm #12 và #13 là 816 defined / 27 không vào `Ran`).
 >
->   Trên `811` method định nghĩa, **26** phương thức nằm trong **5** lớp mà
+>   Trên `816` method định nghĩa, **27** phương thức nằm trong **5** lớp mà
 >   `setUpClass` ném `unittest.SkipTest` khi thiếu `data/` — `TestDocumentedReproduction`
 >   (4), `TestRealDataset` của `tests/test_inference.py` (12), `TestSemanticMutations` (8),
->   `TestRegressionRealDataset` của `tests/test_regression.py` (1), và
+>   `TestRegressionRealDataset` của `tests/test_regression.py` (2), và
 >   `TestClassificationRealDataset` của `tests/test_classification.py` (1); cả 5 lớp bị bỏ qua nên
 >   các phương thức **không chạy, không được tính vào "Ran"**, nhưng mỗi lớp vẫn đóng góp
 >   **1 dòng** vào `skipped=`. Vì vậy `pass = Ran − (skipped − holders)`.

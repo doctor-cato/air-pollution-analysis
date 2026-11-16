@@ -43,11 +43,11 @@ Không test nào gọi mạng. Không test nào phụ thuộc thứ tự chạy.
 | `tests/test_issue44_preparation.py` | 17 | CP2/CP3 derived interpolation, masking metrics, winter/station boundaries, comparison report verification & mutation tests |
 | `tests/test_pipeline_runtime_log.py` | 40 | Nhật ký thực thi pipeline, dấu phân cách Windows |
 | `tests/test_profile_airnow_mirror.py` | 8 | CP0 pinned blobs, path preservation, period-aware duplicates/conflicts, QC and source-window gaps (synthetic) |
-| `tests/test_regression.py` | 23 | Hồi quy OLS & LINE (Issue #12): split tuần tự tách trạm Protocol A, từ chối Protocol B, VIF, Ramsey RESET + 4 giả định LINE, Outliers/Leverage/Cook's D, Ridge/Lasso TimeSeriesSplit fold-level không rò rỉ, HAC lag sensitivity, ablation, derived interpolation sensitivity |
+| `tests/test_regression.py` | 28 | Hồi quy OLS & LINE (Issue #12): split tuần tự tách trạm Protocol A, từ chối Protocol B, VIF, Ramsey RESET + 4 giả định LINE, Outliers/Leverage/Cook's D, Ridge/Lasso TimeSeriesSplit fold-level không rò rỉ, HAC lag sensitivity, ablation, derived interpolation sensitivity, provenance & guards |
 | `tests/test_validate_issue8.py` | 29 | Checksum, đồng bộ generator, circular stats, smoke fixture, canh số liệu tài liệu |
 | `tests/test_verify_claims_rolling.py` | 9 | Biên rolling 24h — dữ liệu đồng nhất che lỗi |
 | `tests/test_visualizer.py` | 35 | Bộ 7 biểu đồ ấn phẩm FIG-01..FIG-07 (300 DPI, Tufte, zero-baseline, chuỳ 24h, font tiếng Việt) |
-| **Tổng** | **811** | |
+| **Tổng** | **816** | |
 
 Đếm lại sau mỗi thay đổi:
 
@@ -63,9 +63,9 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 | Con số | Ý nghĩa |
 |---|---|
-| **811** | Số **test method được định nghĩa** trong mã nguồn |
-| **785** | Số unittest **dự kiến chạy và báo cáo** trên CI (thiếu `data/`; 811 − 26 trong 5 lớp skip) |
-| **781** | Số test **dự kiến chạy và pass** trên CI (785 − 4 skip nằm trong `Ran`) |
+| **816** | Số **test method được định nghĩa** trong mã nguồn |
+| **789** | Số unittest **dự kiến chạy và báo cáo** trên CI (thiếu `data/`; 816 − 27 trong 5 lớp skip) |
+| **785** | Số test **dự kiến chạy và pass** trên CI (789 − 4 skip nằm trong `Ran`) |
 
 > ⚠ **`skipped=9` không trừ thẳng vào `Ran`.** Năm trong chín dòng skip là *class holder*
 > (`setUpClass` raise `SkipTest`): unittest bỏ qua cả class nên các method của nó **không
@@ -85,7 +85,7 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 > `data/` bị `.gitignore` loại khỏi repository, nên **CI không bao giờ có dataset**.
 
-### Vì sao 811 − 785 = 26
+### Vì sao 816 − 789 = 27
 
 Năm lớp có `setUpClass` raise `unittest.SkipTest` khi thiếu dữ liệu, và unittest bỏ qua
 **cả class** — mọi method của chúng không bao giờ được tính vào bộ đếm `Ran`:
@@ -95,9 +95,9 @@ Năm lớp có `setUpClass` raise `unittest.SkipTest` khi thiếu dữ liệu, v
 | `TestDocumentedReproduction` | `tests/test_flag_evidence.py` | 4 | thiếu `data/interim/*.parquet` |
 | `TestRealDataset` | `tests/test_inference.py` | 12 | thiếu `data/processed/air_pollution_final.parquet` |
 | `TestSemanticMutations` | `tests/test_extended_validation_mutations.py` | 8 | thiếu `data/processed/air_pollution_extended_2022_2026.parquet` |
-| `TestRegressionRealDataset` | `tests/test_regression.py` | 1 | thiếu `data/processed/air_pollution_final.parquet` |
+| `TestRegressionRealDataset` | `tests/test_regression.py` | 2 | thiếu `data/processed/air_pollution_final.parquet` |
 | `TestClassificationRealDataset` | `tests/test_classification.py` | 1 | thiếu `data/processed/air_pollution_final.parquet` |
-| | | **26** | |
+| | | **27** | |
 
 Phân biệt rõ: chúng **không chạy** (không tính vào `Ran`) chứ không phải **chạy rồi bị skip**.
 

@@ -11,11 +11,11 @@
 
 ### Metadata Các Lượt Chạy Thực Nghiệm
 
-| Run | Station | Date Window | Obs Hours | Grid Hours | Missing PM2.5 | Split Cut | Train / Test | Dataset SHA-256 (prefix) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| VN001_baseline_2026_01_15 | VN001_HANOI_556_NGUYEN_VAN_CU | 2025-07-03 22:00:00 .. 2026-07-15 17:00:00 | 7,495 | 9044 | 17.1% | 2026-01-15 00:00:00+07:00 | 4,279 / 3,216 | 866f39de1720 |
-| VN001_extended_80_20 | VN001_HANOI_556_NGUYEN_VAN_CU | 2025-07-03 22:00:00 .. 2026-07-15 17:00:00 | 7,495 | 9044 | 17.1% | split=='train'/'test' (grid cut > 2026-05-01 08:00:00, last obs: 2026-05-01 08:00:00) | 6,749 / 746 | 6930557fbfc8 |
-| VN003_extended_2022_2025 | VN003_HANOI_OPENAQ_7441 | 2022-01-01 01:00:00 .. 2025-04-09 22:00:00 | 18,208 | 28678 | 36.5% | split=='train'/'test' (grid cut > 2024-08-13 22:00:00, last obs: 2024-08-07 10:00:00) | 13,835 / 4,373 | 6930557fbfc8 |
+| Run | Dataset Version | Station | Date Window | Obs Hours | Grid Hours | Missing PM2.5 | Split Mode & Cut | Train / Test | Dataset SHA-256 | Feature Availability |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| VN001_baseline_2026_01_15 | 1.0.0-m2-baseline | VN001_HANOI_556_NGUYEN_VAN_CU | 2025-07-03 22:00:00 .. 2026-07-15 17:00:00 | 7,495 | 9,044 | 17.1% | timestamp (`2026-01-15 00:00:00+07:00`) | 4,279 / 3,216 | 866f39de1720c7273dc1f09c4932e508835589383820ad425c19521592586efd | 5 biến khí tượng Open-Meteo ECMWF ERA5 tại t (tái phân tích hồi cứu ~5 ngày độ trễ; hợp lệ cho mô hình liên hệ quan sát, không mặc nhiên là dự báo thời gian thực nếu thiếu NWP forecast) + 4 đặc trưng chu kỳ tất định tại t (`hour_sin/cos`, `month_sin/cos`); ablation AR bổ sung `pm25_lag24` quan trắc nội trạm tại t-24h. |
+| VN001_extended_80_20 | 2.0.0-issue44-extended | VN001_HANOI_556_NGUYEN_VAN_CU | 2025-07-03 22:00:00 .. 2026-07-15 17:00:00 | 7,495 | 9,044 | 17.1% | split_column_80_20 (`split=='train'/'test' (grid cut > 2026-05-01 08:00:00, last obs: 2026-05-01 08:00:00)`) | 6,749 / 746 | 6930557fbfc8e31dbcb062065b1903ccf27c433e9c0f062bd0dc382a9a1f9b02 | 5 biến khí tượng Open-Meteo ECMWF ERA5 tại t (tái phân tích hồi cứu ~5 ngày độ trễ; hợp lệ cho mô hình liên hệ quan sát, không mặc nhiên là dự báo thời gian thực nếu thiếu NWP forecast) + 4 đặc trưng chu kỳ tất định tại t (`hour_sin/cos`, `month_sin/cos`); ablation AR bổ sung `pm25_lag24` quan trắc nội trạm tại t-24h. |
+| VN003_extended_2022_2025 | 2.0.0-issue44-extended | VN003_HANOI_OPENAQ_7441 | 2022-01-01 01:00:00 .. 2025-04-09 22:00:00 | 18,208 | 28,678 | 36.5% | split_column_80_20 (`split=='train'/'test' (grid cut > 2024-08-13 22:00:00, last obs: 2024-08-07 10:00:00)`) | 13,835 / 4,373 | 6930557fbfc8e31dbcb062065b1903ccf27c433e9c0f062bd0dc382a9a1f9b02 | 5 biến khí tượng Open-Meteo ECMWF ERA5 tại t (tái phân tích hồi cứu ~5 ngày độ trễ; hợp lệ cho mô hình liên hệ quan sát, không mặc nhiên là dự báo thời gian thực nếu thiếu NWP forecast) + 4 đặc trưng chu kỳ tất định tại t (`hour_sin/cos`, `month_sin/cos`); ablation AR bổ sung `pm25_lag24` quan trắc nội trạm tại t-24h. |
 
 ### Bảng Đối Chiếu Hiệu Năng Tổng Hợp Trên Tập Test Độc Lập
 
@@ -30,6 +30,8 @@
 ## 1. Kết Quả Chi Tiết — `VN001_baseline_2026_01_15`
 
 - **Trạm & Phạm vi:** `VN001_HANOI_556_NGUYEN_VAN_CU` | Nhãn chạy: `VN001_baseline_2026_01_15` | Chế độ split: `timestamp` (`2026-01-15 00:00:00+07:00`)
+- **Nguồn dữ liệu & SHA-256:** Version `1.0.0-m2-baseline` | SHA-256 `866f39de1720c7273dc1f09c4932e508835589383820ad425c19521592586efd`
+- **Tính khả dụng đặc trưng (Feature Availability):** 5 biến khí tượng Open-Meteo ECMWF ERA5 tại t (tái phân tích hồi cứu ~5 ngày độ trễ; hợp lệ cho mô hình liên hệ quan sát, không mặc nhiên là dự báo thời gian thực nếu thiếu NWP forecast) + 4 đặc trưng chu kỳ tất định tại t (`hour_sin/cos`, `month_sin/cos`); ablation AR bổ sung `pm25_lag24` quan trắc nội trạm tại t-24h.
 - **Kích thước mẫu:** Train = 4,279 giờ | Test = 3,216 giờ | Imputed feature cells = 0 (Train), 0 (Test)
 
 ### Kiểm Toán Đa Cộng Tuyến VIF
@@ -116,6 +118,21 @@
 - **Điểm đòn bẩy & Cook's Distance:** Regression Outliers ($|\text{stud\_resid}| > 3$) = 42; High Leverage ($h_{ii} > 0.00467$) = 137; Cook's $D > 4/n$ (0.000935) = 267 điểm (6.24%), $D > 0,5$ = 0, $D > 1,0$ = 0, $D_{\max} = 0.0174$. Giữ nguyên các điểm cực trị vì phản ánh các đợt nghịch nhiệt thực tế.
 - **Khảo sát `log(1 + PM2.5)` trên Train:** Độ lệch phần dư chuyển từ `+0.554` ($|\text{skew}| = 0.554$) sang `-0.958` ($|\text{skew}| = 0.958$). Độ lệch tuyệt đối tăng lên nên giữ nguyên đơn vị gốc µg/m³.
 
+### Trung Bình Phần Dư Theo Phân Vị Giá Trị Dự Báo (Kiểm Chứng Tuyến Tính L)
+
+| bin | n | mean_fitted | mean_residual | std_residual |
+| --- | --- | --- | --- | --- |
+| (46.437, 51.941] | 428 | 49.19 | -7.12 | 23.11 |
+| (41.939, 46.437] | 427 | 44.1 | -5.33 | 19.36 |
+| (38.386, 41.939] | 428 | 40.16 | -2.87 | 19.38 |
+| (30.767, 35.04] | 428 | 32.96 | -0.47 | 14.59 |
+| (24.963, 30.767] | 428 | 28.14 | 1.48 | 16.25 |
+| (35.04, 38.386] | 428 | 36.71 | -1.79 | 17.92 |
+| (-17.445, 24.963] | 428 | 17.16 | 8.0 | 17.61 |
+| (51.941, 61.988] | 428 | 56.69 | 2.08 | 33.1 |
+| (61.988, 74.214] | 428 | 68.49 | -1.51 | 32.73 |
+| (74.214, 97.195] | 428 | 81.38 | 7.52 | 31.21 |
+
 ### Top 10 Quan Sát Có Cook's Distance Cao Nhất Trên Train
 
 | timestamp | pm25_obs | fitted | residual | stud_resid | leverage | cooks_d |
@@ -133,12 +150,12 @@
 
 ### Hiệu Năng Tập Test Độc Lập (MAE vs RMSE)
 
-| Model | MAE (µg/m³) | RMSE (µg/m³) | R² | Adjusted R² |
-| --- | --- | --- | --- | --- |
-| Baseline (Dummy Mean) | 18.91 | 24.46 | -0.028 | -0.028 |
-| OLS Linear Regression | 37.32 | 41.46 | -1.954 | -1.9623 |
-| Ridge (alpha=754.312) | 35.89 | 39.97 | -1.7457 | -1.7534 |
-| Lasso (alpha=1.526) | 38.02 | 41.91 | -2.0182 | -2.0267 |
+| Model | Predictors (active/total) | MAE (µg/m³) | RMSE (µg/m³) | R² | Adjusted R² |
+| --- | --- | --- | --- | --- | --- |
+| Baseline (Dummy Mean) | 0/0 | 18.91 | 24.46 | -0.028 | -0.028 |
+| OLS Linear Regression | 9/9 | 37.32 | 41.46 | -1.954 | -1.9623 |
+| Ridge (alpha=754.312) | 9/9 | 35.89 | 39.97 | -1.7457 | -1.7534 |
+| Lasso (alpha=1.526) | 5/9 | 38.02 | 41.91 | -2.0182 | -2.0267 |
 
 - **Lý do dùng cả MAE và RMSE:** MAE đo sai số tuyệt đối điển hình ít nhạy với điểm cực trị đơn lẻ, trong khi RMSE phạt bình phương các sai số lớn ở đỉnh ô nhiễm (đặc trưng của phân phối lệch phải).
 
@@ -166,16 +183,21 @@
 
 ### Độ Ổn Định Hệ Số Phân Tầng Theo Năm & Mùa (kèm n_eff)
 
-| Stratum | n_obs | rho1_resid | n_eff | Train R² | wind_speed Beta | wind_speed p(HAC) | precip Beta | precip p(HAC) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Year 2025 | 3966 | 0.899 | 212 | 0.2364 | -6.18 | 4.72e-08 | -1.919 | 5.30e-06 |
-| Year 2026 | 313 | 0.751 | 45 | 0.3795 | -19.916 | 3.70e-12 | 1.815 | 0.9119 |
+| Stratum | n_obs | rho1_resid | n_eff | Train R² | wind_speed Beta | wind_speed p(HAC) | precip Beta | precip p(HAC) | Coverage Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Year 2025 | 3966 | 0.899 | 212 | 0.2364 | -6.18 | 4.72e-08 | -1.919 | 5.30e-06 | DU COVERAGE |
+| Year 2026 | 313 | 0.751 | 45 | 0.3795 | -19.916 | 3.70e-12 | 1.815 | 0.9119 | DU COVERAGE |
+| Season Winter (Dec-Feb) | 936 | 0.849 | 77 | 0.2955 | -13.383 | 3.84e-12 | 11.885 | 0.3042 | DU COVERAGE |
+| Season Summer (Jun-Aug) | 1326 | 0.855 | 104 | 0.1385 | -0.036 | 0.9728 | -1.026 | 0.0523 | DU COVERAGE |
+| Season Autumn (Sep-Nov) | 2017 | 0.861 | 150 | 0.2105 | -7.863 | 1.83e-10 | -1.467 | 0.0023 | DU COVERAGE |
 
 ---
 
 ## 2. Kết Quả Chi Tiết — `VN001_extended_80_20`
 
 - **Trạm & Phạm vi:** `VN001_HANOI_556_NGUYEN_VAN_CU` | Nhãn chạy: `VN001_extended_80_20` | Chế độ split: `split_column_80_20` (`split=='train'/'test' (grid cut > 2026-05-01 08:00:00, last obs: 2026-05-01 08:00:00)`)
+- **Nguồn dữ liệu & SHA-256:** Version `2.0.0-issue44-extended` | SHA-256 `6930557fbfc8e31dbcb062065b1903ccf27c433e9c0f062bd0dc382a9a1f9b02`
+- **Tính khả dụng đặc trưng (Feature Availability):** 5 biến khí tượng Open-Meteo ECMWF ERA5 tại t (tái phân tích hồi cứu ~5 ngày độ trễ; hợp lệ cho mô hình liên hệ quan sát, không mặc nhiên là dự báo thời gian thực nếu thiếu NWP forecast) + 4 đặc trưng chu kỳ tất định tại t (`hour_sin/cos`, `month_sin/cos`); ablation AR bổ sung `pm25_lag24` quan trắc nội trạm tại t-24h.
 - **Kích thước mẫu:** Train = 6,749 giờ | Test = 746 giờ | Imputed feature cells = 0 (Train), 0 (Test)
 
 ### Kiểm Toán Đa Cộng Tuyến VIF
@@ -262,6 +284,21 @@
 - **Điểm đòn bẩy & Cook's Distance:** Regression Outliers ($|\text{stud\_resid}| > 3$) = 84; High Leverage ($h_{ii} > 0.00296$) = 216; Cook's $D > 4/n$ (0.000593) = 353 điểm (5.23%), $D > 0,5$ = 0, $D > 1,0$ = 0, $D_{\max} = 0.0174$. Giữ nguyên các điểm cực trị vì phản ánh các đợt nghịch nhiệt thực tế.
 - **Khảo sát `log(1 + PM2.5)` trên Train:** Độ lệch phần dư chuyển từ `+0.932` ($|\text{skew}| = 0.932$) sang `-0.807` ($|\text{skew}| = 0.807$). Độ lệch tuyệt đối giảm nhẹ nhưng mô hình chính giữ đơn vị gốc µg/m³ để diễn giải trực tiếp với QCVN 05:2023.
 
+### Trung Bình Phần Dư Theo Phân Vị Giá Trị Dự Báo (Kiểm Chứng Tuyến Tính L)
+
+| bin | n | mean_fitted | mean_residual | std_residual |
+| --- | --- | --- | --- | --- |
+| (37.263, 41.122] | 675 | 39.25 | -5.08 | 17.05 |
+| (33.151, 37.263] | 675 | 35.3 | -1.57 | 16.98 |
+| (27.436, 33.151] | 675 | 30.5 | 4.09 | 16.9 |
+| (-18.677, 27.436] | 675 | 19.77 | 8.8 | 19.01 |
+| (41.122, 44.916] | 675 | 43.04 | -6.57 | 18.96 |
+| (44.916, 48.945] | 674 | 46.94 | -7.11 | 20.54 |
+| (48.945, 53.289] | 675 | 51.04 | -4.81 | 26.05 |
+| (53.289, 58.211] | 675 | 55.62 | -2.0 | 29.13 |
+| (58.211, 64.034] | 675 | 60.94 | 1.78 | 32.86 |
+| (64.034, 78.526] | 675 | 68.63 | 12.47 | 31.14 |
+
 ### Top 10 Quan Sát Có Cook's Distance Cao Nhất Trên Train
 
 | timestamp | pm25_obs | fitted | residual | stud_resid | leverage | cooks_d |
@@ -279,12 +316,12 @@
 
 ### Hiệu Năng Tập Test Độc Lập (MAE vs RMSE)
 
-| Model | MAE (µg/m³) | RMSE (µg/m³) | R² | Adjusted R² |
-| --- | --- | --- | --- | --- |
-| Baseline (Dummy Mean) | 20.4 | 24.15 | -0.4487 | -0.4487 |
-| OLS Linear Regression | 15.63 | 21.12 | -0.1073 | -0.1209 |
-| Ridge (alpha=1000.000) | 16.6 | 21.11 | -0.1069 | -0.1205 |
-| Lasso (alpha=1.151) | 15.87 | 20.61 | -0.0549 | -0.0678 |
+| Model | Predictors (active/total) | MAE (µg/m³) | RMSE (µg/m³) | R² | Adjusted R² |
+| --- | --- | --- | --- | --- | --- |
+| Baseline (Dummy Mean) | 0/0 | 20.4 | 24.15 | -0.4487 | -0.4487 |
+| OLS Linear Regression | 9/9 | 15.63 | 21.12 | -0.1073 | -0.1209 |
+| Ridge (alpha=1000.000) | 9/9 | 16.6 | 21.11 | -0.1069 | -0.1205 |
+| Lasso (alpha=1.151) | 5/9 | 15.87 | 20.61 | -0.0549 | -0.0678 |
 
 - **Lý do dùng cả MAE và RMSE:** MAE đo sai số tuyệt đối điển hình ít nhạy với điểm cực trị đơn lẻ, trong khi RMSE phạt bình phương các sai số lớn ở đỉnh ô nhiễm (đặc trưng của phân phối lệch phải).
 
@@ -312,19 +349,20 @@
 
 ### Độ Ổn Định Hệ Số Phân Tầng Theo Năm & Mùa (kèm n_eff)
 
-| Stratum | n_obs | rho1_resid | n_eff | Train R² | wind_speed Beta | wind_speed p(HAC) | precip Beta | precip p(HAC) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Year 2025 | 3966 | 0.899 | 212 | 0.2364 | -6.18 | 4.72e-08 | -1.919 | 5.30e-06 |
-| Year 2026 | 2783 | 0.904 | 141 | 0.1915 | -9.132 | 2.23e-17 | -0.938 | 0.1277 |
-| Season Summer (Jun-Aug) | 1326 | 0.855 | 104 | 0.1385 | -0.036 | 0.9728 | -1.026 | 0.0523 |
-| Season Autumn (Sep-Nov) | 2017 | 0.861 | 150 | 0.2105 | -7.863 | 1.83e-10 | -1.467 | 0.0023 |
-| Season Winter (Dec-Feb) | 1958 | 0.902 | 100 | 0.2571 | -12.464 | 1.07e-20 | -2.132 | 0.2167 |
-| Season Spring (Mar-May) | 1448 | 0.862 | 108 | 0.2633 | -5.409 | 4.59e-09 | -0.621 | 0.2598 |
+| Stratum | n_obs | rho1_resid | n_eff | Train R² | wind_speed Beta | wind_speed p(HAC) | precip Beta | precip p(HAC) | Coverage Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Year 2025 | 3966 | 0.899 | 212 | 0.2364 | -6.18 | 4.72e-08 | -1.919 | 5.30e-06 | DU COVERAGE |
+| Year 2026 | 2783 | 0.904 | 141 | 0.1915 | -9.132 | 2.23e-17 | -0.938 | 0.1277 | DU COVERAGE |
+| Season Winter (Dec-Feb) | 1958 | 0.902 | 100 | 0.2571 | -12.464 | 1.07e-20 | -2.132 | 0.2167 | DU COVERAGE |
+| Season Spring (Mar-May) | 1448 | 0.862 | 108 | 0.2633 | -5.409 | 4.59e-09 | -0.621 | 0.2598 | DU COVERAGE |
+| Season Summer (Jun-Aug) | 1326 | 0.855 | 104 | 0.1385 | -0.036 | 0.9728 | -1.026 | 0.0523 | DU COVERAGE |
+| Season Autumn (Sep-Nov) | 2017 | 0.861 | 150 | 0.2105 | -7.863 | 1.83e-10 | -1.467 | 0.0023 | DU COVERAGE |
 
 ### Độ Nhạy Nội Suy Phái Sinh `pm25_derived_interpolated` (Chỉ Trong Train)
 
 - Train quan trắc gốc: 6,749 giờ | Train + nội suy phái sinh ngắn: 6,866 giờ (+117 giờ); Test ground truth LUÔN giữ 100% quan trắc gốc (746 giờ).
-- Sai khác hệ số lớn nhất (`max |ΔBeta|`) = 17.7253; Test RMSE (Observed vs Derived Train) = 21.12 vs 21.14 µg/m³ (R² = -0.1073 vs -0.1095).
+- **Đối chuẩn masking-validation Issue #44 (`max_gap_hours=2`h):** MAE = 4.7400, RMSE = 6.5461, Bias = -0.5458 µg/m³.
+- Sai khác hệ số lớn nhất (`max |ΔBeta|`) = 17.7253; Test MAE (Observed vs Derived Train) = 15.63 vs 15.64 µg/m³; Test RMSE = 21.12 vs 21.14 µg/m³; Test Bias = -3.15 vs -3.22 µg/m³ (R² = -0.1073 vs -0.1095).
 
 | Feature | Beta (Observed Train) | Beta (Derived Train) | Abs Diff |
 | --- | --- | --- | --- |
@@ -344,6 +382,8 @@
 ## 3. Kết Quả Chi Tiết — `VN003_extended_2022_2025`
 
 - **Trạm & Phạm vi:** `VN003_HANOI_OPENAQ_7441` | Nhãn chạy: `VN003_extended_2022_2025` | Chế độ split: `split_column_80_20` (`split=='train'/'test' (grid cut > 2024-08-13 22:00:00, last obs: 2024-08-07 10:00:00)`)
+- **Nguồn dữ liệu & SHA-256:** Version `2.0.0-issue44-extended` | SHA-256 `6930557fbfc8e31dbcb062065b1903ccf27c433e9c0f062bd0dc382a9a1f9b02`
+- **Tính khả dụng đặc trưng (Feature Availability):** 5 biến khí tượng Open-Meteo ECMWF ERA5 tại t (tái phân tích hồi cứu ~5 ngày độ trễ; hợp lệ cho mô hình liên hệ quan sát, không mặc nhiên là dự báo thời gian thực nếu thiếu NWP forecast) + 4 đặc trưng chu kỳ tất định tại t (`hour_sin/cos`, `month_sin/cos`); ablation AR bổ sung `pm25_lag24` quan trắc nội trạm tại t-24h.
 - **Kích thước mẫu:** Train = 13,835 giờ | Test = 4,373 giờ | Imputed feature cells = 0 (Train), 0 (Test)
 
 ### Kiểm Toán Đa Cộng Tuyến VIF
@@ -430,6 +470,21 @@
 - **Điểm đòn bẩy & Cook's Distance:** Regression Outliers ($|\text{stud\_resid}| > 3$) = 246; High Leverage ($h_{ii} > 0.00145$) = 441; Cook's $D > 4/n$ (0.000289) = 591 điểm (4.27%), $D > 0,5$ = 0, $D > 1,0$ = 0, $D_{\max} = 0.0072$. Giữ nguyên các điểm cực trị vì phản ánh các đợt nghịch nhiệt thực tế.
 - **Khảo sát `log(1 + PM2.5)` trên Train:** Độ lệch phần dư chuyển từ `+2.060` ($|\text{skew}| = 2.060$) sang `-0.349` ($|\text{skew}| = 0.349$). Độ lệch tuyệt đối giảm nhẹ nhưng mô hình chính giữ đơn vị gốc µg/m³ để diễn giải trực tiếp với QCVN 05:2023.
 
+### Trung Bình Phần Dư Theo Phân Vị Giá Trị Dự Báo (Kiểm Chứng Tuyến Tính L)
+
+| bin | n | mean_fitted | mean_residual | std_residual |
+| --- | --- | --- | --- | --- |
+| (62.065, 86.05] | 1384 | 66.73 | 6.63 | 36.58 |
+| (55.906, 62.065] | 1383 | 58.9 | 3.11 | 37.44 |
+| (50.548, 55.906] | 1384 | 53.19 | -4.22 | 29.76 |
+| (45.964, 50.548] | 1383 | 48.26 | -4.33 | 22.76 |
+| (41.462, 45.964] | 1383 | 43.66 | -4.65 | 18.42 |
+| (37.673, 41.462] | 1384 | 39.54 | -2.94 | 18.43 |
+| (25.758, 30.575] | 1383 | 28.3 | 1.98 | 16.92 |
+| (30.575, 34.266] | 1384 | 32.48 | 1.41 | 19.02 |
+| (34.266, 37.673] | 1383 | 36.02 | -1.21 | 17.36 |
+| (-4.383, 25.758] | 1384 | 21.14 | 4.2 | 14.59 |
+
 ### Top 10 Quan Sát Có Cook's Distance Cao Nhất Trên Train
 
 | timestamp | pm25_obs | fitted | residual | stud_resid | leverage | cooks_d |
@@ -447,12 +502,12 @@
 
 ### Hiệu Năng Tập Test Độc Lập (MAE vs RMSE)
 
-| Model | MAE (µg/m³) | RMSE (µg/m³) | R² | Adjusted R² |
-| --- | --- | --- | --- | --- |
-| Baseline (Dummy Mean) | 26.42 | 37.73 | -0.1235 | -0.1235 |
-| OLS Linear Regression | 23.98 | 32.82 | 0.1498 | 0.1481 |
-| Ridge (alpha=59.636) | 24.0 | 32.91 | 0.1456 | 0.1438 |
-| Lasso (alpha=0.281) | 23.98 | 33.06 | 0.1377 | 0.1359 |
+| Model | Predictors (active/total) | MAE (µg/m³) | RMSE (µg/m³) | R² | Adjusted R² |
+| --- | --- | --- | --- | --- | --- |
+| Baseline (Dummy Mean) | 0/0 | 26.42 | 37.73 | -0.1235 | -0.1235 |
+| OLS Linear Regression | 9/9 | 23.98 | 32.82 | 0.1498 | 0.1481 |
+| Ridge (alpha=59.636) | 9/9 | 24.0 | 32.91 | 0.1456 | 0.1438 |
+| Lasso (alpha=0.281) | 6/9 | 23.98 | 33.06 | 0.1377 | 0.1359 |
 
 - **Lý do dùng cả MAE và RMSE:** MAE đo sai số tuyệt đối điển hình ít nhạy với điểm cực trị đơn lẻ, trong khi RMSE phạt bình phương các sai số lớn ở đỉnh ô nhiễm (đặc trưng của phân phối lệch phải).
 
@@ -480,20 +535,21 @@
 
 ### Độ Ổn Định Hệ Số Phân Tầng Theo Năm & Mùa (kèm n_eff)
 
-| Stratum | n_obs | rho1_resid | n_eff | Train R² | wind_speed Beta | wind_speed p(HAC) | precip Beta | precip p(HAC) |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Year 2022 | 3079 | 0.874 | 207 | 0.1718 | -9.507 | 1.05e-16 | -1.696 | 0.0075 |
-| Year 2023 | 5646 | 0.836 | 504 | 0.2685 | -5.447 | 1.49e-13 | -1.722 | 8.17e-05 |
-| Year 2024 | 5110 | 0.863 | 376 | 0.064 | -2.958 | 7.40e-06 | -1.753 | 6.53e-06 |
-| Season Winter (Dec-Feb) | 3979 | 0.878 | 259 | 0.1687 | -10.689 | 2.51e-25 | -12.092 | 0.0103 |
-| Season Spring (Mar-May) | 3462 | 0.855 | 270 | 0.0886 | -2.574 | 0.0002 | -1.351 | 0.0026 |
-| Season Summer (Jun-Aug) | 3799 | 0.779 | 472 | 0.0315 | -2.589 | 3.02e-06 | -0.543 | 0.0309 |
-| Season Autumn (Sep-Nov) | 2595 | 0.789 | 305 | 0.1798 | -8.601 | 2.02e-21 | -1.241 | 0.1365 |
+| Stratum | n_obs | rho1_resid | n_eff | Train R² | wind_speed Beta | wind_speed p(HAC) | precip Beta | precip p(HAC) | Coverage Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Year 2022 | 3079 | 0.874 | 207 | 0.1718 | -9.507 | 1.05e-16 | -1.696 | 0.0075 | DU COVERAGE |
+| Year 2023 | 5646 | 0.836 | 504 | 0.2685 | -5.447 | 1.49e-13 | -1.722 | 8.17e-05 | DU COVERAGE |
+| Year 2024 | 5110 | 0.863 | 376 | 0.064 | -2.958 | 7.40e-06 | -1.753 | 6.53e-06 | DU COVERAGE |
+| Season Winter (Dec-Feb) | 3979 | 0.878 | 259 | 0.1687 | -10.689 | 2.51e-25 | -12.092 | 0.0103 | DU COVERAGE |
+| Season Spring (Mar-May) | 3462 | 0.855 | 270 | 0.0886 | -2.574 | 0.0002 | -1.351 | 0.0026 | DU COVERAGE |
+| Season Summer (Jun-Aug) | 3799 | 0.779 | 472 | 0.0315 | -2.589 | 3.02e-06 | -0.543 | 0.0309 | DU COVERAGE |
+| Season Autumn (Sep-Nov) | 2595 | 0.789 | 305 | 0.1798 | -8.601 | 2.02e-21 | -1.241 | 0.1365 | DU COVERAGE |
 
 ### Độ Nhạy Nội Suy Phái Sinh `pm25_derived_interpolated` (Chỉ Trong Train)
 
 - Train quan trắc gốc: 13,835 giờ | Train + nội suy phái sinh ngắn: 13,985 giờ (+150 giờ); Test ground truth LUÔN giữ 100% quan trắc gốc (4,373 giờ).
-- Sai khác hệ số lớn nhất (`max |ΔBeta|`) = 2.6827; Test RMSE (Observed vs Derived Train) = 32.82 vs 32.83 µg/m³ (R² = 0.1498 vs 0.1496).
+- **Đối chuẩn masking-validation Issue #44 (`max_gap_hours=2`h):** MAE = 7.7033, RMSE = 10.9119, Bias = +0.3400 µg/m³.
+- Sai khác hệ số lớn nhất (`max |ΔBeta|`) = 2.6827; Test MAE (Observed vs Derived Train) = 23.98 vs 23.99 µg/m³; Test RMSE = 32.82 vs 32.83 µg/m³; Test Bias = -3.79 vs -3.76 µg/m³ (R² = 0.1498 vs 0.1496).
 
 | Feature | Beta (Observed Train) | Beta (Derived Train) | Abs Diff |
 | --- | --- | --- | --- |

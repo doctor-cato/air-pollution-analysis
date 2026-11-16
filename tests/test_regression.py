@@ -7,6 +7,7 @@ và có kiểm thử tích hợp trên dataset thật khi file parquet khả d�
 
 from __future__ import annotations
 
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,6 +15,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 from src.cleaning_pipeline import validate_no_leakage
 from src.regression import (
@@ -25,12 +27,14 @@ from src.regression import (
     compute_hac_lag_sensitivity,
     compute_influence_summary,
     compute_line_diagnostics,
+    compute_stratified_coefficient_stability,
     compute_vif,
     evaluate_derived_interpolation_sensitivity,
     evaluate_models,
     evaluate_seasonal_and_lag_ablation,
     prepare_regression_data,
     render_line_diagnostics_figure,
+    run_extended_regression_suite,
     run_regression_pipeline,
     tune_regularization,
     write_regression_report,
@@ -38,6 +42,7 @@ from src.regression import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REAL_DATA_PATH = REPO_ROOT / "data" / "processed" / "air_pollution_final.parquet"
+EXTENDED_DATA_PATH = REPO_ROOT / "data" / "processed" / "air_pollution_extended_2022_2026.parquet"
 
 
 def _synthetic_regression_fixture(n_rows: int = 120) -> pd.DataFrame:
@@ -274,6 +279,40 @@ class TestRegressionRealDataset(unittest.TestCase):
             self.assertGreater(out_rep.stat().st_size, 1000)
             # VIF của các biến khí tượng không chứa pm10
             self.assertNotIn("pm10", results.predictors)
+            # Kiểm chứng full SHA-256 & provenance trong report
+            expected_sha = hashlib.sha256(REAL_DATA_PATH.read_bytes()).hexdigest()
+            rep_txt = out_rep.read_text(encoding="utf-8")
+            self.assertIn(expected_sha, rep_txt)
+            self.assertIn("1.0.0-m2-baseline", rep_txt)
+            self.assertIn("ERA5", rep_txt)
+
+    def test_extended_suite_on_real_datasets_if_available(self):
+        if not EXTENDED_DATA_PATH.exists():
+            self.skipTest("Thiếu air_pollution_extended_2022_2026.parquet")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_p = Path(tmp_dir)
+            rep_path = tmp_p / "regression_results.md"
+            suite = run_extended_regression_suite(
+                REAL_DATA_PATH, EXTENDED_DATA_PATH, tmp_p, rep_path
+            )
+            self.assertEqual(set(suite.keys()), {"VN001_baseline", "VN001_extended", "VN003_extended"})
+            rep_txt = rep_path.read_text(encoding="utf-8")
+            self.assertIn(hashlib.sha256(REAL_DATA_PATH.read_bytes()).hexdigest(), rep_txt)
+            self.assertIn(hashlib.sha256(EXTENDED_DATA_PATH.read_bytes()).hexdigest(), rep_txt)
+            self.assertIn("2.0.0-issue44-extended", rep_txt)
+            for key, res in suite.items():
+                preds_df = res.test_predictions
+                self.assertIsNotNone(preds_df)
+                y_t = preds_df["y_true"].to_numpy()
+                mt = res.metrics_table.set_index("Model")
+                self.assertEqual(
+                    round(float(r2_score(y_t, preds_df["pred_ols"].to_numpy())), 4),
+                    mt.loc["OLS Linear Regression", "R²"],
+                )
+                self.assertEqual(
+                    round(float(mean_absolute_error(y_t, preds_df["pred_ols"].to_numpy())), 2),
+                    mt.loc["OLS Linear Regression", "MAE (µg/m³)"],
+                )
 
 
 class TestRegressionScopeAndReviewGuards(unittest.TestCase):
@@ -369,6 +408,8 @@ class TestRegressionScopeAndReviewGuards(unittest.TestCase):
             df_mut, split_timestamp="2026-01-04 00:00:00+07:00"
         )
         self.assertEqual(res1["n_derived_hours_added_in_train"], 1)
+        self.assertTrue(np.isfinite(res1["test_bias_observed_model"]))
+        self.assertTrue(np.isfinite(res1["test_bias_derived_train_model"]))
         self.assertAlmostEqual(res1["test_rmse_derived_train_model"], res2["test_rmse_derived_train_model"], places=8)
 
     def test_write_regression_report_renders_dynamic_values_without_hardcode(self):
@@ -381,10 +422,67 @@ class TestRegressionScopeAndReviewGuards(unittest.TestCase):
             res = run_regression_pipeline(
                 pq_path, fig_path, report_path=rep_path, split_timestamp="2026-01-04 00:00:00+07:00"
             )
+            expected_sha = hashlib.sha256(pq_path.read_bytes()).hexdigest()
             text = rep_path.read_text(encoding="utf-8")
             self.assertIn(f"DW = {res.line_diagnostics.durbin_watson:.4f}", text)
+            self.assertIn(expected_sha, text)
+            self.assertIn("Feature Availability", text)
+            self.assertIn("Trung Bình Phần Dư Theo Phân Vị", text)
             self.assertNotIn("ACF lag 1 = 0,764", text)
             self.assertNotIn("-1,9540", text)
+
+    def test_rejects_future_and_derived_predictors(self):
+        df = _synthetic_regression_fixture(80)
+        df["temperature_lead1"] = df["temperature"].shift(-1).bfill()
+        df["pm25_derived_interpolated"] = df["pm25"]
+        with self.assertRaises(ValueError):
+            prepare_regression_data(
+                df,
+                split_timestamp="2026-01-02 12:00:00+07:00",
+                predictor_cols=["temperature", "temperature_lead1"],
+            )
+        with self.assertRaises(ValueError):
+            prepare_regression_data(
+                df,
+                split_timestamp="2026-01-02 12:00:00+07:00",
+                predictor_cols=["temperature", "pm25_derived_interpolated"],
+            )
+        with self.assertRaises(ValueError):
+            build_regression_preprocessor(["temperature", "wind_future_2h"])
+
+    def test_ablation_rejects_multi_station_without_station_id(self):
+        df1 = _synthetic_regression_fixture(80)
+        df1["station_id"] = "ST_A"
+        df2 = _synthetic_regression_fixture(80)
+        df2["station_id"] = "ST_B"
+        multi = pd.concat([df1, df2], ignore_index=True)
+        with self.assertRaises(ValueError):
+            evaluate_seasonal_and_lag_ablation(multi, split_timestamp="2026-01-03 00:00:00+07:00")
+
+    def test_stratified_stability_derives_seasons_and_marks_insufficient_strata(self):
+        df = _synthetic_regression_fixture(120)
+        # Không có cột season; n_train=72 < min_obs_per_stratum=100 -> phải ghi rõ THIEU DU LIEU thay vì bỏ im lặng
+        strat = compute_stratified_coefficient_stability(
+            df,
+            split_timestamp="2026-01-04 00:00:00+07:00",
+            min_obs_per_stratum=100,
+        )
+        self.assertFalse(strat.empty)
+        self.assertIn("Season Winter (Dec-Feb)", set(strat["Stratum"]))
+        self.assertTrue(strat["Coverage Status"].str.contains("THIEU DU LIEU").all())
+
+    def test_adjusted_r2_returns_nan_when_test_too_small(self):
+        df = _synthetic_regression_fixture(60)
+        X_tr, y_tr, X_te, y_te = prepare_regression_data(
+            df, split_timestamp="2026-01-03 06:00:00+07:00"
+        )
+        # Chỉ giữ 5 dòng Test (< p=9 + 1) -> Adjusted R² phải là NaN chứ không chia cho 0/âm
+        X_te_small = X_te.iloc[:5]
+        y_te_small = y_te.iloc[:5]
+        _, _, r_mod, l_mod, scaler = tune_regularization(X_tr, y_tr, n_splits=2, alphas=np.array([0.1, 1.0]))
+        mt, _ = evaluate_models(X_tr, y_tr, X_te_small, y_te_small, r_mod, l_mod, scaler=scaler)
+        ols_row = mt[mt["Model"] == "OLS Linear Regression"].iloc[0]
+        self.assertTrue(pd.isna(ols_row["Adjusted R²"]))
 
 
 if __name__ == "__main__":
