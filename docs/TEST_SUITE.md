@@ -4,7 +4,7 @@
 > `AGENTS.md` chỉ trỏ tới đây; con số kiểm thử thay đổi theo từng Issue nên
 > không nhân bản vào file hướng dẫn agent.
 >
-> **Cập nhật lần cuối:** sau Issue #50, Issue #12 (W10 — hồi quy OLS) và Issue #13 (W11 — phân loại cảnh báo).
+> **Cập nhật lần cuối:** sau Issue #50, Issue #12 (W10 — hồi quy OLS), Issue #13 (W11 — phân loại cảnh báo) và Issue #15 (`src/data_loader.py`).
 
 ---
 
@@ -34,6 +34,7 @@ Không test nào gọi mạng. Không test nào phụ thuộc thứ tự chạy.
 | `tests/test_cleaning_pipeline.py` | 44 | Merge, freeze, split tuần tự, chống rò rỉ |
 | `tests/test_cleaning_pipeline_guards.py` | 43 | Guard chống rò rỉ (`validate_no_leakage`) |
 | `tests/test_data_collection.py` | 72 | Ingest OpenAQ / Open-Meteo / AirNow, provenance, SHA-256, fail-closed S3 cache preservation |
+| `tests/test_data_loader.py` | 8 | Nạp & kiểm tra schema Parquet (`src/data_loader.py`), cấu hình tách cohort baseline/extended, khóa `station_id` fail-closed & ranh giới split |
 | `tests/test_data_quality.py` | 44 | Kiểm toán chất lượng 6 chiều |
 | `tests/test_extended_reanalysis.py` | 22 | Hợp đồng Issue #50: tách trạm, rolling theo trạm, QC sáu chiều, bootstrap, FIG-03 full-calendar và đối chiếu artifact |
 | `tests/test_extended_validation_mutations.py` | 16 | Kiểm thử mutation: structural không cần dữ liệu, semantic chỉ với Parquet thật; kiểm tra status, CI, provenance và so sánh |
@@ -47,7 +48,7 @@ Không test nào gọi mạng. Không test nào phụ thuộc thứ tự chạy.
 | `tests/test_validate_issue8.py` | 29 | Checksum, đồng bộ generator, circular stats, smoke fixture, canh số liệu tài liệu |
 | `tests/test_verify_claims_rolling.py` | 9 | Biên rolling 24h — dữ liệu đồng nhất che lỗi |
 | `tests/test_visualizer.py` | 35 | Bộ 7 biểu đồ ấn phẩm FIG-01..FIG-07 (300 DPI, Tufte, zero-baseline, chuỳ 24h, font tiếng Việt) |
-| **Tổng** | **824** | |
+| **Tổng** | **832** | |
 
 Đếm lại sau mỗi thay đổi:
 
@@ -63,9 +64,9 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 | Con số | Ý nghĩa |
 |---|---|
-| **824** | Số **test method được định nghĩa** trong mã nguồn |
-| **796** | Số unittest **dự kiến chạy và báo cáo** trên CI (thiếu `data/`; 824 − 28 trong 5 lớp skip) |
-| **792** | Số test **dự kiến chạy và pass** trên CI (796 − 4 skip nằm trong `Ran`) |
+| **832** | Số **test method được định nghĩa** trong mã nguồn |
+| **803** | Số unittest **dự kiến chạy và báo cáo** trên CI (thiếu `data/`; 832 − 29 trong 6 lớp skip) |
+| **799** | Số test **dự kiến chạy và pass** trên CI (803 − 4 skip nằm trong `Ran`) |
 
 > ⚠ **`skipped=9` không trừ thẳng vào `Ran`.** Năm trong chín dòng skip là *class holder*
 > (`setUpClass` raise `SkipTest`): unittest bỏ qua cả class nên các method của nó **không
@@ -85,9 +86,9 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 > `data/` bị `.gitignore` loại khỏi repository, nên **CI không bao giờ có dataset**.
 
-### Vì sao 824 − 796 = 28
+### Vì sao 832 − 803 = 29
 
-Năm lớp có `setUpClass` raise `unittest.SkipTest` khi thiếu dữ liệu, và unittest bỏ qua
+Sáu lớp có `setUpClass` raise `unittest.SkipTest` khi thiếu dữ liệu, và unittest bỏ qua
 **cả class** — mọi method của chúng không bao giờ được tính vào bộ đếm `Ran`:
 
 | Lớp | File | Method không vào `Ran` | Điều kiện |
@@ -97,13 +98,14 @@ Năm lớp có `setUpClass` raise `unittest.SkipTest` khi thiếu dữ liệu, v
 | `TestSemanticMutations` | `tests/test_extended_validation_mutations.py` | 8 | thiếu `data/processed/air_pollution_extended_2022_2026.parquet` |
 | `TestRegressionRealDataset` | `tests/test_regression.py` | 2 | thiếu `data/processed/air_pollution_final.parquet` |
 | `TestClassificationRealDataset` | `tests/test_classification.py` | 2 | thiếu `data/processed/air_pollution_final.parquet` |
-| | | **28** | |
+| `TestDataLoaderRealDataset` | `tests/test_data_loader.py` | 1 | thiếu `data/processed/*.parquet` |
+| | | **29** | |
 
 Phân biệt rõ: chúng **không chạy** (không tính vào `Ran`) chứ không phải **chạy rồi bị skip**.
 
 ---
 
-## 4. Chín skip trên CI
+## 4. Mười skip trên CI
 
 | # | Test | Lý do |
 |---|---|---|
@@ -112,17 +114,18 @@ Phân biệt rõ: chúng **không chạy** (không tính vào `Ran`) chứ khôn
 | 3 | `setUpClass (test_extended_validation_mutations::TestSemanticMutations)` | Thiếu extended Parquet |
 | 4 | `setUpClass (test_regression::TestRegressionRealDataset)` | Thiếu `data/processed/air_pollution_final.parquet` |
 | 5 | `setUpClass (test_classification::TestClassificationRealDataset)` | Thiếu `data/processed/air_pollution_final.parquet` |
-| 6 | `test_progress_report_bullet_carries_the_computed_f_statistic` | Cùng lý do thiếu `data/interim/` |
-| 7 | `test_windows_separators_in_payload_are_preserved_verbatim` | `skipUnless(os.name == "nt")` |
-| 8 | `test_metadata_block_and_runtime_log_disagree_on_separators` | `skipUnless(os.name == "nt")` |
-| 9 | `TestNotebookExecutionOutputs.test_live_restart_kernel_and_run_all` | Thiếu `data/processed/air_pollution_final.parquet` |
+| 6 | `setUpClass (test_data_loader::TestDataLoaderRealDataset)` | Thiếu `data/processed/*.parquet` |
+| 7 | `test_progress_report_bullet_carries_the_computed_f_statistic` | Cùng lý do thiếu `data/interim/` |
+| 8 | `test_windows_separators_in_payload_are_preserved_verbatim` | `skipUnless(os.name == "nt")` |
+| 9 | `test_metadata_block_and_runtime_log_disagree_on_separators` | `skipUnless(os.name == "nt")` |
+| 10 | `TestNotebookExecutionOutputs.test_live_restart_kernel_and_run_all` | Thiếu `data/processed/air_pollution_final.parquet` |
 
-Dòng 1–5 là **class holder**: chúng đại diện cho cả lớp bị bỏ qua, và các method
+Dòng 1–6 là **class holder**: chúng đại diện cho cả lớp bị bỏ qua, và các method
 bên trong **không** được tính vào `Ran` (xem §3).
 
-Skip 7 và 8 là **giới hạn nền tảng có chủ đích**: bất biến dấu phân cách chỉ tồn tại
+Skip 8 và 9 là **giới hạn nền tảng có chủ đích**: bất biến dấu phân cách chỉ tồn tại
 trên Windows. Chạy trên Windows thì 2 test này **chạy thật**, nên máy local báo
-`skipped=0`, còn CI báo `skipped=9`. Không phải regression.
+`skipped=0`, còn CI báo `skipped=10`. Không phải regression.
 Job `validate` (ubuntu) luôn skip hai test này; job CI riêng `windows-paths`
 (`windows-latest`) chạy `tests.test_pipeline_runtime_log` để chúng **thực sự được kiểm**
 trên mỗi push/PR.

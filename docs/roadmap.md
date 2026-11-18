@@ -5,7 +5,7 @@
 > **Đề tài:** Phân tích mức độ ô nhiễm không khí theo thời gian (*Time-Series Air Pollution Analysis*)  
 > **Căn cứ tài liệu:** Đề cương môn học INFO3020, Bài giảng ThS. Phạm Ngọc Đông – Khoa CNTT & Truyền thông, Trường Đại học CMC, và hệ thống 17 GitHub Issues (#1–#17, #19) làm đặc tả kỹ thuật có thẩm quyền.  
 > **Nơi lưu trữ:** `docs/roadmap.md`
-> **Kiểm thử hiện tại (Issue #50 + #12 + #13):** suite định nghĩa **824** test methods;
+> **Kiểm thử hiện tại (Issue #50 + #12 + #13 + #15 `data_loader`):** suite định nghĩa **832** test methods;
 > [`docs/TEST_SUITE.md`](TEST_SUITE.md) là nguồn chuẩn cho breakdown và kết quả theo môi trường.
 
 ---
@@ -799,18 +799,19 @@ W01–W15.
 >   `#12`, `#13`) **đã được mở lại** và không còn bị chặn.
 > - Các số liệu thực nghiệm nêu trong các báo cáo (#4, #5) là **kết quả của một lần thực thi cụ thể**
 >   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
-> - Bộ kiểm thử hiện gồm **824 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
+> - Bộ kiểm thử hiện gồm **832 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
 >   [`docs/TEST_SUITE.md`](TEST_SUITE.md) — nguồn chuẩn duy nhất cho số liệu kiểm thử).
 >   Số mà unittest **thực sự chạy và báo cáo** phụ thuộc cả nền tảng lẫn việc có
->   `data/` hay không — **không phải con số 824 trên mọi nền tảng**:
->   - Trước khi gộp Issue #12 và #13, baseline Issue #50 trên **Windows local (có `data/`, 2026-11-11)**: `Ran 764 tests in 194.248s` + `OK` → **764 pass, 0 skip**.
->   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`, run 43051282775)**: `Ran 740 tests in 152.400s` + `OK (skipped=7)` → **736 pass, 7 skip** (trên baseline 764; thêm #12 và #13 là 824 defined / 28 không vào `Ran`).
+>   `data/` hay không — **không phải con số 832 trên mọi nền tảng**:
+>   - Trước khi gộp Issue #12, #13 và `src/data_loader.py`, baseline Issue #50 trên **Windows local (có `data/`, 2026-11-11)**: `Ran 764 tests in 194.248s` + `OK` → **764 pass, 0 skip**.
+>   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`, run 43051282775)**: `Ran 740 tests in 152.400s` + `OK (skipped=7)` → **736 pass, 7 skip** (trên baseline 764; thêm #12, #13 và `tests/test_data_loader.py` là 832 defined / 29 không vào `Ran`).
 >
->   Trên `824` method định nghĩa, **28** phương thức nằm trong **5** lớp mà
+>   Trên `832` method định nghĩa, **29** phương thức nằm trong **6** lớp mà
 >   `setUpClass` ném `unittest.SkipTest` khi thiếu `data/` — `TestDocumentedReproduction`
 >   (4), `TestRealDataset` của `tests/test_inference.py` (12), `TestSemanticMutations` (8),
->   `TestRegressionRealDataset` của `tests/test_regression.py` (2), và
->   `TestClassificationRealDataset` của `tests/test_classification.py` (2); cả 5 lớp bị bỏ qua nên
+>   `TestRegressionRealDataset` của `tests/test_regression.py` (2),
+>   `TestClassificationRealDataset` của `tests/test_classification.py` (2), và
+>   `TestDataLoaderRealDataset` của `tests/test_data_loader.py` (1); cả 6 lớp bị bỏ qua nên
 >   các phương thức **không chạy, không được tính vào "Ran"**, nhưng mỗi lớp vẫn đóng góp
 >   **1 dòng** vào `skipped=`. Vì vậy `pass = Ran − (skipped − holders)`.
 >   Danh sách skip còn lại: `TestScriptsUseTheComputation.test_progress_report_bullet_carries_the_computed_f_statistic`
