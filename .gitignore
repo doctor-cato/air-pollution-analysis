@@ -102,3 +102,4 @@ build/
 !reports/extended_*.md
 !reports/extended_*.csv
 !reports/extended_*.json
+!reports/defense_minutes.md
