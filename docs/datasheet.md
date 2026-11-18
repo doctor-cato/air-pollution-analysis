@@ -1,10 +1,10 @@
 # Datasheet for Dataset — Dữ liệu Chất lượng Không khí ($\text{PM}_{2.5}$) & Khí tượng Hà Nội (2022–2026)
 
-> **Căn cứ học thuật:** Gebru et al. (2021), *Datasheets for Datasets* (*Communications of the ACM*) · Tuần 12 / Issue #14 (Task 8.6, Task 1.24, Task D18)  
-> **Môn học:** INFO3020 – Nhập môn Khoa học Dữ liệu (Trường Đại học CMC)  
+> **Căn cứ học thuật:** Gebru et al. (2021), *Datasheets for Datasets* (*Communications of the ACM*) · Tuần 12 / Issue #14 (Task 8.6, Task 1.24, Task D18)
+> **Môn học:** INFO3020 – Nhập môn Khoa học Dữ liệu (Trường Đại học CMC)
 > **Phiên bản tập dữ liệu bao phủ:**
 > - **Baseline (`1.0.0-m2-baseline`):** [`data/processed/air_pollution_final.parquet`](../data/processed/air_pollution_final.parquet) (`9.044` dòng × `18` cột, trạm `VN001_HANOI_556_NGUYEN_VAN_CU`)
-> - **Mở rộng tách trạm (`2.0.0-issue44-extended`):** [`data/processed/air_pollution_extended_2022_2026.parquet`](../data/processed/air_pollution_extended_2022_2026.parquet) (`37.722` dòng × `23` cột = `28.678` dòng `VN003` + `9.044` dòng `VN001`)  
+> - **Mở rộng tách trạm (`2.0.0-issue44-extended`):** [`data/processed/air_pollution_extended_2022_2026.parquet`](../data/processed/air_pollution_extended_2022_2026.parquet) (`37.722` dòng × `23` cột = `28.678` dòng `VN003` + `9.044` dòng `VN001`)
 > **Tài liệu liên quan:** [`docs/data_dictionary.md`](data_dictionary.md) · [`docs/issue44_dataset_contract.md`](issue44_dataset_contract.md) · [`docs/issue44_source_verification.md`](issue44_source_verification.md) · [`docs/issue50_reproducibility.md`](issue50_reproducibility.md)
 
 ---
