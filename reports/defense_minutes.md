@@ -1,9 +1,9 @@
 # Biên Bản Đánh Giá Bảo Vệ Đồ Án (Defense Minutes)
 
-> **Môn học:** INFO3020 – Nhập môn Khoa học Dữ liệu (*Introduction to Data Science*)  
-> **Đơn vị:** Khoa Công nghệ Thông tin & Truyền thông, Trường Đại học CMC  
-> **Đề tài:** Phân Tích Mức Độ Ô Nhiễm Không Khí Theo Chuỗi Thời Gian ($\text{PM}_{2.5}$) & Khí Tượng Bề Mặt tại Hà Nội  
-> **Nhóm thực hiện:** Nhóm Chủ đề 6 (*Topic 6 Team*)  
+> **Môn học:** INFO3020 – Nhập môn Khoa học Dữ liệu (*Introduction to Data Science*)
+> **Đơn vị:** Khoa Công nghệ Thông tin & Truyền thông, Trường Đại học CMC
+> **Đề tài:** Phân Tích Mức Độ Ô Nhiễm Không Khí Theo Chuỗi Thời Gian ($\text{PM}_{2.5}$) & Khí Tượng Bề Mặt tại Hà Nội
+> **Nhóm thực hiện:** Nhóm Chủ đề 6 (*Topic 6 Team*)
 > **Trạng thái biểu mẫu:** Biểu mẫu chuẩn bị cho Issue #17 (Task 11.5) — **chưa diễn ra buổi bảo vệ chính thức; mọi thông tin hội đồng để trống để ghi nhận tại buổi chấm**.
 
 ---
@@ -57,6 +57,6 @@
 
 ---
 
-**Xác nhận thư ký / đại diện nhóm:**  
-- Thư ký buổi bảo vệ: `__________________________`  
+**Xác nhận thư ký / đại diện nhóm:**
+- Thư ký buổi bảo vệ: `__________________________`
 - Đại diện Nhóm Chủ đề 6: `__________________________`
