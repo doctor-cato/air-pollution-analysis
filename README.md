@@ -1,11 +1,6 @@
 # Phân Tích Mức Độ Ô Nhiễm Không Khí Theo Chuỗi Thời Gian
+
 ## Time-Series Air Pollution Analysis – Hà Nội, Việt Nam
-
-### Issue #50 — tái phân tích lịch sử tách trạm
-
-Dataset `2.0.0-issue44-extended` được kiểm tra theo hợp đồng Issue #44 trước khi phân tích. Chạy `python scripts/run_extended_reanalysis.py` từ thư mục gốc để tạo lại `reports/extended_*` và ba hình trong `figures/extended/` (FIG-02, FIG-03 phân phối tháng và FIG-03b độ phủ mùa đông); chạy `python scripts/validate_extended_reanalysis.py --real-data` để tính lại độc lập từ Parquet và raw. Không có `data/`, validator chỉ chạy structural và đánh dấu semantic **SKIPPED**. Nếu thiếu dữ liệu, dùng `python scripts/fetch_dataset.py`, chạy tuần tự notebooks `03_data_cleaning` → `03_transformation_pipeline`, rồi `python scripts/build_extended_historical_dataset.py`. Chi tiết và giới hạn tái lập ở [`docs/issue50_reproducibility.md`](docs/issue50_reproducibility.md).
-
-VN001 và VN003 là hai trạm không có quan sát chồng lấp. Các báo cáo chính dùng PM2.5 quan trắc; nội suy chỉ nằm trong độ nhạy. Kết quả mùa vẫn thăm dò. CI không chứa `data/` và chỉ kiểm chứng cấu trúc/code; kết luận trên số liệu thật cần validator local.
 
 > **Môn học:** INFO3020 – Nhập môn Khoa học Dữ liệu (*Introduction to Data Science*)  
 > **Đơn vị:** Khoa Công nghệ Thông tin & Truyền thông, Trường Đại học CMC  
@@ -27,94 +22,35 @@ VN001 và VN003 là hai trạm không có quan sát chồng lấp. Các báo cá
 
 ## 1. Tổng quan Đề tài
 
-Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text{PM}_{2.5}$ và mối liên hệ với các yếu tố khí tượng bề mặt tại khu vực Hà Nội. Đề tài tuân thủ chặt chẽ vòng đời khoa học dữ liệu **CRISP-DM**, giải quyết các câu hỏi nghiên cứu về:
+Dự án nghiên cứu biến thiên nồng độ bụi mịn $\text{PM}_{2.5}$ và mối liên hệ với các yếu tố khí tượng bề mặt tại Hà Nội theo vòng đời **CRISP-DM**, tập trung vào bốn câu hỏi nghiên cứu ([`docs/research_questions.md`](docs/research_questions.md)):
 
-1. **Quy luật chu kỳ thời gian:** Phân tích biến động $\text{PM}_{2.5}$ theo chu kỳ ngày đêm (*diurnal*), ngày trong tuần (*weekday vs. weekend*), và chu kỳ mùa vụ (*seasonal*).
-2. **Suy luận thống kê có đối chứng:** Kiểm định giả thuyết so sánh mức độ ô nhiễm giữa các khoảng thời gian kèm kích thước hiệu ứng và khoảng tin cậy Bootstrap theo phương pháp kiểm định phù hợp với dữ liệu.
-3. **Mô hình hóa hồi quy giải thích:** Định lượng mức độ liên hệ của nhiệt độ, độ ẩm, tốc độ gió, áp suất lên nồng độ bụi thông qua hồi quy OLS (kèm chẩn đoán 4 giả định LINE).
-4. **Mô hình phân loại cảnh báo sớm:** Xây dựng bài toán phân loại cảnh báo đợt ô nhiễm dựa trên nồng độ $\text{PM}_{2.5}$ trung bình 24 giờ tổng hợp (tham chiếu ngưỡng quy chuẩn QCVN 05:2023/BTNMT là $45\,\mu\text{g/Nm}^3$ áp dụng từ 01/01/2026, kèm bước chuẩn hóa tương thích giữa đơn vị quan trắc $\mu\text{g/m}^3$ thực tế và $\mu\text{g/Nm}^3$ quy chuẩn), tối ưu hóa Recall và PR-AUC theo mục tiêu vận hành bảo vệ sức khỏe cộng đồng.
-
-> ⛔ **Ngưỡng cảnh báo CHƯA CHỐT — `UNVERIFIED`.** Câu trên trích **45 µg/Nm³ từ 01/01/2026**,
-> trong khi `docs/roadmap.md` (FIG-01, §7.1 quy tắc 2, §8.3, §10.1, Week 11) dùng **50 µg/m³**.
-> Hai nguồn chuẩn trong cùng repo đang định nghĩa **hai ngưỡng khác nhau** — và mốc cắt chuỗi là
-> `2026-01-15`, tức phần lớn tập Test nằm **sau** 01/01/2026, nên ngưỡng nào áp dụng thay đổi
-> kết quả. **Không dùng con số nào làm căn cứ kết luận** cho tới khi task
-> **`0.7b`** (`docs/TASK_LIST_M3_M6.md`) chốt được định nghĩa nhãn: window · `min_periods` · ngưỡng ·
-> đơn vị $\mu\text{g/m}^3$ vs $\mu\text{g/Nm}^3$ · và mẫu số.
+1. **Quy luật chu kỳ thời gian (EDA):** Phân tích biến động $\text{PM}_{2.5}$ theo chu kỳ ngày đêm (*diurnal*), ngày trong tuần (*weekday vs. weekend*) và mùa vụ (*seasonal*), đi kèm 4 họ chỉ số thống kê và bộ 7 biểu đồ ấn phẩm chuẩn Tufte/Cleveland.
+2. **Suy luận thống kê có xét phụ thuộc thời gian:** Kiểm định giả thuyết ở cấp độ trung bình ngày ($\ge 18/24$ giờ) với **calendar block bootstrap** (khối 28 ngày lịch), hiệp phương sai HAC Newey–West, hiệu chỉnh đa kiểm định Holm–Bonferroni, kích thước hiệu ứng và kiểm chứng sai lầm loại I bằng mô phỏng Monte Carlo.
+3. **Mô hình hóa hồi quy giải thích (OLS & Điều chuẩn):** Định lượng mối liên hệ quan sát (*associational, ceteris paribus*) giữa khí tượng và $\text{PM}_{2.5}$ bằng OLS (kèm sai số chuẩn HAC-24, kiểm tra 4 giả định LINE, VIF) và Ridge/Lasso qua `TimeSeriesSplit`.
+4. **Phân loại cảnh báo đợt ô nhiễm:** Xây dựng bài toán phân loại nhị phân trên trung bình trượt 24 giờ $\overline{\text{PM}_{2.5}}_{[t-23, t]} \ge 50{,}0\,\mu\text{g/m}^3$ (tham chiếu ngưỡng QCVN 05:2023/BTNMT), tối ưu Recall và PR-AUC, hiệu chuẩn xác suất và kiểm toán 4 lớp rò rỉ dữ liệu. Lưu ý: dữ liệu khí tượng ERA5 có độ trễ phát hành ~5 ngày nên thiết lập tại $h=0$ mang bản chất truy hồi tức thời (*retrospective nowcast*), không phải dự báo vận hành thời gian thực.
 
 ---
 
-## 2. Hiện trạng Triển khai vs. Kế hoạch Lộ trình
+## 2. Hiện trạng Triển khai & Lộ trình
 
-> [!IMPORTANT]
-> **Phân định rõ ràng giữa mã nguồn hiện có và kế hoạch tương lai:**
-> Dự án đã hoàn tất **Milestone 1–2** (Issues #1–#7), **Milestone 3** (Issues #8–#9), **Tuần 09 của Milestone 4** (Issue #11), và nhánh dữ liệu lịch sử Issue #44 (PR #45 đã merge). Issue #50 bổ sung tái phân tích tách trạm trong các artifact `extended_*`. PR #48 (hồi quy) và #49 (phân loại) vẫn đang mở; chúng không nằm trong branch Issue #50.
+### 2.1. Tổng hợp theo Milestone
 
-### 2.1. Hiện trạng Triển khai (Milestone 1–2)
+| Giai đoạn | Phạm vi & Issue | Trạng thái | Thành phần chính |
+|---|---|---|---|
+| **Milestone 1** | Thiết lập dự án, Canonical Schema, Nguồn & Thu thập (#1, #2, #19, #3, #4) | **Hoàn thành** | `src/data_collection.py`, `notebooks/00`–`01`, `docs/data_dictionary.md`, `docs/source_profiling_decision.md` |
+| **Milestone 2** | Kiểm toán 6 chiều, Làm sạch tất định, Pipeline chống rò rỉ (#5, #6, #7, #38) | **Hoàn thành** | `src/data_quality.py`, `src/cleaning.py`, `src/cleaning_pipeline.py`, `src/flag_evidence.py`, `notebooks/02`–`03` |
+| **Milestone 3** | EDA 4 họ chỉ số & 7 biểu đồ ấn phẩm (#8, #9) | **Hoàn thành** | `src/visualizer.py`, `notebooks/04_descriptive_stats.ipynb`, `figures/FIG-01..07.png`, `reports/statistical_profile.csv` |
+| **Mở rộng & Tái phân tích** | Mở rộng lịch sử 2022–2025 tách trạm & Tái phân tích M2/M3/W9 (#44, #50) | **Hoàn thành** | `src/issue44_preparation.py`, `src/extended_audit.py`, `src/reanalysis_validation.py`, `reports/extended_*`, `figures/extended/` |
+| **Milestone 4** | Suy luận W9 (#11), Hồi quy OLS (#12), Phân loại cảnh báo (#13); (#10 đã đóng) | **Hoàn thành** | `src/inference.py`, `src/regression.py`, `src/classification.py`, `notebooks/05`–`07`, `reports/*_results.md` |
+| **Milestones 5–6** | Bias Audit, Tài nguyên vs Spark, Datasheet, Model Card 1 trang, Bảo vệ (#14–#17) | **Kế hoạch** | Theo [`docs/roadmap.md`](docs/roadmap.md) và [`docs/TASK_LIST_M3_M6.md`](docs/TASK_LIST_M3_M6.md) |
 
-> [!IMPORTANT]
-> **Trạng thái hiện tại sau review:** **Issue #1–#7 đều DONE và đã merge vào `main`.**
-> - **Issue #1, #2, #19, #3:** Đã hoàn tất và nghiệm thu (**DONE**).
-> - **Issue #4:** PR #26 đã merge vào `main` (**DONE**).
-> - **Issue #5:** Bộ kiểm toán chất lượng 6 chiều đã hoàn thành và merge qua PR #27 (`src/data_quality.py`, `docs/data_quality_audit.md`, `notebooks/02_quality_audit.ipynb`) (**DONE**).
-> - **Issue #6:** Làm sạch tất định đã triển khai (`src/cleaning.py`, `docs/cleaning_log.md`, `notebooks/03_data_cleaning.ipynb`) (**DONE**).
-> - **Issue #7:** Tiền xử lý chống rò rỉ đã triển khai và kiểm chứng bằng `validate_no_leakage()` — so **mọi** tham số đã học với giá trị refit trên Train, kiểm tra `train.max() < test.min()`, kiểm tra thứ tự thời gian, và từ chối target trong feature (`src/cleaning_pipeline.py`, `notebooks/03_transformation_pipeline.ipynb`, `tests/test_cleaning_pipeline.py`, `tests/test_cleaning_pipeline_guards.py`).
->   - **Tầng kiểm tra thứ tự thời gian là bắt buộc.** Trước PR #34, lớp kiểm tra này có thể bị **tắt âm thầm** mà không ai bị chặn. Nay `verify_chronology()` **ném lỗi** nếu thiếu tầng đó; muốn bỏ qua phải truyền `verify_chronology=False` **tường minh** và vẫn phát cảnh báo. Lý do: một guard cho phép tự vô hiệu hóa thì không phải guard.
->   - **Hai nhóm cờ bị loại khỏi feature, tách bạch vì lý do rất khác nhau:**
->     - `TARGET_DERIVED_FLAGS` — `pm25_was_missing` rò rỉ target **theo cấu trúc** (`SimpleImputer` điền median cho đúng những hàng đó, mô hình học được quy tắc `flag == 1 ⇒ pm25 == median`). Không guard tham số nào bắt được.
->     - `NON_PREDICTIVE_FLAGS` — `is_high_humidity_fog` **chưa có bằng chứng về giá trị dự báo marginal** (`corr(pm25, RH) = −0,037`; PM2.5 TB nhóm có cờ 41,65 < nhóm không cờ 44,75). Cờ **CÓ** tương tác theo mùa (Đông **+2,79**; Xuân **−8,91 µg/m³**; `F(3, 7487) = 16,78`, **p = 7,4·10⁻¹¹**), nên `corr ≈ 0` là hệ quả của việc trung bình qua các mùa chứ **không** phải bằng chứng không có quan hệ. Kiểm tra lại ngưỡng RH sẽ **không** sửa được; khai thác phát hiện này phải dùng dạng tương tác `fog × mùa` — thuộc Issue #8 (EDA).
->       - **Trước [Issue #38](https://github.com/doctor-cato/air-pollution-analysis/issues/38) khối số này được gắn `⛔ UNVERIFIED` vì không mã nào tính ra nó. Nay đã TÁI LẬP THỰC SỰ**: `src/flag_evidence.py` fit lại OLS `pm25 ~ C(fog) + C(season) + C(fog):C(season)` trên 7.495 dòng có cả `pm25` và `relative_humidity`, còn `python scripts/verify_claims.py` kiểm chứng từng số (`37 VERIFIED, 0 MISMATCH, 1 UNVERIFIABLE`). Báo cáo `.docx` cũng **sinh ra** từ kết quả đó thay vì hard-code.
->       - **⛔ Mutual information thì CHƯA xác minh** (`MI = 0,0024`): định nghĩa ước lượng chưa được đóng băng — `mutual_info_score` cho 0,0024 với 7, 8 **hoặc** 10 nhóm phân vị, `mutual_info_regression` cho 0,0081, `mutual_info_classif` cho 0,0105. `verify_claims.py` gắn `UNVERIFIABLE` và in mọi phương án. **Không** dùng MI làm căn cứ kết luận.
->     - Cả hai cờ **vẫn được giữ nguyên trong dataset** như tài liệu chẩn đoán; chỉ không làm feature.
-> - **Lưu ý về lịch sử merge:** #6 và #7 được triển khai cùng nhau trên nhánh `feat/issue-6-deterministic-cleaning` và merge bằng **một** PR #32 (2026-09-30). Việc tách thành hai issue là đánh số bàn giao, không phải hai thay đổi độc lập: `clean_air_quality()` phụ thuộc bảng khí tượng **đã** làm sạch, nên #6 không thể tách khỏi #7 mà không viết lại kiến trúc.
-> - **Kiểm toán lại M2 đã merge qua PR #34** (`fix/m2-audit-findings`, 2026-09-30): sửa 3 lỗi code, loại `is_high_humidity_fog` khỏi feature, công bố sự cố mất kết nối liên tụp 630 giờ, và hạ giọng một tuyên bố quá tay. Bản tài liệu này phản ánh **sau** PR #34. Chi tiết: `docs/roadmap.md` §G.4.
-> - **Issue #8 (EDA mô tả — 4 họ chỉ số & chu kỳ thời gian):** đã hoàn thành và merge qua PR #40 (`notebooks/04_descriptive_stats.ipynb`, `reports/statistical_profile.csv`, `scripts/generate_04_notebook.py`, `scripts/validate_issue8.py`). Thống kê **circular** cho `wind_direction` được xử lý riêng vì `0° ≡ 360°`; 4 giá trị ghim trong notebook (số giờ thiếu, circular mean/std) được `validate_issue8.py` kiểm lại từ dữ liệu thật.
-> - **Issue #9 (Bộ 7 biểu đồ ấn phẩm giải thích FIG-01..FIG-07):** đã triển khai (`src/visualizer.py`, `figures/FIG-01.png`–`figures/FIG-07.png`, `tests/test_visualizer.py`) tuân thủ nguyên tắc Tufte/Cleveland, zero-baseline cho biểu đồ cột, và tương thích chu kỳ trung bình trượt 24h nhân quả với QCVN 05:2023/BTNMT & WHO 2021.
-> - **Issue #11 (suy luận thống kê W9) đã triển khai** (`src/inference.py`, `notebooks/05_statistical_inference.ipynb`, `reports/inference_results.md`, `figures/FIG-08.png`–`FIG-12.png`, `tests/test_inference.py`). Đơn vị phân tích là **trung bình ngày** (≥ 18/24 giờ), không phải từng giờ, vì ACF bậc 1 của chuỗi giờ ≈ 0,94; Mọi bootstrap chạy trên **lịch ngày đầy đủ** (block 28 **ngày lịch**, mặt nạ ngày thiếu đi theo bản sao, nhãn nhóm theo vị trí đích) và **p-value của bốn kiểm định xác nhận được dựng lại dưới H₀ có xét tới tự tương quan thời gian**; phương pháp nào làm *chính* được chọn bằng **bằng chứng hiệu lực** từ kiểm chứng Monte Carlo đa kịch bản (`scripts/validate_inference_montecarlo.py`, 1.000 lần × 9 kịch bản, kết quả commit ở `reports/inference_montecarlo.csv`). Kết luận sau hiệu chỉnh Holm là **2/4 bác bỏ H₀** và kiểm định mùa **luôn** ở trạng thái **thăm dò** (một chu kỳ mùa duy nhất ⇒ mùa trùng với thời gian). Hình FIG-08..FIG-12 là **hình bổ sung của Issue #11**, không thuộc bộ 7 hình ấn phẩm FIG-01..FIG-07.
-> - **Issue #44 (Mở rộng dữ liệu lịch sử 2022–2025 phân tách theo trạm, PR #45):** đã triển khai (`src/issue44_preparation.py`, `scripts/build_extended_historical_dataset.py`, `scripts/profile_airnow_mirror.py`, `docs/issue44_*.md`, `reports/issue44_*`, `figures/FIG-01-extended-historical.png`). Thu thập và chuẩn hóa chuỗi lịch sử **01/2022–04/2025** từ OpenAQ S3 Location `7441` (`VN003_HANOI_OPENAQ_7441`, AirNow Government Monitor, US Public Domain: `903` tệp ngày S3, `21.401` bản ghi thô, `18.208` giờ hợp lệ trên lưới `28.678` giờ), đồng bộ backfill khí tượng ERA5 (`28.680` giờ, `0,0%` khuyết thiếu), và xuất tập dữ liệu mở rộng phân tách theo trạm `data/processed/air_pollution_extended_2022_2026.parquet` (`37.722` dòng × `23` cột = `28.678` dòng `VN003` + `9.044` dòng `VN001`) trong khi **bảo toàn bất biến 100% mã băm SHA-256** của toàn bộ artifact baseline `VN001`. Đồng thời nâng cấp `AirNowDOSAdapter` (kiểm định `QC Name == 'Valid'`, `Conc. Unit == 'UG/M3'`, `Duration == '1 Hr'`, khử trùng lặp YTD/MTD và ghi nhận xung đột `conflicting_duplicate` + `conflict_ledger`), kiểm toán mirror GitHub bên thứ ba (`NO-GO` do `license = null` và lỗi xếp nhầm năm), thực nghiệm masking-validation cho nội suy khoảng trống ngắn (`pm25` gốc giữ nguyên `NaN`), và đánh giá nguồn giao thông cho `FIG-04` (`NO-GO`).
-> - **Mô hình học máy (Issues #12–#13) đã triển khai** (`src/regression.py`, `src/classification.py`, `notebooks/06_regression_modeling.ipynb`, `notebooks/07_classification_alerts.ipynb`, `figures/regression_line_diagnostics*.png`, `figures/precision_recall_curve*.png`, `figures/feature_importance*.png`, `figures/calibration_reliability*.png`, `reports/regression_results.md`, `reports/classification_results.md`, `reports/classification_leakage_audit.md`, `docs/regression_findings.md`, `docs/classification_findings.md`, `docs/leakage_audit.md`). Issue #10 đã được đóng theo yêu cầu.
-> - **Tổng số unit test được định nghĩa: 824**. Chạy: `python -m unittest discover tests`. Breakdown, số thực chạy và giới hạn CI ở [`docs/TEST_SUITE.md`](docs/TEST_SUITE.md).
->   - **Số chạy/pass tùy nền tảng và `data/`.** Trước khi gộp Issues #12–#13, baseline Issue #50 định nghĩa **764** method (`Ran 764 tests` local Windows 2026-11-11; `Ran 740 tests`, `OK (skipped=7)` → **736 pass** trên Ubuntu CI [run 43051282775](https://github.com/doctor-cato/air-pollution-analysis/actions/runs/43051282775)). Sau khi gộp Issue #12 (`tests/test_regression.py` 28 method) và Issue #13 (`tests/test_classification.py` 32 method), tổng số method định nghĩa là **824**.
->   - **28 method không vào `Ran` trên CI** thuộc năm lớp bỏ qua khi thiếu dữ liệu: `TestDocumentedReproduction` (4), `TestRealDataset` (12), `TestSemanticMutations` (8), `TestRegressionRealDataset` (2) và `TestClassificationRealDataset` (2). CI chỉ chạy structural validator; semantic phải kiểm trên Parquet thật.
->   - ⚠️ **CI xanh KHÔNG có nghĩa F-test hay các số suy luận W9 đã được kiểm chứng lại** — CI không có `data/`. Chỉ lần chạy local có dữ liệu mới tái lập được `F = 16,78`, cùng Kruskal–Wallis, Mann–Whitney, Wilcoxon, t một mẫu, effect size, CI bootstrap và `reports/inference_results.md`.
-> - **Guard chống rò rỉ đã được kiểm chứng bằng 43 test hồi quy** trong `tests/test_cleaning_pipeline_guards.py`, mỗi test được viết để **FAIL trên bản gốc** (xoá guard, cho target lọt vào feature, cho `transform_with_pipeline()` refit trên chính Test, thêm nhánh `ColumnTransformer` thứ hai, đảo thứ tự đối số, tự vô hiệu hóa tầng kiểm tra thứ tự thời gian).
->
->   > [!NOTE]
->   > **Về con số "mutation score 21/21 = 100%":** đây là kết quả đếm **thủ công** trong một vòng review đối kháng của Issue #7, **không** phải báo cáo sinh tự động bởi công cụ mutation testing nào. Repo **không** có `mutmut`/`cosic-ray` trong `requirements.txt`, không có file cấu hình mutation, không có bước CI nào chạy nó, và không lưu artifact báo cáo. Vì vậy con số này **không tái lập được** từ repository và không nên được trích dẫn như bằng chứng kiểm định máy móc. Bằng chứng tái lập được là 43 test hồi quy nêu trên — chạy `python -m unittest tests.test_cleaning_pipeline_guards -v` là thấy ngay.
+### 2.2. Các điểm nhấn Kỹ thuật & Kiểm chứng
 
-**Tuần 01 — Thiết lập dự án & Canonical Schema**
-- [x] Thiết lập khung cây thư mục chuẩn mực theo vòng đời CRISP-DM [Issue #1].
-- [x] Cấu hình file `.gitignore` nghiêm ngặt, cách ly dữ liệu thô, cache nhị phân, môi trường ảo và thông tin xác thực [Issue #1].
-- [x] Tạo file `requirements.txt` cố định phiên bản tương thích với Python 3.10+ (hỗ trợ pre-built wheels cho Windows/Linux/macOS) [Issue #1].
-- [x] Xây dựng notebook `notebooks/00_environment_test.ipynb` kiểm thử tự động toàn bộ thư viện cốt lõi, kiểm tra I/O Parquet, Matplotlib và Scikit-Learn Pipeline [Issue #1].
-- [x] Biên soạn tài liệu `README.md` tiếng Việt với cam kết liêm chính học thuật và hướng dẫn tái lập [Issue #1].
-- [x] Xác lập Câu hỏi nghiên cứu mục tiêu và 4 câu hỏi thành phần SQ1–SQ4 đảm bảo tính trung lập khoa học ([`docs/research_questions.md`](docs/research_questions.md)) [Issue #2].
-- [x] Xây dựng Từ điển dữ liệu chuẩn hóa trung lập nguồn Canonical Data Schema với 11 trường dữ liệu và 8 thuộc tính chuẩn hóa ([`docs/data_dictionary.md`](docs/data_dictionary.md)) [Issue #2].
-
-**Tuần 02 — Thẩm định nguồn & thu thập dữ liệu**
-- [x] Khảo sát hồ sơ đa nguồn, kiểm chứng phạm vi địa lý Hà Nội và độ bao phủ thời gian thực tế; ban hành quyết định nguồn theo ma trận đa tiêu chí ([`docs/source_profiling_decision.md`](docs/source_profiling_decision.md)) [Issue #19].
-- [x] Pipeline thu thập & chuẩn hóa dữ liệu chất lượng không khí từ OpenAQ (AWS S3 public bucket, `locationid=4946811` - 556 Nguyễn Văn Cừ, Long Biên, Hà Nội), giữ nguyên đơn vị quan trắc `(station_id, timestamp)` [Issue #3].
-- [x] Hiện thực hóa `AirNowDOSAdapter` (`VN002_HANOI_US_EMBASSY`, Met One BAM-1020) trong `src/data_collection.py` sẵn sàng cho dữ liệu lịch sử khi có tệp thô [Issue #3].
-- [x] Pipeline thu thập & chuẩn hóa 6 biến khí tượng từ Open-Meteo ERA5 Reanalysis, đồng bộ động dải thời gian với chuỗi quan trắc chất lượng không khí [Issue #4].
-- [x] Lưu payload thô dưới `data/raw/` khi pipeline chạy, kèm `metadata.json` ghi nhận xuất xứ, tham số truy vấn, mã băm SHA-256 và giấy phép (theo [chính sách dữ liệu thô ba tầng](docs/roadmap.md#32-cổng-quyết-định-nguồn-dữ-liệu-issue-19-as-source-selection-gate)) [Issue #3, #4].
-- [x] Bộ **60** unit tests tất định cho pipeline thu thập (`tests/test_data_collection.py`) và pipeline kiểm định tự động bằng GitHub Actions (`.github/workflows/ci.yml`).
-
-**Tuần 03–04 — Kiểm toán & Làm sạch dữ liệu**
-- [x] Kiểm toán chất lượng 6 chiều và phân tích cơ chế khuyết thiếu Rubin với **tuyên bố bất định** minh bạch ([Issue #5], `src/data_quality.py`, [`docs/data_quality_audit.md`](docs/data_quality_audit.md), `notebooks/02_quality_audit.ipynb`).
-- [x] Làm sạch **tất định**: chuẩn hóa múi giờ UTC+7, khử trùng lặp, bóc trần missing ngụy trang, lọc giá trị âm phi lý, thực thi ràng buộc khí động học $\text{PM}_{2.5} \le \text{PM}_{10}$, reindex lưới 1 giờ liên tục **độc lập theo từng trạm** ([Issue #6], `src/cleaning.py`).
-- [x] Nhận diện lỗi kẹt cảm biến và gắn cờ chẩn đoán `is_high_humidity_fog`, `pm25_was_missing` — **không** xóa bản ghi, **không** điền khuyết ([`docs/cleaning_log.md`](docs/cleaning_log.md)).
-- [x] Biên soạn **Cleaning Log** tự động sinh từ mã nguồn, ghi nhận 100% phép biến đổi kèm số dòng bị tác động ([`docs/cleaning_log.md`](docs/cleaning_log.md)).
-- [x] Bộ **114** unit tests tất định cho lớp làm sạch (`tests/test_cleaning.py`), bao gồm kiểm chứng **không điền khuyết** và **tính tất định** (idempotent).
-
-> [!NOTE]
-> **Về dữ liệu thô:** tệp thô tải từ API **không được Git-track** — đây là chính sách kho dữ liệu của repository, không phải thiếu sót. Tính toàn vẹn được kiểm chứng bằng mã băm SHA-256 ghi trong `data/raw/metadata.json`. Xem [Mục 3.2 của roadmap](docs/roadmap.md#32-cổng-quyết-định-nguồn-dữ-liệu-issue-19-as-source-selection-gate).
-
-### 2.2. Kế hoạch thực hiện tiếp theo (Theo `docs/roadmap.md`)
-- **Tuần 03–05 (Milestone 2):** ~~Kiểm toán 6 chiều chất lượng dữ liệu~~ ([Issue #5] — **đã xong**, PR #27), ~~làm sạch tất định & lập cleaning log~~ ([Issue #6] — **đã xong**) và ~~tích hợp dữ liệu, đóng băng, phân chia chuỗi thời gian tuyến tính, đóng gói Pipeline chống rò rỉ~~ ([Issue #7] — **đã xong**). Milestone 2 đã đủ.
-- **Tuần 06–07 (Milestone 3):** Phân tích khám phá dữ liệu (EDA), tính toán 4 họ chỉ số thống kê ([Issue #8] — **đã xong**, PR #40), thiết kế 7 biểu đồ ấn phẩm giải thích theo nguyên tắc Tufte/Cleveland ([Issue #9] — **đã triển khai**).
-- **Tuần 08–11 (Midterm):** [Issue #10] chuẩn bị/hợp nhất EDA trong W8–W10 và **nộp Báo cáo Giữa kỳ tại W11**, sau Chương 10 — Regression Analysis. Phạm vi nộp vẫn là Milestone 1–3; W9/W10 chỉ là nội dung bổ sung tùy chọn nếu có bằng chứng hoàn tất.
-- **Tuần 09–11 (Milestone 4):** Thực hiện kiểm định giả thuyết phi tham số, xây dựng mô hình hồi quy OLS (chẩn đoán LINE), và phát triển mô hình phân loại cảnh báo ô nhiễm với điều chỉnh ngưỡng quyết định (*Threshold tuning*) ([Issue #11, #12, #13]). #10 không chặn công việc W9/W10.
-- **Tuần 12–15 (Milestones 5 & 6):** Đánh giá định kiến dữ liệu (*Bias Audit*), đo đạc tài nguyên vs Spark, lập Datasheet for Dataset, Model Card 1 trang, hoàn thiện mã nguồn và bảo vệ đồ án cuối kỳ ([Issue #14, #15, #16, #17]).
+- **Làm sạch tất định vs. Tiền xử lý chống rò rỉ:** `src/cleaning.py` thực thi `assert_no_imputation()` (so từng ô theo khóa `(station_id, timestamp)` — không tự ý điền khuyết). `src/cleaning_pipeline.py` tách rạch ròi `TARGET_DERIVED_FLAGS` (`pm25_was_missing` — rò rỉ cấu trúc) và `NON_PREDICTIVE_FLAGS` (`is_high_humidity_fog` — bằng chứng tái lập tại `src/flag_evidence.py`), đồng thời kiểm chứng `validate_no_leakage()` và tầng kiểm tra thứ tự thời gian bắt buộc `verify_chronology()`.
+- **Tách trạm nghiêm ngặt (Protocol A vs. Protocol B):** Tập baseline `VN001_HANOI_556_NGUYEN_VAN_CU` (07/2025–07/2026; `9.044` giờ lưới) và tập lịch sử mở rộng `VN003_HANOI_OPENAQ_7441` (01/2022–04/2025; `28.678` giờ lưới) không có quan sát chồng lấp; mọi phân tích và mô hình hóa đều khóa đơn trạm theo Protocol A, bảo toàn bất biến SHA-256 của baseline `VN001`.
+- **Bộ kiểm thử tự động (824 test methods):**
+  - Toàn bộ suite định nghĩa **824** test method trong `tests/` (xem bảng phân bổ chi tiết và giới hạn từng môi trường tại [`docs/TEST_SUITE.md`](docs/TEST_SUITE.md)).
+  - Do `data/` được `.gitignore` loại khỏi Git, **CI GitHub Actions** không có dữ liệu thật nên bỏ qua 5 lớp phụ thuộc dữ liệu (`TestDocumentedReproduction` 4, `TestRealDataset` 12, `TestSemanticMutations` 8, `TestRegressionRealDataset` 2, `TestClassificationRealDataset` 2 — tổng **28** method không vào `Ran`, dự kiến `Ran = 796`). Kết luận trên số liệu thật phải được kiểm chứng bằng lần chạy local có `data/` hoặc `scripts/validate_extended_reanalysis.py --real-data`.
 
 ---
 
@@ -122,265 +58,185 @@ Dự án tập trung nghiên cứu biến thiên nồng độ bụi mịn $\text
 
 ```text
 air-pollution-analysis/
-├── .github/
-│   └── workflows/
-│       └── ci.yml                      # Pipeline CI GitHub Actions (syntax, unittests, smoke test)
-├── .agents/                            # Quy tắc, kỹ năng và quy trình chuẩn hoá cho tác nhân/người đóng góp
-├── AGENTS.md                           # Chỉ dẫn kiến trúc & quy tắc kỹ thuật cho tác nhân
-├── .gitignore                          # Quy tắc loại trừ dữ liệu thô, cache, môi trường ảo
-├── CONTRIBUTING.md                     # Hướng dẫn đóng góp, quy trình Git và chuẩn mã nguồn
-├── LICENSE                             # Giấy phép mã nguồn mở MIT
-├── README.md                           # Tài liệu tổng quan, hướng dẫn thiết lập và quản trị
-├── requirements.txt                    # Danh sách thư viện phụ thuộc tương thích Python 3.10+
+├── .github/workflows/ci.yml              # Pipeline CI GitHub Actions (syntax, unittests, smoke test)
+├── .agents/                              # Quy tắc, kỹ năng và quy trình chuẩn hóa cho agent
+├── AGENTS.md                             # Chỉ dẫn kiến trúc & quy tắc kỹ thuật cốt lõi
+├── CONTRIBUTING.md                       # Hướng dẫn đóng góp, quy trình Git và chuẩn mã nguồn
+├── LICENSE                               # Giấy phép mã nguồn mở MIT
+├── README.md                             # Tài liệu tổng quan và hướng dẫn tái lập
+├── requirements.txt                      # Thư viện phụ thuộc cố định (Python 3.10+)
 ├── data/
-│   ├── raw/                            # Dữ liệu gốc lưu khi chạy pipeline (không Git-track)
-│   │   ├── metadata.json               # Xuất xứ, tham số truy vấn, mã băm SHA-256, bản quyền
-│   │   └── .gitkeep
-│   ├── interim/                        # Dữ liệu trung gian canonical Parquet (sau nạp, chuẩn hóa và làm sạch tất định)
-│   │   └── .gitkeep
-│   └── processed/                      # Dữ liệu sạch hoàn chỉnh đóng băng lưu Parquet
-│       ├── air_pollution_final.parquet  # 9.044 dòng × 18 cột — artifact đóng băng baseline VN001 của Issue #7 (gitignored)
-│       ├── air_pollution_extended_2022_2026.parquet # 37.722 dòng × 23 cột — artifact mở rộng phân tách theo trạm VN003 + VN001 của Issue #44 (gitignored)
-│       └── .gitkeep
+│   ├── raw/                              # Dữ liệu gốc tải từ API (không Git-track) + metadata.json (SHA-256)
+│   ├── interim/                          # Dữ liệu trung gian canonical Parquet (sau nạp & làm sạch tất định)
+│   └── processed/                        # Tập dữ liệu đóng băng Parquet (gitignored)
+│       ├── air_pollution_final.parquet               # 9.044 dòng × 18 cột (baseline VN001, Issue #7)
+│       └── air_pollution_extended_2022_2026.parquet  # 37.722 dòng × 23 cột (VN003 + VN001, Issue #44)
 ├── docs/
-│   ├── roadmap.md                      # Lộ trình và đặc tả yêu cầu chi tiết 15 tuần (Authoritative Plan)
-│   ├── ROADMAP_INFO3020_Air_Pollution.md # Bản sao tham chiếu đề cương gốc (Đã thay thế một phần)
-│   ├── research_questions.md           # Câu hỏi nghiên cứu & khung phân tích SQ1–SQ4 [Issue #2]
-│   ├── data_dictionary.md              # Từ điển dữ liệu chuẩn hóa Canonical Schema [Issue #2]
-│   ├── source_profiling.md             # Mục lục tài liệu thẩm định hồ sơ đa nguồn [Issue #19]
-│   ├── source_profiling_decision.md    # Báo cáo thẩm định & quyết định cổng nguồn dữ liệu [Issue #19]
-│   ├── data_quality_audit.md           # Báo cáo kiểm toán chất lượng 6 chiều [Issue #5]
-│   ├── cleaning_log.md                 # Nhật ký làm sạch tất định (sinh tự động) [Issue #6]
-│   ├── issue44_checkpoint_status.md    # Trạng thái nghiệm thu CP0–CP6 và danh mục bằng chứng [Issue #44]
-│   ├── issue44_dataset_contract.md     # Hợp đồng dữ liệu mở rộng 2.0.0-issue44-extended (VN003 + VN001) [Issue #44]
-│   ├── issue44_feasibility_decision.md # Đánh giá khả thi và quyết định mở rộng 2022–2025 [Issue #44]
-│   ├── issue44_source_verification.md  # Biên bản kiểm toán xuất xứ OpenAQ 7441 vs GitHub Mirror [Issue #44]
-│   ├── issue44_traffic_source_assessment.md # Đánh giá nguồn dữ liệu lưu lượng giao thông cho FIG-04 [Issue #44]
-│   └── air_quality_project_overview.md # Tài liệu tổng quan định hướng đề tài
+│   ├── roadmap.md                        # Lộ trình tổng thể Week 01–15 (nguồn chuẩn)
+│   ├── TEST_SUITE.md                     # Nguồn chuẩn số liệu kiểm thử, skip và giới hạn CI
+│   ├── TASK_LIST_M3_M6.md                # Danh mục tác vụ M3–M6
+│   ├── research_questions.md             # Câu hỏi nghiên cứu SQ1–SQ4 [Issue #2]
+│   ├── data_dictionary.md                # Từ điển dữ liệu Canonical Schema [Issue #2]
+│   ├── source_profiling_decision.md      # Thẩm định & quyết định cổng nguồn dữ liệu [Issue #19]
+│   ├── data_quality_audit.md             # Báo cáo kiểm toán chất lượng 6 chiều [Issue #5]
+│   ├── cleaning_log.md                   # Nhật ký làm sạch tất định (sinh tự động) [Issue #6]
+│   ├── issue44_*.md                      # Hợp đồng dữ liệu, provenance & quyết định mở rộng [Issue #44]
+│   ├── issue50_reproducibility.md        # Hướng dẫn & giới hạn tái lập Issue #50
+│   ├── regression_findings.md            # Tổng kết phát hiện hồi quy OLS & LINE [Issue #12]
+│   ├── classification_findings.md        # Tổng kết phát hiện phân loại cảnh báo [Issue #13]
+│   └── leakage_audit.md                  # Biên bản kiểm toán rò rỉ 4 lớp [Issue #13]
 ├── notebooks/
-│   ├── 00_environment_test.ipynb       # Kiểm thử môi trường và nạp thư viện [Issue #1]
-│   ├── 01_data_collection.ipynb        # Pipeline thu thập & kiểm định dữ liệu [Issue #3, #4]
-│   ├── 02_quality_audit.ipynb          # Trình bày kiểm toán chất lượng 6 chiều [Issue #5]
-│   ├── 03_data_cleaning.ipynb          # Làm sạch tất định & sinh Cleaning Log [Issue #6]
-│   ├── 03_transformation_pipeline.ipynb# Merge → freeze → split → fit chống rò rỉ [Issue #7]
-│   ├── 03_processed_data_preview.ipynb # Kiểm tra artifact đã đóng băng — KHÔNG thuộc chuỗi chạy chính
-│   ├── 04_descriptive_stats.ipynb      # 4 họ chỉ số + chu kỳ thời gian đa tầng [Issue #8]
-│   ├── 05_statistical_inference.ipynb  # Chẩn đoán phân phối + 3 nhóm kiểm định + Holm + block bootstrap [Issue #11]
-│   │                                    # ⚠️ NOT IMPLEMENTED: 06–07 chưa tồn tại (Issues #12–#13)
+│   ├── 00_environment_test.ipynb         # Kiểm thử môi trường và thư viện [Issue #1]
+│   ├── 01_data_collection.ipynb          # Thu thập & kiểm định dữ liệu [Issue #3, #4]
+│   ├── 02_quality_audit.ipynb            # Kiểm toán chất lượng 6 chiều [Issue #5]
+│   ├── 03_data_cleaning.ipynb            # Làm sạch tất định & sinh Cleaning Log [Issue #6]
+│   ├── 03_transformation_pipeline.ipynb  # Merge → freeze → split → fit chống rò rỉ [Issue #7]
+│   ├── 03_processed_data_preview.ipynb   # Kiểm tra nhanh artifact đóng băng (không thuộc chuỗi chính)
+│   ├── 04_descriptive_stats.ipynb        # EDA 4 họ chỉ số + chu kỳ thời gian [Issue #8]
+│   ├── 05_statistical_inference.ipynb    # Suy luận thống kê W9 có xét phụ thuộc thời gian [Issue #11]
+│   ├── 06_regression_modeling.ipynb      # Hồi quy OLS, LINE, HAC-24 & Ridge/Lasso [Issue #12]
+│   └── 07_classification_alerts.ipynb    # Phân loại cảnh báo 24h, hiệu chuẩn & ablation [Issue #13]
 ├── scripts/
-│   ├── fetch_dataset.py                # Tải & kiểm chứng tập dữ liệu baseline từ nguồn công khai (không cần API key)
-│   ├── build_extended_historical_dataset.py # Thu thập OpenAQ 7441 + ERA5 2022–2025, dựng dataset mở rộng & báo cáo [Issue #44]
-│   ├── profile_airnow_mirror.py        # Kiểm toán độc lập mirror AirNow GitHub (CP0 provenance & conflict audit) [Issue #44]
-│   ├── verify_claims.py                # Tái lập claim định lượng từ dữ liệu thật → VERIFIED/MISMATCH/UNVERIFIABLE (chỉ đọc)
-│   ├── generate_04_notebook.py         # Sinh notebook 04 — NGUỒN CHUẨN, không sửa notebook tay [Issue #8]
-│   ├── generate_05_notebook.py         # Sinh notebook 05 — NGUỒN CHUẨN, pre-flight compile trước khi execute [Issue #11]
-│   ├── validate_issue8.py              # 215 assertion thẩm định deliverables #8 (checksum, đồng bộ, CSV vs dữ liệu)
-│   └── build_progress_report.py        # Sinh docs/bao_cao_tien_do_M1_M2.docx từ 6 nguồn sự thật (chỉ đọc)
+│   ├── fetch_dataset.py                  # Tải & đối chiếu tập dữ liệu baseline (không cần API key)
+│   ├── build_extended_historical_dataset.py # Dựng tập dữ liệu mở rộng 2022–2026 [Issue #44]
+│   ├── profile_airnow_mirror.py          # Kiểm toán độc lập mirror AirNow GitHub (NO-GO) [Issue #44]
+│   ├── run_extended_reanalysis.py        # Chạy tái phân tích tách trạm M2/M3/W9 [Issue #50]
+│   ├── validate_extended_reanalysis.py   # Thẩm định cấu trúc & ngữ nghĩa độc lập [Issue #50]
+│   ├── generate_04_notebook.py .. generate_07_notebook.py  # Script sinh notebook chuẩn 04–07
+│   ├── validate_issue8.py                # Thẩm định deliverables Issue #8
+│   ├── validate_inference_montecarlo.py  # Mô phỏng Monte Carlo kiểm soát sai lầm loại I [Issue #11]
+│   ├── verify_claims.py                  # Tái lập claim định lượng từ dữ liệu thật
+│   └── build_progress_report.py          # Sinh báo cáo tiến độ DOCX M1–M2
 ├── src/
-│   ├── __init__.py
-│   ├── data_collection.py              # Adapter OpenAQ, Open-Meteo, AirNow và validation [Issue #3, #4, #44]
-│   ├── data_quality.py                 # Hàm kiểm toán chất lượng 6 chiều & phân tích khuyết thiếu [Issue #5]
-│   ├── cleaning.py                     # Làm sạch tất định, kẹt cảm biến, reindex & sinh Cleaning Log [Issue #6]
-│   ├── cleaning_pipeline.py            # Merge, freeze, split thời gian, sklearn Pipeline chống rò rỉ, xuất Parquet [Issue #7]
-│   ├── flag_evidence.py                # Fit lại số cho cờ is_high_humidity_fog từ dữ liệu thật [Issue #38]
-│   ├── visualizer.py                   # Module xuất bản 7 biểu đồ giải thích FIG-01..FIG-07 chuẩn Tufte/Cleveland [Issue #9]
-│   ├── inference.py                    # Suy luận thống kê W9: chẩn đoán, 3 nhóm kiểm định, Holm, block bootstrap, report + FIG-08..12 [Issue #11]
-│   └── issue44_preparation.py          # Chuẩn bị mở rộng #44: nội suy dẫn xuất có chặn trạm/split, masking-validation, mùa & khoảng cách [Issue #44]
-├── tests/
-│   ├── test_data_collection.py         # 72 unit tests kiểm thử pipeline thu thập và validation [Issue #3, #4, #44]
-│   ├── test_data_quality.py            # 44 unit tests cho bộ kiểm toán 6 chiều [Issue #5]
-│   ├── test_cleaning.py                # 114 unit tests cho lớp làm sạch tất định [Issue #6]
-│   ├── test_cleaning_pipeline.py       # 44 unit tests cho merge/freeze/split/Pipeline của #7
-│   ├── test_cleaning_pipeline_guards.py# 43 unit test hồi quy chặn rò rỉ — mỗi test FAIL trên bản gốc
-│   ├── test_fetch_dataset.py           # 9 unit tests cho cơ chế thu thập & kiểm chứng tập dữ liệu
-│   ├── test_flag_evidence.py           # 44 unit tests — F-test fog×mùa: khóa HÀNH VI, không khóa chuỗi [Issue #38]
-│   ├── test_issue44_preparation.py     # 17 unit tests — nội suy có giới hạn trạm/split, masking, mùa & mutation test báo cáo [Issue #44]
-│   ├── test_profile_airnow_mirror.py   # 8 unit tests — kiểm toán mirror CP0, SHA-1/SHA-256, xung đột YTD/MTD [Issue #44]
-│   ├── test_pipeline_runtime_log.py    # 40 unit tests — tách trạng thái runtime khỏi hồ sơ provenance tĩnh
-│   ├── test_verify_claims_rolling.py   # 9 unit tests — ranh giới Train/Test của nhãn cảnh báo trượt 24h & UTF-8 stdout
-│   ├── test_validate_issue8.py         # 29 unit tests — checksum 4 trạng thái, đồng bộ generator, circular stats, smoke fixture [Issue #8]
-│   ├── test_inference.py               # 218 unit tests — chẩn đoán phân phối, 4 nhóm kiểm định có xét phụ thuộc thời gian (bootstrap theo lịch + HAC, Monte Carlo đa kịch bản), Holm, guard station_id, artifact [Issue #11]
-│   └── test_visualizer.py              # 35 unit tests — 7 biểu đồ ấn phẩm FIG-01..FIG-07 (300 DPI, Tufte, zero-baseline, chu kỳ 24h) [Issue #9]
-│   ├── roadmap.md                     # Kế hoạch tổng thể (nguồn chuẩn) — Week 01→15
-│   ├── TEST_SUITE.md                  # NGUỒN CHUẨN số liệu kiểm thử — breakdown, skip, giới hạn CI
-│   ├── TASK_LIST_M3_M6.md             # Task list M3–M6: 155 checkbox (65 [x] / 90 [ ]), có trạng thái UNVERIFIED
-│   ├── PLAN_MIDTERM_RESCHEDULE_PR36.md# Lịch dời midterm sang W11 + xử lý review PR #36
-│   ├── bao_cao_tien_do_M1_M2.docx     # Báo cáo tiến độ sinh tự động (không tái lập byte-for-byte)
-│   ├── history/                       # 4 file nhật ký lịch sử issue / PR / audit
-│   └── data_dictionary.md · cleaning_log.md · data_quality_audit.md · source_profiling*.md
-├── figures/                            # Biểu đồ 300 DPI: bộ ấn phẩm [Issue #9] + hình bổ sung [Issue #11, #44]
-│   ├── FIG-01.png .. FIG-07.png        # 7 biểu đồ giải thích chuẩn Tufte/Cleveland (300 DPI) [Issue #9]
-│   ├── FIG-08.png .. FIG-12.png        # Chẩn đoán phân phối, mùa, weekday/weekend, QCVN, ACF — KHÔNG thuộc bộ 7 hình ấn phẩm [Issue #11]
-│   ├── FIG-01-extended-historical.png  # Biểu đồ đa năm 2022–2026 phân tách theo trạm (VN003 + VN001, 300 DPI) [Issue #44]
-│   └── .gitkeep
-├── reports/                            # Sinh tự động; claim_audit.csv KHÔNG track; statistical_profile.csv, inference_montecarlo.csv, inference_results.md & issue44_* ĐÃ track
-    ├── statistical_profile.csv           # Bảng hồ sơ thống kê 4 họ chỉ số, 8 biến × 27 cột [Issue #8]
-    ├── inference_montecarlo.csv          # Kiểm chứng sai lầm loại I bằng Monte Carlo 1.000 lần × 9 kịch bản [Issue #11]
-    ├── inference_results.md              # Báo cáo W9: bộ bốn (statistic, p, effect size, CI 95%), Holm, giới hạn [Issue #11]
-    ├── issue44_openaq_7441_manifest.json # Manifest kiểm chứng 903 tệp S3 & độ phủ tháng/năm trạm VN003 [Issue #44]
-    ├── issue44_mirror_manifest.json      # Manifest kiểm toán 46 tệp mirror AirNow GitHub (quyết định NO-GO) [Issue #44]
-    ├── issue44_openaq_poc.json           # Bằng chứng PoC thăm dò OpenAQ S3 cho Hà Nội 2022–2025 [Issue #44]
-    ├── issue44_extended_dataset_metadata.json # Metadata, SHA-256, thống kê mùa đông & bằng chứng bất biến baseline [Issue #44]
-    ├── issue44_interpolation_evaluation.csv # Kết quả thực nghiệm masking-validation nội suy khoảng trống 1h/2h/3h/6h [Issue #44]
-    ├── issue44_multiyear_eda_summary.csv # Bảng tổng hợp EDA đa năm/mùa theo trạm giai đoạn 2022–2026 [Issue #44]
-    ├── issue44_legacy_vs_extended_comparison.md # Báo cáo đối chiếu toàn diện Baseline VN001 vs Mở rộng VN003 [Issue #44]
-    └── .gitkeep                            # *_minutes.md sẽ track khi sinh ra (task D28)
+│   ├── data_collection.py                # Adapter OpenAQ, Open-Meteo, AirNow & validation
+│   ├── data_quality.py                   # Kiểm toán chất lượng 6 chiều & khuyết thiếu Rubin
+│   ├── cleaning.py                       # Làm sạch tất định, kẹt cảm biến, reindex đa trạm
+│   ├── cleaning_pipeline.py              # Merge, freeze, split thời gian, Pipeline chống rò rỉ
+│   ├── flag_evidence.py                  # Tái lập bằng chứng F-test cho is_high_humidity_fog
+│   ├── visualizer.py                     # Xuất bản 7 biểu đồ ấn phẩm FIG-01..FIG-07 [Issue #9]
+│   ├── inference.py                      # Suy luận thống kê W9 [Issue #11]
+│   ├── issue44_preparation.py            # Chuẩn bị mở rộng & masking-validation [Issue #44]
+│   ├── extended_audit.py                 # Kiểm toán & phân tích mở rộng tách trạm [Issue #50]
+│   ├── reanalysis_validation.py          # Bộ validator cho tái phân tích Issue #50
+│   ├── regression.py                     # Hồi quy OLS, chẩn đoán LINE, HAC-24 & Ridge/Lasso [Issue #12]
+│   └── classification.py                 # Phân loại cảnh báo ô nhiễm & kiểm toán rò rỉ [Issue #13]
+├── tests/                                # 824 unit tests tất định (xem docs/TEST_SUITE.md)
+├── figures/
+│   ├── FIG-01.png .. FIG-07.png          # 7 biểu đồ ấn phẩm chính (300 DPI) [Issue #9]
+│   ├── FIG-08.png .. FIG-12.png          # Hình bổ sung suy luận W9 [Issue #11]
+│   ├── FIG-01-extended-historical.png    # Biểu đồ đa năm 2022–2026 tách trạm [Issue #44]
+│   ├── extended/                         # FIG-02-extended, FIG-03-extended, FIG-03b-winter-coverage [Issue #50]
+│   ├── regression_line_diagnostics*.png  # Chẩn đoán LINE theo 3 phạm vi [Issue #12]
+│   └── precision_recall_curve*.png · feature_importance*.png · calibration_reliability*.png  # [Issue #13]
+└── reports/                              # Báo cáo Markdown, CSV & JSON sinh tự động từ mã nguồn
 ```
 
 ---
 
-## 4. Hướng dẫn Thiết lập & Tái lập Môi trường
+## 4. Hướng dẫn Thiết lập & Tái lập
 
 ### Yêu cầu Tiên quyết
-- **Python:** Phiên bản 3.10 trở lên (khuyến nghị Python 3.10 – 3.14).
-- **Git:** Cài đặt sẵn trên hệ thống.
-- **Kết nối Internet:** Bắt buộc **chỉ ở bước 5** (tải tập dữ liệu). Các bước còn lại chạy offline.
+- **Python:** 3.10 trở lên (khuyến nghị 3.10 – 3.14).
+- **Git:** Đã cài đặt trên hệ thống.
+- **Kết nối Internet:** Chỉ cần thiết khi tải tập dữ liệu ở bước 5; toàn bộ kiểm thử và phân tích sau đó chạy offline.
 
-### Các bước Cài đặt
+### Các bước Cài đặt & Chạy kiểm thử
 
-1. **Sao chép kho lưu trữ về máy tính:**
+1. **Sao chép kho lưu trữ:**
    ```bash
    git clone https://github.com/doctor-cato/air-pollution-analysis.git
    cd air-pollution-analysis
    ```
 
 2. **Khởi tạo và kích hoạt môi trường ảo (`venv`):**
-   - *Trên Windows (PowerShell):*
+   - *Windows (PowerShell):*
      ```powershell
      python -m venv .venv
      .\.venv\Scripts\Activate.ps1
      ```
-   - *Trên macOS / Linux:*
+   - *macOS / Linux:*
      ```bash
      python3 -m venv .venv
      source .venv/bin/activate
      ```
 
-3. **Cài đặt các gói phụ thuộc cố định:**
+3. **Cài đặt thư viện phụ thuộc:**
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Kiểm chứng môi trường bằng Notebook tự động (Smoke Test):**
+4. **Kiểm tra môi trường (Smoke Test):**
    ```bash
    jupyter nbconvert --to notebook --execute notebooks/00_environment_test.ipynb
    ```
-   Nếu lệnh chạy với mã thoát `0` và hiển thị thông báo `ALL ENVIRONMENT TESTS PASSED`, môi trường đã sẵn sàng.
 
-5. **Thu thập & kiểm chứng tập dữ liệu (bước duy nhất cần mạng):**
+5. **Thu thập & kiểm chứng tập dữ liệu baseline (cần mạng, không cần API key):**
    ```bash
    python scripts/fetch_dataset.py
    ```
-   Lệnh này tải tập dữ liệu từ **hai nguồn công khai, không cần API key**, ghi payload thô vào `data/raw/`, sinh Parquet canonical vào `data/interim/`, rồi **tự đối chiếu nội dung với `data/raw/metadata.json`** (số bản ghi thô, số bản ghi canonical, dải thời gian thực tế, số bản ghi giao thoa và tỷ lệ độ phủ) để báo cáo tập dữ liệu có khớp bản đã kiểm toán hay không.
 
-   | Nguồn | Vai trò | Giấy phép | Cần API key / tài khoản? |
+   | Nguồn | Vai trò | Giấy phép | Cần API key? |
    |---|---|---|---|
-   | OpenAQ S3 public archive (`location_id=4946811`, `VN001`) | Chất lượng không khí baseline (07/2025–07/2026) | ODC-BY v1.0 | Không |
-   | OpenAQ S3 public archive (`location_id=7441`, `VN003`) | Chất lượng không khí lịch sử mở rộng (01/2022–04/2025, Issue #44) | US Public Domain (`licenseId=33`) | Không |
-   | Open-Meteo Historical Weather API (ECMWF ERA5) | Khí tượng bề mặt (baseline 2025–2026 & backfill 2022–2025) | CC BY 4.0 | Không |
-   | AirNow DOS Historical CSV (`VN002_HANOI_US_EMBASSY`) | Nguồn dự phòng/lịch sử qua `AirNowDOSAdapter` | US Public Domain (khi xuất chính thức) | **Có** (cần cung cấp tệp CSV hợp lệ từ AirNow-Tech / State Dept) |
-   | Mirror GitHub bên thứ ba (`dolekhanhdang/...`) | Chỉ dùng để kiểm toán chẩn đoán CP0 (`NO-GO`, không nạp vào pipeline) | `null` (chưa xác minh giấy phép) | Không (chỉ đọc qua `profile_airnow_mirror.py`) |
+   | OpenAQ S3 (`location_id=4946811`, `VN001`) | Chất lượng không khí baseline (07/2025–07/2026) | ODC-BY v1.0 | Không |
+   | OpenAQ S3 (`location_id=7441`, `VN003`) | Dữ liệu lịch sử mở rộng (01/2022–04/2025, Issue #44) | US Public Domain | Không |
+   | Open-Meteo ERA5 Reanalysis | Khí tượng bề mặt (2022–2026) | CC BY 4.0 | Không |
+   | AirNow DOS CSV (`VN002_HANOI_US_EMBASSY`) | Nguồn dự phòng qua `AirNowDOSAdapter` | US Public Domain | Có (cung cấp CSV) |
 
-   **Tái lập bộ dữ liệu lịch sử mở rộng 2022–2026 (Issue #44 — tùy chọn, sau khi đã có baseline `VN001`):**
-   ```bash
-   python scripts/build_extended_historical_dataset.py
-   ```
-   Lệnh này tải tự động `903` tệp S3 của trạm `VN003_HANOI_OPENAQ_7441` (2022–2025) và dữ liệu khí tượng ERA5 backfill (`2022-01-01`..`2025-04-09`), thực hiện chuẩn hóa, làm sạch tất định (`assert_no_imputation()`), ghép nối khí tượng, phân chia Train/Test theo thời gian độc lập từng trạm, chạy thực nghiệm masking-validation cho nội suy khoảng trống ngắn, xuất tập dữ liệu mở rộng `data/processed/air_pollution_extended_2022_2026.parquet` (`37.722` dòng × `23` cột), các báo cáo `reports/issue44_*` và hình `figures/FIG-01-extended-historical.png`, đồng thời xác minh mã băm SHA-256 của toàn bộ artifact baseline `VN001` không thay đổi. Để kiểm toán độc lập kho mirror bên thứ ba (không nạp vào dữ liệu phân tích), chạy:
-   ```bash
-   python scripts/profile_airnow_mirror.py --output reports/issue44_mirror_manifest.json --raw-dir data/raw/airnow_mirror
-   ```
+   > [!NOTE]
+   > Dữ liệu thô và Parquet trong `data/` không nằm trong Git theo chính sách ba tầng ([`docs/roadmap.md`](docs/roadmap.md)). Vì Parquet không tái lập theo byte giữa các phiên bản thư viện, `fetch_dataset.py` đối chiếu theo **nội dung** (số bản ghi, dải thời gian, độ phủ) với `data/raw/metadata.json`.
 
-   > [!IMPORTANT]
-   > **Vì sao tập dữ liệu không nằm trong Git?** Theo chính sách dữ liệu ba tầng ([`docs/roadmap.md` §3.2](docs/roadmap.md)), tệp thô tải từ API **không bắt buộc phải được Git-track** (Tầng C) — chúng được tái tạo từ nguồn công khai. Việc kiểm chứng toàn vẹn dựa trên mã băm SHA-256 ghi trong `data/raw/metadata.json` (Tầng B).
-   >
-   > **Giới hạn cần biết:** bucket OpenAQ S3 là **kho sống** — nhà cung cấp tiếp tục nạp dữ liệu mới, nên một lần tải ở thời điểm sau có thể nhiều dòng hơn bản đã kiểm toán. Ngoài ra, định dạng Parquet **không tái lập được theo byte** giữa các máy (khối nén và metadata nội bộ phụ thuộc phiên bản thư viện), nên SHA-256 kiểm chứng được *tính toàn vẹn của tệp đã lưu* chứ không dựng lại được *tập dữ liệu*. Vì vậy `scripts/fetch_dataset.py` kiểm chứng bằng **so khớp nội dung** (số bản ghi, dải thời gian, độ phủ giao thoa) thay vì so khớp byte.
-
-6. **Chạy bộ Unit Tests kiểm định toàn trình (824 test methods):**
+6. **Chạy bộ Unit Tests (824 test methods) & kiểm tra cú pháp:**
    ```bash
    python -m unittest discover tests -v
-   ```
-   Bộ gồm **72** unit tests trong `tests/test_data_collection.py` (kiểm chứng adapter OpenAQ, Open-Meteo, AirNow, logic lọc địa lý Hà Nội, kiểm định chất lượng khí tượng `validate_weather_canonical()`, cơ chế đồng bộ thời gian động, cơ chế fail-closed acquisition, kiểm tra hash trên tệp tạm bảo toàn cache và retry S3), **44** unit tests trong `tests/test_data_quality.py` (bộ kiểm toán chất lượng 6 chiều, gồm 9 test cho `temporal_grid_completeness` đa trạm), **114** unit tests trong `tests/test_cleaning.py` (làm sạch tất định: chuẩn hóa múi giờ, khử trùng lặp, ràng buộc khí động học, reindex đa trạm, kẹt cảm biến, cờ chẩn đoán, tính tất định, bảo toàn giá trị cực trị, và 20 test hồi quy cho các lỗi tìm ra khi review đối kháng), **44** unit tests trong `tests/test_cleaning_pipeline.py` (merge có guard, freeze, split thời gian, pipeline, xuất Parquet nguyên tử), **43** unit test hồi quy trong `tests/test_cleaning_pipeline_guards.py` — mỗi test trong đó **FAIL trên bản gốc** và PASS sau khi sửa, nên chúng chứng minh lỗi thật chứ không phải trang trí — **9** unit tests trong `tests/test_fetch_dataset.py` (cơ chế thu thập & kiểm chứng tập dữ liệu), **40** unit tests trong `tests/test_pipeline_runtime_log.py` (tách trạng thái runtime khỏi hồ sơ provenance tĩnh; gồm ghi atomic tệp log và test dựng lại hợp đồng lỗi của `write_pipeline_runtime_log()`), **9** unit tests trong `tests/test_verify_claims_rolling.py` (ranh giới Train/Test của nhãn trượt 24h, cùng hồi quy mã hóa UTF-8 stdout trên Windows không lỗi UnicodeEncodeError), **44** unit tests trong `tests/test_flag_evidence.py` (F-test `fog × mùa`), **218** unit tests trong `tests/test_inference.py` (suy luận phụ thuộc thời gian, HAC, bootstrap lịch ngày, Monte Carlo, Holm) [Issue #11], **17** unit tests trong `tests/test_issue44_preparation.py`, **8** unit tests trong `tests/test_profile_airnow_mirror.py` [Issue #44], **22** unit tests trong `tests/test_extended_reanalysis.py` và **16** unit tests trong `tests/test_extended_validation_mutations.py` [Issue #50], **28** unit tests trong `tests/test_regression.py` (OLS, LINE kèm Ramsey RESET & LOWESS, VIF, Outliers/Leverage/Cook's D, Ridge/Lasso TimeSeriesSplit fold-level không rò rỉ, HAC lag sensitivity, Protocol A/B guard, ablation, derived interpolation sensitivity, provenance & guards) [Issue #12], **32** unit tests trong `tests/test_classification.py` (Phân loại cảnh báo ô nhiễm, 4 quần thể, độ phủ `Station × Year/Season/Month × Split` & bảo toàn tổng, calibration/Brier/ECE, past-only features trên lưới 1h, PR-AUC average precision, tuning F2 & khóa ngưỡng nhất quán, ablation/horizon có purge gap & markdown alignment, xử lý 1 lớp `UNESTIMABLE`, guard & kiểm toán rò rỉ, Protocol A thực tế) [Issue #13], **29** unit tests trong `tests/test_validate_issue8.py` [Issue #8], cùng **35** unit tests trong `tests/test_visualizer.py` [Issue #9].
-   Tổng **824** test methods. Bảng breakdown đầy đủ theo từng file, lý do từng skip và những gì CI *không* kiểm chứng được: [`docs/TEST_SUITE.md`](docs/TEST_SUITE.md).
-
-7. **Kiểm tra cú pháp và quy chuẩn diff:**
-   ```bash
    python -m compileall -q src tests scripts
-   python -c "import src.data_collection"
-   python -c "import src.data_quality"
-   python -c "import src.cleaning"
-   python -c "import src.cleaning_pipeline"
-   python -c "import src.inference"
-   python -c "import src.visualizer"
-   python -c "import src.issue44_preparation"
    git diff --check
    ```
 
-8. **Thực thi các notebook phân tích (theo đúng thứ tự tuần 03–04):**
-   ```bash
-   jupyter nbconvert --to notebook --execute notebooks/01_data_collection.ipynb
-   jupyter nbconvert --to notebook --execute notebooks/02_quality_audit.ipynb
-   jupyter nbconvert --to notebook --execute notebooks/03_data_cleaning.ipynb
-   ```
-   > [!NOTE]
-   > Các notebook này gọi `run_collection_pipeline()`, tải dữ liệu thực tế từ AWS S3 OpenAQ và Open-Meteo API, ghi payload vào `data/raw/` và xuất Parquet vào `data/interim/`. Do phụ thuộc vào kết nối mạng bên ngoài và tệp thô không commit vào Git, quy trình này **chỉ chạy cục bộ** và cố ý không đưa vào CI GitHub Actions tự động (`.github/workflows/ci.yml`).
-   >
-   > **Thứ tự là bắt buộc.** `03_data_cleaning.ipynb` ghi đè hai tệp canonical trong `data/interim/`, nên `02_quality_audit.ipynb` phải chạy **trước** `03` để báo cáo kiểm toán mô tả đúng trạng thái trước làm sạch. Nếu chạy lại `03` trên artifact đã làm sạch, mã nguồn sẽ **cảnh báo tái lập** và [`docs/cleaning_log.md`](docs/cleaning_log.md) sẽ ghi rõ điều đó.
+### Chuỗi Tái lập Toàn trình (Local có `data/`)
 
-### Tóm tắt chuỗi tái lập cho người đánh giá
+Thực thi tuần tự các notebook theo đúng thứ tự phụ thuộc:
 
 ```text
-git clone
-  → pip install -r requirements.txt                (bước 2–3)
-  → python scripts/fetch_dataset.py                (bước 5, cần mạng, có đối chiếu metadata)
-  → python -m unittest discover tests              (bước 6, 811 test methods, offline)
-  → jupyter nbconvert --execute notebooks/01_data_collection.ipynb
-  → jupyter nbconvert --execute notebooks/02_quality_audit.ipynb
-  → jupyter nbconvert --execute notebooks/03_data_cleaning.ipynb  (sinh docs/cleaning_log.md)
-  → jupyter nbconvert --execute notebooks/03_transformation_pipeline.ipynb
-  → data/processed/air_pollution_final.parquet (9044 dòng × 18 cột, gitignored)
-  → jupyter nbconvert --execute notebooks/04_descriptive_stats.ipynb (sinh reports/statistical_profile.csv)
-  → jupyter nbconvert --execute notebooks/05_statistical_inference.ipynb (sinh reports/inference_results.md + FIG-08..12)
-  → python scripts/build_extended_historical_dataset.py (tùy chọn Issue #44: sinh air_pollution_extended_2022_2026.parquet + reports/issue44_* + FIG-01-extended-historical.png)
-  → jupyter nbconvert --execute notebooks/06_regression_modeling.ipynb (sinh reports/regression_results.md + regression_line_diagnostics*.png)
-  → jupyter nbconvert --execute notebooks/07_classification_alerts.ipynb (sinh reports/classification_results.md + precision_recall_curve*.png + feature_importance*.png)
+python scripts/fetch_dataset.py
+  → notebooks/01_data_collection.ipynb
+  → notebooks/02_quality_audit.ipynb            # PHẢI chạy trước 03_data_cleaning
+  → notebooks/03_data_cleaning.ipynb            # ghi đè data/interim/ & sinh docs/cleaning_log.md
+  → notebooks/03_transformation_pipeline.ipynb  # sinh data/processed/air_pollution_final.parquet
+  → notebooks/04_descriptive_stats.ipynb        # sinh reports/statistical_profile.csv
+  → notebooks/05_statistical_inference.ipynb    # sinh reports/inference_results.md & FIG-08..12
+  → notebooks/06_regression_modeling.ipynb      # sinh reports/regression_results.md & diagnostics
+  → notebooks/07_classification_alerts.ipynb    # sinh reports/classification_*.md & PR/calibration plots
 ```
 
-> **Lưu ý khi chạy lại:** `03_data_cleaning.ipynb` cần `data/interim/` ở trạng thái **trước** khi làm sạch. Nếu đã chạy notebook này một lần, hãy khôi phục lại interim từ `data/raw/` trước khi chạy lại — nếu không, `docs/cleaning_log.md` sẽ ghi sai số liệu "trước làm sạch".
-
-### Báo cáo tiến độ M1 → M2 (DOCX)
-
-```text
-python scripts/build_progress_report.py     → docs/bao_cao_tien_do_M1_M2.docx
+**Tái lập nhánh dữ liệu lịch sử mở rộng (Issues #44 & #50):**
+```bash
+python scripts/build_extended_historical_dataset.py
+python scripts/run_extended_reanalysis.py
+python scripts/validate_extended_reanalysis.py --real-data
 ```
 
-> **Yêu cầu dữ liệu (Issue #38):** script **fail loudly** nếu thiếu `data/interim/*.parquet`. Lý do:
-> phần lưu ý về `is_high_humidity_fog` nay **sinh ra từ kết quả thật** (`src/flag_evidence.py`) chứ không
-> còn là chuỗi hằng trong source — đổi dữ liệu thì báo cáo phải đổi theo. Chạy
-> `python scripts/fetch_dataset.py` và notebook `01` trước nếu chưa có `data/interim/`.
-
-Script **chỉ đọc** 6 nguồn sự thật trong repo (`docs/roadmap.md`, `docs/data_dictionary.md`, `docs/source_profiling_decision.md`, `docs/data_quality_audit.md`, `docs/cleaning_log.md`, `data/raw/metadata.json`) rồi dựng báo cáo; nó không đụng tới dữ liệu.
-
-> ⚠️ **`docs/bao_cao_tien_do_M1_M2.docx` là artifact sinh ra, không sửa tay.** Ngoài ra tệp này **không tái lập được theo byte**: `python-docx` ghi dấu thời gian tạo/sửa vào `docProps/core.xml`, nên chạy lại script hai lần cách nhau vài giây sẽ cho hai SHA-256 khác nhau dù nội dung không đổi. Vì vậy không dùng `git diff` trên tệp này để kết luận nội dung đã đổi — hãy so sánh nội dung, hoặc sinh lại tệp rồi commit thẳng. (Cùng giới hạn này đã được ghi nhận với định dạng Parquet ở Mục 3.)
+> [!IMPORTANT]
+> - Để chạy lại `03_data_cleaning.ipynb` đúng chuẩn, cần khôi phục `data/interim/` từ `data/raw/` trước (nếu không `docs/cleaning_log.md` sẽ ghi sai trạng thái trước làm sạch).
+> - Không sửa tay file JSON của `notebooks/04`–`07`; hãy cập nhật script nguồn `scripts/generate_04_notebook.py`..`generate_07_notebook.py` rồi sinh lại để giữ ổn định serialization.
+> - Để sinh báo cáo tiến độ M1–M2: `python scripts/build_progress_report.py` (yêu cầu đã có `data/interim/*.parquet`).
 
 ---
 
 ## 5. Nguyên tắc Quản trị Dữ liệu & Kỹ thuật
 
-- **Bảo toàn dữ liệu thô theo chính sách ba tầng (`data/raw/`):** Tệp thô tải từ API được ghi nguyên trạng dưới `data/raw/` trong quá trình pipeline thực thi (không sửa đổi thủ công, không chuyển đổi giá trị trước khi lưu). Mã băm SHA-256 của từng tệp được lưu trong `data/raw/metadata.json` để kiểm chứng toàn vẹn độc lập. Tệp thô không commit vào Git theo chính sách kho dữ liệu (`.gitignore`: `data/raw/*.json`, `data/raw/*.parquet`) và có thể tái tạo từ nguồn qua pipeline (xem [Mục 3.2 của roadmap](docs/roadmap.md#32-cổng-quyết-định-nguồn-dữ-liệu-issue-19-as-source-selection-gate)).
-- **Ngăn chặn rò rỉ dữ liệu chuỗi thời gian (*Temporal Leakage*):** Phân chia tập huấn luyện/kiểm tra phải thực hiện nghiêm ngặt theo trình tự thời gian ($T_{\text{train}} < T_{\text{test}}$). Điểm cắt phải được luận giải từ đặc tính thực nghiệm của tập dữ liệu đã đóng băng (độ bao phủ, kích thước mẫu, tính liên tục, tính đại diện theo mùa), **không** đặt trước một tỷ lệ hay năm cố định. Tuyệt đối không sử dụng phép chia ngẫu nhiên.
-- **Tính tiền định (*Determinism*):** Tất cả các phép biến đổi ngẫu nhiên, mô hình hóa đều phải cố định hạt giống số ngẫu nhiên (`random_state=42`). Mọi notebook phải thực thi tuần tự, trơn tru qua thao tác **Restart Kernel & Run All**.
-- **Không đưa công nghệ quá mức cần thiết (*No Over-Engineering*):** Với quy mô dữ liệu quan trắc thực tế hiện tại (chuỗi khí tượng 9.072 mốc giờ, chuỗi chất lượng không khí 9.044 giờ lưới sau làm sạch tất định — 8.022 bản ghi quan sát thô trước #6, từ đó reindex chèn thêm 1.022 giờ trống; tập giao thoa thời gian 9.044 mốc giờ với độ phủ khí tượng 100%; tổng dung lượng dưới $20\text{ MB}$), dự án sử dụng định dạng cột nén Snappy **Parquet** và thư viện **Pandas**. Tuyệt đối không sử dụng Apache Spark hay Deep Learning phức tạp làm mất đi tính minh bạch và khả năng giải trình thống kê.
+- **Bảo toàn dữ liệu thô (`data/raw/`):** Dữ liệu tải từ API được lưu nguyên trạng, ghi nhận xuất xứ và mã băm SHA-256 trong `data/raw/metadata.json`, không sửa thủ công và không commit vào Git.
+- **Ngăn chặn rò rỉ dữ liệu (*Leakage Prevention*):** Mọi phép chia Train/Test đều theo trình tự thời gian ($T_{\text{train}} < T_{\text{test}}$); mọi bộ biến đổi (`SimpleImputer`, `RobustScaler`) chỉ `fit` trên tập Train.
+- **Tính tiền định (*Determinism*):** Cố định `random_state=42` và hỗ trợ thực thi **Restart Kernel & Run All** trên toàn bộ notebook.
+- **Kiến trúc vừa đủ (*No Over-Engineering*):** Sử dụng Parquet (nén Snappy) và ngăn xếp Python khoa học chuẩn (`pandas`, `numpy`, `scipy`, `statsmodels`, `scikit-learn`, `matplotlib`, `seaborn`), không đưa vào Spark hay Deep Learning không cần thiết.
 
 ---
 
 ## 6. Cam kết Liêm chính Học thuật (Academic Integrity)
 
-Dự án cam kết tuân thủ nghiêm ngặt chuẩn đầu ra CLO4 và quy chế học thuật của Trường Đại học CMC:
-
-- **Dữ liệu thật – Nguồn xác thực:** Toàn bộ dữ liệu sẽ được thu thập từ các nguồn công khai chính thống có thể kiểm chứng sau khi hoàn tất quy trình thẩm định đa nguồn tại Issue #19, đối chiếu theo quy chuẩn Việt Nam (QCVN 05:2023/BTNMT) và khuyến cáo của Tổ chức Y tế Thế giới (WHO 2021).
-- **Không ngụy tạo số liệu:** Tuyệt đối không tự ý bịa đặt, can thiệp hoặc sửa đổi dữ liệu thô. Không xóa bỏ các điểm dị biệt thực tế (như các đợt nghịch nhiệt mùa đông hay sự kiện pháo hoa) khi chưa có căn cứ vật lý.
-- **Không ngụy tạo độ đo:** Mọi chỉ số thống kê ($R^2$, RMSE, Recall, Precision, PR-AUC, $p$-value, Effect Size) đều là kết quả thực tế thu được từ quá trình chạy mã nguồn trên tập kiểm tra độc lập, không điều chỉnh để tạo ra kết quả "đẹp" giả tạo.
-- **Minh bạch giả định:** Luôn kiểm tra và báo cáo trung thực các giả định thống kê (kiểm định phân phối, chẩn đoán 4 giả định LINE trong hồi quy). Khi giả định bị vi phạm, giải trình nguyên nhân và áp dụng phương pháp điều chỉnh thích hợp.
+Dự án tuân thủ chuẩn đầu ra CLO4 và quy chế học thuật của Trường Đại học CMC:
+- **Dữ liệu thật – Nguồn xác thực:** Sử dụng dữ liệu công khai từ OpenAQ và Open-Meteo ERA5, đối chiếu QCVN 05:2023/BTNMT và WHO 2021.
+- **Không ngụy tạo số liệu hay độ đo:** Không bịa đặt quan trắc để điền khuyết, không xóa dị biệt vật lý thiếu căn cứ, báo cáo trung thực mọi kết quả kiểm định và mô hình trên tập kiểm tra độc lập.
+- **Minh bạch giả định:** Công bố đầy đủ các trường hợp vi phạm giả định (ví dụ: vi phạm 4 giả định LINE trong OLS) cùng phương pháp hiệu chỉnh tương ứng (HAC Newey–West, block bootstrap).
 
 ---
 
@@ -398,12 +254,12 @@ Tuân thủ hướng dẫn về tính minh bạch học thuật trong môn học
 
 ---
 
-## 8. Hướng Dẫn Đóng Góp
+## 8. Hướng dẫn Đóng góp
 
-Xem chi tiết quy trình làm việc, quy ước nhánh, chuẩn commit và nguyên tắc bảo vệ dữ liệu tại **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+Xem quy trình nhánh, quy ước commit và chuẩn mã nguồn tại **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
 ---
 
 ## 9. Giấy phép & Bản quyền
 
-Mã nguồn dự án được phân phối theo giấy phép mã nguồn mở **[MIT License](LICENSE)**. Toàn văn các điều khoản cấp phép được quy định chi tiết tại tệp `LICENSE`.
+Mã nguồn dự án được phân phối theo **[MIT License](LICENSE)**.
