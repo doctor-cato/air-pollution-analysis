@@ -4,7 +4,7 @@
 > `AGENTS.md` chỉ trỏ tới đây; con số kiểm thử thay đổi theo từng Issue nên
 > không nhân bản vào file hướng dẫn agent.
 >
-> **Cập nhật lần cuối:** sau Issue #50, Issue #12 (W10 — hồi quy OLS), Issue #13 (W11 — phân loại cảnh báo) và Issue #15 (`src/data_loader.py`).
+> **Cập nhật lần cuối:** sau Issue #50, Issue #12 (W10 — hồi quy OLS), Issue #13 (W11 — phân loại cảnh báo), Issue #14 (kiểm toán đạo đức & quy mô), và Issue #15 (`src/data_loader.py` & phân tích độ nhạy).
 
 ---
 
@@ -36,6 +36,7 @@ Không test nào gọi mạng. Không test nào phụ thuộc thứ tự chạy.
 | `tests/test_data_collection.py` | 72 | Ingest OpenAQ / Open-Meteo / AirNow, provenance, SHA-256, fail-closed S3 cache preservation |
 | `tests/test_data_loader.py` | 8 | Nạp & kiểm tra schema Parquet (`src/data_loader.py`), cấu hình tách cohort baseline/extended, khóa `station_id` fail-closed & ranh giới split |
 | `tests/test_data_quality.py` | 44 | Kiểm toán chất lượng 6 chiều |
+| `tests/test_ethics_audit.py` | 3 | Kiểm toán đạo đức, quy mô tài nguyên Pandas vs Spark, phân biệt `NaN` vs `0.0` (Issue #14) |
 | `tests/test_extended_reanalysis.py` | 22 | Hợp đồng Issue #50: tách trạm, rolling theo trạm, QC sáu chiều, bootstrap, FIG-03 full-calendar và đối chiếu artifact |
 | `tests/test_extended_validation_mutations.py` | 16 | Kiểm thử mutation: structural không cần dữ liệu, semantic chỉ với Parquet thật; kiểm tra status, CI, provenance và so sánh |
 | `tests/test_fetch_dataset.py` | 9 | `scripts/fetch_dataset.py` |
@@ -45,10 +46,11 @@ Không test nào gọi mạng. Không test nào phụ thuộc thứ tự chạy.
 | `tests/test_pipeline_runtime_log.py` | 40 | Nhật ký thực thi pipeline, dấu phân cách Windows |
 | `tests/test_profile_airnow_mirror.py` | 8 | CP0 pinned blobs, path preservation, period-aware duplicates/conflicts, QC and source-window gaps (synthetic) |
 | `tests/test_regression.py` | 28 | Hồi quy OLS & LINE (Issue #12): split tuần tự tách trạm Protocol A, từ chối Protocol B, VIF, Ramsey RESET + 4 giả định LINE, Outliers/Leverage/Cook's D, Ridge/Lasso TimeSeriesSplit fold-level không rò rỉ, HAC lag sensitivity, ablation, derived interpolation sensitivity, provenance & guards |
+| `tests/test_sensitivity.py` | 9 | Phân tích độ nhạy ngưỡng/cửa sổ trễ/cửa sổ huấn luyện/mùa, guard `station_id`, bất biến baseline SHA-256 (Issue #15) |
 | `tests/test_validate_issue8.py` | 29 | Checksum, đồng bộ generator, circular stats, smoke fixture, canh số liệu tài liệu |
 | `tests/test_verify_claims_rolling.py` | 9 | Biên rolling 24h — dữ liệu đồng nhất che lỗi |
 | `tests/test_visualizer.py` | 35 | Bộ 7 biểu đồ ấn phẩm FIG-01..FIG-07 (300 DPI, Tufte, zero-baseline, chuỳ 24h, font tiếng Việt) |
-| **Tổng** | **832** | |
+| **Tổng** | **844** | |
 
 Đếm lại sau mỗi thay đổi:
 
@@ -64,9 +66,9 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 | Con số | Ý nghĩa |
 |---|---|
-| **832** | Số **test method được định nghĩa** trong mã nguồn (19 module `tests/test_*.py`) |
-| **803** | Số unittest **dự kiến chạy và báo cáo** trên CI (thiếu `data/`; 832 − 29 trong 6 lớp skip ở `setUpClass`) |
-| **799** | Số test **dự kiến chạy và pass** trên CI (803 − 4 skip nằm trong `Ran`) |
+| **844** | Số **test method được định nghĩa** trong mã nguồn (21 module `tests/test_*.py`) |
+| **815** | Số unittest **dự kiến chạy và báo cáo** trên CI (thiếu `data/`; 844 − 29 trong 6 lớp skip ở `setUpClass`) |
+| **811** | Số test **dự kiến chạy và pass** trên CI (815 − 4 skip nằm trong `Ran`) |
 
 > ⚠ **`skipped=9` không trừ thẳng vào `Ran`.** Năm trong chín dòng skip là *class holder*
 > (`setUpClass` raise `SkipTest`): unittest bỏ qua cả class nên các method của nó **không
@@ -83,14 +85,14 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 | Môi trường | Lệnh | Kết quả |
 |---|---|---|
-| Windows local, **có `data/`**, 2026-11-18 (Python 3.14, trên `main` hiện hành `0abff9e`) | `py -3.14 -m unittest discover tests -v` | **Thực chạy** `Ran 824 tests in 645.310s` + `OK` → **824 thực chạy, 824 pass, 0 skip** |
+| Windows local, **có `data/`**, 2026-11-18 (Python 3.14, snapshot trước M5 `0abff9e`) | `py -3.14 -m unittest discover tests -v` | **Thực chạy** `Ran 824 tests in 645.310s` + `OK` → **824 thực chạy, 824 pass, 0 skip** |
 | Ubuntu CI `ubuntu-latest`, **không `data/`**, 2026-11-16 ([run 43843424150](https://github.com/doctor-cato/air-pollution-analysis/actions/runs/43843424150), commit `0abff9e`, Python 3.11) | `python -m unittest discover tests -v` | **Thực chạy** `Ran 796 tests in 128.001s` + `OK (skipped=9)` → **796 thực chạy, 792 pass, 9 skip (5 class holder + 4 skip trong `Ran`)** |
 | Windows CI `windows-latest` (`windows-paths`), **không `data/`**, 2026-11-16 (run 43843424150, Python 3.11) | `python -m unittest tests.test_pipeline_runtime_log -v` | **Thực chạy** `Ran 40 tests in 1.258s` + `OK` → **40 pass, 0 skip** |
 
-> `data/` bị `.gitignore` loại khỏi repository, nên **CI không bao giờ có dataset**; một CI run xanh chỉ chứng minh các kiểm thử cấu trúc/tổng hợp (792 test trên Ubuntu + 40 test path Windows), **không** chứng minh các kiểm thử trên dữ liệu thật (30 test đòi hỏi `data/`).
+> `data/` bị `.gitignore` loại khỏi repository, nên **CI không bao giờ có dataset**; một CI run xanh chỉ chứng minh các kiểm thử cấu trúc/tổng hợp, **không** chứng minh các kiểm thử trên dữ liệu thật (31 test đòi hỏi `data/`: 29 trong 6 lớp holder + 2 skip trong `Ran`).
 > *(Bản ghi lịch sử trước đó — Issue #50 baseline, 2026-11-11: local Windows `Ran 764 tests in 194.248s` + `OK`; Ubuntu CI run 43051282775 `Ran 740 tests in 152.400s` + `OK (skipped=7)` → 736 pass.)*
 
-### Vì sao 832 − 803 = 29
+### Vì sao 844 − 815 = 29
 
 Sáu lớp có `setUpClass` raise `unittest.SkipTest` khi thiếu dữ liệu, và unittest bỏ qua
 **cả class** — mọi method của chúng không bao giờ được tính vào bộ đếm `Ran`:

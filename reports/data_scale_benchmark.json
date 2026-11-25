@@ -1,0 +1,138 @@
+{
+  "issue": "#14",
+  "environment": {
+    "measured_at_utc": "2026-11-20T07:20:22Z",
+    "os": "Windows-11-10.0.26200-SP0",
+    "processor": "AMD64 Family 25 Model 124 Stepping 0, AuthenticAMD",
+    "cpu_count": 12,
+    "python_version": "3.14.10",
+    "pandas_version": "3.1.1",
+    "numpy_version": "2.5.4",
+    "pyarrow_version": "26.0.1",
+    "sklearn_version": "1.9.1",
+    "polars_installed": false,
+    "pyspark_installed": false,
+    "repeats": 5
+  },
+  "datasets": {
+    "baseline_vn001": {
+      "name": "baseline_vn001",
+      "source_path": "air_pollution_final.parquet",
+      "sha256": "866f39de1720c7273dc1f09c4932e508835589383820ad425c19521592586efd",
+      "rows": 9044,
+      "cols": 18,
+      "stations": [
+        "VN001_HANOI_556_NGUYEN_VAN_CU"
+      ],
+      "storage": {
+        "original_parquet_snappy_bytes": 267399,
+        "original_parquet_snappy_mb": 0.255,
+        "csv_bytes": 1938098,
+        "csv_mb": 1.8483,
+        "parquet_snappy_bytes": 267379,
+        "parquet_snappy_mb": 0.255,
+        "parquet_zstd_bytes": 244869,
+        "parquet_zstd_mb": 0.2335,
+        "opt_parquet_snappy_bytes": 239902,
+        "opt_parquet_snappy_mb": 0.2288,
+        "opt_parquet_zstd_bytes": 223447,
+        "opt_parquet_zstd_mb": 0.2131,
+        "csv_to_snappy_ratio": 7.25,
+        "csv_to_opt_zstd_ratio": 8.67
+      },
+      "memory": {
+        "before_bytes": 1763712,
+        "before_mb": 1.682,
+        "after_bytes": 551885,
+        "after_mb": 0.5263,
+        "reduction_pct": 68.71
+      },
+      "io": {
+        "csv_read_ms": 5.252,
+        "csv_write_ms": 109.1,
+        "csv_read_mb_s": 351.91,
+        "csv_write_mb_s": 16.94,
+        "snappy_read_ms": 2.622,
+        "snappy_write_ms": 9.071,
+        "snappy_read_mb_s": 97.24,
+        "snappy_write_mb_s": 28.11,
+        "zstd_read_ms": 2.742,
+        "zstd_write_ms": 9.666,
+        "zstd_read_mb_s": 85.17,
+        "zstd_write_mb_s": 24.16,
+        "opt_snappy_read_ms": 2.556,
+        "opt_snappy_write_ms": 9.082,
+        "opt_zstd_read_ms": 2.11,
+        "opt_zstd_write_ms": 9.151
+      },
+      "workload": {
+        "naive_loop_ms": 235.649,
+        "vectorized_opt_ms": 30.4,
+        "speedup_x": 7.75
+      }
+    },
+    "extended_2022_2026": {
+      "name": "extended_2022_2026",
+      "source_path": "air_pollution_extended_2022_2026.parquet",
+      "sha256": "6930557fbfc8e31dbcb062065b1903ccf27c433e9c0f062bd0dc382a9a1f9b02",
+      "rows": 37722,
+      "cols": 23,
+      "stations": [
+        "VN001_HANOI_556_NGUYEN_VAN_CU",
+        "VN003_HANOI_OPENAQ_7441"
+      ],
+      "storage": {
+        "original_parquet_snappy_bytes": 828706,
+        "original_parquet_snappy_mb": 0.7903,
+        "csv_bytes": 9222471,
+        "csv_mb": 8.7952,
+        "parquet_snappy_bytes": 828706,
+        "parquet_snappy_mb": 0.7903,
+        "parquet_zstd_bytes": 777173,
+        "parquet_zstd_mb": 0.7412,
+        "opt_parquet_snappy_bytes": 787344,
+        "opt_parquet_snappy_mb": 0.7509,
+        "opt_parquet_zstd_bytes": 744825,
+        "opt_parquet_zstd_mb": 0.7103,
+        "csv_to_snappy_ratio": 11.13,
+        "csv_to_opt_zstd_ratio": 12.38
+      },
+      "memory": {
+        "before_bytes": 9767223,
+        "before_mb": 9.3147,
+        "after_bytes": 2904997,
+        "after_mb": 2.7704,
+        "reduction_pct": 70.26
+      },
+      "io": {
+        "csv_read_ms": 28.419,
+        "csv_write_ms": 709.822,
+        "csv_read_mb_s": 309.49,
+        "csv_write_mb_s": 12.39,
+        "snappy_read_ms": 7.532,
+        "snappy_write_ms": 43.788,
+        "snappy_read_mb_s": 104.93,
+        "snappy_write_mb_s": 18.05,
+        "zstd_read_ms": 6.812,
+        "zstd_write_ms": 42.988,
+        "zstd_read_mb_s": 108.8,
+        "zstd_write_mb_s": 17.24,
+        "opt_snappy_read_ms": 6.631,
+        "opt_snappy_write_ms": 38.216,
+        "opt_zstd_read_ms": 6.972,
+        "opt_zstd_write_ms": 43.449
+      },
+      "workload": {
+        "naive_loop_ms": 971.582,
+        "vectorized_opt_ms": 66.694,
+        "speedup_x": 14.57
+      }
+    }
+  },
+  "recommendation": {
+    "selected_stack": "pandas + pyarrow (Parquet Snappy/Zstd) single-node Scale Up",
+    "spark_justified": false,
+    "polars_benchmarked": false,
+    "w12_volume_tier": "< 10 GB"
+  }
+}
