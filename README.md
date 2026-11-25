@@ -242,8 +242,15 @@ Dự án tuân thủ chuẩn đầu ra CLO4 và quy chế học thuật của Tr
 
 ## 7. Tuyên bố Sử dụng Trí tuệ Nhân tạo (AI Usage Declaration)
 
-- **Phạm vi hỗ trợ:** Các công cụ AI (Google Gemini, GitHub Copilot) được sử dụng để hỗ trợ dựng khung mã nguồn, rà soát cú pháp, chuẩn hóa kiểm thử và biên tập tài liệu Markdown.
-- **Trách nhiệm của sinh viên:** Toàn bộ quyết định phương pháp luận, kiểm soát rò rỉ dữ liệu, diễn giải thống kê, kiểm chứng kết quả và bảo vệ đồ án do nhóm sinh viên trực tiếp thực hiện và chịu trách nhiệm.
+Tuân thủ hướng dẫn về tính minh bạch học thuật trong môn học INFO3020, dự án công khai mức độ hỗ trợ của các công cụ AI trong quá trình thực hiện:
+
+- **Phạm vi hỗ trợ của AI:** Các công cụ AI (Google Gemini, GitHub Copilot) được sử dụng làm công cụ trợ giúp kỹ thuật cho:
+  - Sinh mã khung, script tạo/đồng bộ các notebook phân tích (`notebooks/04_descriptive_stats.ipynb`–`07_classification_alerts.ipynb`) và các module xử lý, trực quan hóa, kiểm thử đơn vị trong `src/` và `tests/`.
+  - Hỗ trợ gỡ lỗi (*debugging*), rà soát cú pháp, kiểm tra tương thích gói thư viện đa nền tảng và bổ sung ca kiểm thử hồi quy cho các biên rò rỉ dữ liệu.
+  - Hỗ trợ biên tập, chuẩn hóa cấu trúc Markdown và rà soát tính nhất quán của tài liệu kỹ thuật trong `docs/` và `README.md`.
+- **Vai trò và trách nhiệm của nhóm sinh viên:**
+  - Nhóm sinh viên trực tiếp xác định câu hỏi nghiên cứu, thiết kế phương pháp luận, lựa chọn mô hình, chốt giả thuyết thống kê, quy ước kiểm soát rò rỉ dữ liệu và diễn giải khoa học.
+  - Toàn bộ mã nguồn, notebook và tài liệu có sự hỗ trợ của AI đều được nhóm sinh viên rà soát, thực thi trực tiếp trên dữ liệu thật, kiểm chứng bằng bộ unit test/script xác minh độc lập và tự chịu hoàn toàn trách nhiệm học thuật đối với sản phẩm cuối cùng.
 
 ---
 

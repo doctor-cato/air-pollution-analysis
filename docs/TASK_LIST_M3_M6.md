@@ -467,8 +467,7 @@ thực hiện tốt: mỗi issue đều kèm 1 tài liệu sinh ra từ code th�
       và nội dung chỉ đọc trạng thái M1–M2.
       ⚠️ Lưu ý: `.docx` **không tái lập được theo byte** (`python-docx` ghi timestamp vào `docProps/core.xml`)
       → sinh lại rồi commit thẳng, không dùng `git diff` để kết luận (README:269 đã ghi nhận).
-- [ ] **D10** ⚪ `README.md` §7 — kiểm tra tuyên bố AI còn khớp thực tế sau khi dùng AI viết
-      notebook #4–#7 và tài liệu M3–M5.
+- [x] **D10** ⚪ `README.md` §7 — đã rà soát và cập nhật Tuyên bố sử dụng AI để phản ánh trung thực phạm vi hỗ trợ kỹ thuật đối với notebook `04`–`07`, module `src/`/`tests/`, gỡ lỗi, kiểm thử hồi quy và tài liệu `docs/`, tách bạch rõ trách nhiệm phương pháp luận, rà soát, thực thi và kiểm chứng của nhóm sinh viên.
 
 ### 1B.3 — Sau Phase 5–7 (M4)
 
@@ -497,8 +496,7 @@ thực hiện tốt: mỗi issue đều kèm 1 tài liệu sinh ra từ code th�
       (task 1.24). Thiếu đoạn này thì GV hỏi "sao không làm?" mà không có câu trả lời.
 - [ ] **D19** 🔴 `docs/model_card.md` — 1 trang: hiệu năng phân tầng, giới hạn, điều kiện sử dụng.
 - [ ] **D20** 🔴 `docs/project_charter.md` — theo biểu mẫu GV (nộp trước deadline; xem task 0.4).
-- [ ] **D21** ⚪ `docs/source_profiling.md` chỉ 1,5 KB — có vẻ là file rỗng/khung. Kiểm tra xem còn giá trị
-      hay nên gộp vào `source_profiling_decision.md` (73,5 KB) để tránh hai nguồn sự thật.
+- [x] **D21** ⚪ `docs/source_profiling.md` (20 dòng) đã được xác minh là trang mục lục/chuyển hướng có chủ đích trỏ về nguồn chuẩn duy nhất [`docs/source_profiling_decision.md`](source_profiling_decision.md) (545 dòng; 14 mục khớp đề mục bản chuẩn, liên kết tương đối hợp lệ, không nhân bản nội dung kỹ thuật). Giữ nguyên chuyển hướng.
 
 ### 1B.5 — Sau Phase 9–10 (M5–M6)
 
@@ -513,12 +511,10 @@ thực hiện tốt: mỗi issue đều kèm 1 tài liệu sinh ra từ code th�
 
 ### 1B.6 — Trước khi nộp (M6)
 
-- [ ] **D25** 🔴 Kiểm tra tính hợp lệ **toàn bộ liên kết nội bộ** trong tất cả docs (Issue #17 Task 2 liệt kê
-      8 file, nhưng sau M3–M6 repo sẽ có **~18 file .md** trong `docs/` — danh sách phải cập nhật).
+- [x] **D25** 🔴 Kiểm tra tính hợp lệ **toàn bộ liên kết nội bộ** trong 58 tệp Markdown toàn repo (`docs/`, `README.md`, `CONTRIBUTING.md`, `.agents/`, `reports/`): 141/141 liên kết nội bộ và anchor hợp lệ sau khi sửa 1 anchor hỏng trong `docs/roadmap.md:854` (11/11 URL ngoài trả về HTTP 200).
 - [ ] **D26** ⚪ Đồng bộ số liệu xuyên suốt: cùng một con số phải xuất hiện giống nhau ở README, roadmap,
       notebook và báo cáo. Dùng script đọc Parquet để sinh số liệu thay vì gõ tay.
-- [ ] **D27** ⚪ `docs/ROADMAP_INFO3020_Air_Pollution.md` (90,6 KB) đã bị thay thế một phần — cân nhắc
-      ghi rõ ở đầu file "tài liệu tham chiếu lịch sử, không dùng làm nguồn chuẩn" để tránh nhầm lẫn.
+- [x] **D27** ⚪ `docs/ROADMAP_INFO3020_Air_Pollution.md` — đã xác minh khối `[!WARNING]` đầu tài liệu (dòng 7–21) đã ghi rõ đây là tài liệu tham chiếu lịch sử bị thay thế một phần, chỉ rõ `docs/roadmap.md` là roadmap làm việc chính thức và liệt kê 4 quyết định kỹ thuật đã thay thế mà vẫn giữ nguyên nội dung khóa học gốc. Giữ nguyên cảnh báo hiện hành.
 
 ### 1B.7 — Vấn đề kỹ thuật về `.gitignore`
 

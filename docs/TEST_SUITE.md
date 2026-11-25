@@ -63,14 +63,16 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 | Con số | Ý nghĩa |
 |---|---|
-| **824** | Số **test method được định nghĩa** trong mã nguồn |
-| **796** | Số unittest **dự kiến chạy và báo cáo** trên CI (thiếu `data/`; 824 − 28 trong 5 lớp skip) |
-| **792** | Số test **dự kiến chạy và pass** trên CI (796 − 4 skip nằm trong `Ran`) |
+| **824** | Số **test method được định nghĩa** trong mã nguồn (18 module `tests/test_*.py`) |
+| **796** | Số unittest **thực chạy và báo cáo (`Ran`)** trên Ubuntu CI (thiếu `data/`; 824 − 28 trong 5 lớp skip ở `setUpClass`) |
+| **792** | Số test **thực chạy và pass** trên Ubuntu CI (796 − 4 skip nằm trong `Ran`) |
 
 > ⚠ **`skipped=9` không trừ thẳng vào `Ran`.** Năm trong chín dòng skip là *class holder*
 > (`setUpClass` raise `SkipTest`): unittest bỏ qua cả class nên các method của nó **không
 > bao giờ vào `Ran`**, nhưng vẫn hiện một dòng trong `skipped=`. Vì vậy
-> `pass = Ran − (skipped − holders)`. Ví dụ ở snapshot Issue #50 trước khi thêm #12–#13: `740 − (7 − 3) = 736`, **không phải** `740 − 7`.
+> `pass = Ran − (skipped − holders) = 796 − (9 − 5) = 792`, **không phải** `796 − 9`.
+>
+> Tổng số test phụ thuộc dữ liệu thật cục bộ là **30** (28 method trong 5 lớp holder không vào `Ran` + 2 method skip bên trong `Ran`: `test_progress_report_bullet_carries_the_computed_f_statistic` và `test_live_restart_kernel_and_run_all`), cộng **2** test đặc thù Windows (`skipUnless(os.name == "nt")`).
 >
 > Đính chính: bản trước của tài liệu này ghi `462 − 5 = 457`, tức đã trừ cả holder và
 > **đếm thiếu 1** so với số test thật sự chạy-pass (đúng phải là `462 − 4 = 458`).
@@ -80,10 +82,12 @@ python -m unittest discover tests 2>&1 | grep "^Ran"
 
 | Môi trường | Lệnh | Kết quả |
 |---|---|---|
-| Windows local, **có `data/`**, 2026-11-11 (Issue #50 baseline) | `.venv\Scripts\python.exe -W ignore::DeprecationWarning -m unittest discover tests -q` | **Thực chạy** `Ran 764 tests in 194.248s` + `OK` → **764 pass, 0 skip** |
-| Ubuntu CI `ubuntu-latest`, **không `data/`**, run 43051282775 (Issue #50 baseline) | `python -m unittest discover tests -v` | **Thực chạy** `Ran 740 tests in 152.400s` + `OK (skipped=7)` → **736 pass, 7 skip (3 holder)** |
+| Windows local, **có `data/`**, 2026-11-18 (Python 3.14, trên `main` hiện hành `0abff9e`) | `py -3.14 -m unittest discover tests -v` | **Thực chạy** `Ran 824 tests in 645.310s` + `OK` → **824 thực chạy, 824 pass, 0 skip** |
+| Ubuntu CI `ubuntu-latest`, **không `data/`**, 2026-11-16 ([run 43843424150](https://github.com/doctor-cato/air-pollution-analysis/actions/runs/43843424150), commit `0abff9e`, Python 3.11) | `python -m unittest discover tests -v` | **Thực chạy** `Ran 796 tests in 128.001s` + `OK (skipped=9)` → **796 thực chạy, 792 pass, 9 skip (5 class holder + 4 skip trong `Ran`)** |
+| Windows CI `windows-latest` (`windows-paths`), **không `data/`**, 2026-11-16 (run 43843424150, Python 3.11) | `python -m unittest tests.test_pipeline_runtime_log -v` | **Thực chạy** `Ran 40 tests in 1.258s` + `OK` → **40 pass, 0 skip** |
 
-> `data/` bị `.gitignore` loại khỏi repository, nên **CI không bao giờ có dataset**.
+> `data/` bị `.gitignore` loại khỏi repository, nên **CI không bao giờ có dataset**; một CI run xanh chỉ chứng minh các kiểm thử cấu trúc/tổng hợp (792 test trên Ubuntu + 40 test path Windows), **không** chứng minh các kiểm thử trên dữ liệu thật (30 test đòi hỏi `data/`).
+> *(Bản ghi lịch sử trước đó — Issue #50 baseline, 2026-11-11: local Windows `Ran 764 tests in 194.248s` + `OK`; Ubuntu CI run 43051282775 `Ran 740 tests in 152.400s` + `OK (skipped=7)` → 736 pass.)*
 
 ### Vì sao 824 − 796 = 28
 
