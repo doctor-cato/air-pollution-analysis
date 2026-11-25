@@ -48,9 +48,9 @@ Dự án nghiên cứu biến thiên nồng độ bụi mịn $\text{PM}_{2.5}$ 
 
 - **Làm sạch tất định vs. Tiền xử lý chống rò rỉ:** `src/cleaning.py` thực thi `assert_no_imputation()` (so từng ô theo khóa `(station_id, timestamp)` — không tự ý điền khuyết). `src/cleaning_pipeline.py` tách rạch ròi `TARGET_DERIVED_FLAGS` (`pm25_was_missing` — rò rỉ cấu trúc) và `NON_PREDICTIVE_FLAGS` (`is_high_humidity_fog` — bằng chứng tái lập tại `src/flag_evidence.py`), đồng thời kiểm chứng `validate_no_leakage()` và tầng kiểm tra thứ tự thời gian bắt buộc `verify_chronology()`.
 - **Tách trạm nghiêm ngặt (Protocol A vs. Protocol B):** Tập baseline `VN001_HANOI_556_NGUYEN_VAN_CU` (07/2025–07/2026; `9.044` giờ lưới) và tập lịch sử mở rộng `VN003_HANOI_OPENAQ_7441` (01/2022–04/2025; `28.678` giờ lưới) không có quan sát chồng lấp; mọi phân tích và mô hình hóa đều khóa đơn trạm theo Protocol A, bảo toàn bất biến SHA-256 của baseline `VN001`.
-- **Bộ kiểm thử tự động (824 test methods):**
-  - Toàn bộ suite định nghĩa **824** test method trong `tests/` (xem bảng phân bổ chi tiết và giới hạn từng môi trường tại [`docs/TEST_SUITE.md`](docs/TEST_SUITE.md)).
-  - Do `data/` được `.gitignore` loại khỏi Git, **CI GitHub Actions** không có dữ liệu thật nên bỏ qua 5 lớp phụ thuộc dữ liệu (`TestDocumentedReproduction` 4, `TestRealDataset` 12, `TestSemanticMutations` 8, `TestRegressionRealDataset` 2, `TestClassificationRealDataset` 2 — tổng **28** method không vào `Ran`, dự kiến `Ran = 796`). Kết luận trên số liệu thật phải được kiểm chứng bằng lần chạy local có `data/` hoặc `scripts/validate_extended_reanalysis.py --real-data`.
+- **Bộ kiểm thử tự động (832 test methods):**
+  - Toàn bộ suite định nghĩa **832** test method trong `tests/` (xem bảng phân bổ chi tiết và giới hạn từng môi trường tại [`docs/TEST_SUITE.md`](docs/TEST_SUITE.md)).
+  - Do `data/` được `.gitignore` loại khỏi Git, **CI GitHub Actions** không có dữ liệu thật nên bỏ qua 5 lớp phụ thuộc dữ liệu (`TestDocumentedReproduction` 4, `TestRealDataset` 12, `TestSemanticMutations` 8, `TestRegressionRealDataset` 2, `TestClassificationRealDataset` 2 — tổng **28** method không vào `Ran`, dự kiến `Ran = 804`). Kết luận trên số liệu thật phải được kiểm chứng bằng lần chạy local có `data/` hoặc `scripts/validate_extended_reanalysis.py --real-data`.
 
 ---
 
@@ -109,6 +109,7 @@ air-pollution-analysis/
 │   └── build_progress_report.py          # Sinh báo cáo tiến độ DOCX M1–M2
 ├── src/
 │   ├── data_collection.py                # Adapter OpenAQ, Open-Meteo, AirNow & validation
+│   ├── data_loader.py                    # Nạp Parquet chuẩn hóa cohort & kiểm tra station_id [Issue #15/#56]
 │   ├── data_quality.py                   # Kiểm toán chất lượng 6 chiều & khuyết thiếu Rubin
 │   ├── cleaning.py                       # Làm sạch tất định, kẹt cảm biến, reindex đa trạm
 │   ├── cleaning_pipeline.py              # Merge, freeze, split thời gian, Pipeline chống rò rỉ
@@ -120,7 +121,7 @@ air-pollution-analysis/
 │   ├── reanalysis_validation.py          # Bộ validator cho tái phân tích Issue #50
 │   ├── regression.py                     # Hồi quy OLS, chẩn đoán LINE, HAC-24 & Ridge/Lasso [Issue #12]
 │   └── classification.py                 # Phân loại cảnh báo ô nhiễm & kiểm toán rò rỉ [Issue #13]
-├── tests/                                # 824 unit tests tất định (xem docs/TEST_SUITE.md)
+├── tests/                                # 832 unit tests tất định (xem docs/TEST_SUITE.md)
 ├── figures/
 │   ├── FIG-01.png .. FIG-07.png          # 7 biểu đồ ấn phẩm chính (300 DPI) [Issue #9]
 │   ├── FIG-08.png .. FIG-12.png          # Hình bổ sung suy luận W9 [Issue #11]
@@ -185,7 +186,7 @@ air-pollution-analysis/
    > [!NOTE]
    > Dữ liệu thô và Parquet trong `data/` không nằm trong Git theo chính sách ba tầng ([`docs/roadmap.md`](docs/roadmap.md)). Vì Parquet không tái lập theo byte giữa các phiên bản thư viện, `fetch_dataset.py` đối chiếu theo **nội dung** (số bản ghi, dải thời gian, độ phủ) với `data/raw/metadata.json`.
 
-6. **Chạy bộ Unit Tests (824 test methods) & kiểm tra cú pháp:**
+6. **Chạy bộ Unit Tests (832 test methods) & kiểm tra cú pháp:**
    ```bash
    python -m unittest discover tests -v
    python -m compileall -q src tests scripts
