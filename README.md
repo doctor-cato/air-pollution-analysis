@@ -42,15 +42,15 @@ Dự án nghiên cứu biến thiên nồng độ bụi mịn $\text{PM}_{2.5}$ 
 | **Milestone 3** | EDA 4 họ chỉ số & 7 biểu đồ ấn phẩm (#8, #9) | **Hoàn thành** | `src/visualizer.py`, `notebooks/04_descriptive_stats.ipynb`, `figures/FIG-01..07.png`, `reports/statistical_profile.csv` |
 | **Mở rộng & Tái phân tích** | Mở rộng lịch sử 2022–2025 tách trạm & Tái phân tích M2/M3/W9 (#44, #50) | **Hoàn thành** | `src/issue44_preparation.py`, `src/extended_audit.py`, `src/reanalysis_validation.py`, `reports/extended_*`, `figures/extended/` |
 | **Milestone 4** | Suy luận W9 (#11), Hồi quy OLS (#12), Phân loại cảnh báo (#13); (#10 đã đóng) | **Hoàn thành** | `src/inference.py`, `src/regression.py`, `src/classification.py`, `notebooks/05`–`07`, `reports/*_results.md` |
-| **Milestones 5–6** | Bias Audit, Tài nguyên vs Spark, Model Card, Charter, Độ nhạy, Báo cáo SCQA & Slide, Audit (#14–#17) | **Hoàn thiện cục bộ** *(chờ merge PR #59–#63 & nhánh M5/M6)* | `src/ethics_audit.py`, `src/sensitivity.py`, `docs/bias_assessment.md`, `docs/model_card.md`, `docs/project_charter.md`, `docs/mentoring_feedback.md`, `docs/final_report_traceability.md`, `reports/data_scale_benchmark.*`, `reports/sensitivity_analysis.*`, `reports/final_report.pdf`, `reports/defense_slides.pdf`, `reports/reproducibility_matrix.md` |
+| **Milestones 5–6** | Bias Audit, Tài nguyên vs Spark, Datasheet, Model Card, Charter, Độ nhạy, Báo cáo SCQA & Slide, Viva QA, Audit (#14–#17) | **Hoàn thành** | `src/data_loader.py`, `src/ethics_audit.py`, `src/sensitivity.py`, `docs/datasheet.md`, `docs/bias_assessment.md`, `docs/model_card.md`, `docs/project_charter.md`, `docs/mentoring_feedback.md`, `docs/viva_qa_prep.md`, `docs/final_report_traceability.md`, `reports/data_scale_benchmark.*`, `reports/sensitivity_analysis.*`, `reports/final_report.pdf`, `reports/defense_slides.pdf`, `reports/reproducibility_matrix.md`, `reports/defense_minutes.md`, `scripts/audit_defense_readiness.py` |
 
 ### 2.2. Các điểm nhấn Kỹ thuật & Kiểm chứng
 
 - **Làm sạch tất định vs. Tiền xử lý chống rò rỉ:** `src/cleaning.py` thực thi `assert_no_imputation()` (so từng ô theo khóa `(station_id, timestamp)` — không tự ý điền khuyết). `src/cleaning_pipeline.py` tách rạch ròi `TARGET_DERIVED_FLAGS` (`pm25_was_missing` — rò rỉ cấu trúc) và `NON_PREDICTIVE_FLAGS` (`is_high_humidity_fog` — bằng chứng tái lập tại `src/flag_evidence.py`), đồng thời kiểm chứng `validate_no_leakage()` và tầng kiểm tra thứ tự thời gian bắt buộc `verify_chronology()`.
 - **Tách trạm nghiêm ngặt (Protocol A vs. Protocol B):** Tập baseline `VN001_HANOI_556_NGUYEN_VAN_CU` (07/2025–07/2026; `9.044` giờ lưới) và tập lịch sử mở rộng `VN003_HANOI_OPENAQ_7441` (01/2022–04/2025; `28.678` giờ lưới) không có quan sát chồng lấp; mọi phân tích và mô hình hóa đều khóa đơn trạm theo Protocol A, bảo toàn bất biến SHA-256 của baseline `VN001`.
-- **Bộ kiểm thử tự động (836 test methods):**
-  - Toàn bộ suite định nghĩa **836** test method trong `tests/` (xem bảng phân bổ chi tiết và giới hạn từng môi trường tại [`docs/TEST_SUITE.md`](docs/TEST_SUITE.md)).
-  - Do `data/` được `.gitignore` loại khỏi Git, **CI GitHub Actions** không có dữ liệu thật nên bỏ qua 5 lớp phụ thuộc dữ liệu (`TestDocumentedReproduction` 4, `TestRealDataset` 12, `TestSemanticMutations` 8, `TestRegressionRealDataset` 2, `TestClassificationRealDataset` 2 — tổng **28** method không vào `Ran`, dự kiến `Ran = 808`). Kết luận trên số liệu thật phải được kiểm chứng bằng lần chạy local có `data/` hoặc `scripts/validate_extended_reanalysis.py --real-data`.
+- **Bộ kiểm thử tự động (844 test methods):**
+  - Toàn bộ suite định nghĩa **844** test method trong `tests/` (xem bảng phân bổ chi tiết và giới hạn từng môi trường tại [`docs/TEST_SUITE.md`](docs/TEST_SUITE.md)).
+  - Do `data/` được `.gitignore` loại khỏi Git, **CI GitHub Actions** không có dữ liệu thật nên bỏ qua 6 lớp phụ thuộc dữ liệu (`TestDocumentedReproduction` 4, `TestRealDataset` 12, `TestSemanticMutations` 8, `TestRegressionRealDataset` 2, `TestClassificationRealDataset` 2, `TestDataLoaderRealDataset` 1 — tổng **29** method không vào `Ran`, dự kiến `Ran = 815`). Kết luận trên số liệu thật phải được kiểm chứng bằng lần chạy local có `data/` hoặc `scripts/validate_extended_reanalysis.py --real-data`.
 
 ---
 
@@ -118,6 +118,7 @@ air-pollution-analysis/
 │   └── build_progress_report.py          # Sinh báo cáo tiến độ DOCX M1–M2
 ├── src/
 │   ├── data_collection.py                # Adapter OpenAQ, Open-Meteo, AirNow & validation
+│   ├── data_loader.py                    # Nạp Parquet chuẩn hóa cohort & kiểm tra station_id [Issue #15/#56]
 │   ├── data_quality.py                   # Kiểm toán chất lượng 6 chiều & khuyết thiếu Rubin
 │   ├── cleaning.py                       # Làm sạch tất định, kẹt cảm biến, reindex đa trạm
 │   ├── cleaning_pipeline.py              # Merge, freeze, split thời gian, Pipeline chống rò rỉ
@@ -131,7 +132,7 @@ air-pollution-analysis/
 │   ├── classification.py                 # Phân loại cảnh báo ô nhiễm & kiểm toán rò rỉ [Issue #13]
 │   ├── ethics_audit.py                   # Đo quy mô dữ liệu vs Spark & kiểm toán định kiến [Issue #14]
 │   └── sensitivity.py                    # Điều phối phân tích độ nhạy & guard biên trạm [Issue #15]
-├── tests/                                # 836 unit tests tất định (xem docs/TEST_SUITE.md)
+├── tests/                                # 844 unit tests tất định (xem docs/TEST_SUITE.md)
 ├── figures/
 │   ├── FIG-01.png .. FIG-07.png          # 7 biểu đồ ấn phẩm chính (300 DPI) [Issue #9]
 │   ├── FIG-08.png .. FIG-12.png          # Hình bổ sung suy luận W9 [Issue #11]
@@ -196,7 +197,7 @@ air-pollution-analysis/
    > [!NOTE]
    > Dữ liệu thô và Parquet trong `data/` không nằm trong Git theo chính sách ba tầng ([`docs/roadmap.md`](docs/roadmap.md)). Vì Parquet không tái lập theo byte giữa các phiên bản thư viện, `fetch_dataset.py` đối chiếu theo **nội dung** (số bản ghi, dải thời gian, độ phủ) với `data/raw/metadata.json`.
 
-6. **Chạy bộ Unit Tests (836 test methods) & kiểm tra cú pháp:**
+6. **Chạy bộ Unit Tests (844 test methods) & kiểm tra cú pháp:**
    ```bash
    python -m unittest discover tests -v
    python -m compileall -q src tests scripts
@@ -253,8 +254,15 @@ Dự án tuân thủ chuẩn đầu ra CLO4 và quy chế học thuật của Tr
 
 ## 7. Tuyên bố Sử dụng Trí tuệ Nhân tạo (AI Usage Declaration)
 
-- **Phạm vi hỗ trợ:** Các công cụ AI (Google Gemini, GitHub Copilot) được sử dụng để hỗ trợ dựng khung mã nguồn, rà soát cú pháp, chuẩn hóa kiểm thử và biên tập tài liệu Markdown.
-- **Trách nhiệm của sinh viên:** Toàn bộ quyết định phương pháp luận, kiểm soát rò rỉ dữ liệu, diễn giải thống kê, kiểm chứng kết quả và bảo vệ đồ án do nhóm sinh viên trực tiếp thực hiện và chịu trách nhiệm.
+Tuân thủ hướng dẫn về tính minh bạch học thuật trong môn học INFO3020, dự án công khai mức độ hỗ trợ của các công cụ AI trong quá trình thực hiện:
+
+- **Phạm vi hỗ trợ của AI:** Các công cụ AI (Google Gemini, GitHub Copilot) được sử dụng làm công cụ trợ giúp kỹ thuật cho:
+  - Sinh mã khung, script tạo/đồng bộ các notebook phân tích (`notebooks/04_descriptive_stats.ipynb`–`07_classification_alerts.ipynb`) và các module xử lý, trực quan hóa, kiểm thử đơn vị trong `src/` và `tests/`.
+  - Hỗ trợ gỡ lỗi (*debugging*), rà soát cú pháp, kiểm tra tương thích gói thư viện đa nền tảng và bổ sung ca kiểm thử hồi quy cho các biên rò rỉ dữ liệu.
+  - Hỗ trợ biên tập, chuẩn hóa cấu trúc Markdown và rà soát tính nhất quán của tài liệu kỹ thuật trong `docs/` và `README.md`.
+- **Vai trò và trách nhiệm của nhóm sinh viên:**
+  - Nhóm sinh viên trực tiếp xác định câu hỏi nghiên cứu, thiết kế phương pháp luận, lựa chọn mô hình, chốt giả thuyết thống kê, quy ước kiểm soát rò rỉ dữ liệu và diễn giải khoa học.
+  - Toàn bộ mã nguồn, notebook và tài liệu có sự hỗ trợ của AI đều được nhóm sinh viên rà soát, thực thi trực tiếp trên dữ liệu thật, kiểm chứng bằng bộ unit test/script xác minh độc lập và tự chịu hoàn toàn trách nhiệm học thuật đối với sản phẩm cuối cùng.
 
 ---
 

@@ -2,7 +2,7 @@
 
 > **Course:** INFO3020 – Introduction to Data Science (CMC University)
 > **Instructor:** M.Sc. Pham Ngoc Dong
-> **Audit Date:** `2026-11-20`
+> **Audit Date:** `2026-11-25`
 > **Runtime Observed:** `Windows-11-10.0.26200-SP0` | Python `3.14.10` (`py -3.14`) | `pandas 3.1.1` | `numpy 2.5.4` | `scipy 1.18.1` | `statsmodels 0.15.0` | `scikit-learn 1.9.1` | `matplotlib 3.11.2` | `seaborn 0.13.2` | `pyarrow 26.0.1` | `nbconvert 7.17.2` | `nbclient 0.11.0` | `nbformat 5.11.1` | `python-docx 1.2.0`
 
 ---
@@ -12,15 +12,16 @@
 | Verification Dimension | Command / Scope | Directly Observed Result | Status |
 |---|---|---|:---:|
 | **Python Syntax & Compilation** | `py -3.14 -m compileall -q src tests scripts` | Exit code `0` across all modules in `src/`, `tests/`, `scripts/` | **PASS** |
-| **Local Unit Test Suite (with `data/`)** | `py -3.14 -m unittest discover tests -v` | Exit code `0` across all **836** defined test methods across 20 modules (including `3` in `test_ethics_audit.py` + `9` in `test_sensitivity.py`) | **PASS** |
-| **CI Projection (without `data/`)** | `.github/workflows/ci.yml` (`data/` excluded) | **836** defined − **28** in 5 skipped `setUpClass` classes = **808** expected `Ran` (**804** expected pass, **9** expected skips including 4 in-`Ran`) | **PROJECTED** |
+| **Local Unit Test Suite (with `data/`)** | `py -3.14 -m unittest discover tests -v` | Exit code `0` across all **844** defined test methods across 21 modules (including `8` in `test_data_loader.py`, `3` in `test_ethics_audit.py`, `9` in `test_sensitivity.py`) | **PASS** |
+| **CI Projection (without `data/`)** | `.github/workflows/ci.yml` (`data/` excluded) | **844** defined − **29** in 6 skipped `setUpClass` classes = **815** expected `Ran` (**811** expected pass, **10** expected skips including 4 in-`Ran`) | **PROJECTED** |
+| **Defense Readiness Audit (Issue #17/#58)** | `py -3.14 scripts/audit_defense_readiness.py --real-data` | Exit code `0`: CRISP-DM structure PASS (`0` errors), Markdown links PASS (`223` checked, `0` broken), Issue DAG PASS (`21` nodes, `0` errors), Metadata schema PASS, Real-Data Audit PASS | **PASS** |
 | **Empirical Claims Verifier** | `py -3.14 scripts/verify_claims.py` | Exit code `0`: **37** `VERIFIED`, **0** `MISMATCH`, **1** documented `UNVERIFIABLE` (`fog_mutual_information`) | **PASS** |
 | **Issue #8 Deliverable & Live NB 04 Audit** | `py -3.14 scripts/validate_issue8.py` | Exit code `0`: **213 passed**, **0 failed**, **6 warnings** (expected raw/processed metadata provenance warnings); live `04_descriptive_stats.ipynb` execution **0 errors** | **PASS** |
 | **Issue #50 Extended Reanalysis Validator** | `py -3.14 scripts/validate_extended_reanalysis.py --real-data` | Exit code **`1`** (`ReanalysisValidationError: semantic-content validation failed (2/35)`): **603** structural checks passed, **33/35** semantic checks passed; **2/35** hash checks differ strictly between original Issue #44 files on disk (`6930557f...`, `303aacb6...`) and PR #52 rebuild hashes in `reports/extended_reanalysis_config.json` (`124c7fc8...`, `a0d841fc...`) | **PARTIAL / KNOWN HASH DIFF** |
 | **Clean Notebook Sequential Execution** | `nbconvert --to notebook --execute --output-dir <tempdir>` on `00`, `04`, `05`, `06`, `07` | **5/5** executed with exit code `0` (`00`: `6.4s`, `04`: `9.8s`, `05`: `15.2s`, `06`: `111.5s`, `07`: `105.9s`; total `248.8s`) | **PASS** |
 | **Notebook Serialization Stability** | `TestNotebooksAreSerializationStable` | `2/2` passed (`nbformat.write()` byte-identical, single LF trailing newline) | **PASS** |
-| **Test Count Documentation Guard** | `TestDocumentedTestCounts` | `3/3` passed (`AGENTS.md`, `docs/TEST_SUITE.md`, `README.md`, `docs/roadmap.md` synced to `836`) | **PASS** |
-| **Internal Markdown Links** | Relative link audit across `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, `docs/*.md`, `reports/*.md` | **43 files**, **161 links** checked: **0 broken** | **PASS** |
+| **Test Count Documentation Guard** | `TestDocumentedTestCounts` | `3/3` passed (`AGENTS.md`, `docs/TEST_SUITE.md`, `README.md`, `docs/roadmap.md` synced to `844`) | **PASS** |
+| **Internal Markdown Links** | `scripts/audit_defense_readiness.py` full-repo link audit | **223 links** checked across tracked Markdown files: **0 broken** | **PASS** |
 | **Git Hygiene & Raw Data Policy** | `git diff --check` & `git ls-files data/` | Zero trailing-whitespace/conflict errors; `git ls-files data/` contains only `.gitkeep` files and `data/raw/metadata.json` | **PASS** |
 
 ---
@@ -49,9 +50,9 @@
 |---|---|---|
 | **Dataset Availability (`data/`)** | **PRESENT** (`data/raw/`, `data/interim/`, `data/processed/`) | **ABSENT** (`data/` excluded by `.gitignore`) |
 | **Command** | `py -3.14 -m unittest discover tests -v` | `python -m unittest discover tests -v` |
-| **Defined Test Methods** | **836** | **836** |
-| **Tests Reported as `Ran`** | **836** (`unittest_exit=0`, `0` skipped) | **808** (`836 − 28` in 5 skipped `setUpClass` classes) |
-| **Expected Pass / Skip Counts** | **836 pass, 0 skip** | **804 pass, 9 skip** (`5` class holders + `4` in-`Ran` skips) |
+| **Defined Test Methods** | **844** | **844** |
+| **Tests Reported as `Ran`** | **844** (`unittest_exit=0`, `0` skipped) | **815** (`844 − 29` in 6 skipped `setUpClass` classes) |
+| **Expected Pass / Skip Counts** | **844 pass, 0 skip** | **811 pass, 10 skip** (`6` class holders + `4` in-`Ran` skips) |
 | **CI-Only Limitations** | — | Cannot verify real-data F-test (`test_flag_evidence`), real W9 inference (`TestRealDataset`), real Issue #50 mutations (`TestSemanticMutations`), real OLS/LINE (`TestRegressionRealDataset`), real classification (`TestClassificationRealDataset`), live NB 04 on 9,044 rows, or Windows path invariants (`windows-paths` job covers `test_pipeline_runtime_log` separately). |
 
 ---
@@ -76,8 +77,8 @@ Clean execution check via `py -3.14 -m jupyter nbconvert --to notebook --execute
 
 ## 5. Limitations, Provenance Caveats & Open PR Ledger
 
-1. **Pending Open Pull Requests (`#59`–`#63`, plus superseded `#53`):**
-   - Deliverables `docs/issue44_checkpoint_status.md` (PR `#59`), `docs/datasheet.md` (PR `#60`), `src/data_loader.py` & `tests/test_data_loader.py` (PR `#61`, doc conflicts only), `docs/viva_qa_prep.md` (PR `#62`), and `scripts/audit_defense_readiness.py` & `reports/defense_minutes.md` (PR `#63`) sit on open PR branches awaiting user review/merge and are intentionally left unmodified in this working tree.
+1. **Merged Pull Request Consolidation (`#53`, `#59`–`#63`, `#64`):**
+   - All sub-deliverables (`docs/issue44_checkpoint_status.md` PR `#59`, `docs/datasheet.md` PR `#60`, `src/data_loader.py` & `tests/test_data_loader.py` PR `#61`, `docs/viva_qa_prep.md` PR `#62`, `scripts/audit_defense_readiness.py` & `reports/defense_minutes.md` PR `#63`, closeout doc fixes PR `#53`) are merged into `main` and verified together with PR `#64` (`844` total defined test methods).
 2. **Issue #50 Parquet/ERA5 Snapshot Hash Difference (`validate_extended_reanalysis.py --real-data` exit 1 on `2/35`):**
    - Local disk contains the original Issue #44 snapshot (`6930557f...` extended Parquet, `303aacb6...` ERA5 JSON), matching `reports/issue44_extended_dataset_metadata.json`. `reports/extended_reanalysis_config.json` (committed by PR #52) stores a separate live-rebuild hash pair (`124c7fc8...`, `a0d841fc...`), causing `2/35` semantic hash checks to fail while all **603** structural checks and **33/35** semantic checks pass (`docs/issue50_reproducibility.md`).
 3. **Raw `metadata.json` Checksum Provenance Warnings (`validate_issue8.py` 6 warnings):**
