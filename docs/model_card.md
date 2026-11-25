@@ -1,7 +1,7 @@
 # Model Card — Hanoi $\text{PM}_{2.5}$ Retrospective Alert Classifier & Explanatory Regression Models
 
-> **Standard:** Margaret Mitchell et al. (2019), *Model Cards for Model Reporting* (1-page academic format, INFO3020 — Issue #14)  
-> **Authors:** Topic 6 Team (Huy, Khương, Khánh, Hưng, Hùng) — CMC University  
+> **Standard:** Margaret Mitchell et al. (2019), *Model Cards for Model Reporting* (1-page academic format, INFO3020 — Issue #14)
+> **Authors:** Topic 6 Team (Huy, Khương, Khánh, Hưng, Hùng) — CMC University
 > **Primary Evidence Sources:** [`reports/classification_results.md`](../reports/classification_results.md), [`docs/classification_findings.md`](classification_findings.md), [`reports/regression_results.md`](../reports/regression_results.md), [`docs/regression_findings.md`](regression_findings.md), [`docs/leakage_audit.md`](leakage_audit.md)
 
 ---

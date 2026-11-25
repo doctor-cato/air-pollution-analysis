@@ -1,8 +1,8 @@
 # Đánh Giá Định Kiến & Đạo Đức Dữ Liệu (Ethics & Bias Assessment) — Issue #14
 
-> **Môn học:** INFO3020 – Nhập môn Khoa học Dữ liệu (*Introduction to Data Science*) – ĐH CMC  
-> **Giai đoạn CRISP-DM:** Milestone 5 (Tuần 12 — Kiểm toán 4 giả thuyết định kiến trên dữ liệu thực)  
-> **Thời điểm kiểm toán (UTC):** `2026-11-20T07:20:23Z`  
+> **Môn học:** INFO3020 – Nhập môn Khoa học Dữ liệu (*Introduction to Data Science*) – ĐH CMC
+> **Giai đoạn CRISP-DM:** Milestone 5 (Tuần 12 — Kiểm toán 4 giả thuyết định kiến trên dữ liệu thực)
+> **Thời điểm kiểm toán (UTC):** `2026-11-20T07:20:23Z`
 > **Nguyên tắc kiểm chứng:** Mọi số đếm, thống kê kiểm định và tọa độ dưới đây được tính trực tiếp từ `air_pollution_final.parquet`, `air_pollution_extended_2022_2026.parquet` (chỉ đọc), `src/flag_evidence.py`, `reports/issue44_extended_dataset_metadata.json`, `reports/issue44_openaq_7441_manifest.json` và `reports/extended_data_quality_by_station_year_season.csv`.
 
 ---

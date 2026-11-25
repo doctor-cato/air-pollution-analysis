@@ -1,10 +1,10 @@
 # Project Charter — Time-Series Air Pollution Analysis ($\text{PM}_{2.5}$ in Hanoi, Vietnam)
 
-> **Course:** INFO3020 – Introduction to Data Science (*Nhập môn Khoa học Dữ liệu*)  
-> **Institution:** Faculty of Information & Communication Technology, CMC University  
-> **Instructor:** M.Sc. Pham Ngoc Dong (*ThS. Phạm Ngọc Đông*)  
-> **Methodology:** CRISP-DM (6 Phases, Weeks 01–15)  
-> **Repository:** [`doctor-cato/air-pollution-analysis`](https://github.com/doctor-cato/air-pollution-analysis)  
+> **Course:** INFO3020 – Introduction to Data Science (*Nhập môn Khoa học Dữ liệu*)
+> **Institution:** Faculty of Information & Communication Technology, CMC University
+> **Instructor:** M.Sc. Pham Ngoc Dong (*ThS. Phạm Ngọc Đông*)
+> **Methodology:** CRISP-DM (6 Phases, Weeks 01–15)
+> **Repository:** [`doctor-cato/air-pollution-analysis`](https://github.com/doctor-cato/air-pollution-analysis)
 > **Deliverable Owner:** Issue #14 (Milestone 5 — Week 12)
 
 ---

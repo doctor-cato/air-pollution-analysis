@@ -1,8 +1,8 @@
 # Reproducibility Matrix & Audit Ledger (Issue #17 — Milestone 6)
 
-> **Course:** INFO3020 – Introduction to Data Science (CMC University)  
-> **Instructor:** M.Sc. Pham Ngoc Dong  
-> **Audit Date:** `2026-11-20`  
+> **Course:** INFO3020 – Introduction to Data Science (CMC University)
+> **Instructor:** M.Sc. Pham Ngoc Dong
+> **Audit Date:** `2026-11-20`
 > **Runtime Observed:** `Windows-11-10.0.26200-SP0` | Python `3.14.10` (`py -3.14`) | `pandas 3.1.1` | `numpy 2.5.4` | `scipy 1.18.1` | `statsmodels 0.15.0` | `scikit-learn 1.9.1` | `matplotlib 3.11.2` | `seaborn 0.13.2` | `pyarrow 26.0.1` | `nbconvert 7.17.2` | `nbclient 0.11.0` | `nbformat 5.11.1` | `python-docx 1.2.0`
 
 ---

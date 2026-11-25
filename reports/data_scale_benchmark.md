@@ -1,8 +1,8 @@
 # Báo Cáo Đo Đạc Quy Mô Dữ Liệu & Tối Ưu Hóa Tài Nguyên (Pandas vs. Apache Spark) — Issue #14
 
-> **Môn học:** INFO3020 – Nhập môn Khoa học Dữ liệu (*Introduction to Data Science*) – ĐH CMC  
-> **Giai đoạn CRISP-DM:** Milestone 5 (Tuần 12 — Big Data, Tài nguyên & Đạo đức Dữ liệu)  
-> **Thời điểm đo đạc (UTC):** `2026-11-20T07:20:22Z` | **Số lần lặp (`repeats`):** `5`  
+> **Môn học:** INFO3020 – Nhập môn Khoa học Dữ liệu (*Introduction to Data Science*) – ĐH CMC
+> **Giai đoạn CRISP-DM:** Milestone 5 (Tuần 12 — Big Data, Tài nguyên & Đạo đức Dữ liệu)
+> **Thời điểm đo đạc (UTC):** `2026-11-20T07:20:22Z` | **Số lần lặp (`repeats`):** `5`
 > **Nguyên tắc liêm chính:** Toàn bộ số liệu dưới đây được đo trực tiếp từ tệp Parquet thật trên đĩa (tệp CSV chỉ ghi tạm trong `tempfile.TemporaryDirectory()`, không ghi vào `data/`). Thư viện `polars` **không** được cài đặt trong môi trường dự án nên được ghi nhận rõ là *chưa đo (unbenchmarked)*, không ngụy tạo con số.
 
 ---
