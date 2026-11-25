@@ -5,7 +5,7 @@
 > **Đề tài:** Phân tích mức độ ô nhiễm không khí theo thời gian (*Time-Series Air Pollution Analysis*)  
 > **Căn cứ tài liệu:** Đề cương môn học INFO3020, Bài giảng ThS. Phạm Ngọc Đông – Khoa CNTT & Truyền thông, Trường Đại học CMC, và hệ thống 17 GitHub Issues (#1–#17, #19) làm đặc tả kỹ thuật có thẩm quyền.  
 > **Nơi lưu trữ:** `docs/roadmap.md`
-> **Kiểm thử hiện tại (Issue #50 + #12 + #13):** suite định nghĩa **824** test methods;
+> **Kiểm thử hiện tại (Issue #50 + #12 + #13 + #14 + #15):** suite định nghĩa **836** test methods;
 > [`docs/TEST_SUITE.md`](TEST_SUITE.md) là nguồn chuẩn cho breakdown và kết quả theo môi trường.
 
 ---
@@ -799,14 +799,14 @@ W01–W15.
 >   `#12`, `#13`) **đã được mở lại** và không còn bị chặn.
 > - Các số liệu thực nghiệm nêu trong các báo cáo (#4, #5) là **kết quả của một lần thực thi cụ thể**
 >   trên tập dữ liệu hiện tại, **không phải** bảo đảm của pipeline cho mọi lần chạy tương lai.
-> - Bộ kiểm thử hiện gồm **824 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
+> - Bộ kiểm thử hiện gồm **836 unit test tất định** (bảng breakdown đầy đủ theo từng file ở
 >   [`docs/TEST_SUITE.md`](TEST_SUITE.md) — nguồn chuẩn duy nhất cho số liệu kiểm thử).
 >   Số mà unittest **thực sự chạy và báo cáo** phụ thuộc cả nền tảng lẫn việc có
->   `data/` hay không — **không phải con số 824 trên mọi nền tảng**:
+>   `data/` hay không — **không phải con số 836 trên mọi nền tảng**:
 >   - Trước khi gộp Issue #12 và #13, baseline Issue #50 trên **Windows local (có `data/`, 2026-11-11)**: `Ran 764 tests in 194.248s` + `OK` → **764 pass, 0 skip**.
->   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`, run 43051282775)**: `Ran 740 tests in 152.400s` + `OK (skipped=7)` → **736 pass, 7 skip** (trên baseline 764; thêm #12 và #13 là 824 defined / 28 không vào `Ran`).
+>   - **Ubuntu CI `ubuntu-latest` (repo không commit `data/`, run 43051282775)**: `Ran 740 tests in 152.400s` + `OK (skipped=7)` → **736 pass, 7 skip** (trên baseline 764; sau #12/#13/#14/#15 là 836 defined / 28 không vào `Ran`).
 >
->   Trên `824` method định nghĩa, **28** phương thức nằm trong **5** lớp mà
+>   Trên `836` method định nghĩa, **28** phương thức nằm trong **5** lớp mà
 >   `setUpClass` ném `unittest.SkipTest` khi thiếu `data/` — `TestDocumentedReproduction`
 >   (4), `TestRealDataset` của `tests/test_inference.py` (12), `TestSemanticMutations` (8),
 >   `TestRegressionRealDataset` của `tests/test_regression.py` (2), và
@@ -851,7 +851,7 @@ W01–W15.
 > vì trạm OpenAQ `4946811` chỉ được tích hợp lưu trữ từ 07/2025. Việc mở rộng phủ về 2023–2024 trên trạm `VN002`
 > phụ thuộc nguồn dữ liệu lịch sử (AirNow DOS cần thông tin xác thực của tổ chức/State Dept; bản mirror GitHub bên thứ ba bị từ chối `NO-GO` do thiếu giấy phép và lỗi xếp nhầm năm) và
 > **không được giải quyết bằng cách tự tạo hoặc nội suy dữ liệu**.
-> Trong **Issue #44**, dự án đã mở rộng chuỗi lịch sử **2022-01-01 → 2025-04-09** thông qua trạm độc lập **`VN003_HANOI_OPENAQ_7441`** (OpenAQ S3 Location `7441`, US Public Domain) kết hợp backfill khí tượng ERA5 vào bộ dữ liệu phân tách theo trạm `data/processed/air_pollution_extended_2022_2026.parquet` (`37.722` hàng × `23` cột), trong khi vẫn giữ nguyên bất biến baseline `VN001` (`data/processed/air_pollution_final.parquet`, `9.044` hàng × `18` cột). Xem chi tiết tại [Phụ lục Issue #44](#phụ-lục-cập-nhật-issue-44-mở-rộng-dữ-liệu-lịch-sử-20222026-phân-tách-theo-trạm) và [`docs/issue44_checkpoint_status.md`](issue44_checkpoint_status.md).
+> Trong **Issue #44**, dự án đã mở rộng chuỗi lịch sử **2022-01-01 → 2025-04-09** thông qua trạm độc lập **`VN003_HANOI_OPENAQ_7441`** (OpenAQ S3 Location `7441`, US Public Domain) kết hợp backfill khí tượng ERA5 vào bộ dữ liệu phân tách theo trạm `data/processed/air_pollution_extended_2022_2026.parquet` (`37.722` hàng × `23` cột), trong khi vẫn giữ nguyên bất biến baseline `VN001` (`data/processed/air_pollution_final.parquet`, `9.044` hàng × `18` cột). Xem chi tiết tại [`docs/issue44_dataset_contract.md`](issue44_dataset_contract.md) và [`docs/issue44_checkpoint_status.md`](issue44_checkpoint_status.md).
 
 ### G.4. Kết quả kiểm toán Milestone 2 (PR #34)
 

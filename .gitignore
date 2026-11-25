@@ -58,6 +58,16 @@ reports/*
 # Báo cáo kết quả và biên bản kiểm toán rò rỉ dữ liệu Issue #13:
 !reports/classification_results.md
 !reports/classification_leakage_audit.md
+# Deliverables Milestone 5–6 (Issues #14–#17):
+!reports/data_scale_benchmark.md
+!reports/data_scale_benchmark.json
+!reports/sensitivity_analysis.csv
+!reports/sensitivity_analysis.md
+!reports/final_report.html
+!reports/final_report.pdf
+!reports/defense_slides.html
+!reports/defense_slides.pdf
+!reports/reproducibility_matrix.md
 
 # ⚠️ figures/ CỐ Ý KHÔNG bị ignore: FIG-01…FIG-07 là bằng chứng chấm điểm
 # (mục "biểu đồ ấn phẩm" 20% rubric) và hội đồng cần mở repo xem được.

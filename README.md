@@ -42,15 +42,15 @@ Dự án nghiên cứu biến thiên nồng độ bụi mịn $\text{PM}_{2.5}$ 
 | **Milestone 3** | EDA 4 họ chỉ số & 7 biểu đồ ấn phẩm (#8, #9) | **Hoàn thành** | `src/visualizer.py`, `notebooks/04_descriptive_stats.ipynb`, `figures/FIG-01..07.png`, `reports/statistical_profile.csv` |
 | **Mở rộng & Tái phân tích** | Mở rộng lịch sử 2022–2025 tách trạm & Tái phân tích M2/M3/W9 (#44, #50) | **Hoàn thành** | `src/issue44_preparation.py`, `src/extended_audit.py`, `src/reanalysis_validation.py`, `reports/extended_*`, `figures/extended/` |
 | **Milestone 4** | Suy luận W9 (#11), Hồi quy OLS (#12), Phân loại cảnh báo (#13); (#10 đã đóng) | **Hoàn thành** | `src/inference.py`, `src/regression.py`, `src/classification.py`, `notebooks/05`–`07`, `reports/*_results.md` |
-| **Milestones 5–6** | Bias Audit, Tài nguyên vs Spark, Datasheet, Model Card 1 trang, Bảo vệ (#14–#17) | **Kế hoạch** | Theo [`docs/roadmap.md`](docs/roadmap.md) và [`docs/TASK_LIST_M3_M6.md`](docs/TASK_LIST_M3_M6.md) |
+| **Milestones 5–6** | Bias Audit, Tài nguyên vs Spark, Model Card, Charter, Độ nhạy, Báo cáo SCQA & Slide, Audit (#14–#17) | **Hoàn thiện cục bộ** *(chờ merge PR #59–#63 & nhánh M5/M6)* | `src/ethics_audit.py`, `src/sensitivity.py`, `docs/bias_assessment.md`, `docs/model_card.md`, `docs/project_charter.md`, `docs/mentoring_feedback.md`, `docs/final_report_traceability.md`, `reports/data_scale_benchmark.*`, `reports/sensitivity_analysis.*`, `reports/final_report.pdf`, `reports/defense_slides.pdf`, `reports/reproducibility_matrix.md` |
 
 ### 2.2. Các điểm nhấn Kỹ thuật & Kiểm chứng
 
 - **Làm sạch tất định vs. Tiền xử lý chống rò rỉ:** `src/cleaning.py` thực thi `assert_no_imputation()` (so từng ô theo khóa `(station_id, timestamp)` — không tự ý điền khuyết). `src/cleaning_pipeline.py` tách rạch ròi `TARGET_DERIVED_FLAGS` (`pm25_was_missing` — rò rỉ cấu trúc) và `NON_PREDICTIVE_FLAGS` (`is_high_humidity_fog` — bằng chứng tái lập tại `src/flag_evidence.py`), đồng thời kiểm chứng `validate_no_leakage()` và tầng kiểm tra thứ tự thời gian bắt buộc `verify_chronology()`.
 - **Tách trạm nghiêm ngặt (Protocol A vs. Protocol B):** Tập baseline `VN001_HANOI_556_NGUYEN_VAN_CU` (07/2025–07/2026; `9.044` giờ lưới) và tập lịch sử mở rộng `VN003_HANOI_OPENAQ_7441` (01/2022–04/2025; `28.678` giờ lưới) không có quan sát chồng lấp; mọi phân tích và mô hình hóa đều khóa đơn trạm theo Protocol A, bảo toàn bất biến SHA-256 của baseline `VN001`.
-- **Bộ kiểm thử tự động (824 test methods):**
-  - Toàn bộ suite định nghĩa **824** test method trong `tests/` (xem bảng phân bổ chi tiết và giới hạn từng môi trường tại [`docs/TEST_SUITE.md`](docs/TEST_SUITE.md)).
-  - Do `data/` được `.gitignore` loại khỏi Git, **CI GitHub Actions** không có dữ liệu thật nên bỏ qua 5 lớp phụ thuộc dữ liệu (`TestDocumentedReproduction` 4, `TestRealDataset` 12, `TestSemanticMutations` 8, `TestRegressionRealDataset` 2, `TestClassificationRealDataset` 2 — tổng **28** method không vào `Ran`, dự kiến `Ran = 796`). Kết luận trên số liệu thật phải được kiểm chứng bằng lần chạy local có `data/` hoặc `scripts/validate_extended_reanalysis.py --real-data`.
+- **Bộ kiểm thử tự động (836 test methods):**
+  - Toàn bộ suite định nghĩa **836** test method trong `tests/` (xem bảng phân bổ chi tiết và giới hạn từng môi trường tại [`docs/TEST_SUITE.md`](docs/TEST_SUITE.md)).
+  - Do `data/` được `.gitignore` loại khỏi Git, **CI GitHub Actions** không có dữ liệu thật nên bỏ qua 5 lớp phụ thuộc dữ liệu (`TestDocumentedReproduction` 4, `TestRealDataset` 12, `TestSemanticMutations` 8, `TestRegressionRealDataset` 2, `TestClassificationRealDataset` 2 — tổng **28** method không vào `Ran`, dự kiến `Ran = 808`). Kết luận trên số liệu thật phải được kiểm chứng bằng lần chạy local có `data/` hoặc `scripts/validate_extended_reanalysis.py --real-data`.
 
 ---
 
@@ -84,7 +84,12 @@ air-pollution-analysis/
 │   ├── issue50_reproducibility.md        # Hướng dẫn & giới hạn tái lập Issue #50
 │   ├── regression_findings.md            # Tổng kết phát hiện hồi quy OLS & LINE [Issue #12]
 │   ├── classification_findings.md        # Tổng kết phát hiện phân loại cảnh báo [Issue #13]
-│   └── leakage_audit.md                  # Biên bản kiểm toán rò rỉ 4 lớp [Issue #13]
+│   ├── leakage_audit.md                  # Biên bản kiểm toán rò rỉ 4 lớp [Issue #13]
+│   ├── bias_assessment.md                # Kiểm toán 4 giả thuyết định kiến & NaN vs 0.0 [Issue #14]
+│   ├── model_card.md                     # Model Card 1 trang (Classification & OLS) [Issue #14]
+│   ├── project_charter.md                # Project Charter chính thức [Issue #14]
+│   ├── mentoring_feedback.md             # Nhật ký tiếp thu phản biện kỹ thuật [Issue #15]
+│   └── final_report_traceability.md      # Bảng truy vết số liệu/hình báo cáo cuối kỳ [Issue #16]
 ├── notebooks/
 │   ├── 00_environment_test.ipynb         # Kiểm thử môi trường và thư viện [Issue #1]
 │   ├── 01_data_collection.ipynb          # Thu thập & kiểm định dữ liệu [Issue #3, #4]
@@ -102,6 +107,10 @@ air-pollution-analysis/
 │   ├── profile_airnow_mirror.py          # Kiểm toán độc lập mirror AirNow GitHub (NO-GO) [Issue #44]
 │   ├── run_extended_reanalysis.py        # Chạy tái phân tích tách trạm M2/M3/W9 [Issue #50]
 │   ├── validate_extended_reanalysis.py   # Thẩm định cấu trúc & ngữ nghĩa độc lập [Issue #50]
+│   ├── run_issue14_audit.py              # Đo tài nguyên Pandas vs Spark & bias audit [Issue #14]
+│   ├── run_sensitivity_analysis.py       # Chạy phân tích độ nhạy đa chiều [Issue #15]
+│   ├── build_final_report.py             # Sinh báo cáo tổng kết SCQA HTML/PDF [Issue #16]
+│   ├── build_defense_slides.py           # Sinh bộ 14 slide bảo vệ HTML/PDF [Issue #16]
 │   ├── generate_04_notebook.py .. generate_07_notebook.py  # Script sinh notebook chuẩn 04–07
 │   ├── validate_issue8.py                # Thẩm định deliverables Issue #8
 │   ├── validate_inference_montecarlo.py  # Mô phỏng Monte Carlo kiểm soát sai lầm loại I [Issue #11]
@@ -119,8 +128,10 @@ air-pollution-analysis/
 │   ├── extended_audit.py                 # Kiểm toán & phân tích mở rộng tách trạm [Issue #50]
 │   ├── reanalysis_validation.py          # Bộ validator cho tái phân tích Issue #50
 │   ├── regression.py                     # Hồi quy OLS, chẩn đoán LINE, HAC-24 & Ridge/Lasso [Issue #12]
-│   └── classification.py                 # Phân loại cảnh báo ô nhiễm & kiểm toán rò rỉ [Issue #13]
-├── tests/                                # 824 unit tests tất định (xem docs/TEST_SUITE.md)
+│   ├── classification.py                 # Phân loại cảnh báo ô nhiễm & kiểm toán rò rỉ [Issue #13]
+│   ├── ethics_audit.py                   # Đo quy mô dữ liệu vs Spark & kiểm toán định kiến [Issue #14]
+│   └── sensitivity.py                    # Điều phối phân tích độ nhạy & guard biên trạm [Issue #15]
+├── tests/                                # 836 unit tests tất định (xem docs/TEST_SUITE.md)
 ├── figures/
 │   ├── FIG-01.png .. FIG-07.png          # 7 biểu đồ ấn phẩm chính (300 DPI) [Issue #9]
 │   ├── FIG-08.png .. FIG-12.png          # Hình bổ sung suy luận W9 [Issue #11]
@@ -185,7 +196,7 @@ air-pollution-analysis/
    > [!NOTE]
    > Dữ liệu thô và Parquet trong `data/` không nằm trong Git theo chính sách ba tầng ([`docs/roadmap.md`](docs/roadmap.md)). Vì Parquet không tái lập theo byte giữa các phiên bản thư viện, `fetch_dataset.py` đối chiếu theo **nội dung** (số bản ghi, dải thời gian, độ phủ) với `data/raw/metadata.json`.
 
-6. **Chạy bộ Unit Tests (824 test methods) & kiểm tra cú pháp:**
+6. **Chạy bộ Unit Tests (836 test methods) & kiểm tra cú pháp:**
    ```bash
    python -m unittest discover tests -v
    python -m compileall -q src tests scripts
