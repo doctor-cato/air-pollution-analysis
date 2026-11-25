@@ -852,7 +852,7 @@ W01–W15.
 > vì trạm OpenAQ `4946811` chỉ được tích hợp lưu trữ từ 07/2025. Việc mở rộng phủ về 2023–2024 trên trạm `VN002`
 > phụ thuộc nguồn dữ liệu lịch sử (AirNow DOS cần thông tin xác thực của tổ chức/State Dept; bản mirror GitHub bên thứ ba bị từ chối `NO-GO` do thiếu giấy phép và lỗi xếp nhầm năm) và
 > **không được giải quyết bằng cách tự tạo hoặc nội suy dữ liệu**.
-> Trong **Issue #44**, dự án đã mở rộng chuỗi lịch sử **2022-01-01 → 2025-04-09** thông qua trạm độc lập **`VN003_HANOI_OPENAQ_7441`** (OpenAQ S3 Location `7441`, US Public Domain) kết hợp backfill khí tượng ERA5 vào bộ dữ liệu phân tách theo trạm `data/processed/air_pollution_extended_2022_2026.parquet` (`37.722` hàng × `23` cột), trong khi vẫn giữ nguyên bất biến baseline `VN001` (`data/processed/air_pollution_final.parquet`, `9.044` hàng × `18` cột). Xem chi tiết tại [Phụ lục Issue #44](#phụ-lục-cập-nhật-issue-44-mở-rộng-dữ-liệu-lịch-sử-20222026-phân-tách-theo-trạm) và [`docs/issue44_checkpoint_status.md`](issue44_checkpoint_status.md).
+> Trong **Issue #44**, dự án đã mở rộng chuỗi lịch sử **2022-01-01 → 2025-04-09** thông qua trạm độc lập **`VN003_HANOI_OPENAQ_7441`** (OpenAQ S3 Location `7441`, US Public Domain) kết hợp backfill khí tượng ERA5 vào bộ dữ liệu phân tách theo trạm `data/processed/air_pollution_extended_2022_2026.parquet` (`37.722` hàng × `23` cột), trong khi vẫn giữ nguyên bất biến baseline `VN001` (`data/processed/air_pollution_final.parquet`, `9.044` hàng × `18` cột). Xem chi tiết tại [`docs/issue44_dataset_contract.md`](issue44_dataset_contract.md) và [`docs/issue44_checkpoint_status.md`](issue44_checkpoint_status.md).
 
 ### G.4. Kết quả kiểm toán Milestone 2 (PR #34)
 
